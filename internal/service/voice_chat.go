@@ -134,7 +134,7 @@ type eventIntentResult struct {
 	Remark        string `json:"remark"`
 	Reply         string `json:"reply"`
 	Reason        string `json:"reason"`
-	IsTimed       bool   `json:"is_timed"`
+	NeedTime      bool   `json:"need_time"`
 	NeedQuantity  bool   `json:"need_quantity"`
 	HasExtraNotes bool   `json:"has_extra_notes"`
 	Exit          bool   `json:"exit"`
@@ -919,7 +919,7 @@ func (s *VoiceService) chatWithResult(ctx context.Context, deviceNo, transcript 
 		finishTalk = !needReply
 	}
 	if finalReply == "" {
-		finalReply = "好的，我已处理。"
+		finalReply = "抱歉，我暂时无法回答这个问题。"
 	}
 	s.appendChatHistory(deviceNo, normalizedTranscript, finalReply)
 
@@ -1041,8 +1041,9 @@ func (s *VoiceService) classifyIntentionID(ctx context.Context, deviceNo, transc
 	for _, item := range intentions {
 		options = append(options, fmt.Sprintf("{\"id\":%d,\"name\":\"%s\"}", item.Id, strings.ReplaceAll(strings.TrimSpace(item.Name), "\"", "")))
 	}
-	prompt := fmt.Sprintf("任务=意图分类。输入=%s。可选意图=[%s]。请仅输出JSON：{\"id\":数字}。", transcript, strings.Join(options, ","))
-	raw, _, _, callErr := s.callDeepSeekRaw(ctx, deviceNo, prompt, 1)
+	systemMessageForIntentionClassify := fmt.Sprintf("你是一个育儿意图分类专家，帮助用户分析输入文本的意图类别。可选意图包括：%s。请根据用户输入分析出最符合的一个意图类别，请仅输出JSON：{\"id\":数字}。", strings.Join(options, ","))
+	systemMessage := "你需要尽量去理解这句话，很可能是希望增删改生活记录"
+	raw, _, _, callErr := s.callDeepSeekRaw(ctx, deviceNo, transcript, 1, systemMessageForIntentionClassify, systemMessage)
 	if callErr != nil {
 		if s.cfg.DebugLog {
 			glog.Warningf(ctx, "[思考过程] 意图分类调用失败。deviceNo=%s err=%v", deviceNo, callErr)
@@ -1090,16 +1091,21 @@ func (s *VoiceService) handleIntentGeneral(ctx context.Context, deviceNo, transc
 func (s *VoiceService) handleIntentAddEvent(ctx context.Context, deviceNo, transcript string) (string, error) {
 	// 调用 DeepSeek 获取事件名称、该事件是否属于计时事件、该事件是否属于计数事件
 	prompt := fmt.Sprintf("任务=新增事件记录。输入=%s。请仅输出JSON，字段包括：name（事件名称）, needTime（0/1 计时事件）, needQuantity（0/1 计数事件）, reply。", transcript)
-	raw, reply, _, err := s.callDeepSeekRaw(ctx, deviceNo, prompt, s.intentionUpperLimit(ctx, 1, 2))
+	systemMessage := "你是分析专家，只负责帮用户分析出事件名称，并判断是否需要计时或计数。请直接从用户输入中分析出一个事件名称，如果无法分析出事件名称，请引导用户提供更多信息。"
+	raw, reply, _, err := s.callDeepSeekRaw(ctx, deviceNo, prompt, s.intentionUpperLimit(ctx, 1, 2), systemMessage)
 	if err != nil {
-		return "", err
+		return reply, err
 	}
 	newEvent := eventInfo{}
-	if err := json.Unmarshal([]byte(raw), &newEvent); err != nil || strings.TrimSpace(newEvent.Name) == "" {
+	err = json.Unmarshal([]byte(raw), &newEvent)
+	if err != nil {
+		return "解析新增事件意图失败", fmt.Errorf("解析新增事件意图失败: %w", err)
+	}
+	if newEvent.Name == "" {
 		if s.cfg.DebugLog {
 			glog.Warningf(ctx, "[思考过程] 新增事件结构化解析失败。deviceNo=%s raw=%s", deviceNo, truncateVoiceLogText(raw, 800))
 		}
-		return "我理解了你的意思，但这次记录失败了，请再试一次。", nil
+		return reply, errors.New("未解析出事件名称")
 	}
 
 	_, err = dao.Event.Ctx(ctx).Insert(newEvent)
@@ -1120,17 +1126,17 @@ func (s *VoiceService) handleIntentEventRecord(ctx context.Context, deviceNo, tr
 		eventList = "{}"
 	}
 	prompt := fmt.Sprintf(`任务=母婴事件识别。输入=%s。事件集合=[%s]。仅输出JSON。命中事件时输出字段:
-	event_name,want_do(add|delete|update|none),action(start|end|none),is_timed,need_quantity,quantity,unit,remark,reply。
+	event_name,want_do(add|delete|update|none),action(start|end|none),need_time,need_quantity,quantity,unit,remark,reply。
 	未命中时输出:reply,reason。`, transcript, eventList)
+	systemMessage1 := "您是事件分析和记录专家，可以准确分析文本命中的事件和意图，围绕事件记录动作回应。"
 	systemMessage := `请严格按以下逻辑处理事件识别：
-1. 优先判断是否命中事件，命中则必须输出完整JSON
-2. 事件匹配优先级最高
-3. 有明确数量且语义相关 → action大概率设为end
+	1：是否可能命中多个事件，如果有，则判定为未命中，且引导用户确认具体事件
+2. 命中事件后，必须输出完整JSON，字段对应的值不能为null
+3. 如果命中的是start事件，需要在回复中提示用户在结束的时候告知我，比如“喝奶结束了”或者“睡觉结束了”，以便我能帮你记录完整的事件周期
 4. remark仅语义确实需要时返回，不超10字
-5. 未命中事件时，reason需说明原因
-6. 未命中但有意向记录时，reply可友好提示是否需要新增事件，并引导用户补充事件名称等信息；无意向记录时，reply可正常回复用户问题。
-7. 将操作意图（增删改查）填入want_do字段`
-	raw, reply, _, err := s.callDeepSeekRaw(ctx, deviceNo, prompt, s.intentionUpperLimit(ctx, 1, 2), systemMessage)
+5. 未命中事件时，reply可友好提示是否需要新增事件，并引导用户补充事件名称等信息，reason需说明原因
+6. 将操作意图（增删改查）填入want_do字段`
+	raw, reply, _, err := s.callDeepSeekRaw(ctx, deviceNo, prompt, s.intentionUpperLimit(ctx, 1, 2), systemMessage1, systemMessage)
 	if err != nil {
 		return "", false, err
 	}
@@ -1152,14 +1158,16 @@ func (s *VoiceService) handleIntentEventRecord(ctx context.Context, deviceNo, tr
 	if intent.Action == "" {
 		intent.Action = "none"
 	} else {
-		// 将这次问答记录数据库
-		qa := entity.Qa{
-			Question:        transcript,
-			IntentionId:     1,
-			IntentionAnswer: string(intentJSON),
-			Replay:          intent.Reply,
+		if intent.EventName != "" {
+			// 将这次问答记录数据库
+			qa := entity.Qa{
+				Question:        transcript,
+				IntentionId:     1,
+				IntentionAnswer: string(intentJSON),
+				Replay:          intent.Reply,
+			}
+			dao.Qa.Ctx(ctx).Insert(qa)
 		}
-		dao.Qa.Ctx(ctx).Insert(qa)
 	}
 
 	return s.deelIntent(ctx, deviceNo, events, intent)
@@ -1178,7 +1186,7 @@ func (s *VoiceService) deelIntent(ctx context.Context, deviceNo string, events [
 			intent.Action,
 			intent.Quantity,
 			intent.Unit,
-			intent.IsTimed,
+			intent.NeedTime,
 			intent.NeedQuantity,
 			handleErr,
 		)
@@ -1209,7 +1217,7 @@ func (s *VoiceService) applyEventIntentNew(ctx context.Context, deviceNo string,
 	// 服务端强规则：计时/计数由 event 表定义，覆盖模型判断。
 	needTime := ev.NeedTime > 0
 	needQuantity := ev.NeedQuantity > 0
-	intent.IsTimed = needTime
+	intent.NeedTime = needTime
 	intent.NeedQuantity = needQuantity
 	switch want_do {
 	case "add":
@@ -1249,7 +1257,7 @@ func (s *VoiceService) applyEventIntentNew(ctx context.Context, deviceNo string,
 		Limit(1).
 		Scan(&lastRecord)
 	if err == nil {
-		if lastRecord.Id > 0 && lastRecord.EventId != ev.Id && (lastRecord.EndTime == "" || lastRecord.EndTime == "0000-00-00 00:00:00") && lastRecord.EventUnit == "" {
+		if lastRecord.Id > 0 && lastRecord.EventId != ev.Id && lastRecord.EventId != 3 && (lastRecord.EndTime == "" || lastRecord.EndTime == "0000-00-00 00:00:00") && lastRecord.EventUnit == "" {
 			// 自动补结束时间，并备注是自动补时间，避免覆盖用户输入的备注。
 			if _, updateErr := dao.History.Ctx(ctx).Where(dao.History.Columns().Id, lastRecord.Id).Data(g.Map{
 				dao.History.Columns().EndTime: now,
@@ -2017,7 +2025,7 @@ func (s *VoiceService) buildGrowthSuggestPayload(ctx context.Context, deviceNo s
 	}
 	return growthSuggestPayload{
 		Messages: []growthSuggestMessage{
-			{Content: defaultSystemPromptForSuggest(s.cfg), Role: "system"},
+			{Content: "您是育儿助手，主要帮助家长根据历史记录提供成长建议。", Role: "system"},
 			{Content: userContent, Role: "user"},
 		},
 		Model:     s.cfg.DeepSeek.Model,
@@ -2197,7 +2205,8 @@ func (s *VoiceService) callDeepSeekHistoryReply(ctx context.Context, deviceNo, t
 	}
 	historyBytes, _ := json.Marshal(history)
 	prompt := fmt.Sprintf("用户输入=%s。请基于最近%d小时记录回答。记录=%s。仅输出JSON：{\"reply\":\"回复内容\"}。", transcript, hours, string(historyBytes))
-	raw, reply, _, callErr := s.callDeepSeekRaw(ctx, deviceNo, prompt, s.intentionUpperLimit(ctx, 4, 0))
+	systemMessage := fmt.Sprintf("您是育儿助手，主要帮助家长根据历史事件回应用户提问。")
+	raw, reply, _, callErr := s.callDeepSeekRaw(ctx, deviceNo, prompt, s.intentionUpperLimit(ctx, 4, 0), systemMessage)
 	if callErr != nil {
 		return "", callErr
 	}
@@ -2425,10 +2434,13 @@ func (s *VoiceService) buildChatMessagesWithLimit(deviceNo, currentPrompt string
 	if s.cfg.DeepSeek.SystemPrompt != "" {
 		messages = append(messages, map[string]string{"role": "system", "content": s.cfg.DeepSeek.SystemPrompt})
 	}
-	if len(systemMessage) > 0 && strings.TrimSpace(systemMessage[0]) != "" {
-		messages = append(messages, map[string]string{"role": "system", "content": systemMessage[0]})
-	}
 
+	// 将systemMessage循环，加入到messages中，允许调用方传入多个systemMessage
+	for _, msg := range systemMessage {
+		if strings.TrimSpace(msg) != "" {
+			messages = append(messages, map[string]string{"role": "system", "content": msg})
+		}
+	}
 	if strings.TrimSpace(deviceNo) != "" {
 		s.sessionMu.Lock()
 		s.pruneSessionsLocked(now)

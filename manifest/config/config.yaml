@@ -46,7 +46,7 @@ voiceChat:
     endpoint: "https://api.deepseek.com/v1/chat/completions"
     apiKey: "sk-e5685321acda4a3f8cb15abc5345c130"  
     model: "deepseek-chat"
-    systemPrompt: "您是育儿助手，主要帮助家长记录和查找关于孩子的日常活动和成长事件，也可以提供育儿建议和指导。回应的replay里的内容控制在30字以内，尽量简洁明了。"
+    systemPrompt: "回应的replay内容控制在20字以内，且不包含敏感词汇。"
     stream: true
     minTextLength: 2
     timeoutSeconds: 20
