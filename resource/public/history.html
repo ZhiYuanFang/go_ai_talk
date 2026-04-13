@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>设备历史记录</title>
+    <style>
+        :root{
+            --bg1:#eef6ff;
+            --bg2:#f7fbff;
+            --accent:#6ab5ff;
+            --accent-soft:#d8ecff;
+            --btn:#4a9fff;
+            --btn-hover:#328ff8;
+            --text:#234;
+            --card:#ffffff;
+        }
+        body{font-family:Arial,Helvetica,sans-serif;background-color:var(--bg1);color:var(--text);margin:0;padding:24px;position:relative;overflow-x:hidden}
+        .bubble-bg{position:fixed;inset:0;pointer-events:none;z-index:0;overflow:hidden}
+        .bubble{position:absolute;bottom:-120px;border-radius:50%;background:radial-gradient(circle at 30% 30%,rgba(255,255,255,.98),rgba(255,255,255,.42));box-shadow:inset 0 0 12px rgba(255,255,255,.52),0 12px 26px rgba(66,140,220,.18),0 0 0 1px rgba(255,255,255,.36);opacity:.78;animation:floatUp var(--dur) linear infinite;animation-delay:var(--delay)}
+        .bubble::after{content:"";position:absolute;inset:18% 18% auto auto;width:24%;height:24%;border-radius:50%;background:rgba(255,255,255,.55)}
+        .bubble::before{content:"";position:absolute;inset:9% 55% auto 15%;height:18%;border-radius:50%;background:rgba(255,255,255,.6);filter:blur(1px)}
+        @keyframes floatUp{
+            0%{transform:translate3d(0,0,0) scale(.9);opacity:0}
+            10%{opacity:.65}
+            50%{transform:translate3d(var(--drift),-45vh,0) scale(1)}
+            100%{transform:translate3d(calc(var(--drift) * -1),-110vh,0) scale(1.08);opacity:0}
+        }
+        body.sex-male{--bg1:#e8f4ff;--bg2:#f4faff;--accent:#68b5ff;--accent-soft:#d7ecff;--btn:#4a9fff;--btn-hover:#328ff8;--text:#18324d}
+        body.sex-female{--bg1:#ffeaf3;--bg2:#fff5f9;--accent:#ff8ab7;--accent-soft:#ffe0ef;--btn:#ff6ca8;--btn-hover:#ff5b9f;--text:#5a2a44}
+        .card{background:var(--card);border-radius:16px;padding:16px;max-width:1080px;margin:0 auto 16px;box-shadow:0 6px 16px rgba(0,0,0,.06);border:1px solid var(--accent-soft);position:relative;z-index:1}
+        h1,h3{margin:0 0 12px 0}
+        .muted{color:#666;font-size:13px}
+        .meta-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+        .meta-row input,.meta-row select{padding:6px 8px;border:1px solid var(--accent-soft);border-radius:8px;min-width:180px;background:#fff}
+        #chatInput{padding-top:12px;padding-bottom:12px}
+        button{padding:6px 10px;border:1px solid var(--accent-soft);border-radius:8px;background:#fff;cursor:pointer;transition:all .18s ease}
+        button:hover{transform:translateY(-1px)}
+        .meta-row button{padding:6px 10px}
+        .meta-row button.primary{background:var(--btn);color:#fff;border-color:var(--btn)}
+        .meta-row button.primary:hover{background:var(--btn-hover)}
+        .btn-primary{background:var(--btn);color:#fff;border-color:var(--btn)}
+        .btn-primary:hover{background:var(--btn-hover)}
+        .btn-secondary{background:var(--accent-soft);color:var(--text);border-color:var(--accent-soft)}
+        .btn-danger{background:#ff6b6b;color:#fff;border-color:#ff6b6b}
+        .btn-danger:hover{background:#f25555}
+        .table-wrap{overflow-x:auto;margin-top:10px}
+        table{width:max-content;min-width:100%;border-collapse:collapse}
+        th,td{border-bottom:1px solid #eee;padding:10px;text-align:left;font-size:13px;white-space:nowrap;vertical-align:middle}
+        .suggest-item{padding:10px 12px;border:1px solid var(--accent-soft);border-radius:10px;margin-bottom:10px;background:#fff}
+        .suggest-time{font-size:12px;color:#666;margin-bottom:6px}
+        .section-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+        .section-head h3{margin:0}
+        .modal{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:center;justify-content:center;z-index:99}
+        .modal.show{display:flex}
+        .modal-card{background:#fff;border-radius:14px;padding:16px;min-width:320px;max-width:560px;width:90%;box-shadow:0 10px 30px rgba(0,0,0,.15);border:1px solid var(--accent-soft)}
+        .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+        .form-grid .full{grid-column:1 / -1}
+        .form-grid label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:#444}
+        .form-grid input,.form-grid select{padding:8px;border:1px solid var(--accent-soft);border-radius:8px}
+        .required::after{content:' *';color:#c1121f}
+        .field-error{font-size:12px;color:#c1121f;display:none}
+    </style>
+</head>
+<body>
+    <div class="bubble-bg" aria-hidden="true">
+        <span class="bubble" style="left:4%;width:44px;height:44px;--dur:20s;--delay:-4s;--drift:26px;"></span>
+        <span class="bubble" style="left:12%;width:26px;height:26px;--dur:15s;--delay:-9s;--drift:18px;"></span>
+        <span class="bubble" style="left:22%;width:62px;height:62px;--dur:24s;--delay:-2s;--drift:34px;"></span>
+        <span class="bubble" style="left:36%;width:38px;height:38px;--dur:18s;--delay:-12s;--drift:22px;"></span>
+        <span class="bubble" style="left:49%;width:28px;height:28px;--dur:14s;--delay:-5s;--drift:16px;"></span>
+        <span class="bubble" style="left:58%;width:52px;height:52px;--dur:23s;--delay:-8s;--drift:30px;"></span>
+        <span class="bubble" style="left:68%;width:32px;height:32px;--dur:17s;--delay:-11s;--drift:20px;"></span>
+        <span class="bubble" style="left:78%;width:48px;height:48px;--dur:21s;--delay:-6s;--drift:28px;"></span>
+        <span class="bubble" style="left:88%;width:24px;height:24px;--dur:13s;--delay:-10s;--drift:14px;"></span>
+        <span class="bubble" style="left:95%;width:40px;height:40px;--dur:19s;--delay:-3s;--drift:24px;"></span>
+    </div>
+    <div class="card">
+        <h1>设备历史记录</h1>
+        <div class="meta-row muted">
+            <span>生日：</span>
+            <input id="birthdayInput" type="date" />
+            <span>性别：</span>
+            <select id="sexInput">
+                <option value="1">男</option>
+                <option value="0">女</option>
+            </select>
+            <button id="saveBirthdayBtn" class="primary" type="button">保存</button>
+            <span id="meta"></span>
+        </div>
+    </div>
+
+    <div class="card">
+        <h3>文本对话</h3>
+        <div class="meta-row">
+            <input id="chatInput" type="text" placeholder="输入要发送给智能对话的文本" style="min-width:320px;flex:1;" />
+            <button id="chatSendBtn" class="primary" type="button">发送</button>
+        </div>
+        <div id="chatMeta" class="muted" style="margin-top:8px;"></div>
+        <div id="chatReplyWrap" class="suggest-item" style="margin-top:10px;display:none;"></div>
+    </div>
+
+    <div class="card">
+        <div class="section-head">
+            <h3>历史事件</h3>
+            <div class="meta-row">
+                <button id="refreshHistoryBtn" class="btn-secondary" type="button">刷新</button>
+                <button id="addHistoryBtn" class="btn-primary" type="button">添加</button>
+            </div>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>事件名</th>
+                        <th>数量/单位</th>
+                        <th>开始时间</th>
+                        <th>结束时间</th>
+                        <th>备注</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="historyBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="section-head">
+            <h3>历史成长建议</h3>
+        </div>
+        <div id="suggestWrap"></div>
+    </div>
+    <div id="historyModal" class="modal">
+        <div class="modal-card">
+            <h3 id="historyModalTitle">新增历史事件</h3>
+            <div class="form-grid" style="margin-top:10px;">
+                <label class="required">历史事件
+                    <select id="fEventSelect"></select>
+                </label>
+                <label id="fEventNumberWrap" class="required">
+                    数量
+                    <input id="fEventNumber" type="number" placeholder="例如 1" />
+                </label>
+                <label id="fEventUnitWrap">
+                    单位
+                    <input id="fEventUnit" type="text" placeholder="自动带出" readonly />
+                </label>
+                <label id="fStartTimeWrap" class="required">开始时间
+                    <input id="fStartTime" type="datetime-local" />
+                </label>
+                <label class="required">结束时间
+                    <input id="fEndTime" type="datetime-local" />
+                </label>
+                <label class="full">备注
+                    <input id="fRemark" type="text" placeholder="可选" />
+                </label>
+            </div>
+            <div id="historyFormError" class="field-error" style="margin-top:8px;"></div>
+            <div id="historyAutoTimePreview" class="muted" style="margin-top:6px;display:none;"></div>
+            <div class="meta-row" style="justify-content:flex-end;margin-top:12px;">
+                <button id="historyModalCancelBtn" class="btn-secondary" type="button">取消</button>
+                <button id="historyModalSubmitBtn" class="btn-primary" type="button">提交</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const parts = window.location.pathname.split('/').filter(Boolean);
+        const deviceNo = decodeURIComponent(parts[parts.length - 1] || '').trim();
+        const meta = document.getElementById('meta');
+        const birthdayInput = document.getElementById('birthdayInput');
+        const saveBirthdayBtn = document.getElementById('saveBirthdayBtn');
+        const sexInput = document.getElementById('sexInput');
+        const historyBody = document.getElementById('historyBody');
+        const suggestWrap = document.getElementById('suggestWrap');
+        const chatInput = document.getElementById('chatInput');
+        const chatSendBtn = document.getElementById('chatSendBtn');
+        const chatMeta = document.getElementById('chatMeta');
+        const chatReplyWrap = document.getElementById('chatReplyWrap');
+        const addHistoryBtn = document.getElementById('addHistoryBtn');
+        const refreshHistoryBtn = document.getElementById('refreshHistoryBtn');
+        const historyModal = document.getElementById('historyModal');
+        const historyModalTitle = document.getElementById('historyModalTitle');
+        const historyModalSubmitBtn = document.getElementById('historyModalSubmitBtn');
+        const historyModalCancelBtn = document.getElementById('historyModalCancelBtn');
+        const fEventSelect = document.getElementById('fEventSelect');
+        const fEventNumberWrap = document.getElementById('fEventNumberWrap');
+        const fEventUnitWrap = document.getElementById('fEventUnitWrap');
+        const fStartTimeWrap = document.getElementById('fStartTimeWrap');
+        const fEventNumber = document.getElementById('fEventNumber');
+        const fEventUnit = document.getElementById('fEventUnit');
+        const fStartTime = document.getElementById('fStartTime');
+        const fEndTime = document.getElementById('fEndTime');
+        const fRemark = document.getElementById('fRemark');
+        const historyFormError = document.getElementById('historyFormError');
+        const historyAutoTimePreview = document.getElementById('historyAutoTimePreview');
+        let historyModalMode = 'add';
+        let editingHistoryId = 0;
+        let currentRows = [];
+        let eventOptions = [];
+        const eventNeedTimeById = {};
+        let currentSex = 1;
+
+        function applyThemeBySex(sex){
+            document.body.classList.remove('sex-male', 'sex-female');
+            if(Number(sex) > 0){
+                document.body.classList.add('sex-male');
+            }else{
+                document.body.classList.add('sex-female');
+            }
+        }
+
+        function parseDateTime(v){
+            const s = String(v || '').trim();
+            if(!s){ return null; }
+            const dt = new Date(s.replace(' ', 'T'));
+            if(Number.isNaN(dt.getTime())){ return null; }
+            return dt;
+        }
+
+        function formatAutoTimedNumberUnit(startTime, endTime){
+            const start = parseDateTime(startTime);
+            const end = parseDateTime(endTime);
+            if(!start || !end || end < start){
+                return {numberText: '-', unitText: ''};
+            }
+            const totalSeconds = Math.round((end.getTime() - start.getTime()) / 1000);
+            const hours = Math.floor(totalSeconds / 3600);
+            const minutes = Math.floor((totalSeconds % 3600) / 60);
+            const seconds = totalSeconds % 60;
+            const parts = [];
+            if(hours > 0){
+                parts.push(String(hours) + '时');
+            }
+            if(minutes > 0){
+                parts.push(String(minutes).padStart(2, '0') + '分');
+            }
+            if(seconds > 0){
+                parts.push(String(seconds).padStart(2, '0') + '秒');
+            }
+            if(parts.length === 0){
+                parts.push('0秒');
+            }
+            return {numberText: parts.join(''), unitText: ''};
+        }
+
+        function toDateTimeLocal(v){
+            const s = String(v || '').trim();
+            if(!s) return '';
+            return s.replace(' ', 'T').slice(0, 16);
+        }
+
+        function fromDateTimeLocal(v){
+            const s = String(v || '').trim();
+            if(!s) return '';
+            return s.replace('T', ' ') + ':00';
+        }
+
+        function escapeHtml(v){
+            return String(v ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        }
+
+        /** 兼容 GoFrame 统一响应：列表类 data 为 { list: [...] } */
+        function asListPayload(d){
+            if (Array.isArray(d)) return d;
+            if (d && Array.isArray(d.list)) return d.list;
+            return [];
+        }
+
+        async function api(path){
+            const res = await fetch(path);
+            const data = await res.json().catch(() => ({}));
+            if(!res.ok || data.code !== 0) throw new Error(data.message || ('HTTP '+res.status));
+            return data.data;
+        }
+
+        async function apiPost(path, body){
+            const res = await fetch(path, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(body || {})
+            });
+            const data = await res.json().catch(() => ({}));
+            if(!res.ok || data.code !== 0) throw new Error(data.message || ('HTTP '+res.status));
+            return data.data;
+        }
+
+        async function loadEventOptions(){
+            eventOptions = asListPayload(await api('/device/history/api/event/options'));
+            Object.keys(eventNeedTimeById).forEach(k => delete eventNeedTimeById[k]);
+            fEventSelect.innerHTML = '';
+            if(!eventOptions || eventOptions.length === 0){
+                fEventSelect.innerHTML = '<option value="">暂无事件可选</option>';
+                return;
+            }
+            eventOptions.forEach(ev => {
+                const opt = document.createElement('option');
+                opt.value = String(ev.id);
+                const needTime = Number(ev.needTime || 0) > 0;
+                const needQuantity = Number(ev.needQuantity || 0) > 0;
+                eventNeedTimeById[String(ev.id)] = needTime;
+                const suffix = [];
+                if(needTime){ suffix.push('计时'); }
+                if(needQuantity){ suffix.push('计数'); }
+                opt.textContent = suffix.length > 0 ? (String(ev.name || ('事件#'+ev.id)) + '（' + suffix.join('/') + '）') : String(ev.name || ('事件#'+ev.id));
+                opt.setAttribute('data-name', String(ev.name || ''));
+                opt.setAttribute('data-need-time', needTime ? '1' : '0');
+                opt.setAttribute('data-need-quantity', needQuantity ? '1' : '0');
+                fEventSelect.appendChild(opt);
+            });
+            syncEventUnitAndNumberReadonly();
+        }
+
+        async function loadHistory(){
+            const rows = asListPayload(await api('/device/history/api/list?deviceNo=' + encodeURIComponent(deviceNo)));
+            currentRows = rows || [];
+            historyBody.innerHTML = '';
+            if(!rows || rows.length === 0){
+                historyBody.innerHTML = '<tr><td colspan="7">暂无历史数据</td></tr>';
+                return;
+            }
+            rows.forEach(it => {
+                const rowUnit = String(it.eventUnit || '').trim();
+                const rowEventId = String(it.eventId || '');
+                const timedByRule = !!eventNeedTimeById[rowEventId];
+                let numberText = String(it.eventNumber ?? '');
+                let unitText = rowUnit;
+                if(timedByRule || rowUnit === '计时'){
+                    const autoDisplay = formatAutoTimedNumberUnit(it.startTime, it.endTime);
+                    numberText = autoDisplay.numberText;
+                    unitText = autoDisplay.unitText;
+                }
+                const tr = document.createElement('tr');
+                const numberUnitText = (String(numberText).trim() || '-') + (String(unitText).trim() || '');
+                tr.innerHTML = '<td>'+escapeHtml(it.id)+'</td>'+
+                    '<td>'+escapeHtml(it.eventName || it.eventId)+'</td>'+
+                    '<td>'+escapeHtml(numberUnitText)+'</td>'+
+                    '<td>'+escapeHtml(it.startTime)+'</td>'+
+                    '<td>'+escapeHtml(it.endTime)+'</td>'+
+                    '<td>'+escapeHtml(it.remark)+'</td>'+
+                    '<td><button type="button" class="history-edit-btn btn-primary" data-id="'+escapeHtml(it.id)+'">编辑</button> <button type="button" class="history-del-btn btn-danger" data-id="'+escapeHtml(it.id)+'">删除</button></td>';
+                historyBody.appendChild(tr);
+            });
+            historyBody.querySelectorAll('.history-edit-btn').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const id = Number(btn.getAttribute('data-id') || 0);
+                    const row = rows.find(x => Number(x.id) === id);
+                    if(!row){ return; }
+                    openHistoryModal('edit', row);
+                });
+            });
+            historyBody.querySelectorAll('.history-del-btn').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const id = Number(btn.getAttribute('data-id') || 0);
+                    if(!id){ return; }
+                    if(!confirm('确认删除该历史事件吗？')){ return; }
+                    try{
+                        await apiPost('/device/history/api/event/delete', {id, deviceNo});
+                        await loadHistory();
+                    }catch(e){
+                        meta.textContent = '删除历史事件失败：' + (e.message || '未知错误');
+                    }
+                });
+            });
+        }
+
+        async function loadSuggest(){
+            const rows = asListPayload(await api('/device/history/api/suggest?deviceNo=' + encodeURIComponent(deviceNo)));
+            suggestWrap.innerHTML = '';
+            if(!rows || rows.length === 0){
+                suggestWrap.innerHTML = '<div class="muted">暂无成长建议</div>';
+                return;
+            }
+            rows.forEach(it => {
+                const div = document.createElement('div');
+                div.className = 'suggest-item';
+                div.innerHTML = '<div class="suggest-time">'+escapeHtml(it.time)+'</div><div>'+escapeHtml(it.suggest)+'</div>';
+                suggestWrap.appendChild(div);
+            });
+        }
+
+        async function loadBirthday(){
+            const data = await api('/device/history/api/birthday?deviceNo=' + encodeURIComponent(deviceNo));
+            const birthday = (data && data.birthday) ? String(data.birthday).trim() : '';
+            currentSex = Number((data && data.sex) || 0) > 0 ? 1 : 0;
+            birthdayInput.value = birthday;
+            sexInput.value = String(currentSex);
+            applyThemeBySex(currentSex);
+            meta.textContent = birthday ? '已加载' : '未设置';
+        }
+
+        async function saveBirthday(){
+            const birthday = String(birthdayInput.value || '').trim();
+            const sex = Number(sexInput.value || 0) > 0 ? 1 : 0;
+            await apiPost('/device/history/api/birthday/save', {deviceNo, birthday, sex});
+            currentSex = sex;
+            applyThemeBySex(currentSex);
+            meta.textContent = birthday ? '保存成功' : '已清空';
+        }
+
+        async function sendTextChat(){
+            const transcript = String(chatInput.value || '').trim();
+            if(!transcript){
+                chatMeta.textContent = '请输入文本后再发送';
+                chatReplyWrap.style.display = 'none';
+                return;
+            }
+            chatSendBtn.disabled = true;
+            chatMeta.textContent = '发送中...';
+            try{
+                const data = await apiPost('/device/history/api/chat', {deviceNo, transcript});
+                const reply = String((data && data.reply) || '').trim();
+                chatReplyWrap.style.display = 'block';
+                chatReplyWrap.innerHTML = '<div class="suggest-time">模型回复</div><div>'+escapeHtml(reply || '(空回复)')+'</div>';
+                chatMeta.textContent = '发送成功';
+            }catch(e){
+                chatReplyWrap.style.display = 'none';
+                chatMeta.textContent = '发送失败：' + (e.message || '未知错误');
+            }finally{
+                chatSendBtn.disabled = false;
+            }
+        }
+
+        function openHistoryModal(mode, row){
+            historyModalMode = mode;
+            editingHistoryId = mode === 'edit' ? Number(row.id || 0) : 0;
+            historyModalTitle.textContent = mode === 'edit' ? '编辑历史事件' : '新增历史事件';
+            const targetEventId = String((row && row.eventId) || '');
+            if(targetEventId && Array.from(fEventSelect.options).some(o => o.value === targetEventId)){
+                fEventSelect.value = targetEventId;
+            } else if (fEventSelect.options.length > 0) {
+                fEventSelect.selectedIndex = 0;
+            }
+            fEventNumber.value = String((row && row.eventNumber) || 0);
+            fEventUnit.value = String((row && row.eventUnit) || '');
+            fStartTime.value = toDateTimeLocal(row && row.startTime);
+            fEndTime.value = toDateTimeLocal(row && row.endTime);
+            fRemark.value = String((row && row.remark) || '');
+            syncEventUnitAndNumberReadonly();
+            historyFormError.style.display = 'none';
+            historyFormError.textContent = '';
+            historyModalSubmitBtn.disabled = false;
+            historyModalSubmitBtn.textContent = '提交';
+            historyModal.classList.add('show');
+        }
+
+        function closeHistoryModal(){
+            historyModal.classList.remove('show');
+        }
+
+        async function submitHistoryModal(){
+            const payload = {
+                deviceNo,
+                eventId: Number(fEventSelect.value || 0),
+                eventName: String((fEventSelect.options[fEventSelect.selectedIndex] || {}).getAttribute('data-name') || '').trim(),
+                eventUnit: String(fEventUnit.value || '').trim(),
+                eventNumber: Number(fEventNumber.value || 0),
+                startTime: fromDateTimeLocal(fStartTime.value),
+                endTime: fromDateTimeLocal(fEndTime.value),
+                remark: String(fRemark.value || '').trim()
+            };
+            const selected = fEventSelect.options[fEventSelect.selectedIndex];
+            const needQuantity = Number((selected && selected.getAttribute('data-need-quantity')) || 0) > 0;
+            const needTime = Number((selected && selected.getAttribute('data-need-time')) || 0) > 0;
+            const instantEvent = !needTime && !needQuantity;
+            if(!needQuantity){
+                payload.eventNumber = 0;
+                payload.eventUnit = '';
+            }
+            if(instantEvent){
+                payload.startTime = payload.endTime;
+            }
+            if(!payload.eventId || !payload.eventName || payload.startTime === '' || payload.endTime === ''){
+                historyFormError.style.display = 'block';
+                historyFormError.textContent = '请完整填写必填项：历史事件、开始时间、结束时间';
+                return;
+            }
+            if(needQuantity && Number.isNaN(payload.eventNumber)){
+                historyFormError.style.display = 'block';
+                historyFormError.textContent = '需要计数的事件必须填写数量';
+                return;
+            }
+            if(payload.endTime < payload.startTime){
+                historyFormError.style.display = 'block';
+                historyFormError.textContent = '结束时间不能早于开始时间';
+                return;
+            }
+            historyModalSubmitBtn.disabled = true;
+            historyModalSubmitBtn.textContent = '提交中...';
+            try{
+                if(historyModalMode === 'edit'){
+                    await apiPost('/device/history/api/event/update', Object.assign({id: editingHistoryId}, payload));
+                }else{
+                    await apiPost('/device/history/api/event/add', payload);
+                }
+                closeHistoryModal();
+                await loadHistory();
+            }catch(e){
+                historyFormError.style.display = 'block';
+                historyFormError.textContent = (historyModalMode === 'edit' ? '修改' : '新增') + '失败：' + (e.message || '未知错误');
+            }finally{
+                historyModalSubmitBtn.disabled = false;
+                historyModalSubmitBtn.textContent = '提交';
+            }
+        }
+
+        async function boot(){
+            if(!deviceNo){
+                meta.textContent = '未指定设备号';
+                birthdayInput.disabled = true;
+                saveBirthdayBtn.disabled = true;
+                historyBody.innerHTML = '<tr><td colspan="7">未指定设备号</td></tr>';
+                suggestWrap.innerHTML = '<div class="muted">未指定设备号</div>';
+                return;
+            }
+            try {
+                await loadBirthday();
+                await loadEventOptions();
+                await loadHistory();
+                await loadSuggest();
+            } catch (e) {
+                meta.textContent = '生日信息加载失败：' + (e.message || '未知错误');
+            }
+        }
+        saveBirthdayBtn.addEventListener('click', async () => {
+            try {
+                await saveBirthday();
+            } catch (e) {
+                meta.textContent = '保存失败：' + (e.message || '未知错误');
+            }
+        });
+        chatSendBtn.addEventListener('click', sendTextChat);
+        chatInput.addEventListener('keydown', (e) => {
+            if(e.key === 'Enter'){
+                e.preventDefault();
+                sendTextChat();
+            }
+        });
+        addHistoryBtn.addEventListener('click', async () => {
+            openHistoryModal('add', {});
+        });
+        refreshHistoryBtn.addEventListener('click', async () => {
+            try{
+                await loadHistory();
+                meta.textContent = '历史事件已刷新';
+            }catch(e){
+                meta.textContent = '刷新历史事件失败：' + (e.message || '未知错误');
+            }
+        });
+        historyModalCancelBtn.addEventListener('click', closeHistoryModal);
+        historyModalSubmitBtn.addEventListener('click', submitHistoryModal);
+        fEventSelect.addEventListener('change', syncEventUnitAndNumberReadonly);
+        fStartTime.addEventListener('input', updateAutoTimePreview);
+        fEndTime.addEventListener('input', updateAutoTimePreview);
+        historyModal.addEventListener('click', (e) => {
+            if(e.target === historyModal){
+                closeHistoryModal();
+            }
+        });
+        boot();
+        applyThemeBySex(currentSex);
+
+        function syncEventUnitAndNumberReadonly(){
+            const selected = fEventSelect.options[fEventSelect.selectedIndex];
+            const needQuantity = Number((selected && selected.getAttribute('data-need-quantity')) || 0) > 0;
+            const needTime = Number((selected && selected.getAttribute('data-need-time')) || 0) > 0;
+            const instantEvent = !needTime && !needQuantity;
+            fEventNumberWrap.style.display = needQuantity ? '' : 'none';
+            fEventUnitWrap.style.display = needQuantity ? '' : 'none';
+            fStartTimeWrap.style.display = instantEvent ? 'none' : '';
+            if(needQuantity){
+                fEventNumber.placeholder = '例如 1';
+                fEventNumber.readOnly = false;
+                fEventNumber.disabled = false;
+                fEventUnit.placeholder = '可编辑单位，例如 ml / 次';
+                fEventUnit.readOnly = false;
+                if(String(fEventUnit.value || '').trim() === ''){
+                    fEventUnit.value = '';
+                }
+            }else{
+                fEventNumber.value = '';
+                fEventUnit.value = '';
+            }
+            if(instantEvent){
+                fStartTime.value = fEndTime.value || toDateTimeLocal(new Date().toISOString().slice(0,19).replace('T',' '));
+            }
+            updateAutoTimePreview();
+        }
+
+        function updateAutoTimePreview(){
+            const selected = fEventSelect.options[fEventSelect.selectedIndex];
+            const autoTime = Number((selected && selected.getAttribute('data-need-time')) || 0) > 0;
+            if(!autoTime){
+                historyAutoTimePreview.style.display = 'none';
+                historyAutoTimePreview.textContent = '';
+                return;
+            }
+            const start = parseDateTime(fromDateTimeLocal(fStartTime.value));
+            const end = parseDateTime(fromDateTimeLocal(fEndTime.value));
+            if(!start || !end){
+                historyAutoTimePreview.style.display = 'block';
+                historyAutoTimePreview.textContent = '计时预览：请填写开始和结束时间';
+                return;
+            }
+            if(end < start){
+                historyAutoTimePreview.style.display = 'block';
+                historyAutoTimePreview.textContent = '计时预览：结束时间不能早于开始时间';
+                return;
+            }
+            const autoDisplay = formatAutoTimedNumberUnit(fromDateTimeLocal(fStartTime.value), fromDateTimeLocal(fEndTime.value));
+            historyAutoTimePreview.style.display = 'block';
+            historyAutoTimePreview.textContent = '计时预览：将自动计算为 ' + autoDisplay.numberText;
+        }
+    </script>
+</body>
+</html>

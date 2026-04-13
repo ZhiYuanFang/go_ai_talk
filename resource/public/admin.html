@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>设备管理</title>
+	<style>
+		body{font-family:Arial,Helvetica,sans-serif;background:#f7f8fa;color:#222;margin:0;padding:24px}
+		.card{background:#fff;border-radius:12px;padding:16px;max-width:960px;margin:0 auto 16px;box-shadow:0 2px 10px rgba(0,0,0,.05)}
+		input,button{padding:10px 12px;border-radius:8px;border:1px solid #d0d7de;font-size:14px}
+		button{background:#1677ff;color:#fff;border:none;cursor:pointer}
+		button:disabled{background:#9bbcf5;cursor:not-allowed}
+		.table-wrap{overflow-x:auto;margin-top:12px}
+		table{width:max-content;min-width:100%;border-collapse:collapse}
+		th,td{border-bottom:1px solid #eee;padding:10px;text-align:left;font-size:13px;white-space:nowrap}
+		.row{display:flex;gap:8px;flex-wrap:wrap}
+		.hidden{display:none}
+		.msg{margin-top:8px;font-size:13px}
+		.modal{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:center;justify-content:center;z-index:99}
+		.modal.show{display:flex}
+		.modal-card{background:#fff;border-radius:12px;padding:16px;min-width:320px;max-width:640px;width:90%;box-shadow:0 10px 30px rgba(0,0,0,.15)}
+	</style>
+</head>
+<body>
+	<div class="card" id="loginCard">
+		<h3>设备管理登录</h3>
+		<div class="row">
+			<input id="pwd" type="password" placeholder="请输入口令" />
+			<button id="loginBtn">进入</button>
+		</div>
+		<div id="loginMsg" class="msg"></div>
+	</div>
+
+	<div class="card hidden" id="mainCard">
+		<h3>注册设备</h3>
+		<div class="row">
+			<input id="deviceNo" placeholder="device_no" />
+			<button id="registerBtn">注册</button>
+			<button id="refreshBtn">刷新列表</button>
+		</div>
+		<div id="mainMsg" class="msg"></div>
+		<div class="table-wrap">
+			<table>
+				<thead>
+					<tr>
+						<th>device_no</th>
+						<th>active_time</th>
+						<th>last_talk_time</th>
+						<th>last_talk_ask</th>
+						<th>last_talk_answer</th>
+					</tr>
+				</thead>
+				<tbody id="tbody"></tbody>
+			</table>
+		</div>
+	</div>
+
+	<div class="card hidden" id="eventCard">
+		<h3>事件管理</h3>
+		<div class="row">
+			<button id="addEventBtn">新增事件</button>
+		</div>
+		<div id="eventMsg" class="msg"></div>
+		<div class="table-wrap">
+			<table>
+				<thead>
+					<tr>
+						<th>ID</th>
+						<th>事件名称</th>
+						<th>需要计时</th>
+						<th>需要计数</th>
+						<th>操作</th>
+					</tr>
+				</thead>
+				<tbody id="eventTbody"></tbody>
+			</table>
+		</div>
+	</div>
+	<div class="card hidden" id="intentionCard">
+		<h3>意图管理</h3>
+		<div id="intentionMsg" class="msg"></div>
+		<div class="table-wrap">
+			<table>
+				<thead>
+					<tr>
+						<th>ID</th>
+						<th>意图名称</th>
+						<th>动态历史上限</th>
+						<th>操作</th>
+					</tr>
+				</thead>
+				<tbody id="intentionTbody"></tbody>
+			</table>
+		</div>
+	</div>
+	<div id="eventModal" class="modal">
+		<div class="modal-card">
+			<h3 id="eventModalTitle">新增事件</h3>
+			<div class="row">
+				<input id="eventFormName" placeholder="例如：吃奶 / 睡觉 / 换尿布" style="flex:1;min-width:220px;" />
+				<label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#444;">
+					<input id="eventFormNeedTime" type="checkbox" />
+					需要计时
+				</label>
+				<label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#444;">
+					<input id="eventFormNeedQuantity" type="checkbox" />
+					需要计数
+				</label>
+			</div>
+			<div class="row" style="margin-top:10px;">
+				<button id="eventFormSubmitBtn">提交</button>
+				<button id="eventFormCancelBtn" style="background:#6b7280;">取消</button>
+			</div>
+			<div id="eventFormMsg" class="msg"></div>
+		</div>
+	</div>
+	<div id="intentionModal" class="modal">
+		<div class="modal-card">
+			<h3>编辑意图历史上限</h3>
+			<div id="intentionModalName" class="msg" style="color:#222"></div>
+			<div class="row" style="margin-top:8px;">
+				<input id="intentionFormUpperLimit" type="number" min="0" step="1" placeholder="历史上限（>=0）" style="flex:1;min-width:220px;" />
+			</div>
+			<div class="row" style="margin-top:10px;">
+				<button id="intentionFormSubmitBtn">提交</button>
+				<button id="intentionFormCancelBtn" style="background:#6b7280;">取消</button>
+			</div>
+			<div id="intentionFormMsg" class="msg"></div>
+		</div>
+	</div>
+
+<script>
+let adminPwd = "";
+const loginCard = document.getElementById('loginCard');
+const mainCard = document.getElementById('mainCard');
+const eventCard = document.getElementById('eventCard');
+const intentionCard = document.getElementById('intentionCard');
+const loginMsg = document.getElementById('loginMsg');
+const mainMsg = document.getElementById('mainMsg');
+const eventMsg = document.getElementById('eventMsg');
+const intentionMsg = document.getElementById('intentionMsg');
+const eventModal = document.getElementById('eventModal');
+const eventModalTitle = document.getElementById('eventModalTitle');
+const eventFormName = document.getElementById('eventFormName');
+const eventFormNeedTime = document.getElementById('eventFormNeedTime');
+const eventFormNeedQuantity = document.getElementById('eventFormNeedQuantity');
+const eventFormMsg = document.getElementById('eventFormMsg');
+const eventFormSubmitBtn = document.getElementById('eventFormSubmitBtn');
+const eventFormCancelBtn = document.getElementById('eventFormCancelBtn');
+const intentionModal = document.getElementById('intentionModal');
+const intentionModalName = document.getElementById('intentionModalName');
+const intentionFormUpperLimit = document.getElementById('intentionFormUpperLimit');
+const intentionFormMsg = document.getElementById('intentionFormMsg');
+const intentionFormSubmitBtn = document.getElementById('intentionFormSubmitBtn');
+const intentionFormCancelBtn = document.getElementById('intentionFormCancelBtn');
+let eventFormMode = 'add';
+let editingEventId = 0;
+let editingIntentionId = 0;
+
+function setMsg(el, msg, ok=false){ el.textContent = msg || ''; el.style.color = ok ? '#0a7f2e' : '#c1121f'; }
+
+async function api(path, options={}){
+	const headers = Object.assign({'Content-Type':'application/json','X-Admin-Password':adminPwd}, options.headers || {});
+	const res = await fetch(path, Object.assign({}, options, {headers}));
+	const data = await res.json().catch(() => ({}));
+	if(!res.ok || data.code !== 0){ throw new Error(data.message || ('HTTP '+res.status)); }
+	return data.data;
+}
+
+/** 列表类接口 data 为 { list: [...] }（GoFrame 标准结构） */
+function asListPayload(d){
+	if (Array.isArray(d)) return d;
+	if (d && Array.isArray(d.list)) return d.list;
+	return [];
+}
+
+async function loadList(){
+	const data = asListPayload(await api('/device/admin/api/list'));
+	const tbody = document.getElementById('tbody');
+	tbody.innerHTML = '';
+	(data || []).forEach(it => {
+		const tr = document.createElement('tr');
+		tr.innerHTML = '<td>'+ (it.deviceNo||'') +'</td>' +
+			'<td>'+ (it.activeTime||'') +'</td>' +
+			'<td>'+ (it.lastTalkTime||'') +'</td>' +
+			'<td>'+ (it.lastTalkAsk||'') +'</td>' +
+			'<td>'+ (it.lastTalkAnswer||'') +'</td>';
+		tbody.appendChild(tr);
+	});
+}
+
+async function loadEventList(){
+	const data = asListPayload(await api('/device/admin/api/event/list'));
+	const tbody = document.getElementById('eventTbody');
+	tbody.innerHTML = '';
+	(data || []).forEach(it => {
+		const tr = document.createElement('tr');
+		tr.innerHTML = '<td>'+ (it.id||'') +'</td>' +
+			'<td>'+ (it.name||'') +'</td>' +
+			'<td>'+ ((Number(it.needTime||0) > 0) ? '是' : '否') +'</td>' +
+			'<td>'+ ((Number(it.needQuantity||0) > 0) ? '是' : '否') +'</td>' +
+			'<td><button type="button" data-id="'+ (it.id||0) +'" data-name="'+ encodeURIComponent(it.name||'') +'" data-need-time="'+ Number(it.needTime||0) +'" data-need-quantity="'+ Number(it.needQuantity||0) +'" class="event-edit-btn">编辑</button></td>';
+		tbody.appendChild(tr);
+	});
+
+	tbody.querySelectorAll('.event-edit-btn').forEach(btn => {
+		btn.addEventListener('click', () => {
+			eventFormMode = 'edit';
+			editingEventId = Number(btn.getAttribute('data-id') || 0);
+			eventModalTitle.textContent = '编辑事件';
+			eventFormName.value = decodeURIComponent(btn.getAttribute('data-name') || '');
+			eventFormNeedTime.checked = Number(btn.getAttribute('data-need-time') || 0) > 0;
+			eventFormNeedQuantity.checked = Number(btn.getAttribute('data-need-quantity') || 0) > 0;
+			eventFormMsg.textContent = '';
+			eventModal.classList.add('show');
+		});
+	});
+}
+
+async function loadIntentionList(){
+	const data = asListPayload(await api('/device/admin/api/intention/list'));
+	const tbody = document.getElementById('intentionTbody');
+	tbody.innerHTML = '';
+	(data || []).forEach(it => {
+		const tr = document.createElement('tr');
+		tr.innerHTML = '<td>'+ (it.id||'') +'</td>' +
+			'<td>'+ (it.name||'') +'</td>' +
+			'<td>'+ Number(it.upperLimit||0) +'</td>' +
+			'<td><button type="button" data-id="'+ (it.id||0) +'" data-name="'+ encodeURIComponent(it.name||'') +'" data-upper-limit="'+ Number(it.upperLimit||0) +'" class="intention-edit-btn">编辑上限</button></td>';
+		tbody.appendChild(tr);
+	});
+	tbody.querySelectorAll('.intention-edit-btn').forEach(btn => {
+		btn.addEventListener('click', () => {
+			editingIntentionId = Number(btn.getAttribute('data-id') || 0);
+			const name = decodeURIComponent(btn.getAttribute('data-name') || '');
+			const upperLimit = Number(btn.getAttribute('data-upper-limit') || 0);
+			intentionModalName.textContent = '意图：' + name;
+			intentionFormUpperLimit.value = String(upperLimit);
+			intentionFormMsg.textContent = '';
+			intentionModal.classList.add('show');
+		});
+	});
+}
+
+document.getElementById('loginBtn').addEventListener('click', async () => {
+	adminPwd = document.getElementById('pwd').value.trim();
+	if(!adminPwd){ setMsg(loginMsg, '请输入口令'); return; }
+	try {
+		await loadList();
+		await loadEventList();
+		await loadIntentionList();
+		loginCard.classList.add('hidden');
+		mainCard.classList.remove('hidden');
+		eventCard.classList.remove('hidden');
+		intentionCard.classList.remove('hidden');
+		setMsg(mainMsg, '登录成功', true);
+	} catch (e) {
+		setMsg(loginMsg, e.message || '口令错误');
+	}
+});
+
+document.getElementById('registerBtn').addEventListener('click', async () => {
+	const deviceNo = document.getElementById('deviceNo').value.trim();
+	if(!deviceNo){ setMsg(mainMsg, 'deviceNo 不能为空'); return; }
+	try {
+			await api('/device/admin/api/register', {method:'POST', body: JSON.stringify({deviceNo})});
+		setMsg(mainMsg, '注册成功', true);
+		document.getElementById('deviceNo').value = '';
+		await loadList();
+	} catch (e) {
+		setMsg(mainMsg, e.message || '注册失败');
+	}
+});
+
+document.getElementById('refreshBtn').addEventListener('click', async () => {
+	try { await loadList(); setMsg(mainMsg, '已刷新', true); }
+	catch (e) { setMsg(mainMsg, e.message || '刷新失败'); }
+});
+
+document.getElementById('addEventBtn').addEventListener('click', async () => {
+	eventFormMode = 'add';
+	editingEventId = 0;
+	eventModalTitle.textContent = '新增事件';
+	eventFormName.value = '';
+	eventFormNeedTime.checked = false;
+	eventFormNeedQuantity.checked = false;
+	eventFormMsg.textContent = '';
+	eventModal.classList.add('show');
+});
+
+eventFormCancelBtn.addEventListener('click', () => {
+	eventModal.classList.remove('show');
+});
+
+eventFormSubmitBtn.addEventListener('click', async () => {
+	const name = eventFormName.value.trim();
+	const needTime = eventFormNeedTime.checked ? 1 : 0;
+	const needQuantity = eventFormNeedQuantity.checked ? 1 : 0;
+	if(!name){ eventFormMsg.textContent = '事件名称不能为空'; eventFormMsg.style.color = '#c1121f'; return; }
+	eventFormSubmitBtn.disabled = true;
+	eventFormSubmitBtn.textContent = '提交中...';
+	try {
+		if(eventFormMode === 'edit'){
+			await api('/device/admin/api/event/update', {method:'POST', body: JSON.stringify({id: editingEventId, name, needTime, needQuantity})});
+			setMsg(eventMsg, '修改成功', true);
+		}else{
+			await api('/device/admin/api/event/add', {method:'POST', body: JSON.stringify({name, needTime, needQuantity})});
+			setMsg(eventMsg, '新增成功', true);
+		}
+		eventModal.classList.remove('show');
+		await loadEventList();
+	} catch (e) {
+		eventFormMsg.textContent = e.message || '提交失败';
+		eventFormMsg.style.color = '#c1121f';
+	} finally {
+		eventFormSubmitBtn.disabled = false;
+		eventFormSubmitBtn.textContent = '提交';
+	}
+});
+
+intentionFormCancelBtn.addEventListener('click', () => {
+	intentionModal.classList.remove('show');
+});
+
+intentionFormSubmitBtn.addEventListener('click', async () => {
+	const upperLimit = Number(intentionFormUpperLimit.value || 0);
+	if(!Number.isInteger(upperLimit) || upperLimit < 0){
+		intentionFormMsg.textContent = '历史上限需为大于等于0的整数';
+		intentionFormMsg.style.color = '#c1121f';
+		return;
+	}
+	intentionFormSubmitBtn.disabled = true;
+	intentionFormSubmitBtn.textContent = '提交中...';
+	try{
+		await api('/device/admin/api/intention/update', {method:'POST', body: JSON.stringify({id: editingIntentionId, upperLimit})});
+		intentionModal.classList.remove('show');
+		setMsg(intentionMsg, '更新成功', true);
+		await loadIntentionList();
+	}catch(e){
+		intentionFormMsg.textContent = e.message || '提交失败';
+		intentionFormMsg.style.color = '#c1121f';
+	}finally{
+		intentionFormSubmitBtn.disabled = false;
+		intentionFormSubmitBtn.textContent = '提交';
+	}
+});
+
+eventModal.addEventListener('click', (e) => {
+	if(e.target === eventModal){
+		eventModal.classList.remove('show');
+	}
+});
+intentionModal.addEventListener('click', (e) => {
+	if(e.target === intentionModal){
+		intentionModal.classList.remove('show');
+	}
+});
+</script>
+</body>
+</html>
