@@ -1015,41 +1015,41 @@ func (s *VoiceService) handleActionRecord(ctx context.Context, deviceNo string, 
 	nowTime := time.Now().Format("2006-01-02 15:04:05")
 	switch action.TargetType {
 	case "start": //开始记录计时动作
-		event, tartgetName, ok := s.extractEventFromText(ctx, normalizedTranscript, events)
+		event, targetName, ok := s.extractEventFromText(ctx, normalizedTranscript, events)
 		if !ok { // 没有命中事件名，交给deepseek分析文案中的事件名
 			// 交给deepseek分析文案中的事件名,并落库后，再走命中事件流程
-			event, err = s.callDeepSeekEntityExtract(ctx, deviceNo, normalizedTranscript)
+			event, targetName, err = s.callDeepSeekEntityExtract(ctx, deviceNo, normalizedTranscript)
 			if err != nil {
 				glog.Warningf(ctx, "调用 DeepSeek 进行实体抽取失败，deviceNo=%s transcript=%q err=%v", deviceNo, normalizedTranscript, err)
 				return "我听不懂你说的事件,请用具体的名称告诉我", false, false, err
 			}
 			// 打印日志命中事件
-			glog.Infof(ctx, "没有命中事件名, 请求deepSeek分析文案中的事件名,并落库后，再走命中事件流程,命中事件: %s", event.Name)
+			glog.Infof(ctx, "没有命中事件名, 请求deepSeek分析文案中的事件名,并落库后，再走命中事件流程,命中事件: %s", targetName)
 		}
 		_, err = dao.History.Ctx(ctx).Insert(entity.History{
 			DeviceNo:  deviceNo,
 			EventId:   event.Id,
-			EventName: tartgetName,
+			EventName: targetName,
 			StartTime: nowTime,
 			Remark:    normalizedTranscript,
 		})
 		if err != nil {
 			return "记录失败,请重试", false, true, err
 		}
-		finalReply = fmt.Sprintf("好的，已记录%s开始", tartgetName)
+		finalReply = fmt.Sprintf("好的，已记录%s开始", targetName)
 		finishTalk = true
 		return finalReply, false, finishTalk, nil
 	case "end": //结束记录计时动作，自动补结束时间
-		event, tartgetName, ok := s.extractEventFromText(ctx, normalizedTranscript, events)
+		event, targetName, ok := s.extractEventFromText(ctx, normalizedTranscript, events)
 		if !ok { // 没有命中事件名，交给deepseek分析文案中的事件名
 			// 交给deepseek分析文案中的事件名,并落库后，再走命中事件流程
-			event, err = s.callDeepSeekEntityExtract(ctx, deviceNo, normalizedTranscript)
+			event, targetName, err = s.callDeepSeekEntityExtract(ctx, deviceNo, normalizedTranscript)
 			if err != nil {
 				glog.Warningf(ctx, "调用 DeepSeek 进行实体抽取失败，deviceNo=%s transcript=%q err=%v", deviceNo, normalizedTranscript, err)
 				return "我听不懂你说的事件,请用具体的名称告诉我", false, false, err
 			}
 			// 打印日志命中事件
-			glog.Infof(ctx, "没有命中事件名, 请求deepSeek分析文案中的事件名,并落库后，再走命中事件流程,命中事件: %s", event.Name)
+			glog.Infof(ctx, "没有命中事件名, 请求deepSeek分析文案中的事件名,并落库后，再走命中事件流程,命中事件: %s", targetName)
 		}
 
 		// 判断最近一次事件是否是同一事件
@@ -1061,7 +1061,7 @@ func (s *VoiceService) handleActionRecord(ctx context.Context, deviceNo string, 
 			if err != nil {
 				return "更新结束时间失败,请重试", false, true, err
 			}
-			finalReply = fmt.Sprintf("好的，已记录%s结束", tartgetName)
+			finalReply = fmt.Sprintf("好的，已记录%s结束", targetName)
 			finishTalk = true
 			return finalReply, false, finishTalk, nil
 		} else {
@@ -1071,7 +1071,7 @@ func (s *VoiceService) handleActionRecord(ctx context.Context, deviceNo string, 
 			_, err = dao.History.Ctx(ctx).Insert(entity.History{
 				DeviceNo:  deviceNo,
 				EventId:   event.Id,
-				EventName: tartgetName,
+				EventName: targetName,
 				StartTime: nowTime,
 				EndTime:   nowTime,
 				Remark:    normalizedTranscript,
@@ -1083,38 +1083,38 @@ func (s *VoiceService) handleActionRecord(ctx context.Context, deviceNo string, 
 			if lastEvent.EndTime == "" {
 				dao.History.Ctx(ctx).Where("device_no", deviceNo).Where("event_id", lastEvent.EventId).Update(g.Map{"end_time": nowTime})
 				if err != nil {
-					return fmt.Sprintf("好的，已记录%s结束，%s结束失败,请手动结束", tartgetName, lastEvent.EventName), false, true, err
+					return fmt.Sprintf("好的，已记录%s结束，%s结束失败,请手动结束", targetName, lastEvent.EventName), false, true, err
 				}
-				finalReply = fmt.Sprintf("好的，已记录%s结束，%s自动结束", tartgetName, lastEvent.EventName)
+				finalReply = fmt.Sprintf("好的，已记录%s结束，%s自动结束", targetName, lastEvent.EventName)
 			} else {
-				finalReply = fmt.Sprintf("好的，已记录%s结束", tartgetName)
+				finalReply = fmt.Sprintf("好的，已记录%s结束", targetName)
 			}
 			finishTalk = true
 			return finalReply, false, finishTalk, nil
 		}
 	case "one": //记录一次性动作，记录一次
-		event, tartgetName, ok := s.extractEventFromText(ctx, normalizedTranscript, events)
+		event, targetName, ok := s.extractEventFromText(ctx, normalizedTranscript, events)
 		if !ok { // 没有命中事件名，交给deepseek分析文案中的事件名
 			// 交给deepseek分析文案中的事件名,并落库后，再走命中事件流程
-			event, err = s.callDeepSeekEntityExtract(ctx, deviceNo, normalizedTranscript)
+			event, targetName, err = s.callDeepSeekEntityExtract(ctx, deviceNo, normalizedTranscript)
 			if err != nil {
 				glog.Warningf(ctx, "调用 DeepSeek 进行实体抽取失败，deviceNo=%s transcript=%q err=%v", deviceNo, normalizedTranscript, err)
 				return "我听不懂你说的事件,请用具体的名称告诉我", false, false, err
 			}
 			// 打印日志命中事件
-			glog.Infof(ctx, "没有命中事件名, 请求deepSeek分析文案中的事件名,并落库后，再走命中事件流程,命中事件: %s", event.Name)
+			glog.Infof(ctx, "没有命中事件名, 请求deepSeek分析文案中的事件名,并落库后，再走命中事件流程,命中事件: %s", targetName)
 		}
 		if event.NeedQuantity > 0 {
 			quantity, ok := extractNumberFromText(normalizedTranscript)
 			if !ok || quantity <= 0 {
-				finalReply = "请问 " + action.Name + " " + tartgetName + " 的数量是" + quantityKeyword
+				finalReply = "请问 " + action.Name + " " + targetName + " 的数量是" + quantityKeyword
 				finishTalk = false
 				return finalReply, false, finishTalk, nil
 			}
 			_, err = dao.History.Ctx(ctx).Insert(entity.History{
 				DeviceNo:    deviceNo,
 				EventId:     event.Id,
-				EventName:   tartgetName,
+				EventName:   targetName,
 				EventNumber: int64(quantity),
 				StartTime:   nowTime,
 				EndTime:     nowTime,
@@ -1123,14 +1123,14 @@ func (s *VoiceService) handleActionRecord(ctx context.Context, deviceNo string, 
 			if err != nil {
 				return "记录事件失败,请重试", false, true, err
 			}
-			finalReply = fmt.Sprintf("好的，已记录 %s %d", tartgetName, quantity)
+			finalReply = fmt.Sprintf("好的，已记录 %s %d", targetName, quantity)
 			finishTalk = true
 			return finalReply, false, finishTalk, nil
 		} else {
 			_, err = dao.History.Ctx(ctx).Insert(entity.History{
 				DeviceNo:    deviceNo,
 				EventId:     event.Id,
-				EventName:   tartgetName,
+				EventName:   targetName,
 				EventNumber: 1,
 				StartTime:   nowTime,
 				EndTime:     nowTime,
@@ -1139,7 +1139,7 @@ func (s *VoiceService) handleActionRecord(ctx context.Context, deviceNo string, 
 			if err != nil {
 				return "记录事件失败,请重试", false, true, err
 			}
-			finalReply = fmt.Sprintf("好的，已记录 %s", tartgetName)
+			finalReply = fmt.Sprintf("好的，已记录 %s", targetName)
 			finishTalk = true
 			return finalReply, false, finishTalk, nil
 		}
@@ -1348,7 +1348,7 @@ func (s *VoiceService) handleIntentGeneral(ctx context.Context, deviceNo, transc
 	return strings.TrimSpace(reply), true, nil
 }
 
-func (s *VoiceService) callDeepSeekEntityExtract(ctx context.Context, deviceNo, transcript string) (entity.Event, error) {
+func (s *VoiceService) callDeepSeekEntityExtract(ctx context.Context, deviceNo, transcript string) (entity.Event, string, error) {
 	out := entity.Event{}
 
 	// deepseek需要分析文本中是否有与原来事件列表中的名称相符的事件类型,如果有提取当前的事件名称并输出json:{"name":"原表中的事件名","extra_name":"当前事件名称"},否则并判断是否需要计数（1表示需要，0表示不需要）输出json:{"name":当前事件名,"extra_name":"","need_quantity":"0或1"}。如果无法确定事件名称，则输出：{\"name\":\"\",\"need_quantity\":\"0\"}"
@@ -1377,7 +1377,7 @@ func (s *VoiceService) callDeepSeekEntityExtract(ctx context.Context, deviceNo, 
 	// 你需要从事件列表中,查看是否有符合的事件类型,如果有则直接返回列表中的事件类型,如果没有则需要从文本中提取事件名称。
 	raw, _, _, err := s.callDeepSeekRaw(ctx, deviceNo, prompt, 0, systemMessage)
 	if err != nil {
-		return out, err
+		return out, "", err
 	}
 
 	parsed := entity.Event{}
@@ -1387,10 +1387,10 @@ func (s *VoiceService) callDeepSeekEntityExtract(ctx context.Context, deviceNo, 
 		end := strings.LastIndex(trimmed, "}")
 		if start >= 0 && end > start {
 			if nestedErr := json.Unmarshal([]byte(trimmed[start:end+1]), &parsed); nestedErr != nil {
-				return out, fmt.Errorf("解析实体抽取结果失败: %w", unmarshalErr)
+				return out, "", fmt.Errorf("解析实体抽取结果失败: %w", unmarshalErr)
 			}
 		} else {
-			return out, fmt.Errorf("解析实体抽取结果失败: %w", unmarshalErr)
+			return out, "", fmt.Errorf("解析实体抽取结果失败: %w", unmarshalErr)
 		}
 	}
 
@@ -1399,7 +1399,7 @@ func (s *VoiceService) callDeepSeekEntityExtract(ctx context.Context, deviceNo, 
 		name = strings.TrimSpace(parsed.Name)
 	}
 	if name == "" {
-		return out, errors.New("未抽取到事件名称")
+		return out, "", errors.New("未抽取到事件名称")
 	}
 
 	out.Name = name
@@ -1407,17 +1407,19 @@ func (s *VoiceService) callDeepSeekEntityExtract(ctx context.Context, deviceNo, 
 	// 获取原来的事件的额外名称
 	oldEvent := entity.Event{}
 	dao.Event.Ctx(ctx).Where("name", name).Scan(&oldEvent)
+
+	targetName := out.ExtraNames
 	if oldEvent.Id > 0 {
 		out.NeedQuantity = oldEvent.NeedQuantity
 		if out.ExtraNames == "" {
 			// 遇到重复的事件名
-			return out, errors.New("事件名称已存在")
+			return out, out.Name, errors.New("事件名称已存在")
 		} else {
 			// 将新的额外名称添加到原来的额外名称中	,且避免重复
 			extraNames := strings.Split(oldEvent.ExtraNames, ",")
 			for _, extraName := range extraNames {
 				if extraName == out.ExtraNames {
-					return out, errors.New("事件名称已存在")
+					return out, extraName, errors.New("事件名称已存在")
 				}
 			}
 
@@ -1430,12 +1432,13 @@ func (s *VoiceService) callDeepSeekEntityExtract(ctx context.Context, deviceNo, 
 				Update(g.Map{"extra_names": out.ExtraNames})
 		}
 	} else {
+		targetName = out.Name
 		out.NeedQuantity = parsed.NeedQuantity
 		// 将抽取到的事件新增到事件表中。
 		dao.Event.Ctx(ctx).Insert(&out)
 	}
 
-	return out, nil
+	return out, targetName, nil
 }
 
 // matchEventByName 使用宽松规则将模型输出事件名映射到库内事件。
