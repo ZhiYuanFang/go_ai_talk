@@ -114,7 +114,7 @@
                     <tr>
                         <th>ID</th>
                         <th>事件名</th>
-                        <th>数量/单位</th>
+                        <th>数量/时长</th>
                         <th>开始时间</th>
                         <th>结束时间</th>
                         <th>备注</th>
@@ -143,14 +143,10 @@
                     数量
                     <input id="fEventNumber" type="number" placeholder="例如 1" />
                 </label>
-                <label id="fEventUnitWrap">
-                    单位
-                    <input id="fEventUnit" type="text" placeholder="自动带出" readonly />
-                </label>
                 <label id="fStartTimeWrap" class="required">开始时间
                     <input id="fStartTime" type="datetime-local" />
                 </label>
-                <label class="required">结束时间
+                <label id="fEndTimeLabel" class="required">结束时间<span id="fEndTimeHint" class="muted" style="font-weight:normal;font-size:12px;"></span>
                     <input id="fEndTime" type="datetime-local" />
                 </label>
                 <label class="full">备注
@@ -187,12 +183,12 @@
         const historyModalCancelBtn = document.getElementById('historyModalCancelBtn');
         const fEventSelect = document.getElementById('fEventSelect');
         const fEventNumberWrap = document.getElementById('fEventNumberWrap');
-        const fEventUnitWrap = document.getElementById('fEventUnitWrap');
         const fStartTimeWrap = document.getElementById('fStartTimeWrap');
         const fEventNumber = document.getElementById('fEventNumber');
-        const fEventUnit = document.getElementById('fEventUnit');
         const fStartTime = document.getElementById('fStartTime');
         const fEndTime = document.getElementById('fEndTime');
+        const fEndTimeLabel = document.getElementById('fEndTimeLabel');
+        const fEndTimeHint = document.getElementById('fEndTimeHint');
         const fRemark = document.getElementById('fRemark');
         const historyFormError = document.getElementById('historyFormError');
         const historyAutoTimePreview = document.getElementById('historyAutoTimePreview');
@@ -219,11 +215,11 @@
             return dt;
         }
 
-        function formatAutoTimedNumberUnit(startTime, endTime){
+        function formatAutoTimedNumber(startTime, endTime){
             const start = parseDateTime(startTime);
             const end = parseDateTime(endTime);
             if(!start || !end || end < start){
-                return {numberText: '-', unitText: ''};
+                return '-';
             }
             const totalSeconds = Math.round((end.getTime() - start.getTime()) / 1000);
             const hours = Math.floor(totalSeconds / 3600);
@@ -242,7 +238,7 @@
             if(parts.length === 0){
                 parts.push('0秒');
             }
-            return {numberText: parts.join(''), unitText: ''};
+            return parts.join('');
         }
 
         function toDateTimeLocal(v){
@@ -255,6 +251,41 @@
             const s = String(v || '').trim();
             if(!s) return '';
             return s.replace('T', ' ') + ':00';
+        }
+
+        function pad2(v){
+            return String(v).padStart(2, '0');
+        }
+
+        function formatClock(dt){
+            return pad2(dt.getHours()) + ':' + pad2(dt.getMinutes()) + ':' + pad2(dt.getSeconds());
+        }
+
+        function formatHistoryDateTime(v){
+            const raw = String(v || '').trim();
+            if(raw === ''){
+                return '正在进行中';
+            }
+            const dt = parseDateTime(v);
+            if(!dt){
+                return raw;
+            }
+            const now = new Date();
+            const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const tomorrowStart = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
+            const yesterdayStart = new Date(todayStart.getTime() - 24 * 60 * 60 * 1000);
+            if(dt >= todayStart && dt < tomorrowStart){
+                return '今天 ' + formatClock(dt);
+            }
+            if(dt >= yesterdayStart && dt < todayStart){
+                return '昨天 ' + formatClock(dt);
+            }
+            return dt.getFullYear() + '-' + pad2(dt.getMonth() + 1) + '-' + pad2(dt.getDate()) + ' ' + formatClock(dt);
+        }
+
+        function rowEventNeedQuantity(eventId){
+            const ev = eventOptions.find(e => String(e.id) === String(eventId));
+            return !!(ev && Number(ev.needQuantity || 0) > 0);
         }
 
         function escapeHtml(v){
@@ -297,9 +328,8 @@
                 const opt = document.createElement('option');
                 opt.value = String(ev.id);
                 const needQuantity = Number(ev.needQuantity || 0) > 0;
-                const suffix = [];
-                if(needQuantity){ suffix.push('计数'); }
-                opt.textContent = suffix.length > 0 ? (String(ev.name || ('事件#'+ev.id)) + '（' + suffix.join('/') + '）') : String(ev.name || ('事件#'+ev.id));
+                const suffix = [needQuantity ? '计数' : '计时'];
+                opt.textContent = String(ev.name || ('事件#'+ev.id)) + '（' + suffix.join('/') + '）';
                 opt.setAttribute('data-name', String(ev.name || ''));
                 opt.setAttribute('data-need-quantity', needQuantity ? '1' : '0');
                 fEventSelect.appendChild(opt);
@@ -316,22 +346,30 @@
                 return;
             }
             rows.forEach(it => {
-                const rowUnit = String(it.eventUnit || '').trim();
-                const rowEventId = String(it.eventId || '');
-                let numberText = String(it.eventNumber ?? '');
-                let unitText = rowUnit;
-                if(rowUnit !== '计数'){
-                    const autoDisplay = formatAutoTimedNumberUnit(it.startTime, it.endTime);
-                    numberText = autoDisplay.numberText;
-                    unitText = autoDisplay.unitText;
+                const needQty = rowEventNeedQuantity(it.eventId);
+                const start = parseDateTime(it.startTime);
+                const end = parseDateTime(it.endTime);
+                const hasEnd = String(it.endTime || '').trim() !== '';
+                let numberText;
+                if(needQty){
+                    numberText = String(it.eventNumber ?? '').trim() || '-';
+                }else{
+                    if(!start){
+                        numberText = '-';
+                    }else if(!hasEnd){
+                        numberText = '进行中';
+                    }else if(end && end >= start){
+                        numberText = formatAutoTimedNumber(it.startTime, it.endTime);
+                    }else{
+                        numberText = '-';
+                    }
                 }
                 const tr = document.createElement('tr');
-                const numberUnitText = (String(numberText).trim() || '-') + (String(unitText).trim() || '');
                 tr.innerHTML = '<td>'+escapeHtml(it.id)+'</td>'+
                     '<td>'+escapeHtml(it.eventName || it.eventId)+'</td>'+
-                    '<td>'+escapeHtml(numberUnitText)+'</td>'+
-                    '<td>'+escapeHtml(it.startTime)+'</td>'+
-                    '<td>'+escapeHtml(it.endTime)+'</td>'+
+                    '<td>'+escapeHtml(numberText)+'</td>'+
+                    '<td>'+escapeHtml(formatHistoryDateTime(it.startTime))+'</td>'+
+                    '<td>'+escapeHtml(formatHistoryDateTime(it.endTime))+'</td>'+
                     '<td>'+escapeHtml(it.remark)+'</td>'+
                     '<td><button type="button" class="history-edit-btn btn-primary" data-id="'+escapeHtml(it.id)+'">编辑</button> <button type="button" class="history-del-btn btn-danger" data-id="'+escapeHtml(it.id)+'">删除</button></td>';
                 historyBody.appendChild(tr);
@@ -427,7 +465,6 @@
                 fEventSelect.selectedIndex = 0;
             }
             fEventNumber.value = String((row && row.eventNumber) || 0);
-            fEventUnit.value = String((row && row.eventUnit) || '');
             fStartTime.value = toDateTimeLocal(row && row.startTime);
             fEndTime.value = toDateTimeLocal(row && row.endTime);
             fRemark.value = String((row && row.remark) || '');
@@ -444,29 +481,31 @@
         }
 
         async function submitHistoryModal(){
+            const selected = fEventSelect.options[fEventSelect.selectedIndex];
+            const needQuantity = Number((selected && selected.getAttribute('data-need-quantity')) || 0) > 0;
+            const endTimeStr = fromDateTimeLocal(fEndTime.value);
             const payload = {
                 deviceNo,
                 eventId: Number(fEventSelect.value || 0),
                 eventName: String((fEventSelect.options[fEventSelect.selectedIndex] || {}).getAttribute('data-name') || '').trim(),
-                eventUnit: String(fEventUnit.value || '').trim(),
-                eventNumber: Number(fEventNumber.value || 0),
-                startTime: fromDateTimeLocal(fStartTime.value),
-                endTime: fromDateTimeLocal(fEndTime.value),
+                eventNumber: needQuantity ? Number(fEventNumber.value || 0) : 0,
+                startTime: needQuantity ? endTimeStr : fromDateTimeLocal(fStartTime.value),
+                endTime: endTimeStr,
                 remark: String(fRemark.value || '').trim()
             };
-            const selected = fEventSelect.options[fEventSelect.selectedIndex];
-            const needQuantity = Number((selected && selected.getAttribute('data-need-quantity')) || 0) > 0;
-            const instantEvent = !needQuantity;
-            if(!needQuantity){
-                payload.eventNumber = 0;
-                payload.eventUnit = '';
-            }
-            if(instantEvent){
-                payload.startTime = payload.endTime;
-            }
-            if(!payload.eventId || !payload.eventName || payload.startTime === '' || payload.endTime === ''){
+            if(!payload.eventId || !payload.eventName){
                 historyFormError.style.display = 'block';
-                historyFormError.textContent = '请完整填写必填项：历史事件、开始时间、结束时间';
+                historyFormError.textContent = '请选择历史事件';
+                return;
+            }
+            if(needQuantity && payload.endTime === ''){
+                historyFormError.style.display = 'block';
+                historyFormError.textContent = '计数事件请填写结束时间';
+                return;
+            }
+            if(!needQuantity && payload.startTime === ''){
+                historyFormError.style.display = 'block';
+                historyFormError.textContent = '请完整填写必填项：历史事件、开始时间';
                 return;
             }
             if(needQuantity && Number.isNaN(payload.eventNumber)){
@@ -474,7 +513,7 @@
                 historyFormError.textContent = '需要计数的事件必须填写数量';
                 return;
             }
-            if(payload.endTime < payload.startTime){
+            if(payload.endTime !== '' && payload.endTime < payload.startTime){
                 historyFormError.style.display = 'block';
                 historyFormError.textContent = '结束时间不能早于开始时间';
                 return;
@@ -557,42 +596,45 @@
         function syncEventUnitAndNumberReadonly(){
             const selected = fEventSelect.options[fEventSelect.selectedIndex];
             const needQuantity = Number((selected && selected.getAttribute('data-need-quantity')) || 0) > 0;
-            const instantEvent =  !needQuantity;
             fEventNumberWrap.style.display = needQuantity ? '' : 'none';
-            fEventUnitWrap.style.display = needQuantity ? '' : 'none';
-            fStartTimeWrap.style.display = instantEvent ? 'none' : '';
+            fStartTimeWrap.style.display = needQuantity ? 'none' : '';
+            if(fEndTimeLabel){
+                if(needQuantity){
+                    fEndTimeLabel.classList.add('required');
+                    if(fEndTimeHint){ fEndTimeHint.textContent = ''; }
+                }else{
+                    fEndTimeLabel.classList.remove('required');
+                    if(fEndTimeHint){ fEndTimeHint.textContent = '（可选，留空表示正在进行中）'; }
+                }
+            }
             if(needQuantity){
                 fEventNumber.placeholder = '例如 1';
                 fEventNumber.readOnly = false;
                 fEventNumber.disabled = false;
-                fEventUnit.placeholder = '可编辑单位，例如 ml / 次';
-                fEventUnit.readOnly = false;
-                if(String(fEventUnit.value || '').trim() === ''){
-                    fEventUnit.value = '';
-                }
             }else{
                 fEventNumber.value = '';
-                fEventUnit.value = '';
-            }
-            if(instantEvent){
-                fStartTime.value = fEndTime.value || toDateTimeLocal(new Date().toISOString().slice(0,19).replace('T',' '));
             }
             updateAutoTimePreview();
         }
 
         function updateAutoTimePreview(){
             const selected = fEventSelect.options[fEventSelect.selectedIndex];
-            const autoTime = Number((selected && selected.getAttribute('data-need-time')) || 0) > 0;
-            if(!autoTime){
+            const needQuantity = Number((selected && selected.getAttribute('data-need-quantity')) || 0) > 0;
+            if(needQuantity){
                 historyAutoTimePreview.style.display = 'none';
                 historyAutoTimePreview.textContent = '';
                 return;
             }
             const start = parseDateTime(fromDateTimeLocal(fStartTime.value));
             const end = parseDateTime(fromDateTimeLocal(fEndTime.value));
-            if(!start || !end){
+            if(!start){
                 historyAutoTimePreview.style.display = 'block';
-                historyAutoTimePreview.textContent = '计时预览：请填写开始和结束时间';
+                historyAutoTimePreview.textContent = '计时预览：请填写开始时间';
+                return;
+            }
+            if(!end){
+                historyAutoTimePreview.style.display = 'block';
+                historyAutoTimePreview.textContent = '计时预览：结束时间留空表示正在进行中';
                 return;
             }
             if(end < start){
@@ -600,9 +642,9 @@
                 historyAutoTimePreview.textContent = '计时预览：结束时间不能早于开始时间';
                 return;
             }
-            const autoDisplay = formatAutoTimedNumberUnit(fromDateTimeLocal(fStartTime.value), fromDateTimeLocal(fEndTime.value));
+            const autoDisplay = formatAutoTimedNumber(fromDateTimeLocal(fStartTime.value), fromDateTimeLocal(fEndTime.value));
             historyAutoTimePreview.style.display = 'block';
-            historyAutoTimePreview.textContent = '计时预览：将自动计算为 ' + autoDisplay.numberText;
+            historyAutoTimePreview.textContent = '计时预览：将自动计算为 ' + autoDisplay;
         }
     </script>
 </body>
