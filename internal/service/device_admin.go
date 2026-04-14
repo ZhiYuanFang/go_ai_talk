@@ -22,6 +22,7 @@ var (
 	ErrEventExists         = errors.New("事件已存在")
 	ErrEventNotFound       = errors.New("事件不存在")
 	ErrIntentionNotFound   = errors.New("意图不存在")
+	ErrActionNotFound      = errors.New("动作不存在")
 	userCountByDevice      = func(ctx context.Context, deviceNo string) (int, error) {
 		return dao.User.Ctx(ctx).Where(dao.User.Columns().DeviceNo, deviceNo).Count()
 	}
@@ -57,10 +58,11 @@ var (
 	eventCountByName = func(ctx context.Context, name string) (int, error) {
 		return dao.Event.Ctx(ctx).Where(dao.Event.Columns().Name, name).Count()
 	}
-	eventInsert = func(ctx context.Context, name string, needQuantity int) error {
+	eventInsert = func(ctx context.Context, name string, needQuantity int, extraNames string) error {
 		_, err := dao.Event.Ctx(ctx).Data(g.Map{
 			dao.Event.Columns().Name:         name,
 			dao.Event.Columns().NeedQuantity: needQuantity,
+			dao.Event.Columns().ExtraNames:   extraNames,
 		}).Insert()
 		return err
 	}
@@ -73,23 +75,75 @@ var (
 			Where(fmt.Sprintf("%s<>?", dao.Event.Columns().Id), id).
 			Count()
 	}
-	eventUpdateByID = func(ctx context.Context, id int64, name string, needQuantity int) error {
+	eventUpdateByID = func(ctx context.Context, id int64, name string, needQuantity int, extraNames string) error {
 		_, err := dao.Event.Ctx(ctx).
 			Where(dao.Event.Columns().Id, id).
 			Data(g.Map{
 				dao.Event.Columns().Name:         name,
 				dao.Event.Columns().NeedQuantity: needQuantity,
+				dao.Event.Columns().ExtraNames:   extraNames,
 			}).
 			Update()
+		return err
+	}
+	eventDeleteByID = func(ctx context.Context, id int64) error {
+		_, err := dao.Event.Ctx(ctx).Where(dao.Event.Columns().Id, id).Delete()
 		return err
 	}
 	eventListAll = func(ctx context.Context) ([]entity.Event, error) {
 		var rows []entity.Event
 		err := dao.Event.Ctx(ctx).
-			Fields(dao.Event.Columns().Id, dao.Event.Columns().Name, dao.Event.Columns().NeedQuantity).
+			Fields(
+				dao.Event.Columns().Id,
+				dao.Event.Columns().Name,
+				dao.Event.Columns().NeedQuantity,
+				dao.Event.Columns().ExtraNames,
+			).
 			OrderAsc(dao.Event.Columns().Id).
 			Scan(&rows)
 		return rows, err
+	}
+	qaListAll = func(ctx context.Context) ([]entity.Qa, error) {
+		var rows []entity.Qa
+		err := dao.Qa.Ctx(ctx).
+			Fields(
+				dao.Qa.Columns().Id,
+				dao.Qa.Columns().Question,
+				dao.Qa.Columns().Replay,
+				dao.Qa.Columns().Attack,
+			).
+			OrderAsc(dao.Qa.Columns().Id).
+			Scan(&rows)
+		return rows, err
+	}
+	actionListAll = func(ctx context.Context) ([]entity.Action, error) {
+		var rows []entity.Action
+		err := dao.Action.Ctx(ctx).
+			Fields(
+				dao.Action.Columns().Id,
+				dao.Action.Columns().Name,
+				dao.Action.Columns().TargetType,
+			).
+			OrderAsc(dao.Action.Columns().Id).
+			Scan(&rows)
+		return rows, err
+	}
+	actionCountByID = func(ctx context.Context, id int64) (int, error) {
+		return dao.Action.Ctx(ctx).Where(dao.Action.Columns().Id, id).Count()
+	}
+	actionUpdateByID = func(ctx context.Context, id int64, name, targetType string) error {
+		_, err := dao.Action.Ctx(ctx).
+			Where(dao.Action.Columns().Id, id).
+			Data(g.Map{
+				dao.Action.Columns().Name:       name,
+				dao.Action.Columns().TargetType: targetType,
+			}).
+			Update()
+		return err
+	}
+	actionDeleteByID = func(ctx context.Context, id int64) error {
+		_, err := dao.Action.Ctx(ctx).Where(dao.Action.Columns().Id, id).Delete()
+		return err
 	}
 	intentionCountByID = func(ctx context.Context, id int64) (int, error) {
 		return dao.Intention.Ctx(ctx).Where(dao.Intention.Columns().Id, id).Count()
@@ -237,7 +291,7 @@ func isRetryableDBErr(err error) bool {
 	return false
 }
 
-func (s *sDeviceAdmin) AddEvent(ctx context.Context, name string, needQuantity int) error {
+func (s *sDeviceAdmin) AddEvent(ctx context.Context, name string, needQuantity int, extraNames string) error {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return errors.New("事件名称不能为空")
@@ -245,6 +299,7 @@ func (s *sDeviceAdmin) AddEvent(ctx context.Context, name string, needQuantity i
 	if needQuantity > 0 {
 		needQuantity = 1
 	}
+	extraNames = strings.TrimSpace(extraNames)
 
 	count, err := eventCountByName(ctx, name)
 	if err != nil {
@@ -254,7 +309,7 @@ func (s *sDeviceAdmin) AddEvent(ctx context.Context, name string, needQuantity i
 		return ErrEventExists
 	}
 
-	err = eventInsert(ctx, name, needQuantity)
+	err = eventInsert(ctx, name, needQuantity, extraNames)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "duplicate") || strings.Contains(strings.ToLower(err.Error()), "unique") {
 			return ErrEventExists
@@ -272,7 +327,7 @@ func (s *sDeviceAdmin) ListEvents(ctx context.Context) ([]DeviceEventItem, error
 	return rows, nil
 }
 
-func (s *sDeviceAdmin) UpdateEvent(ctx context.Context, id int64, name string, needQuantity int) error {
+func (s *sDeviceAdmin) UpdateEvent(ctx context.Context, id int64, name string, needQuantity int, extraNames string) error {
 	if id <= 0 {
 		return errors.New("事件ID无效")
 	}
@@ -283,6 +338,7 @@ func (s *sDeviceAdmin) UpdateEvent(ctx context.Context, id int64, name string, n
 	if needQuantity > 0 {
 		needQuantity = 1
 	}
+	extraNames = strings.TrimSpace(extraNames)
 
 	idCount, err := eventCountByID(ctx, id)
 	if err != nil {
@@ -300,7 +356,7 @@ func (s *sDeviceAdmin) UpdateEvent(ctx context.Context, id int64, name string, n
 		return ErrEventExists
 	}
 
-	err = eventUpdateByID(ctx, id, name, needQuantity)
+	err = eventUpdateByID(ctx, id, name, needQuantity, extraNames)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "duplicate") || strings.Contains(strings.ToLower(err.Error()), "unique") {
 			return ErrEventExists
@@ -308,6 +364,77 @@ func (s *sDeviceAdmin) UpdateEvent(ctx context.Context, id int64, name string, n
 		return err
 	}
 	return nil
+}
+
+func (s *sDeviceAdmin) DeleteEvent(ctx context.Context, id int64) error {
+	if id <= 0 {
+		return errors.New("事件ID无效")
+	}
+	n, err := eventCountByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrEventNotFound
+	}
+	return eventDeleteByID(ctx, id)
+}
+
+func (s *sDeviceAdmin) ListQA(ctx context.Context) ([]entity.Qa, error) {
+	return qaListAll(ctx)
+}
+
+func (s *sDeviceAdmin) ListActionsForAdmin(ctx context.Context) ([]AdminActionItem, error) {
+	rows, err := actionListAll(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]AdminActionItem, 0, len(rows))
+	for _, a := range rows {
+		out = append(out, AdminActionItem{
+			Id:              a.Id,
+			Name:            a.Name,
+			TargetType:      a.TargetType,
+			TargetTypeLabel: ActionTargetTypeChinese(a.TargetType),
+		})
+	}
+	return out, nil
+}
+
+func (s *sDeviceAdmin) UpdateAction(ctx context.Context, id int64, name, targetType string) error {
+	if id <= 0 {
+		return errors.New("动作ID无效")
+	}
+	name = strings.TrimSpace(name)
+	targetType = strings.TrimSpace(targetType)
+	if name == "" {
+		return errors.New("动作名称不能为空")
+	}
+	if targetType == "" {
+		return errors.New("动作目标不能为空")
+	}
+	n, err := actionCountByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrActionNotFound
+	}
+	return actionUpdateByID(ctx, id, name, targetType)
+}
+
+func (s *sDeviceAdmin) DeleteAction(ctx context.Context, id int64) error {
+	if id <= 0 {
+		return errors.New("动作ID无效")
+	}
+	n, err := actionCountByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrActionNotFound
+	}
+	return actionDeleteByID(ctx, id)
 }
 
 func (s *sDeviceAdmin) ListIntentions(ctx context.Context) ([]entity.Intention, error) {

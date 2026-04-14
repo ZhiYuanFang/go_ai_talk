@@ -42,6 +42,26 @@ const (
 
 )
 
+// ActionTargetTypeChinese 将动作目标类型映射为简短中文说明（管理端展示用）。
+func ActionTargetTypeChinese(t string) string {
+	switch strings.TrimSpace(t) {
+	case ActionTargetTypeStart:
+		return "开始记录计时"
+	case ActionTargetTypeEnd:
+		return "结束记录计时"
+	case ActionTargetTypeOne:
+		return "一次性记录"
+	case ActionTargetTypeExit:
+		return "退出"
+	case ActionTargetTypeSuggest:
+		return "成长建议"
+	case ActionTargetTypeSearch:
+		return "搜索"
+	default:
+		return "对话"
+	}
+}
+
 // VoiceChatConfig 语音对话相关配置（ASR/LLM/TTS/会话缓存）。
 type VoiceChatConfig struct {
 	DebugLog bool `json:"debugLog"`
@@ -895,10 +915,7 @@ func (s *VoiceService) chatWithResult(ctx context.Context, deviceNo, transcript 
 				continue
 			}
 			// 往QA里录入问题和答案
-			dao.Qa.Ctx(ctx).Insert(entity.Qa{
-				Question: normalizedTranscript,
-				Replay:   finalReply,
-			})
+			s.insertQa(ctx, normalizedTranscript, finalReply)
 			return finalReply, normalizedTranscript, exit, finishTalk, err
 		}
 	}
@@ -909,10 +926,7 @@ func (s *VoiceService) chatWithResult(ctx context.Context, deviceNo, transcript 
 		finalReply, finishTalk, err := s.handleIntentGeneral(ctx, deviceNo, normalizedTranscript)
 		if err == nil {
 			// 往QA里录入问题和答案
-			dao.Qa.Ctx(ctx).Insert(entity.Qa{
-				Question: normalizedTranscript,
-				Replay:   finalReply,
-			})
+			s.insertQa(ctx, normalizedTranscript, finalReply)
 		}
 		return finalReply, normalizedTranscript, exit, finishTalk, err
 	}
@@ -921,12 +935,25 @@ func (s *VoiceService) chatWithResult(ctx context.Context, deviceNo, transcript 
 	finalReply, exit, finishTalk, err := s.handleActionRecord(ctx, deviceNo, normalizedTranscript, action, events)
 	if err == nil {
 		// 往QA里录入问题和答案
-		dao.Qa.Ctx(ctx).Insert(entity.Qa{
-			Question: normalizedTranscript,
-			Replay:   finalReply,
-		})
+		s.insertQa(ctx, normalizedTranscript, finalReply)
 	}
 	return finalReply, normalizedTranscript, exit, finishTalk, err
+}
+
+// 往qa里录入问题和答案
+func (s *VoiceService) insertQa(ctx context.Context, question, answer string) error {
+	// 如果已经存在相同的问题,则更新对应问题的命中次数+1
+	existingQa := entity.Qa{}
+	dao.Qa.Ctx(ctx).Where("question", question).Scan(&existingQa)
+	if existingQa.Id > 0 {
+		_, err := dao.Qa.Ctx(ctx).Where("question", question).Update(g.Map{"attack": existingQa.Attack + 1})
+		return err
+	}
+	_, err := dao.Qa.Ctx(ctx).Insert(entity.Qa{
+		Question: question,
+		Replay:   answer,
+	})
+	return err
 }
 
 // 根据文本,请求deepSeek分析文案中的动作是什么,并判断该动作的目标类型(ActionTargetTypeStart,ActionTargetTypeEnd,ActionTargetTypeOne,ActionTargetTypeExit,ActionTargetTypeSuggest,ActionTargetTypeSearch),输出JSON:{"action":"动作名称","target_type":"目标类型"}
@@ -935,11 +962,11 @@ func (s *VoiceService) callDeepSeekActionExtract(ctx context.Context, deviceNo, 
 	systemMessage := "你是一个精准的动作提取器，严格按指定JSON格式输出，不添加任何解释性内容。"
 	// 动作名称需要从文本中提取连续文案,不要输出解释性文本。
 	systemMessage += fmt.Sprintf("动作名称需要从文本中提取代表性的连续文案,不要输出解释性文本。")
-	// 告诉deepseek,动作类型有:ActionTargetTypeStart("开始记录计时动作"),ActionTargetTypeEnd("结束记录计时动作"),ActionTargetTypeOne("记录一次性动作"),ActionTargetTypeExit("退出动作"),ActionTargetTypeSuggest("成长建议动作"),ActionTargetTypeSearch("搜索动作")
+	// 告诉deepseek,动作类型有
 	systemMessage += fmt.Sprintf("目标类型需要从这里选择:%s(%s),%s(%s),%s(%s),%s(%s),%s(%s),%s(%s),%s(%s)",
-		ActionTargetTypeStart, "开始记录计时目标", ActionTargetTypeEnd, "结束记录计时目标", ActionTargetTypeOne, "记录一次性目标",
-		ActionTargetTypeExit, "退出对话目标", ActionTargetTypeSuggest, "成长建议目标", ActionTargetTypeSearch, "搜索目标",
-		ActionTargetTypeConversation, "闲聊目标")
+		ActionTargetTypeStart, ActionTargetTypeChinese(ActionTargetTypeStart), ActionTargetTypeEnd, ActionTargetTypeChinese(ActionTargetTypeEnd), ActionTargetTypeOne, ActionTargetTypeChinese(ActionTargetTypeOne),
+		ActionTargetTypeExit, ActionTargetTypeChinese(ActionTargetTypeExit), ActionTargetTypeSuggest, ActionTargetTypeChinese(ActionTargetTypeSuggest), ActionTargetTypeSearch, ActionTargetTypeChinese(ActionTargetTypeSearch),
+		ActionTargetTypeConversation, ActionTargetTypeChinese(ActionTargetTypeConversation))
 	// 如果是睡眠事件,你需要区分睡眠开始和睡眠结束
 	systemMessage += fmt.Sprintf("如果是睡眠事件,你需要区分睡眠开始和睡眠结束,睡着时目标类型为%s,睡醒时目标类型为%s", ActionTargetTypeStart, ActionTargetTypeEnd)
 	systemMessageWarn := "如果只有动作,但没有事件名称,则判定为闲聊目标"
@@ -952,7 +979,7 @@ func (s *VoiceService) callDeepSeekActionExtract(ctx context.Context, deviceNo, 
 	if err != nil {
 		return entity.Action{}, err
 	}
-	if parsed.TargetType == ActionTargetTypeConversation {
+	if parsed.TargetType == ActionTargetTypeConversation || parsed.TargetType == "" {
 		return entity.Action{}, errors.New("对话动作不需要落库")
 	} else {
 		// 将动作落库,保证动作名称唯一

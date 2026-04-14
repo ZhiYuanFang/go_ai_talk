@@ -95,7 +95,7 @@ func (c *AdminCtrl) EventAdd(ctx context.Context, req *v1.DeviceAdminEventAddReq
 	if req.NeedQuantity > 0 {
 		needQuantity = 1
 	}
-	err = c.Admin.AddEvent(ctx, name, needQuantity)
+	err = c.Admin.AddEvent(ctx, name, needQuantity, req.ExtraNames)
 	if err != nil {
 		if err == service.ErrEventExists {
 			return nil, gerror.NewCode(gcode.CodeInvalidOperation, err.Error())
@@ -121,7 +121,7 @@ func (c *AdminCtrl) EventUpdate(ctx context.Context, req *v1.DeviceAdminEventUpd
 	if req.NeedQuantity > 0 {
 		needQuantity = 1
 	}
-	err = c.Admin.UpdateEvent(ctx, req.Id, name, needQuantity)
+	err = c.Admin.UpdateEvent(ctx, req.Id, name, needQuantity, req.ExtraNames)
 	if err != nil {
 		switch err {
 		case service.ErrEventExists:
@@ -133,6 +133,100 @@ func (c *AdminCtrl) EventUpdate(ctx context.Context, req *v1.DeviceAdminEventUpd
 		}
 	}
 	return &v1.DeviceAdminEventUpdateRes{}, nil
+}
+
+// EventDelete 删除事件。
+func (c *AdminCtrl) EventDelete(ctx context.Context, req *v1.DeviceAdminEventDeleteReq) (res *v1.DeviceAdminEventDeleteRes, err error) {
+	if err := c.requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	if req.Id <= 0 {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "事件ID无效")
+	}
+	if err := c.Admin.DeleteEvent(ctx, req.Id); err != nil {
+		if err == service.ErrEventNotFound {
+			return nil, gerror.NewCode(gcode.CodeNotFound, err.Error())
+		}
+		return nil, err
+	}
+	return &v1.DeviceAdminEventDeleteRes{}, nil
+}
+
+// QaList 问答库列表（qa 表）。
+func (c *AdminCtrl) QaList(ctx context.Context, req *v1.DeviceAdminQaListReq) (res *v1.DeviceAdminQaListRes, err error) {
+	_ = req
+	if err := c.requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	items, err := c.Admin.ListQA(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &v1.DeviceAdminQaListRes{List: items}, nil
+}
+
+// ActionList 动作预设列表（action 表）。
+func (c *AdminCtrl) ActionList(ctx context.Context, req *v1.DeviceAdminActionListReq) (res *v1.DeviceAdminActionListRes, err error) {
+	_ = req
+	if err := c.requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	raw, err := c.Admin.ListActionsForAdmin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	list := make([]v1.DeviceAdminActionItem, len(raw))
+	for i, a := range raw {
+		list[i] = v1.DeviceAdminActionItem{
+			Id:              a.Id,
+			Name:            a.Name,
+			TargetType:      a.TargetType,
+			TargetTypeLabel: a.TargetTypeLabel,
+		}
+	}
+	return &v1.DeviceAdminActionListRes{List: list}, nil
+}
+
+// ActionUpdate 更新动作预设。
+func (c *AdminCtrl) ActionUpdate(ctx context.Context, req *v1.DeviceAdminActionUpdateReq) (res *v1.DeviceAdminActionUpdateRes, err error) {
+	if err := c.requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	if req.Id <= 0 {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "动作ID无效")
+	}
+	name := strings.TrimSpace(req.Name)
+	targetType := strings.TrimSpace(req.TargetType)
+	if name == "" {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "动作名称不能为空")
+	}
+	if targetType == "" {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "动作目标不能为空")
+	}
+	if err := c.Admin.UpdateAction(ctx, req.Id, name, targetType); err != nil {
+		if err == service.ErrActionNotFound {
+			return nil, gerror.NewCode(gcode.CodeNotFound, err.Error())
+		}
+		return nil, err
+	}
+	return &v1.DeviceAdminActionUpdateRes{}, nil
+}
+
+// ActionDelete 删除动作预设。
+func (c *AdminCtrl) ActionDelete(ctx context.Context, req *v1.DeviceAdminActionDeleteReq) (res *v1.DeviceAdminActionDeleteRes, err error) {
+	if err := c.requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	if req.Id <= 0 {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "动作ID无效")
+	}
+	if err := c.Admin.DeleteAction(ctx, req.Id); err != nil {
+		if err == service.ErrActionNotFound {
+			return nil, gerror.NewCode(gcode.CodeNotFound, err.Error())
+		}
+		return nil, err
+	}
+	return &v1.DeviceAdminActionDeleteRes{}, nil
 }
 
 // IntentionList 意图列表。
