@@ -1340,7 +1340,7 @@ func (s *VoiceService) handleIntentGeneral(ctx context.Context, deviceNo, transc
 		if parsed.Reply == "" {
 			parsed.Reply = reply
 		}
-		return strings.TrimSpace(parsed.Reply), parsed.NeedUserReply, nil
+		return strings.TrimSpace(parsed.Reply), !parsed.NeedUserReply, nil
 	}
 	if s.cfg.DebugLog {
 		glog.Warningf(ctx, "[思考过程] 其它问答结构化解析失败，使用文本回复。deviceNo=%s raw=%s", deviceNo, truncateVoiceLogText(raw, 800))
