@@ -200,7 +200,6 @@
         let editingHistoryId = 0;
         let currentRows = [];
         let eventOptions = [];
-        const eventNeedTimeById = {};
         let currentSex = 1;
 
         function applyThemeBySex(sex){
@@ -289,7 +288,6 @@
 
         async function loadEventOptions(){
             eventOptions = asListPayload(await api('/device/history/api/event/options'));
-            Object.keys(eventNeedTimeById).forEach(k => delete eventNeedTimeById[k]);
             fEventSelect.innerHTML = '';
             if(!eventOptions || eventOptions.length === 0){
                 fEventSelect.innerHTML = '<option value="">暂无事件可选</option>';
@@ -298,15 +296,11 @@
             eventOptions.forEach(ev => {
                 const opt = document.createElement('option');
                 opt.value = String(ev.id);
-                const needTime = Number(ev.needTime || 0) > 0;
                 const needQuantity = Number(ev.needQuantity || 0) > 0;
-                eventNeedTimeById[String(ev.id)] = needTime;
                 const suffix = [];
-                if(needTime){ suffix.push('计时'); }
                 if(needQuantity){ suffix.push('计数'); }
                 opt.textContent = suffix.length > 0 ? (String(ev.name || ('事件#'+ev.id)) + '（' + suffix.join('/') + '）') : String(ev.name || ('事件#'+ev.id));
                 opt.setAttribute('data-name', String(ev.name || ''));
-                opt.setAttribute('data-need-time', needTime ? '1' : '0');
                 opt.setAttribute('data-need-quantity', needQuantity ? '1' : '0');
                 fEventSelect.appendChild(opt);
             });
@@ -324,10 +318,9 @@
             rows.forEach(it => {
                 const rowUnit = String(it.eventUnit || '').trim();
                 const rowEventId = String(it.eventId || '');
-                const timedByRule = !!eventNeedTimeById[rowEventId];
                 let numberText = String(it.eventNumber ?? '');
                 let unitText = rowUnit;
-                if(timedByRule || rowUnit === '计时'){
+                if(rowUnit !== '计数'){
                     const autoDisplay = formatAutoTimedNumberUnit(it.startTime, it.endTime);
                     numberText = autoDisplay.numberText;
                     unitText = autoDisplay.unitText;
@@ -463,8 +456,7 @@
             };
             const selected = fEventSelect.options[fEventSelect.selectedIndex];
             const needQuantity = Number((selected && selected.getAttribute('data-need-quantity')) || 0) > 0;
-            const needTime = Number((selected && selected.getAttribute('data-need-time')) || 0) > 0;
-            const instantEvent = !needTime && !needQuantity;
+            const instantEvent = !needQuantity;
             if(!needQuantity){
                 payload.eventNumber = 0;
                 payload.eventUnit = '';
@@ -565,8 +557,7 @@
         function syncEventUnitAndNumberReadonly(){
             const selected = fEventSelect.options[fEventSelect.selectedIndex];
             const needQuantity = Number((selected && selected.getAttribute('data-need-quantity')) || 0) > 0;
-            const needTime = Number((selected && selected.getAttribute('data-need-time')) || 0) > 0;
-            const instantEvent = !needTime && !needQuantity;
+            const instantEvent =  !needQuantity;
             fEventNumberWrap.style.display = needQuantity ? '' : 'none';
             fEventUnitWrap.style.display = needQuantity ? '' : 'none';
             fStartTimeWrap.style.display = instantEvent ? 'none' : '';

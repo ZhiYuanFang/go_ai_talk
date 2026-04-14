@@ -8,11 +8,10 @@ import (
 	"github.com/gogf/gf/v2/frame/g"
 )
 
-// Qa is the golang structure of table qa for DAO operations like Where/Data.
-type Qa struct {
-	g.Meta   `orm:"table:qa, do:true"`
-	Id       interface{} //
-	Question interface{} // 问题
-	Replay   interface{} // 回复
-	Attack   interface{} // 命中次数
+// Action is the golang structure of table action for DAO operations like Where/Data.
+type Action struct {
+	g.Meta     `orm:"table:action, do:true"`
+	Id         interface{} //
+	Name       interface{} // 动作名
+	TargetType interface{} // 目标类型
 }

@@ -99,10 +99,6 @@
 			<div class="row">
 				<input id="eventFormName" placeholder="例如：吃奶 / 睡觉 / 换尿布" style="flex:1;min-width:220px;" />
 				<label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#444;">
-					<input id="eventFormNeedTime" type="checkbox" />
-					需要计时
-				</label>
-				<label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#444;">
 					<input id="eventFormNeedQuantity" type="checkbox" />
 					需要计数
 				</label>
@@ -142,7 +138,6 @@ const intentionMsg = document.getElementById('intentionMsg');
 const eventModal = document.getElementById('eventModal');
 const eventModalTitle = document.getElementById('eventModalTitle');
 const eventFormName = document.getElementById('eventFormName');
-const eventFormNeedTime = document.getElementById('eventFormNeedTime');
 const eventFormNeedQuantity = document.getElementById('eventFormNeedQuantity');
 const eventFormMsg = document.getElementById('eventFormMsg');
 const eventFormSubmitBtn = document.getElementById('eventFormSubmitBtn');
@@ -197,9 +192,8 @@ async function loadEventList(){
 		const tr = document.createElement('tr');
 		tr.innerHTML = '<td>'+ (it.id||'') +'</td>' +
 			'<td>'+ (it.name||'') +'</td>' +
-			'<td>'+ ((Number(it.needTime||0) > 0) ? '是' : '否') +'</td>' +
 			'<td>'+ ((Number(it.needQuantity||0) > 0) ? '是' : '否') +'</td>' +
-			'<td><button type="button" data-id="'+ (it.id||0) +'" data-name="'+ encodeURIComponent(it.name||'') +'" data-need-time="'+ Number(it.needTime||0) +'" data-need-quantity="'+ Number(it.needQuantity||0) +'" class="event-edit-btn">编辑</button></td>';
+			'<td><button type="button" data-id="'+ (it.id||0) +'" data-name="'+ encodeURIComponent(it.name||'') +'" data-need-quantity="'+ Number(it.needQuantity||0) +'" class="event-edit-btn">编辑</button></td>';
 		tbody.appendChild(tr);
 	});
 
@@ -209,7 +203,6 @@ async function loadEventList(){
 			editingEventId = Number(btn.getAttribute('data-id') || 0);
 			eventModalTitle.textContent = '编辑事件';
 			eventFormName.value = decodeURIComponent(btn.getAttribute('data-name') || '');
-			eventFormNeedTime.checked = Number(btn.getAttribute('data-need-time') || 0) > 0;
 			eventFormNeedQuantity.checked = Number(btn.getAttribute('data-need-quantity') || 0) > 0;
 			eventFormMsg.textContent = '';
 			eventModal.classList.add('show');
@@ -282,7 +275,6 @@ document.getElementById('addEventBtn').addEventListener('click', async () => {
 	editingEventId = 0;
 	eventModalTitle.textContent = '新增事件';
 	eventFormName.value = '';
-	eventFormNeedTime.checked = false;
 	eventFormNeedQuantity.checked = false;
 	eventFormMsg.textContent = '';
 	eventModal.classList.add('show');
@@ -294,17 +286,16 @@ eventFormCancelBtn.addEventListener('click', () => {
 
 eventFormSubmitBtn.addEventListener('click', async () => {
 	const name = eventFormName.value.trim();
-	const needTime = eventFormNeedTime.checked ? 1 : 0;
 	const needQuantity = eventFormNeedQuantity.checked ? 1 : 0;
 	if(!name){ eventFormMsg.textContent = '事件名称不能为空'; eventFormMsg.style.color = '#c1121f'; return; }
 	eventFormSubmitBtn.disabled = true;
 	eventFormSubmitBtn.textContent = '提交中...';
 	try {
 		if(eventFormMode === 'edit'){
-			await api('/device/admin/api/event/update', {method:'POST', body: JSON.stringify({id: editingEventId, name, needTime, needQuantity})});
+			await api('/device/admin/api/event/update', {method:'POST', body: JSON.stringify({id: editingEventId, name, needQuantity})});
 			setMsg(eventMsg, '修改成功', true);
 		}else{
-			await api('/device/admin/api/event/add', {method:'POST', body: JSON.stringify({name, needTime, needQuantity})});
+			await api('/device/admin/api/event/add', {method:'POST', body: JSON.stringify({name, needQuantity})});
 			setMsg(eventMsg, '新增成功', true);
 		}
 		eventModal.classList.remove('show');

@@ -71,7 +71,6 @@ func ListDeviceHistory(ctx context.Context, deviceNo string) ([]DeviceHistoryIte
 			dao.History.Columns().EventId,
 			dao.History.Columns().EventName,
 			dao.History.Columns().EventNumber,
-			dao.History.Columns().EventUnit,
 			dao.History.Columns().StartTime,
 			dao.History.Columns().EndTime,
 			dao.History.Columns().Remark,
@@ -91,7 +90,6 @@ func ListDeviceHistory(ctx context.Context, deviceNo string) ([]DeviceHistoryIte
 			EventId:     row[dao.History.Columns().EventId].Int64(),
 			EventName:   row[dao.History.Columns().EventName].String(),
 			EventNumber: row[dao.History.Columns().EventNumber].Int64(),
-			EventUnit:   row[dao.History.Columns().EventUnit].String(),
 			StartTime:   row[dao.History.Columns().StartTime].String(),
 			EndTime:     row[dao.History.Columns().EndTime].String(),
 			Remark:      row[dao.History.Columns().Remark].String(),
@@ -133,7 +131,7 @@ func DeleteDeviceSuggest(ctx context.Context, id int64, deviceNo string) error {
 func ListEventOptions(ctx context.Context) ([]entity.Event, error) {
 	rows := make([]entity.Event, 0)
 	err := dao.Event.Ctx(ctx).
-		Fields(dao.Event.Columns().Id, dao.Event.Columns().Name, dao.Event.Columns().NeedTime, dao.Event.Columns().NeedQuantity).
+		Fields(dao.Event.Columns().Id, dao.Event.Columns().Name, dao.Event.Columns().NeedQuantity).
 		OrderAsc(dao.Event.Columns().Id).
 		Scan(&rows)
 	if err != nil {
@@ -188,7 +186,6 @@ func AddDeviceHistory(ctx context.Context, item entity.History) (int64, error) {
 	item.StartTime = strings.TrimSpace(item.StartTime)
 	item.EndTime = strings.TrimSpace(item.EndTime)
 	item.Remark = strings.TrimSpace(item.Remark)
-	item.EventUnit = strings.TrimSpace(item.EventUnit)
 	if item.DeviceNo == "" {
 		return 0, fmt.Errorf("deviceNo 不能为空")
 	}
@@ -196,7 +193,6 @@ func AddDeviceHistory(ctx context.Context, item entity.History) (int64, error) {
 		dao.History.Columns().DeviceNo:    item.DeviceNo,
 		dao.History.Columns().EventId:     item.EventId,
 		dao.History.Columns().EventName:   item.EventName,
-		dao.History.Columns().EventUnit:   item.EventUnit,
 		dao.History.Columns().EventNumber: item.EventNumber,
 		dao.History.Columns().StartTime:   item.StartTime,
 		dao.History.Columns().EndTime:     item.EndTime,
@@ -218,7 +214,6 @@ func UpdateDeviceHistory(ctx context.Context, item entity.History) error {
 	item.StartTime = strings.TrimSpace(item.StartTime)
 	item.EndTime = strings.TrimSpace(item.EndTime)
 	item.Remark = strings.TrimSpace(item.Remark)
-	item.EventUnit = strings.TrimSpace(item.EventUnit)
 	if item.DeviceNo == "" {
 		return fmt.Errorf("deviceNo 不能为空")
 	}
@@ -228,7 +223,6 @@ func UpdateDeviceHistory(ctx context.Context, item entity.History) error {
 		Data(g.Map{
 			dao.History.Columns().EventId:     item.EventId,
 			dao.History.Columns().EventName:   item.EventName,
-			dao.History.Columns().EventUnit:   item.EventUnit,
 			dao.History.Columns().EventNumber: item.EventNumber,
 			dao.History.Columns().StartTime:   item.StartTime,
 			dao.History.Columns().EndTime:     item.EndTime,

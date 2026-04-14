@@ -11,60 +11,58 @@ import (
 	"github.com/gogf/gf/v2/frame/g"
 )
 
-// EventDao is the data access object for table event.
-type EventDao struct {
-	table   string       // table is the underlying table name of the DAO.
-	group   string       // group is the database configuration group name of current DAO.
-	columns EventColumns // columns contains all the column names of Table for convenient usage.
+// ActionDao is the data access object for table action.
+type ActionDao struct {
+	table   string        // table is the underlying table name of the DAO.
+	group   string        // group is the database configuration group name of current DAO.
+	columns ActionColumns // columns contains all the column names of Table for convenient usage.
 }
 
-// EventColumns defines and stores column names for table event.
-type EventColumns struct {
-	Id           string //
-	Name         string // 吃奶/睡觉/尿/屎等
-	NeedQuantity string // 是否需要计数1要
-	ExtraNames   string // name的其它表达方式
+// ActionColumns defines and stores column names for table action.
+type ActionColumns struct {
+	Id         string //
+	Name       string // 动作名
+	TargetType string // 目标类型
 }
 
-// eventColumns holds the columns for table event.
-var eventColumns = EventColumns{
-	Id:           "id",
-	Name:         "name",
-	NeedQuantity: "need_quantity",
-	ExtraNames:   "extra_names",
+// actionColumns holds the columns for table action.
+var actionColumns = ActionColumns{
+	Id:         "id",
+	Name:       "name",
+	TargetType: "target_type",
 }
 
-// NewEventDao creates and returns a new DAO object for table data access.
-func NewEventDao() *EventDao {
-	return &EventDao{
+// NewActionDao creates and returns a new DAO object for table data access.
+func NewActionDao() *ActionDao {
+	return &ActionDao{
 		group:   "default",
-		table:   "event",
-		columns: eventColumns,
+		table:   "action",
+		columns: actionColumns,
 	}
 }
 
 // DB retrieves and returns the underlying raw database management object of current DAO.
-func (dao *EventDao) DB() gdb.DB {
+func (dao *ActionDao) DB() gdb.DB {
 	return g.DB(dao.group)
 }
 
 // Table returns the table name of current dao.
-func (dao *EventDao) Table() string {
+func (dao *ActionDao) Table() string {
 	return dao.table
 }
 
 // Columns returns all column names of current dao.
-func (dao *EventDao) Columns() EventColumns {
+func (dao *ActionDao) Columns() ActionColumns {
 	return dao.columns
 }
 
 // Group returns the configuration group name of database of current dao.
-func (dao *EventDao) Group() string {
+func (dao *ActionDao) Group() string {
 	return dao.group
 }
 
 // Ctx creates and returns the Model for current DAO, It automatically sets the context for current operation.
-func (dao *EventDao) Ctx(ctx context.Context) *gdb.Model {
+func (dao *ActionDao) Ctx(ctx context.Context) *gdb.Model {
 	return dao.DB().Model(dao.table).Safe().Ctx(ctx)
 }
 
@@ -74,6 +72,6 @@ func (dao *EventDao) Ctx(ctx context.Context) *gdb.Model {
 //
 // Note that, you should not Commit or Rollback the transaction in function f
 // as it is automatically handled by this function.
-func (dao *EventDao) Transaction(ctx context.Context, f func(ctx context.Context, tx gdb.TX) error) (err error) {
+func (dao *ActionDao) Transaction(ctx context.Context, f func(ctx context.Context, tx gdb.TX) error) (err error) {
 	return dao.Ctx(ctx).Transaction(ctx, f)
 }

@@ -18,20 +18,20 @@ type HistoryCtrl struct {
 	Voice service.VoiceContract
 }
 
-func (c *HistoryCtrl) eventRuleByID(ctx context.Context, eventID int64) (needTime bool, needQuantity bool, ok bool) {
+func (c *HistoryCtrl) eventRuleByID(ctx context.Context, eventID int64) (needQuantity bool, ok bool) {
 	if eventID <= 0 {
-		return false, false, false
+		return false, false
 	}
 	events, err := c.Svc.ListEventOptions(ctx)
 	if err != nil {
-		return false, false, false
+		return false, false
 	}
 	for _, ev := range events {
 		if ev.Id == eventID {
-			return ev.NeedTime > 0, ev.NeedQuantity > 0, true
+			return ev.NeedQuantity > 0, true
 		}
 	}
-	return false, false, false
+	return false, false
 }
 
 // NewHistoryCtrl 构造 HistoryCtrl。
@@ -145,16 +145,10 @@ func (c *HistoryCtrl) EventAdd(ctx context.Context, req *v1.DeviceHistoryEventAd
 	}
 	startTime := strings.TrimSpace(req.StartTime)
 	endTime := strings.TrimSpace(req.EndTime)
-	if needTime, needQuantity, ok := c.eventRuleByID(ctx, req.EventId); ok {
-		if !needTime && !needQuantity {
-			startTime = endTime
-		}
-	}
 	id, err := c.Svc.AddHistory(ctx, entity.History{
 		DeviceNo:    deviceNo,
 		EventId:     req.EventId,
 		EventName:   strings.TrimSpace(req.EventName),
-		EventUnit:   strings.TrimSpace(req.EventUnit),
 		EventNumber: int64(req.EventNumber),
 		StartTime:   startTime,
 		EndTime:     endTime,
@@ -177,17 +171,11 @@ func (c *HistoryCtrl) EventUpdate(ctx context.Context, req *v1.DeviceHistoryEven
 	}
 	startTime := strings.TrimSpace(req.StartTime)
 	endTime := strings.TrimSpace(req.EndTime)
-	if needTime, needQuantity, ok := c.eventRuleByID(ctx, req.EventId); ok {
-		if !needTime && !needQuantity {
-			startTime = endTime
-		}
-	}
 	err = c.Svc.UpdateHistory(ctx, entity.History{
 		Id:          req.Id,
 		DeviceNo:    deviceNo,
 		EventId:     req.EventId,
 		EventName:   strings.TrimSpace(req.EventName),
-		EventUnit:   strings.TrimSpace(req.EventUnit),
 		EventNumber: int64(req.EventNumber),
 		StartTime:   startTime,
 		EndTime:     endTime,

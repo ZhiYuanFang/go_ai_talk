@@ -91,15 +91,11 @@ func (c *AdminCtrl) EventAdd(ctx context.Context, req *v1.DeviceAdminEventAddReq
 	if name == "" {
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "事件名称不能为空")
 	}
-	needTime := 0
-	if req.NeedTime > 0 {
-		needTime = 1
-	}
 	needQuantity := 0
 	if req.NeedQuantity > 0 {
 		needQuantity = 1
 	}
-	err = c.Admin.AddEvent(ctx, name, needTime, needQuantity)
+	err = c.Admin.AddEvent(ctx, name, needQuantity)
 	if err != nil {
 		if err == service.ErrEventExists {
 			return nil, gerror.NewCode(gcode.CodeInvalidOperation, err.Error())
@@ -121,15 +117,11 @@ func (c *AdminCtrl) EventUpdate(ctx context.Context, req *v1.DeviceAdminEventUpd
 	if name == "" {
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "事件名称不能为空")
 	}
-	needTime := 0
-	if req.NeedTime > 0 {
-		needTime = 1
-	}
 	needQuantity := 0
 	if req.NeedQuantity > 0 {
 		needQuantity = 1
 	}
-	err = c.Admin.UpdateEvent(ctx, req.Id, name, needTime, needQuantity)
+	err = c.Admin.UpdateEvent(ctx, req.Id, name, needQuantity)
 	if err != nil {
 		switch err {
 		case service.ErrEventExists:

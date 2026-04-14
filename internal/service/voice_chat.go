@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
@@ -14,6 +13,8 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -27,6 +28,18 @@ import (
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/gctx"
 	"github.com/gogf/gf/v2/os/glog"
+)
+
+// 动作目标枚举
+const (
+	ActionTargetTypeStart        = "start"        //开始记录计时动作
+	ActionTargetTypeEnd          = "end"          //结束记录计时动作
+	ActionTargetTypeOne          = "one"          //记录一次性动作
+	ActionTargetTypeExit         = "exit"         //退出动作
+	ActionTargetTypeSuggest      = "suggest"      //成长建议动作
+	ActionTargetTypeSearch       = "search"       //搜索动作
+	ActionTargetTypeConversation = "conversation" //对话动作
+
 )
 
 // VoiceChatConfig 语音对话相关配置（ASR/LLM/TTS/会话缓存）。
@@ -95,6 +108,7 @@ const baiduTTSMaxTextBytes = 1024
 const (
 	voiceStageSlowThreshold = 6 * time.Second
 	voiceTotalSlowThreshold = 10 * time.Second
+	quantityKeyword         = "多少?"
 )
 
 type baiduTokenCache struct {
@@ -128,16 +142,16 @@ type pendingQuantityState struct {
 type eventIntentResult struct {
 	EventName     string `json:"event_name"`
 	WantDo        string `json:"want_do"`
+	ActionKeyWord string `json:"action_key_word"` //动作关键词
 	Action        string `json:"action"`
 	Quantity      int    `json:"quantity"`
-	Unit          string `json:"unit"`
 	Remark        string `json:"remark"`
 	Reply         string `json:"reply"`
 	Reason        string `json:"reason"`
-	NeedTime      bool   `json:"need_time"`
-	NeedQuantity  bool   `json:"need_quantity"`
-	HasExtraNotes bool   `json:"has_extra_notes"`
-	Exit          bool   `json:"exit"`
+	bool          `json:"need_time"`
+	NeedQuantity  bool `json:"need_quantity"`
+	HasExtraNotes bool `json:"has_extra_notes"`
+	Exit          bool `json:"exit"`
 }
 
 type intentionClassifyResult struct {
@@ -152,7 +166,6 @@ type generalChatResult struct {
 type eventInfo struct {
 	Id           int64  `json:"id"`
 	Name         string `json:"name"`
-	NeedTime     int    `json:"needTime"`
 	NeedQuantity int    `json:"needQuantity"`
 }
 
@@ -820,110 +833,350 @@ func (s *VoiceService) chatWithResult(ctx context.Context, deviceNo, transcript 
 	if err != nil {
 		return "", "", false, false, err
 	}
-
-	// 查询是否有已经记录的问题
-	qa := entity.Qa{}
-	dao.Qa.Ctx(ctx).WhereLike("question", transcript).Scan(&qa)
-	// 如果已经有记录了
-	if qa.Id != 0 {
-		glog.Infof(ctx, "找到历史问答记录，直接使用。 question=%q intentionId=%d replay=%q", qa.Question, qa.IntentionId, qa.Replay)
-
-		// 记录命中+1
-		dao.Qa.Ctx(ctx).Where("id", qa.Id).Update(g.Map{"attack": qa.Attack + 1})
-
-		finalReply := ""
-		exit := false
-		finishTalk := false
-		switch qa.IntentionId {
-		case 1: // 母婴喂养
-			events, _ := s.listEventInfos(ctx)
-
-			var qaIntent eventIntentResult
-			err := json.Unmarshal([]byte(qa.IntentionAnswer), &qaIntent)
-			if err != nil {
-				glog.Warningf(ctx, "解析 QA 记录的意图失败，intentionAnswer=%q err=%v", qa.IntentionAnswer, err)
-			}
-			finalReply, finishTalk, _ = s.deelIntent(ctx, deviceNo, events, qaIntent)
-
-		case 5: //结束对话
-			exit = true
-			finishTalk = true
-			finalReply = qa.Replay
-		}
-		s.appendChatHistory(deviceNo, normalizedTranscript, finalReply)
-
-		return finalReply, normalizedTranscript, exit, finishTalk, nil
-	}
-
-	if reply, handled := s.tryHandlePendingQuantity(ctx, deviceNo, normalizedTranscript); handled {
-		s.appendChatHistory(deviceNo, normalizedTranscript, reply)
-		return reply, normalizedTranscript, false, false, nil
-	}
-	release := s.acquireLimiter(s.chatLimiter)
-	defer release()
-	if s.cfg.DeepSeek.Endpoint == "" {
-		return "", "", false, false, StageError{Stage: "chat", Detail: "DeepSeek endpoint 未配置"}
-	}
-	unlock := s.lockDevice(deviceNo)
-	defer unlock()
-	intentID := s.classifyIntentionID(ctx, deviceNo, normalizedTranscript)
-	finalReply := ""
-	finishTalk := false
+	events := []entity.Event{}
+	dao.Event.Ctx(ctx).Scan(&events)
+	// 取数据库中的预设关键词的集合（dao.Action）
+	actions := []entity.Action{}
+	dao.Action.Ctx(ctx).Scan(&actions)
 	exit := false
-	switch intentID {
-	case 1: // 母婴喂养
-		reply, finish, handleErr := s.handleIntentEventRecord(ctx, deviceNo, normalizedTranscript)
-		if handleErr != nil {
-			return "", "", false, false, handleErr
+
+	// 获取上一次的对话缓存中，我回答的最后一条记录
+	now := time.Now()
+	lastUserMessage := ""
+	if strings.TrimSpace(deviceNo) != "" {
+		s.sessionMu.Lock()
+		s.pruneSessionsLocked(now)
+		if sess, ok := s.sessions[deviceNo]; ok {
+			if !s.isExpired(sess.LastActive, now) {
+				historyMessages := sess.Messages
+				if len(historyMessages) > 1 {
+					lastUserMessage = historyMessages[len(historyMessages)-1].Content
+				}
+			} else {
+				delete(s.sessions, deviceNo)
+				s.deviceLocks.Delete(deviceNo)
+			}
 		}
-		finalReply = strings.TrimSpace(reply)
-		finishTalk = finish
-	case 2: // 成长建议
+		s.sessionMu.Unlock()
+	}
+
+	// 上一次的对话缓存中，我回答的最后一条记录，是否包含"多少"关键词
+	mayReplayQuantity := false
+	if strings.Contains(lastUserMessage, quantityKeyword) {
+		mayReplayQuantity = true
+	}
+
+	// 获取这一次对话中的数量
+	number, ok := extractNumberFromText(normalizedTranscript)
+	if ok {
+		// 上一次对话中如果包含"多少"关键词，则需要判断是要将上一次对话中的"多少"改为这一次的会话内容，然后走下面的逻辑
+		if mayReplayQuantity {
+			normalizedTranscript = strings.Replace(lastUserMessage, quantityKeyword, "? "+strconv.Itoa(number)+"。", 1)
+			// 日志打印
+			glog.Infof(ctx, "上一次对话中包含\"多少\"关键词，将\"多少\"改为这一次的会话内容。lastUserMessage=%q normalizedTranscript=%q", lastUserMessage, number)
+		}
+	}
+
+	// 打印normalizedTranscript
+	glog.Infof(ctx, "问题=%q", normalizedTranscript)
+
+	// 先将动作按名称长度从长到短排序
+	sort.Slice(actions, func(i, j int) bool {
+		return len(actions[i].Name) > len(actions[j].Name)
+	})
+	// 判断文本是否包含预设动作关键词
+	for _, action := range actions {
+		if strings.Contains(normalizedTranscript, action.Name) {
+			// 打印日志命中动作
+			glog.Infof(ctx, "命中动作: %s", action.Name)
+			finalReply, exit, finishTalk, err := s.handleActionRecord(ctx, deviceNo, normalizedTranscript, action, events)
+			if err != nil {
+				// 处理动作失败,可能动作解析错误,尝试解析出新的动作,再走命中事件流程
+				continue
+			}
+			// 往QA里录入问题和答案
+			dao.Qa.Ctx(ctx).Insert(entity.Qa{
+				Question: normalizedTranscript,
+				Replay:   finalReply,
+			})
+			return finalReply, normalizedTranscript, exit, finishTalk, err
+		}
+	}
+	// 没有命中预设动作, 请求deepSeek分析文案中的预设动作,并落库后，再走命中事件流程
+	action, err := s.callDeepSeekActionExtract(ctx, deviceNo, normalizedTranscript)
+	if err != nil {
+		// 认为是对话动作
+		finalReply, finishTalk, err := s.handleIntentGeneral(ctx, deviceNo, normalizedTranscript)
+		if err == nil {
+			// 往QA里录入问题和答案
+			dao.Qa.Ctx(ctx).Insert(entity.Qa{
+				Question: normalizedTranscript,
+				Replay:   finalReply,
+			})
+		}
+		return finalReply, normalizedTranscript, exit, finishTalk, err
+	}
+	// 打印日志命中动作
+	glog.Infof(ctx, "没有命中预设动作, 请求deepSeek分析文案中的预设动作,并落库后，再走命中事件流程,命中动作: %s", action.Name)
+	finalReply, exit, finishTalk, err := s.handleActionRecord(ctx, deviceNo, normalizedTranscript, action, events)
+	if err == nil {
+		// 往QA里录入问题和答案
+		dao.Qa.Ctx(ctx).Insert(entity.Qa{
+			Question: normalizedTranscript,
+			Replay:   finalReply,
+		})
+	}
+	return finalReply, normalizedTranscript, exit, finishTalk, err
+}
+
+// 根据文本,请求deepSeek分析文案中的动作是什么,并判断该动作的目标类型(ActionTargetTypeStart,ActionTargetTypeEnd,ActionTargetTypeOne,ActionTargetTypeExit,ActionTargetTypeSuggest,ActionTargetTypeSearch),输出JSON:{"action":"动作名称","target_type":"目标类型"}
+func (s *VoiceService) callDeepSeekActionExtract(ctx context.Context, deviceNo, transcript string) (entity.Action, error) {
+	prompt := fmt.Sprintf("输入=%s。请提取核心动作名称和目标类型。仅输出JSON：{\"name\":\"动作名称\",\"targetType\":\"目标类型\"}。无法判断时输出{\"action\":\"\",\"targetType\":\"\"}。", transcript)
+	systemMessage := "你是一个精准的动作提取器，严格按指定JSON格式输出，不添加任何解释性内容。"
+	// 动作名称需要从文本中提取连续文案,不要输出解释性文本。
+	systemMessage += fmt.Sprintf("动作名称需要从文本中提取代表性的连续文案,不要输出解释性文本。")
+	// 告诉deepseek,动作类型有:ActionTargetTypeStart("开始记录计时动作"),ActionTargetTypeEnd("结束记录计时动作"),ActionTargetTypeOne("记录一次性动作"),ActionTargetTypeExit("退出动作"),ActionTargetTypeSuggest("成长建议动作"),ActionTargetTypeSearch("搜索动作")
+	systemMessage += fmt.Sprintf("目标类型需要从这里选择:%s(%s),%s(%s),%s(%s),%s(%s),%s(%s),%s(%s),%s(%s)",
+		ActionTargetTypeStart, "开始记录计时目标", ActionTargetTypeEnd, "结束记录计时目标", ActionTargetTypeOne, "记录一次性目标",
+		ActionTargetTypeExit, "退出对话目标", ActionTargetTypeSuggest, "成长建议目标", ActionTargetTypeSearch, "搜索目标",
+		ActionTargetTypeConversation, "闲聊目标")
+	// 如果是睡眠事件,你需要区分睡眠开始和睡眠结束
+	systemMessage += fmt.Sprintf("如果是睡眠事件,你需要区分睡眠开始和睡眠结束,睡着时目标类型为%s,睡醒时目标类型为%s", ActionTargetTypeStart, ActionTargetTypeEnd)
+	systemMessageWarn := "如果只有动作,但没有事件名称,则判定为闲聊目标"
+	raw, _, _, err := s.callDeepSeekRaw(ctx, deviceNo, prompt, 0, systemMessage, systemMessageWarn)
+	if err != nil {
+		return entity.Action{}, err
+	}
+	parsed := entity.Action{}
+	err = json.Unmarshal([]byte(raw), &parsed)
+	if err != nil {
+		return entity.Action{}, err
+	}
+	if parsed.TargetType == ActionTargetTypeConversation {
+		return entity.Action{}, errors.New("对话动作不需要落库")
+	} else {
+		// 将动作落库,保证动作名称唯一
+		existingAction := entity.Action{}
+		dao.Action.Ctx(ctx).Where("name", parsed.Name).Scan(&existingAction)
+		if existingAction.Id > 0 {
+			return entity.Action{}, errors.New("动作名称已存在")
+		}
+		dao.Action.Ctx(ctx).Insert(parsed)
+		return parsed, nil
+	}
+}
+
+// 根据动作，判断后续逻辑
+func (s *VoiceService) handleActionRecord(ctx context.Context, deviceNo string, normalizedTranscript string, action entity.Action, events []entity.Event) (finalReply string, exit bool, finishTalk bool, err error) {
+	// 根据不同的action做出不同的处理
+	nowTime := time.Now().Format("2006-01-02 15:04:05")
+	switch action.TargetType {
+	case "start": //开始记录计时动作
+		event, ok := s.extractEventFromText(ctx, normalizedTranscript, events)
+		if !ok { // 没有命中事件名，交给deepseek分析文案中的事件名
+			// 交给deepseek分析文案中的事件名,并落库后，再走命中事件流程
+			event, err = s.callDeepSeekEntityExtract(ctx, deviceNo, normalizedTranscript)
+			if err != nil {
+				glog.Warningf(ctx, "调用 DeepSeek 进行实体抽取失败，deviceNo=%s transcript=%q err=%v", deviceNo, normalizedTranscript, err)
+				return "我听不懂你说的事件,请用具体的名称告诉我", false, false, err
+			}
+			// 打印日志命中事件
+			glog.Infof(ctx, "没有命中事件名, 请求deepSeek分析文案中的事件名,并落库后，再走命中事件流程,命中事件: %s", event.Name)
+		}
+		_, err = dao.History.Ctx(ctx).Insert(entity.History{
+			DeviceNo:  deviceNo,
+			EventId:   event.Id,
+			EventName: event.Name,
+			StartTime: nowTime,
+			Remark:    normalizedTranscript,
+		})
+		if err != nil {
+			return "记录失败,请重试", false, true, err
+		}
+		finalReply = fmt.Sprintf("好的，已记录%s开始", event.Name)
+		finishTalk = true
+		return finalReply, false, finishTalk, nil
+	case "end": //结束记录计时动作，自动补结束时间
+		event, ok := s.extractEventFromText(ctx, normalizedTranscript, events)
+		if !ok { // 没有命中事件名，交给deepseek分析文案中的事件名
+			// 交给deepseek分析文案中的事件名,并落库后，再走命中事件流程
+			event, err = s.callDeepSeekEntityExtract(ctx, deviceNo, normalizedTranscript)
+			if err != nil {
+				glog.Warningf(ctx, "调用 DeepSeek 进行实体抽取失败，deviceNo=%s transcript=%q err=%v", deviceNo, normalizedTranscript, err)
+				return "我听不懂你说的事件,请用具体的名称告诉我", false, false, err
+			}
+			// 打印日志命中事件
+			glog.Infof(ctx, "没有命中事件名, 请求deepSeek分析文案中的事件名,并落库后，再走命中事件流程,命中事件: %s", event.Name)
+		}
+
+		// 判断最近一次事件是否是同一事件
+		lastEvent := entity.History{}
+		dao.History.Ctx(ctx).Where("device_no", deviceNo).Order("id DESC").Limit(1).Scan(&lastEvent)
+		if lastEvent.EventId == event.Id {
+			// 是同一事件，则更新结束时间
+			_, err = dao.History.Ctx(ctx).Where("device_no", deviceNo).Where("event_id", event.Id).Update(g.Map{"end_time": nowTime})
+			if err != nil {
+				return "更新结束时间失败,请重试", false, true, err
+			}
+			finalReply = fmt.Sprintf("好的，已记录%s结束", event.Name)
+			finishTalk = true
+			return finalReply, false, finishTalk, nil
+		} else {
+			// 不是同一事件
+
+			// 则插入新的记录
+			_, err = dao.History.Ctx(ctx).Insert(entity.History{
+				DeviceNo:  deviceNo,
+				EventId:   event.Id,
+				EventName: event.Name,
+				StartTime: nowTime,
+				EndTime:   nowTime,
+				Remark:    normalizedTranscript,
+			})
+			if err != nil {
+				return "记录事件失败,请重试", false, true, err
+			}
+			// 上一件事如果没有结束时间,则告知用户上一件事自动结束
+			if lastEvent.EndTime == "" {
+				dao.History.Ctx(ctx).Where("device_no", deviceNo).Where("event_id", lastEvent.EventId).Update(g.Map{"end_time": nowTime})
+				if err != nil {
+					return fmt.Sprintf("好的，已记录%s结束，%s结束失败,请手动结束", event.Name, lastEvent.EventName), false, true, err
+				}
+				finalReply = fmt.Sprintf("好的，已记录%s结束，%s自动结束", event.Name, lastEvent.EventName)
+			} else {
+				finalReply = fmt.Sprintf("好的，已记录%s结束", event.Name)
+			}
+			finishTalk = true
+			return finalReply, false, finishTalk, nil
+		}
+	case "one": //记录一次性动作，记录一次
+		event, ok := s.extractEventFromText(ctx, normalizedTranscript, events)
+		if !ok { // 没有命中事件名，交给deepseek分析文案中的事件名
+			// 交给deepseek分析文案中的事件名,并落库后，再走命中事件流程
+			event, err = s.callDeepSeekEntityExtract(ctx, deviceNo, normalizedTranscript)
+			if err != nil {
+				glog.Warningf(ctx, "调用 DeepSeek 进行实体抽取失败，deviceNo=%s transcript=%q err=%v", deviceNo, normalizedTranscript, err)
+				return "我听不懂你说的事件,请用具体的名称告诉我", false, false, err
+			}
+			// 打印日志命中事件
+			glog.Infof(ctx, "没有命中事件名, 请求deepSeek分析文案中的事件名,并落库后，再走命中事件流程,命中事件: %s", event.Name)
+		}
+		if event.NeedQuantity > 0 {
+			quantity, ok := extractNumberFromText(normalizedTranscript)
+			if !ok || quantity <= 0 {
+				finalReply = "请问 " + action.Name + " " + event.Name + " 的数量是" + quantityKeyword
+				finishTalk = false
+				return finalReply, false, finishTalk, nil
+			}
+			_, err = dao.History.Ctx(ctx).Insert(entity.History{
+				DeviceNo:    deviceNo,
+				EventId:     event.Id,
+				EventName:   event.Name,
+				EventNumber: int64(quantity),
+				StartTime:   nowTime,
+				EndTime:     nowTime,
+				Remark:      normalizedTranscript,
+			})
+			if err != nil {
+				return "记录事件失败,请重试", false, true, err
+			}
+			finalReply = fmt.Sprintf("好的，已记录 %s %d", event.Name, quantity)
+			finishTalk = true
+			return finalReply, false, finishTalk, nil
+		} else {
+			_, err = dao.History.Ctx(ctx).Insert(entity.History{
+				DeviceNo:    deviceNo,
+				EventId:     event.Id,
+				EventName:   event.Name,
+				EventNumber: 1,
+				StartTime:   nowTime,
+				EndTime:     nowTime,
+				Remark:      normalizedTranscript,
+			})
+			if err != nil {
+				return "记录事件失败,请重试", false, true, err
+			}
+			finalReply = fmt.Sprintf("好的，已记录 %s", event.Name)
+			finishTalk = true
+			return finalReply, false, finishTalk, nil
+		}
+	case "suggest": //成长建议动作
 		reply, handleErr := s.callDeepSeekGrowthSuggestion(ctx, deviceNo)
 		if handleErr != nil {
-			return "", "", false, false, StageError{Stage: "chat", Detail: handleErr.Error()}
+			return "获取成长建议失败,请重试", false, true, handleErr
 		}
 		finalReply = strings.TrimSpace(reply)
 		finishTalk = true
-	case 4: // 根据历史事件回应
+		return finalReply, false, finishTalk, nil
+	case "search": //搜索动作
+
 		reply, handleErr := s.callDeepSeekHistoryReply(ctx, deviceNo, normalizedTranscript, 12)
 		if handleErr != nil {
-			return "", "", false, false, StageError{Stage: "chat", Detail: handleErr.Error()}
+			return "获取历史记录失败,请重试", false, true, handleErr
 		}
 		finalReply = strings.TrimSpace(reply)
 		finishTalk = true
-	case 5: //结束对话
-		exit = true
-		finishTalk = true
-
-		// 将这次问答记录数据库
-		qa := entity.Qa{
-			Question:    transcript,
-			IntentionId: 5,
-			Replay:      "结束对话",
-		}
-		dao.Qa.Ctx(ctx).Insert(qa)
-	case 7: //新增事件
-		reply, handleErr := s.handleIntentAddEvent(ctx, deviceNo, normalizedTranscript)
-		if handleErr != nil {
-			return "", "", false, false, StageError{Stage: "chat", Detail: handleErr.Error()}
-		}
-		finalReply = strings.TrimSpace(reply)
-		finishTalk = handleErr == nil
+		return finalReply, false, finishTalk, nil
+	case "exit": //退出动作
+		return "好的，再见", true, false, nil
 	default:
-		reply, needReply, handleErr := s.handleIntentGeneral(ctx, deviceNo, normalizedTranscript)
-		if handleErr != nil {
-			return "", "", false, false, StageError{Stage: "chat", Detail: handleErr.Error()}
-		}
-		finalReply = strings.TrimSpace(reply)
-		finishTalk = !needReply
+		return "我没有理解你的意思", false, false, nil
 	}
-	if finalReply == "" {
-		finalReply = "抱歉，我暂时无法回答这个问题。"
-	}
-	s.appendChatHistory(deviceNo, normalizedTranscript, finalReply)
+}
 
-	return finalReply, normalizedTranscript, exit, finishTalk, nil
+// 提取文本中的事件对象
+func (s *VoiceService) extractEventFromText(ctx context.Context, normalizedTranscript string, events []entity.Event) (entity.Event, bool) {
+	for _, event := range events {
+		// 原事件名称为部分匹配
+		if hasSignificantOverlap(normalizedTranscript, event.Name) {
+			// 打印命中事件名
+			glog.Infof(ctx, "命中事件名: %s", event.Name)
+			return event, true
+		}
+		// 额外名称匹配为包含全量匹配，而不是部分匹配
+		if event.ExtraNames != "" {
+			extraNames := strings.Split(event.ExtraNames, ",")
+			for _, extraName := range extraNames {
+				if strings.Contains(normalizedTranscript, extraName) && extraName != "" {
+					// 打印命中额外名称
+					glog.Infof(ctx, "命中额外名称: %s", extraName)
+					return event, true
+				}
+			}
+		}
+	}
+	return entity.Event{}, false
+}
+
+// 提取文本中的数量值
+func extractNumberFromText(text string) (int, bool) {
+	re := regexp.MustCompile(`\d+`)
+	match := re.FindString(text)
+	if match == "" {
+		return 0, false
+	}
+	value, err := strconv.Atoi(match)
+	if err != nil {
+		return 0, false
+	}
+	return value, true
+}
+
+// hasSignificantOverlap 判断两个文本是否有显著的交集（至少两个连续字符）。考虑到用户说D3的情况
+func hasSignificantOverlap(text, keyword string) bool {
+	textRunes := []rune(text)
+	keywordRunes := []rune(keyword)
+	if len(textRunes) < 2 || len(keywordRunes) < 2 {
+		return false
+	}
+	for i := 0; i < len(textRunes)-1; i++ {
+		for j := 0; j < len(keywordRunes)-1; j++ {
+			if textRunes[i] == keywordRunes[j] && textRunes[i+1] == keywordRunes[j+1] {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // parseEventIntentFromReply 从模型回复中提取结构化 JSON 意图。
@@ -940,7 +1193,7 @@ func parseEventIntentFromReply(reply string) (eventIntentResult, bool) {
 	if err := json.Unmarshal([]byte(trimmed), &intent); err == nil {
 		intent.Action = strings.ToLower(strings.TrimSpace(intent.Action))
 		intent.EventName = strings.TrimSpace(intent.EventName)
-		intent.Unit = strings.TrimSpace(intent.Unit)
+		intent.ActionKeyWord = strings.TrimSpace(intent.ActionKeyWord)
 		intent.Remark = strings.TrimSpace(intent.Remark)
 		intent.Reply = strings.TrimSpace(intent.Reply)
 		intent.Reason = strings.TrimSpace(intent.Reason)
@@ -956,7 +1209,7 @@ func parseEventIntentFromReply(reply string) (eventIntentResult, bool) {
 		if err := json.Unmarshal([]byte(segment), &intent); err == nil {
 			intent.Action = strings.ToLower(strings.TrimSpace(intent.Action))
 			intent.EventName = strings.TrimSpace(intent.EventName)
-			intent.Unit = strings.TrimSpace(intent.Unit)
+			intent.ActionKeyWord = strings.TrimSpace(intent.ActionKeyWord)
 			intent.Remark = strings.TrimSpace(intent.Remark)
 			intent.Reply = strings.TrimSpace(intent.Reply)
 			intent.Reason = strings.TrimSpace(intent.Reason)
@@ -1032,40 +1285,11 @@ func parseGeneralChatResult(reply string) (generalChatResult, bool) {
 	return out, false
 }
 
-func (s *VoiceService) classifyIntentionID(ctx context.Context, deviceNo, transcript string) int64 {
-	intentions, err := s.listIntentions(ctx)
-	if err != nil || len(intentions) == 0 {
-		return 3
-	}
-	options := make([]string, 0, len(intentions))
-	for _, item := range intentions {
-		options = append(options, fmt.Sprintf("{\"id\":%d,\"name\":\"%s\"}", item.Id, strings.ReplaceAll(strings.TrimSpace(item.Name), "\"", "")))
-	}
-	systemMessageForIntentionClassify := fmt.Sprintf("你是一个育儿意图分类专家，帮助用户分析输入文本的意图类别。可选意图包括：%s。请根据用户输入分析出最符合的一个意图类别，请仅输出JSON：{\"id\":数字}。", strings.Join(options, ","))
-	systemMessage := "你需要尽量去理解这句话，很可能是希望增删改生活记录"
-	raw, _, _, callErr := s.callDeepSeekRaw(ctx, deviceNo, transcript, 1, systemMessageForIntentionClassify, systemMessage)
-	if callErr != nil {
-		if s.cfg.DebugLog {
-			glog.Warningf(ctx, "[思考过程] 意图分类调用失败。deviceNo=%s err=%v", deviceNo, callErr)
-		}
-		return 3
-	}
-	if id, ok := parseIntentionClassifyID(raw); ok {
-		if s.cfg.DebugLog {
-			glog.Infof(ctx, "[思考过程] 意图分类结果。deviceNo=%s transcript=%q intentionId=%d raw=%s", deviceNo, transcript, id, truncateVoiceLogText(raw, 800))
-		}
-		return id
-	}
-	if s.cfg.DebugLog {
-		glog.Warningf(ctx, "[思考过程] 意图分类解析失败，回退id=3。deviceNo=%s raw=%s", deviceNo, truncateVoiceLogText(raw, 800))
-	}
-	return 3
-}
-
+// 普通对话,无用,先保留
 func (s *VoiceService) handleIntentGeneral(ctx context.Context, deviceNo, transcript string) (string, bool, error) {
 	// 将用户的生日和性别作为宝宝的信息上下文输入，辅助模型判断是否需要回复以及回复内容
 	birthday, gender := s.loadDeviceProfile(ctx, deviceNo)
-	systemMessage := fmt.Sprintf("用户的宝宝出生日期是%s，性别是%s。你还是一个语音助手，可以解答任何问题。", birthday, gender)
+	systemMessage := fmt.Sprintf("用户的宝宝出生日期是%s，性别是%s。你还是一个语音助手，可以解答任何问题,回应内容控制在20字以内。", birthday, gender)
 	prompt := fmt.Sprintf("用户输入=%s。请仅输出JSON：{\"reply\":\"回复内容\",\"need_user_reply\":true|false}。", transcript)
 	raw, reply, _, err := s.callDeepSeekRaw(ctx, deviceNo, prompt, s.intentionUpperLimit(ctx, 3, 5), systemMessage)
 	if err != nil {
@@ -1087,318 +1311,84 @@ func (s *VoiceService) handleIntentGeneral(ctx context.Context, deviceNo, transc
 	return strings.TrimSpace(reply), true, nil
 }
 
-// handleIntentAddEvent 处理新增事件意图，直接调用 DeepSeek 获取事件名称并落库，无需用户补充。
-func (s *VoiceService) handleIntentAddEvent(ctx context.Context, deviceNo, transcript string) (string, error) {
-	// 调用 DeepSeek 获取事件名称、该事件是否属于计时事件、该事件是否属于计数事件
-	prompt := fmt.Sprintf("任务=新增事件记录。输入=%s。请仅输出JSON，字段包括：name（事件名称）, needTime（0/1 计时事件）, needQuantity（0/1 计数事件）, reply。", transcript)
-	systemMessage := "你是分析专家，只负责帮用户分析出事件名称，并判断是否需要计时或计数。请直接从用户输入中分析出一个事件名称，如果无法分析出事件名称，请引导用户提供更多信息。"
-	raw, reply, _, err := s.callDeepSeekRaw(ctx, deviceNo, prompt, s.intentionUpperLimit(ctx, 1, 2), systemMessage)
+func (s *VoiceService) callDeepSeekEntityExtract(ctx context.Context, deviceNo, transcript string) (entity.Event, error) {
+	out := entity.Event{}
+
+	// deepseek需要分析文本中是否有与原来事件列表中的名称相符的事件类型,如果有提取当前的事件名称并输出json:{"name":"原表中的事件名","extra_name":"当前事件名称"},否则并判断是否需要计数（1表示需要，0表示不需要）输出json:{"name":当前事件名,"extra_name":"","need_quantity":"0或1"}。如果无法确定事件名称，则输出：{\"name\":\"\",\"need_quantity\":\"0\"}"
+	// 将数据库中的事件名称拼接起来,用逗号分隔,然后告诉deepseek,事件名称有:xxx,xxx,xxx
+	eventList := []entity.Event{}
+	dao.Event.Ctx(ctx).Fields(dao.Event.Columns().Name).Scan(&eventList)
+	eventNamesStr := ""
+	for _, event := range eventList {
+		eventNamesStr += event.Name + ","
+	}
+	systemMessageEventNames := fmt.Sprintf("原事件名称有:%s", eventNamesStr)
+	systemMessage := "你是一个精准的事件名称提取器，扩展词需要从文本中提取代表性的连续文案,事件名称需要联想为代表性名词,严格按指定JSON格式输出，不添加任何解释性内容。"
+	systemMessageOther := "如果是吃奶事件,你需要判断是母乳喂养还是配方奶喂养,如果无法确定,则输出：{\"name\":\"\",\"extraNames\":\"\",\"need_quantity\":\"0\"}"
+	prompt := fmt.Sprintf("输入=%s。分析文本中是否有与原事件名称背后的含义有准确相符的事件类型,如果有提取当前的事件扩展词并输出json:{\"name\":\"原表中的事件名\",\"extraNames\":\"当前事件扩展词\"},否则并判断是否需要计数（1表示需要，0表示不需要）输出json:{\"name\":当前事件名,\"extraNames\":\"\",\"need_quantity\":\"0或1\"}。如果无法确定事件名称，则输出：{\"name\":\"\",\"need_quantity\":\"0\"}", transcript)
+
+	// 你需要从事件列表中,查看是否有符合的事件类型,如果有则直接返回列表中的事件类型,如果没有则需要从文本中提取事件名称。
+	raw, _, _, err := s.callDeepSeekRaw(ctx, deviceNo, prompt, s.intentionUpperLimit(ctx, 1, 1), systemMessage, systemMessageEventNames, systemMessageOther)
 	if err != nil {
-		return reply, err
-	}
-	newEvent := eventInfo{}
-	err = json.Unmarshal([]byte(raw), &newEvent)
-	if err != nil {
-		return "解析新增事件意图失败", fmt.Errorf("解析新增事件意图失败: %w", err)
-	}
-	if newEvent.Name == "" {
-		if s.cfg.DebugLog {
-			glog.Warningf(ctx, "[思考过程] 新增事件结构化解析失败。deviceNo=%s raw=%s", deviceNo, truncateVoiceLogText(raw, 800))
-		}
-		return reply, errors.New("未解析出事件名称")
+		return out, err
 	}
 
-	_, err = dao.Event.Ctx(ctx).Insert(newEvent)
-
-	return reply, err
-}
-
-func (s *VoiceService) handleIntentEventRecord(ctx context.Context, deviceNo, transcript string) (string, bool, error) {
-	events, _ := s.listEventInfos(ctx)
-	names := make([]string, 0, len(events))
-	for _, ev := range events {
-		if strings.TrimSpace(ev.Name) != "" {
-			names = append(names, fmt.Sprintf("{\"name\":\"%s\"}", strings.ReplaceAll(strings.TrimSpace(ev.Name), "\"", "")))
-		}
-	}
-	eventList := strings.Join(names, ",")
-	if eventList == "" {
-		eventList = "{}"
-	}
-	prompt := fmt.Sprintf(`任务=母婴事件识别。输入=%s。事件集合=[%s]。仅输出JSON。命中事件时输出字段:
-	event_name,want_do(add|delete|update|none),action(start|end|none),need_time,need_quantity,quantity,unit,remark,reply。
-	未命中时输出:reply,reason。`, transcript, eventList)
-	systemMessage1 := "您是事件分析和记录专家，可以准确分析文本命中的事件和意图，围绕事件记录动作回应。"
-	systemMessage := `请严格按以下逻辑处理事件识别：
-	1：是否可能命中多个事件，如果有，则判定为未命中，且引导用户确认具体事件
-2. 命中事件后，必须输出完整JSON，字段对应的值不能为null
-3. 如果命中的是start事件，需要在回复中提示用户在结束的时候告知我，比如“喝奶结束了”或者“睡觉结束了”，以便我能帮你记录完整的事件周期
-4. remark仅语义确实需要时返回，不超10字
-5. 未命中事件时，reply可友好提示是否需要新增事件，并引导用户补充事件名称等信息，reason需说明原因
-6. 将操作意图（增删改查）填入want_do字段`
-	raw, reply, _, err := s.callDeepSeekRaw(ctx, deviceNo, prompt, s.intentionUpperLimit(ctx, 1, 2), systemMessage1, systemMessage)
-	if err != nil {
-		return "", false, err
-	}
-	intent, ok := parseEventIntentFromReply(raw)
-	if !ok {
-		if s.cfg.DebugLog {
-			glog.Warningf(ctx, "[思考过程] 事件识别结构化解析失败。deviceNo=%s raw=%s", deviceNo, truncateVoiceLogText(raw, 800))
-		}
-		if strings.TrimSpace(reply) == "" {
-			return "我先记下了，你可以再具体说下是哪类喂养事件。", false, nil
-		}
-		return strings.TrimSpace(reply), false, nil
-	}
-
-	intentJSON, _ := json.Marshal(intent)
-	if s.cfg.DebugLog {
-		glog.Infof(ctx, "[思考过程] 事件识别结构化解析成功。deviceNo=%s intent=%s", deviceNo, string(intentJSON))
-	}
-	if intent.Action == "" {
-		intent.Action = "none"
-	} else {
-		if intent.EventName != "" {
-			// 将这次问答记录数据库
-			qa := entity.Qa{
-				Question:        transcript,
-				IntentionId:     1,
-				IntentionAnswer: string(intentJSON),
-				Replay:          intent.Reply,
-			}
-			dao.Qa.Ctx(ctx).Insert(qa)
-		}
-	}
-
-	return s.deelIntent(ctx, deviceNo, events, intent)
-}
-
-// 处理喂养事件intent
-func (s *VoiceService) deelIntent(ctx context.Context, deviceNo string, events []eventInfo, intent eventIntentResult) (string, bool, error) {
-	intent.Remark = normalizeEventRemark(intent.Remark)
-	finish, fallbackReply, handleErr := s.applyEventIntentNew(ctx, deviceNo, events, intent)
-	if handleErr != nil {
-		glog.Warningf(
-			ctx,
-			"[事件落库失败] deviceNo=%s eventName=%s action=%s quantity=%d unit=%s needTime=%v needQuantity=%v err=%v",
-			deviceNo,
-			intent.EventName,
-			intent.Action,
-			intent.Quantity,
-			intent.Unit,
-			intent.NeedTime,
-			intent.NeedQuantity,
-			handleErr,
-		)
-		return "我理解了你的意思，但这次记录失败了，请再试一次。", false, nil
-	}
-	finalReply := strings.TrimSpace(intent.Reply)
-	if finalReply == "" {
-		finalReply = strings.TrimSpace(fallbackReply)
-	}
-	return finalReply, finish, nil
-}
-
-// applyEventIntentNew 根据解析到的事件意图进行数据库操作，记录事件并处理计时/计数逻辑。
-func (s *VoiceService) applyEventIntentNew(ctx context.Context, deviceNo string, events []eventInfo, intent eventIntentResult) (bool, string, error) {
-	if strings.TrimSpace(intent.EventName) == "" {
-		return false, strings.TrimSpace(intent.Reply), nil
-	}
-	ev, ok := s.matchEventByName(events, intent.EventName)
-	if !ok {
-		return false, "我先记下了，你可以再具体说下是哪类喂养事件。", nil
-	}
-	action := strings.ToLower(strings.TrimSpace(intent.Action))
-	want_do := strings.ToLower(strings.TrimSpace(intent.WantDo))
-	now := nowText()
-	remark := strings.TrimSpace(intent.Remark)
-	quantity := intent.Quantity
-	unit := strings.TrimSpace(intent.Unit)
-	// 服务端强规则：计时/计数由 event 表定义，覆盖模型判断。
-	needTime := ev.NeedTime > 0
-	needQuantity := ev.NeedQuantity > 0
-	intent.NeedTime = needTime
-	intent.NeedQuantity = needQuantity
-	switch want_do {
-	case "add":
-		// 直接按照模型解析结果执行新增，无论是 start 还是 end，都新增一条记录，计时事件的 end 由模型控制。
-	case "delete":
-		// 删除最近的一条记录（如果有），不区分 start/end。
-		if _, err := dao.History.Ctx(ctx).
-			Where(dao.History.Columns().DeviceNo, deviceNo).
-			Where(dao.History.Columns().EventId, ev.Id).
-			OrderDesc(dao.History.Columns().Id).
-			Limit(1).
-			Delete(); err != nil {
-			return false, "", err
-		}
-		s.clearPendingQuantity(deviceNo)
-		return true, fmt.Sprintf("已删除最近的一条%s记录。", ev.Name), nil
-	case "update":
-		// 删除最近的一条记录（如果有），不区分 start/end。然后按照 start 逻辑新增一条记录，计时事件的 end 由模型控制。
-		if _, err := dao.History.Ctx(ctx).
-			Where(dao.History.Columns().DeviceNo, deviceNo).
-			Where(dao.History.Columns().EventId, ev.Id).
-			OrderDesc(dao.History.Columns().Id).
-			Limit(1).
-			Delete(); err != nil {
-			return false, "", err
-		}
-	default:
-		// 默认按照模型解析的 action 执行，action 由模型控制 start/end/none。
-	}
-
-	// 如果最近一次历史事件事件类型不相同，且没有结束时间，且非计数类型，则自动补结束时间为当前时间，避免出现重复记录的情况。
-	// 获取最近一次历史事件记录
-	var lastRecord entity.History
-	err := dao.History.Ctx(ctx).
-		Where(dao.History.Columns().DeviceNo, deviceNo).
-		OrderDesc(dao.History.Columns().Id).
-		Limit(1).
-		Scan(&lastRecord)
-	if err == nil {
-		if lastRecord.Id > 0 && lastRecord.EventId != ev.Id && lastRecord.EventId != 3 && (lastRecord.EndTime == "" || lastRecord.EndTime == "0000-00-00 00:00:00") && lastRecord.EventUnit == "" {
-			// 自动补结束时间，并备注是自动补时间，避免覆盖用户输入的备注。
-			if _, updateErr := dao.History.Ctx(ctx).Where(dao.History.Columns().Id, lastRecord.Id).Data(g.Map{
-				dao.History.Columns().EndTime: now,
-				dao.History.Columns().Remark:  appendRemark(lastRecord.Remark, "自动补结束时间"),
-			}).Update(); updateErr != nil {
-				glog.Warningf(ctx, "自动补结束时间失败。deviceNo=%s historyId=%d err=%v", deviceNo, lastRecord.Id, updateErr)
-				// 不返回错误给用户，继续执行后续逻辑。
-			}
-		}
-	}
-
-	switch action {
-	case "start":
-		endTime := ""
-		if !needTime && !needQuantity && quantity <= 0 {
-			quantity = 1
-			if unit == "" {
-				unit = "次"
-			}
-			// 非计时且非计数事件在智能对话中按“瞬时事件”记录。
-			endTime = now
-		}
-		if _, err := dao.History.Ctx(ctx).Data(g.Map{
-			dao.History.Columns().DeviceNo:    deviceNo,
-			dao.History.Columns().EventId:     ev.Id,
-			dao.History.Columns().EventName:   ev.Name,
-			dao.History.Columns().EventUnit:   unit,
-			dao.History.Columns().EventNumber: quantity,
-			dao.History.Columns().StartTime:   now,
-			dao.History.Columns().EndTime:     endTime,
-			dao.History.Columns().Remark:      remark,
-		}).Insert(); err != nil {
-			return false, "", err
-		}
-		s.clearPendingQuantity(deviceNo)
-		if endTime != "" {
-			return true, fmt.Sprintf("已记录%s。", ev.Name), nil
-		}
-		return true, fmt.Sprintf("已记录%s开始。", ev.Name), nil
-	case "none":
-		if !needTime && !needQuantity && quantity <= 0 {
-			quantity = 1
-			if unit == "" {
-				unit = "次"
-			}
-		}
-		if _, err := dao.History.Ctx(ctx).Data(g.Map{
-			dao.History.Columns().DeviceNo:    deviceNo,
-			dao.History.Columns().EventId:     ev.Id,
-			dao.History.Columns().EventName:   ev.Name,
-			dao.History.Columns().EventUnit:   unit,
-			dao.History.Columns().EventNumber: quantity,
-			dao.History.Columns().StartTime:   now,
-			dao.History.Columns().EndTime:     now,
-			dao.History.Columns().Remark:      remark,
-		}).Insert(); err != nil {
-			return false, "", err
-		}
-		return true, fmt.Sprintf("已记录%s。", ev.Name), nil
-	case "end":
-		if needQuantity && !needTime && quantity <= 0 {
-			return false, fmt.Sprintf("已识别到%s结束，请告诉我具体用量。", ev.Name), nil
-		}
-		var openRecord entity.History
-		err := dao.History.Ctx(ctx).
-			Where(dao.History.Columns().DeviceNo, deviceNo).
-			Where(dao.History.Columns().EventId, ev.Id).
-			Where(fmt.Sprintf("(%s='' OR %s IS NULL)", dao.History.Columns().EndTime, dao.History.Columns().EndTime)).
-			OrderDesc(dao.History.Columns().Id).
-			Limit(1).
-			Scan(&openRecord)
-		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				err = nil
-			} else {
-				return false, "", err
-			}
-		}
-		if needTime {
-			if openRecord.Id > 0 {
-				quantity = autoTimedQuantityFromRange(openRecord.StartTime, now)
-			} else {
-				quantity = 0
-			}
-			unit = "秒"
-		} else if !needQuantity {
-			if quantity <= 0 {
-				quantity = 1
-			}
-			if unit == "" {
-				unit = "次"
-			}
-		}
-		if openRecord.Id == 0 {
-			if _, insertErr := dao.History.Ctx(ctx).Data(g.Map{
-				dao.History.Columns().DeviceNo:    deviceNo,
-				dao.History.Columns().EventId:     ev.Id,
-				dao.History.Columns().EventName:   ev.Name,
-				dao.History.Columns().EventUnit:   unit,
-				dao.History.Columns().EventNumber: quantity,
-				dao.History.Columns().StartTime:   now,
-				dao.History.Columns().EndTime:     now,
-				dao.History.Columns().Remark:      remark,
-			}).Insert(); insertErr != nil {
-				return false, "", insertErr
+	parsed := entity.Event{}
+	trimmed := normalizeIntentCandidateText(raw)
+	if unmarshalErr := json.Unmarshal([]byte(trimmed), &parsed); unmarshalErr != nil {
+		start := strings.Index(trimmed, "{")
+		end := strings.LastIndex(trimmed, "}")
+		if start >= 0 && end > start {
+			if nestedErr := json.Unmarshal([]byte(trimmed[start:end+1]), &parsed); nestedErr != nil {
+				return out, fmt.Errorf("解析实体抽取结果失败: %w", unmarshalErr)
 			}
 		} else {
-			updateData := g.Map{
-				dao.History.Columns().EndTime: now,
-				dao.History.Columns().Remark:  appendRemark(openRecord.Remark, remark),
-			}
-			if quantity > 0 {
-				updateData[dao.History.Columns().EventNumber] = quantity
-			}
-			if unit != "" {
-				updateData[dao.History.Columns().EventUnit] = unit
-			}
-			if _, updateErr := dao.History.Ctx(ctx).Where(dao.History.Columns().Id, openRecord.Id).Data(updateData).Update(); updateErr != nil {
-				return false, "", updateErr
-			}
+			return out, fmt.Errorf("解析实体抽取结果失败: %w", unmarshalErr)
 		}
-		if needTime {
-			return true, fmt.Sprintf("已记录%s结束，本次时长%d秒。", ev.Name, quantity), nil
-		}
-		if !needQuantity {
-			return true, fmt.Sprintf("已记录%s一次。", ev.Name), nil
-		}
-		return true, fmt.Sprintf("已记录%s结束，本次%d%s。", ev.Name, quantity, unit), nil
-	default:
-		return false, strings.TrimSpace(intent.Reply), nil
 	}
-}
 
-// listEventInfos 读取事件字典，用于模型提示词与事件匹配。
-func (s *VoiceService) listEventInfos(ctx context.Context) ([]eventInfo, error) {
-	var events []eventInfo
-	err := dao.Event.Ctx(ctx).
-		Fields(dao.Event.Columns().Id, dao.Event.Columns().Name, dao.Event.Columns().NeedTime, dao.Event.Columns().NeedQuantity).
-		OrderAsc(dao.Event.Columns().Id).
-		Scan(&events)
-	return events, err
+	name := strings.TrimSpace(parsed.Name)
+	if name == "" {
+		name = strings.TrimSpace(parsed.Name)
+	}
+	if name == "" {
+		return out, errors.New("未抽取到事件名称")
+	}
+
+	out.Name = name
+	out.ExtraNames = parsed.ExtraNames
+	// 获取原来的事件的额外名称
+	oldEvent := entity.Event{}
+	dao.Event.Ctx(ctx).Where("name", name).Scan(&oldEvent)
+	if oldEvent.Id > 0 {
+		out.NeedQuantity = oldEvent.NeedQuantity
+		if out.ExtraNames == "" {
+			// 遇到重复的事件名
+			return out, errors.New("事件名称已存在")
+		} else {
+			// 将新的额外名称添加到原来的额外名称中	,且避免重复
+			extraNames := strings.Split(oldEvent.ExtraNames, ",")
+			for _, extraName := range extraNames {
+				if extraName == out.ExtraNames {
+					return out, errors.New("事件名称已存在")
+				}
+			}
+
+			if len(oldEvent.ExtraNames) > 0 {
+				out.ExtraNames = strings.Join(extraNames, ",") + "," + out.ExtraNames
+			}
+
+			// 更新原来的事件表中的额外名称
+			dao.Event.Ctx(ctx).Where("name", name).
+				Update(g.Map{"extra_names": out.ExtraNames})
+		}
+	} else {
+		out.NeedQuantity = parsed.NeedQuantity
+		// 将抽取到的事件新增到事件表中。
+		dao.Event.Ctx(ctx).Insert(&out)
+	}
+
+	return out, nil
 }
 
 func (s *VoiceService) listIntentions(ctx context.Context) ([]intentionInfo, error) {
@@ -1444,55 +1434,6 @@ func (s *VoiceService) matchEventByName(events []eventInfo, eventName string) (e
 	return eventInfo{}, false
 }
 
-// eventNeedsQuantity 判断某事件是否通常需要数量信息。
-func eventNeedsQuantity(ev eventInfo) bool {
-	if ev.NeedTime > 0 {
-		return false
-	}
-	if ev.NeedQuantity > 0 {
-		return true
-	}
-	name := strings.TrimSpace(ev.Name)
-	if name == "" {
-		return false
-	}
-	keys := []string{"奶", "水", "药", "喂", "辅食", "ml", "毫升", "次", "片"}
-	for _, key := range keys {
-		if strings.Contains(name, key) {
-			return true
-		}
-	}
-	return false
-}
-
-// extractFirstInteger 从文本中提取第一个阿拉伯数字。
-func extractFirstInteger(text string) (int, bool) {
-	runes := []rune(text)
-	start := -1
-	for i, r := range runes {
-		if r >= '0' && r <= '9' {
-			if start < 0 {
-				start = i
-			}
-			continue
-		}
-		if start >= 0 {
-			v, err := strconv.Atoi(string(runes[start:i]))
-			if err == nil {
-				return v, true
-			}
-			start = -1
-		}
-	}
-	if start >= 0 {
-		v, err := strconv.Atoi(string(runes[start:]))
-		if err == nil {
-			return v, true
-		}
-	}
-	return 0, false
-}
-
 func (s *VoiceService) setPendingQuantity(deviceNo string, state pendingQuantityState) {
 	// 记录“该设备下一轮需要补充数量”的状态。
 	// 这个状态是内存态，服务重启后会丢失（符合当前设计预期）。
@@ -1526,53 +1467,6 @@ func (s *VoiceService) hasPendingQuantity(deviceNo string) bool {
 	return ok
 }
 
-// tryHandlePendingQuantity 处理“待补量词”状态：
-// - 若本轮提取到数字则回填到 history.event_number
-// - 否则继续追问
-func (s *VoiceService) tryHandlePendingQuantity(ctx context.Context, deviceNo, transcript string) (string, bool) {
-	// 1) 先读取该设备是否存在“待补量词”上下文。
-	//    只有在上一轮 end 动作缺少数量时，才会写入这份状态。
-	state, ok := s.getPendingQuantity(deviceNo)
-	if !ok {
-		// 没有待补状态：说明当前输入不是“补数量”流程，交给后续正常对话处理。
-		return "", false
-	}
-
-	// 2) 尝试从用户当前话术中提取第一个整数。
-	//    例如“120 毫升”“喝了 90”都会提取到数量。
-	qty, hasQty := extractFirstInteger(transcript)
-	if !hasQty {
-		// 提取失败：继续停留在待补状态，并引导用户明确给出数字。
-		return "请再告诉我具体数量（例如 120 毫升）。", true
-	}
-
-	// 3) 提取成功后，回填到对应 history 记录：
-	//    - event_number 写入数量
-	//    - remark 记录本轮用户原话，便于后续追溯
-	remark := strings.TrimSpace(transcript)
-	_, err := dao.History.Ctx(ctx).
-		Where(dao.History.Columns().Id, state.HistoryID).
-		Data(g.Map{
-			dao.History.Columns().EventNumber: qty,
-			dao.History.Columns().Remark:      remark,
-		}).
-		Update()
-	if err != nil {
-		// 数据库更新失败：返回可读错误提示，且保持待补状态不清除，便于用户重试。
-		glog.Warningf(ctx, "update pending quantity failed: %v", err)
-		return "我记录数量时出错了，请稍后重试。", true
-	}
-
-	// 4) 回填成功后清理待补状态，避免后续正常对话被误判为补数量。
-	s.clearPendingQuantity(deviceNo)
-
-	// 5) 组织确认话术：若已知事件名，则带上事件名提升可读性。
-	if state.EventName != "" {
-		return fmt.Sprintf("已补充%s用量：%d。", state.EventName, qty), true
-	}
-	return fmt.Sprintf("已补充用量：%d。", qty), true
-}
-
 // appendRemark 合并备注内容，避免覆盖已有备注。
 func appendRemark(existing, extra string) string {
 	existing = strings.TrimSpace(existing)
@@ -1584,166 +1478,6 @@ func appendRemark(existing, extra string) string {
 		return existing
 	}
 	return existing + "；" + extra
-}
-
-// applyEventIntent 将结构化意图映射为 history 表写入/更新。
-// 关键规则：
-// - start：新增开始记录
-// - end：优先结束未完成记录；若不存在则补“开始=结束”的记录
-// - 缺数量且事件需要数量：标记待补量词
-func (s *VoiceService) applyEventIntent(ctx context.Context, deviceNo string, _ string, events []eventInfo, intent eventIntentResult) (bool, error) {
-	// A) 无事件名或明确 none：说明本轮并非可落库事件，直接忽略。
-	if strings.TrimSpace(intent.EventName) == "" || intent.Action == "none" {
-		return false, nil
-	}
-
-	// B) 将模型返回的事件名映射到数据库事件字典。
-	//    匹配失败时不报错，避免因模型措辞偏差中断主对话链路。
-	ev, ok := s.matchEventByName(events, intent.EventName)
-	if !ok {
-		return false, nil
-	}
-
-	// C) 统一准备本次落库公共字段。
-	now := nowText()
-	quantity := intent.Quantity
-	remark := strings.TrimSpace(intent.Remark)
-	eventUnit := strings.TrimSpace(intent.Unit)
-	if ev.NeedTime > 0 {
-		eventUnit = "秒"
-	} else if ev.NeedQuantity <= 0 && eventUnit == "" {
-		eventUnit = "次"
-	}
-
-	switch intent.Action {
-	case "start":
-		// D) 开始动作：直接新增一条未结束记录。
-		//    end_time 置空，等待后续 end 动作闭环。
-		_, err := dao.History.Ctx(ctx).Data(g.Map{
-			dao.History.Columns().DeviceNo:    deviceNo,
-			dao.History.Columns().EventId:     ev.Id,
-			dao.History.Columns().EventName:   ev.Name,
-			dao.History.Columns().EventUnit:   eventUnit,
-			dao.History.Columns().EventNumber: quantity,
-			dao.History.Columns().StartTime:   now,
-			dao.History.Columns().EndTime:     "",
-			dao.History.Columns().Remark:      remark,
-		}).Insert()
-		if err == nil {
-			// 成功开始后清理历史遗留的“待补量词”状态，避免串话。
-			s.clearPendingQuantity(deviceNo)
-			if s.cfg.DebugLog {
-				glog.Infof(ctx, "[事件落库] start 写入成功。deviceNo=%s eventId=%d eventName=%s unit=%s quantity=%d startTime=%s endTime=%s remark=%q", deviceNo, ev.Id, ev.Name, eventUnit, quantity, now, "", remark)
-			}
-		} else {
-			if s.cfg.DebugLog {
-				glog.Warningf(ctx, "[事件落库] start 写入失败。deviceNo=%s eventId=%d eventName=%s err=%v", deviceNo, ev.Id, ev.Name, err)
-			}
-		}
-		if err != nil {
-			return false, err
-		}
-		return true, nil
-
-	case "end":
-		// E) 结束动作：优先查找该设备该事件的“最近未结束记录”。
-		//    命中则更新该记录；未命中则按业务规则补记一条“开始=结束”。
-		var openRecord entity.History
-		err := dao.History.Ctx(ctx).
-			Where(dao.History.Columns().DeviceNo, deviceNo).
-			Where(dao.History.Columns().EventId, ev.Id).
-			Where(fmt.Sprintf("(%s='' OR %s IS NULL)", dao.History.Columns().EndTime, dao.History.Columns().EndTime)).
-			OrderDesc(dao.History.Columns().Id).
-			Limit(1).
-			Scan(&openRecord)
-		if err != nil {
-			return false, err
-		}
-
-		// F) 判断是否需要追问数量：
-		//    - 当前 quantity<=0（模型未抽到）
-		//    - 且模型显式标记需要数量，或本地规则判断该事件通常带数量
-		needAskQuantity := quantity <= 0 && (intent.NeedQuantity || eventNeedsQuantity(ev))
-		if ev.NeedTime > 0 {
-			needAskQuantity = false
-		}
-
-		if openRecord.Id == 0 {
-			// G) 找不到开始记录：按需求“直接补记开始=结束时间”。
-			//    这样可以保证事件链条完整，不因漏说“开始”导致数据缺失。
-			result, insertErr := dao.History.Ctx(ctx).Data(g.Map{
-				dao.History.Columns().DeviceNo:    deviceNo,
-				dao.History.Columns().EventId:     ev.Id,
-				dao.History.Columns().EventName:   ev.Name,
-				dao.History.Columns().EventUnit:   eventUnit,
-				dao.History.Columns().EventNumber: quantity,
-				dao.History.Columns().StartTime:   now,
-				dao.History.Columns().EndTime:     now,
-				dao.History.Columns().Remark:      remark,
-			}).Insert()
-			if insertErr != nil {
-				if s.cfg.DebugLog {
-					glog.Warningf(ctx, "[事件落库] end 补记写入失败（无未结束记录）。deviceNo=%s eventId=%d eventName=%s err=%v", deviceNo, ev.Id, ev.Name, insertErr)
-				}
-				return false, insertErr
-			}
-			if s.cfg.DebugLog {
-				glog.Infof(ctx, "[事件落库] end 补记写入成功（无未结束记录）。deviceNo=%s eventId=%d eventName=%s unit=%s quantity=%d startTime=%s endTime=%s remark=%q", deviceNo, ev.Id, ev.Name, eventUnit, quantity, now, now, remark)
-			}
-			if needAskQuantity {
-				// H) 若该事件应有数量但当前没有，则进入待补量词状态。
-				//    下一轮用户回答数字后，通过 history_id 回填 event_number。
-				if historyID, idErr := result.LastInsertId(); idErr == nil {
-					s.setPendingQuantity(deviceNo, pendingQuantityState{HistoryID: historyID, EventName: ev.Name})
-					if s.cfg.DebugLog {
-						glog.Infof(ctx, "[事件落库] 标记待补数量。deviceNo=%s historyId=%d eventName=%s", deviceNo, historyID, ev.Name)
-					}
-				}
-			}
-			return !needAskQuantity, nil
-		}
-
-		// I) 命中未结束记录：将其闭环为已结束。
-		//    remark 使用“原备注 + 本次备注”合并，避免信息被覆盖。
-		updateData := g.Map{
-			dao.History.Columns().EndTime: now,
-			dao.History.Columns().Remark:  appendRemark(openRecord.Remark, remark),
-		}
-		if ev.NeedTime > 0 {
-			quantity = autoTimedQuantityFromRange(openRecord.StartTime, now)
-			updateData[dao.History.Columns().EventUnit] = "秒"
-		}
-		if quantity > 0 {
-			// 仅在提取到有效数量时才覆盖 event_number。
-			updateData[dao.History.Columns().EventNumber] = quantity
-		}
-		if _, updateErr := dao.History.Ctx(ctx).Where(dao.History.Columns().Id, openRecord.Id).Data(updateData).Update(); updateErr != nil {
-			if s.cfg.DebugLog {
-				glog.Warningf(ctx, "[事件落库] end 更新失败。deviceNo=%s historyId=%d eventId=%d eventName=%s err=%v", deviceNo, openRecord.Id, ev.Id, ev.Name, updateErr)
-			}
-			return false, updateErr
-		}
-		if s.cfg.DebugLog {
-			glog.Infof(ctx, "[事件落库] end 更新成功。deviceNo=%s historyId=%d eventId=%d eventName=%s quantity=%d endTime=%s mergedRemark=%q", deviceNo, openRecord.Id, ev.Id, ev.Name, quantity, now, updateData[dao.History.Columns().Remark])
-		}
-		if needAskQuantity {
-			// J) 记录闭环完成但数量缺失，继续追问补量。
-			s.setPendingQuantity(deviceNo, pendingQuantityState{HistoryID: openRecord.Id, EventName: ev.Name})
-			if s.cfg.DebugLog {
-				glog.Infof(ctx, "[事件落库] 标记待补数量。deviceNo=%s historyId=%d eventName=%s", deviceNo, openRecord.Id, ev.Name)
-			}
-		} else {
-			// K) 数量已完整或不需要数量，清理待补状态。
-			s.clearPendingQuantity(deviceNo)
-			if s.cfg.DebugLog {
-				glog.Infof(ctx, "[事件落库] 数量完整，无需待补。deviceNo=%s historyId=%d eventName=%s", deviceNo, openRecord.Id, ev.Name)
-			}
-		}
-		return !needAskQuantity, nil
-	}
-
-	// L) 未识别动作类型（理论不应到达），安全返回。
-	return false, nil
 }
 
 func autoTimedQuantityFromRange(startTime, endTime string) int {
@@ -1886,25 +1620,17 @@ func suggestDurationMinutes(startStr, endStr string) int {
 }
 
 // loadEventNameAndUnitByID 事件表 id -> 名称、单位（成长建议 history.type 用名称；amount 需带单位）。
-func loadEventNameAndUnitByID(ctx context.Context) (names map[int64]string, units map[int64]string) {
+func loadEventNameAndUnitByID(ctx context.Context) (names map[int64]string) {
 	names = make(map[int64]string)
-	units = make(map[int64]string)
 	var events []entity.Event
-	err := dao.Event.Ctx(ctx).Fields(dao.Event.Columns().Id, dao.Event.Columns().Name, dao.Event.Columns().NeedTime, dao.Event.Columns().NeedQuantity).Scan(&events)
+	err := dao.Event.Ctx(ctx).Fields(dao.Event.Columns().Id, dao.Event.Columns().Name, dao.Event.Columns().NeedQuantity).Scan(&events)
 	if err != nil || len(events) == 0 {
-		return names, units
+		return names
 	}
 	for _, e := range events {
 		names[e.Id] = strings.TrimSpace(e.Name)
-		if e.NeedTime > 0 {
-			units[e.Id] = "秒"
-		} else if e.NeedQuantity > 0 {
-			units[e.Id] = ""
-		} else {
-			units[e.Id] = "次"
-		}
 	}
-	return names, units
+	return names
 }
 
 // growthSuggestHistoryCutoff 成长建议只取最近 48 小时内的记录（滚动「两天」）。
@@ -1928,7 +1654,7 @@ func (s *VoiceService) buildGrowthSuggestHistory(ctx context.Context, deviceNo s
 	if err != nil {
 		return nil, err
 	}
-	eventNames, eventUnits := loadEventNameAndUnitByID(ctx)
+	eventNames := loadEventNameAndUnitByID(ctx)
 	out := make([]map[string]interface{}, 0, len(rows))
 	for _, h := range rows {
 		typeName := eventNames[h.EventId]
@@ -1937,10 +1663,6 @@ func (s *VoiceService) buildGrowthSuggestHistory(ctx context.Context, deviceNo s
 		}
 		if typeName == "" {
 			typeName = "未知事件"
-		}
-		unit := strings.TrimSpace(h.EventUnit)
-		if unit == "" {
-			unit = eventUnits[h.EventId]
 		}
 		start := strings.TrimSpace(h.StartTime)
 		end := strings.TrimSpace(h.EndTime)
@@ -1954,7 +1676,6 @@ func (s *VoiceService) buildGrowthSuggestHistory(ctx context.Context, deviceNo s
 			"start_time":   start,
 			"end_time":     end,
 			"amount_value": amt,
-			"amount_unit":  unit,
 			"note":         note,
 		}
 		if dm := suggestDurationMinutes(start, end); dm > 0 {
@@ -1989,7 +1710,6 @@ func (s *VoiceService) buildRecentHistory(ctx context.Context, deviceNo string, 
 			"start_time":   strings.TrimSpace(h.StartTime),
 			"end_time":     strings.TrimSpace(h.EndTime),
 			"event_number": h.EventNumber,
-			"event_unit":   strings.TrimSpace(h.EventUnit),
 			"remark":       strings.TrimSpace(h.Remark),
 		})
 	}
@@ -2096,59 +1816,6 @@ func (s *VoiceService) callDeepSeekGrowthSuggestion(ctx context.Context, deviceN
 		glog.Warningf(ctx, "insert suggest failed: %v", insertErr)
 	}
 
-	return reply, nil
-}
-
-// callDeepSeekSimple 以简单文本问答方式调用 DeepSeek（非流式）。
-func (s *VoiceService) callDeepSeekSimple(ctx context.Context, deviceNo, prompt string) (string, error) {
-	if s.cfg.DeepSeek.Endpoint == "" {
-		return "", StageError{Stage: "chat", Detail: "DeepSeek endpoint 未配置"}
-	}
-	historyLimit := s.intentionUpperLimit(ctx, 3, 5)
-	messages := s.buildChatMessagesWithLimit(deviceNo, prompt, historyLimit)
-	payload := map[string]interface{}{
-		"model":    s.cfg.DeepSeek.Model,
-		"messages": messages,
-		"stream":   false,
-	}
-	bodyBytes, _ := json.Marshal(payload)
-	if s.cfg.DebugLog {
-		glog.Infof(ctx, "[大模型请求] 发送 DeepSeek 请求（简单问答）。deviceNo=%s 请求体=%s", deviceNo, string(bodyBytes))
-	}
-	cctx, cancel := context.WithTimeout(ctx, time.Duration(s.cfg.DeepSeek.TimeoutSeconds)*time.Second)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(cctx, http.MethodPost, s.cfg.DeepSeek.Endpoint, bytes.NewReader(bodyBytes))
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if s.cfg.DeepSeek.APIKey != "" {
-		req.Header.Set("Authorization", "Bearer "+s.cfg.DeepSeek.APIKey)
-	}
-	resp, err := s.httpClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-	if resp.StatusCode >= 300 {
-		return "", fmt.Errorf("status %d: %s", resp.StatusCode, string(body))
-	}
-	if s.cfg.DebugLog {
-		glog.Infof(ctx, "[大模型响应] 收到 DeepSeek 原始响应（简单问答）。deviceNo=%s 响应体=%s", deviceNo, string(body))
-	}
-	rawContent, replyNormalized, _, err := extractChatReplyRaw(body)
-	if err != nil {
-		return "", err
-	}
-	reply := pickGrowthSuggestionDisplayText(rawContent, replyNormalized)
-	if s.cfg.DebugLog {
-		glog.Infof(ctx, "[大模型解析] 解析回复完成（简单问答）。deviceNo=%s 回复文本=%s", deviceNo, reply)
-	}
 	return reply, nil
 }
 

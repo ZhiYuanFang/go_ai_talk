@@ -57,10 +57,9 @@ var (
 	eventCountByName = func(ctx context.Context, name string) (int, error) {
 		return dao.Event.Ctx(ctx).Where(dao.Event.Columns().Name, name).Count()
 	}
-	eventInsert = func(ctx context.Context, name string, needTime, needQuantity int) error {
+	eventInsert = func(ctx context.Context, name string, needQuantity int) error {
 		_, err := dao.Event.Ctx(ctx).Data(g.Map{
 			dao.Event.Columns().Name:         name,
-			dao.Event.Columns().NeedTime:     needTime,
 			dao.Event.Columns().NeedQuantity: needQuantity,
 		}).Insert()
 		return err
@@ -74,12 +73,11 @@ var (
 			Where(fmt.Sprintf("%s<>?", dao.Event.Columns().Id), id).
 			Count()
 	}
-	eventUpdateByID = func(ctx context.Context, id int64, name string, needTime, needQuantity int) error {
+	eventUpdateByID = func(ctx context.Context, id int64, name string, needQuantity int) error {
 		_, err := dao.Event.Ctx(ctx).
 			Where(dao.Event.Columns().Id, id).
 			Data(g.Map{
 				dao.Event.Columns().Name:         name,
-				dao.Event.Columns().NeedTime:     needTime,
 				dao.Event.Columns().NeedQuantity: needQuantity,
 			}).
 			Update()
@@ -88,7 +86,7 @@ var (
 	eventListAll = func(ctx context.Context) ([]entity.Event, error) {
 		var rows []entity.Event
 		err := dao.Event.Ctx(ctx).
-			Fields(dao.Event.Columns().Id, dao.Event.Columns().Name, dao.Event.Columns().NeedTime, dao.Event.Columns().NeedQuantity).
+			Fields(dao.Event.Columns().Id, dao.Event.Columns().Name, dao.Event.Columns().NeedQuantity).
 			OrderAsc(dao.Event.Columns().Id).
 			Scan(&rows)
 		return rows, err
@@ -239,13 +237,10 @@ func isRetryableDBErr(err error) bool {
 	return false
 }
 
-func (s *sDeviceAdmin) AddEvent(ctx context.Context, name string, needTime, needQuantity int) error {
+func (s *sDeviceAdmin) AddEvent(ctx context.Context, name string, needQuantity int) error {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return errors.New("事件名称不能为空")
-	}
-	if needTime > 0 {
-		needTime = 1
 	}
 	if needQuantity > 0 {
 		needQuantity = 1
@@ -259,7 +254,7 @@ func (s *sDeviceAdmin) AddEvent(ctx context.Context, name string, needTime, need
 		return ErrEventExists
 	}
 
-	err = eventInsert(ctx, name, needTime, needQuantity)
+	err = eventInsert(ctx, name, needQuantity)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "duplicate") || strings.Contains(strings.ToLower(err.Error()), "unique") {
 			return ErrEventExists
@@ -277,16 +272,13 @@ func (s *sDeviceAdmin) ListEvents(ctx context.Context) ([]DeviceEventItem, error
 	return rows, nil
 }
 
-func (s *sDeviceAdmin) UpdateEvent(ctx context.Context, id int64, name string, needTime, needQuantity int) error {
+func (s *sDeviceAdmin) UpdateEvent(ctx context.Context, id int64, name string, needQuantity int) error {
 	if id <= 0 {
 		return errors.New("事件ID无效")
 	}
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return errors.New("事件名称不能为空")
-	}
-	if needTime > 0 {
-		needTime = 1
 	}
 	if needQuantity > 0 {
 		needQuantity = 1
@@ -308,7 +300,7 @@ func (s *sDeviceAdmin) UpdateEvent(ctx context.Context, id int64, name string, n
 		return ErrEventExists
 	}
 
-	err = eventUpdateByID(ctx, id, name, needTime, needQuantity)
+	err = eventUpdateByID(ctx, id, name, needQuantity)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "duplicate") || strings.Contains(strings.ToLower(err.Error()), "unique") {
 			return ErrEventExists

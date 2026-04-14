@@ -25,7 +25,6 @@ type HistoryColumns struct {
 	EventId     string // 事件id
 	EventName   string // 事件名
 	EventNumber string // 奶量等
-	EventUnit   string // 事件数量对应的单位
 	StartTime   string // 开始时间戳
 	EndTime     string // 结束时间戳
 	Remark      string // 备注
@@ -38,7 +37,6 @@ var historyColumns = HistoryColumns{
 	EventId:     "event_id",
 	EventName:   "event_name",
 	EventNumber: "event_number",
-	EventUnit:   "event_unit",
 	StartTime:   "start_time",
 	EndTime:     "end_time",
 	Remark:      "remark",

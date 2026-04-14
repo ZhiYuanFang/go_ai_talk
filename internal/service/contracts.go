@@ -49,9 +49,9 @@ type DeviceAdminContract interface {
 	EnsureRegistered(ctx context.Context, deviceNo string) error
 	UpdateLastTalk(ctx context.Context, deviceNo, ask, answer string) error
 	List(ctx context.Context) ([]entity.User, error)
-	AddEvent(ctx context.Context, name string, needTime, needQuantity int) error
+	AddEvent(ctx context.Context, name string, needQuantity int) error
 	ListEvents(ctx context.Context) ([]entity.Event, error)
-	UpdateEvent(ctx context.Context, id int64, name string, needTime, needQuantity int) error
+	UpdateEvent(ctx context.Context, id int64, name string, needQuantity int) error
 	ListIntentions(ctx context.Context) ([]entity.Intention, error)
 	UpdateIntentionUpperLimit(ctx context.Context, id int64, upperLimit int) error
 }

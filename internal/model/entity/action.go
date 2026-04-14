@@ -4,10 +4,9 @@
 
 package entity
 
-// Qa is the golang structure for table qa.
-type Qa struct {
-	Id       int64  `json:"id"       ` //
-	Question string `json:"question" ` // 问题
-	Replay   string `json:"replay"   ` // 回复
-	Attack   int    `json:"attack"   ` // 命中次数
+// Action is the golang structure for table action.
+type Action struct {
+	Id         int64  `json:"id"         ` //
+	Name       string `json:"name"       ` // 动作名
+	TargetType string `json:"targetType" ` // 目标类型
 }

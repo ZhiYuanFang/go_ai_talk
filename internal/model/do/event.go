@@ -13,6 +13,6 @@ type Event struct {
 	g.Meta       `orm:"table:event, do:true"`
 	Id           interface{} //
 	Name         interface{} // 吃奶/睡觉/尿/屎等
-	NeedTime     interface{} // 是否需要计时1要
 	NeedQuantity interface{} // 是否需要计数1要
+	ExtraNames   interface{} // name的其它表达方式
 }

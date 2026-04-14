@@ -20,22 +20,18 @@ type QaDao struct {
 
 // QaColumns defines and stores column names for table qa.
 type QaColumns struct {
-	Id              string //
-	Question        string // 问题
-	IntentionId     string // 意图id
-	IntentionAnswer string // 意图下的回答
-	Replay          string // 回复
-	Attack          string // 命中次数
+	Id       string //
+	Question string // 问题
+	Replay   string // 回复
+	Attack   string // 命中次数
 }
 
 // qaColumns holds the columns for table qa.
 var qaColumns = QaColumns{
-	Id:              "id",
-	Question:        "question",
-	IntentionId:     "intention_id",
-	IntentionAnswer: "intention_answer",
-	Replay:          "replay",
-	Attack:          "attack",
+	Id:       "id",
+	Question: "question",
+	Replay:   "replay",
+	Attack:   "attack",
 }
 
 // NewQaDao creates and returns a new DAO object for table data access.

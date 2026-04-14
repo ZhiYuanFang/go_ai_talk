@@ -1,7 +1,10 @@
 package v1
 
-import "github.com/gogf/gf/v2/frame/g"
-import "hello/internal/model/entity"
+import (
+	"hello/internal/model/entity"
+
+	"github.com/gogf/gf/v2/frame/g"
+)
 
 // 管理端接口均需在 Header 携带 X-Admin-Password（口令不在 JSON 体内）。
 
@@ -41,7 +44,6 @@ type DeviceAdminEventListRes struct {
 type DeviceAdminEventAddReq struct {
 	g.Meta       `path:"/device/admin/api/event/add" method:"post" tags:"admin" summary:"新增事件"`
 	Name         string `json:"name" dc:"事件名称"`
-	NeedTime     int    `json:"needTime" dc:"是否需要计时(0否1是)"`
 	NeedQuantity int    `json:"needQuantity" dc:"是否需要计数(0否1是)"`
 }
 
@@ -53,7 +55,6 @@ type DeviceAdminEventUpdateReq struct {
 	g.Meta       `path:"/device/admin/api/event/update" method:"post" tags:"admin" summary:"更新事件"`
 	Id           int64  `json:"id" dc:"事件ID"`
 	Name         string `json:"name" dc:"新名称"`
-	NeedTime     int    `json:"needTime" dc:"是否需要计时(0否1是)"`
 	NeedQuantity int    `json:"needQuantity" dc:"是否需要计数(0否1是)"`
 }
 

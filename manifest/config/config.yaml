@@ -46,7 +46,7 @@ voiceChat:
     endpoint: "https://api.deepseek.com/v1/chat/completions"
     apiKey: "sk-e5685321acda4a3f8cb15abc5345c130"  
     model: "deepseek-chat"
-    systemPrompt: "回应的replay内容控制在20字以内，且不包含敏感词汇。"
+    systemPrompt: ""
     stream: true
     minTextLength: 2
     timeoutSeconds: 20

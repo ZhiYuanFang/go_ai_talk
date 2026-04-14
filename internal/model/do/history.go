@@ -16,7 +16,6 @@ type History struct {
 	EventId     interface{} // 事件id
 	EventName   interface{} // 事件名
 	EventNumber interface{} // 奶量等
-	EventUnit   interface{} // 事件数量对应的单位
 	StartTime   interface{} // 开始时间戳
 	EndTime     interface{} // 结束时间戳
 	Remark      interface{} // 备注
