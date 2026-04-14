@@ -45,6 +45,22 @@
         .btn-danger{background:#ff6b6b;color:#fff;border-color:#ff6b6b}
         .btn-danger:hover{background:#f25555}
         .table-wrap{overflow-x:auto;margin-top:10px}
+        /* 约 20 条数据高度，超出纵向滚动（表头固定） */
+        .scroll-max-20{
+            max-height:min(72vh,calc(20 * 2.85rem));
+            overflow-y:auto;
+            overflow-x:auto;
+            border:1px solid var(--accent-soft);
+            border-radius:10px;
+        }
+        .scroll-max-20 table{width:max-content;min-width:100%;border-collapse:collapse}
+        .scroll-max-20 thead th{
+            position:sticky;
+            top:0;
+            z-index:2;
+            background:var(--card);
+            box-shadow:0 1px 0 #eee;
+        }
         table{width:max-content;min-width:100%;border-collapse:collapse}
         th,td{border-bottom:1px solid #eee;padding:10px;text-align:left;font-size:13px;white-space:nowrap;vertical-align:middle}
         .suggest-item{display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--accent-soft);border-radius:10px;margin-bottom:10px;background:#fff}
@@ -110,7 +126,7 @@
                 <button id="addHistoryBtn" class="btn-primary" type="button">添加</button>
             </div>
         </div>
-        <div class="table-wrap">
+        <div class="table-wrap scroll-max-20">
             <table>
                 <thead>
                     <tr>
@@ -132,7 +148,7 @@
         <div class="section-head">
             <h3>历史成长建议</h3>
         </div>
-        <div id="suggestWrap"></div>
+        <div id="suggestWrap" class="scroll-max-20"></div>
     </div>
     <div id="historyModal" class="modal">
         <div class="modal-card">

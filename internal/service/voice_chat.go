@@ -1015,7 +1015,7 @@ func (s *VoiceService) handleActionRecord(ctx context.Context, deviceNo string, 
 	nowTime := time.Now().Format("2006-01-02 15:04:05")
 	switch action.TargetType {
 	case "start": //开始记录计时动作
-		event, ok := s.extractEventFromText(ctx, normalizedTranscript, events)
+		event, tartgetName, ok := s.extractEventFromText(ctx, normalizedTranscript, events)
 		if !ok { // 没有命中事件名，交给deepseek分析文案中的事件名
 			// 交给deepseek分析文案中的事件名,并落库后，再走命中事件流程
 			event, err = s.callDeepSeekEntityExtract(ctx, deviceNo, normalizedTranscript)
@@ -1029,18 +1029,18 @@ func (s *VoiceService) handleActionRecord(ctx context.Context, deviceNo string, 
 		_, err = dao.History.Ctx(ctx).Insert(entity.History{
 			DeviceNo:  deviceNo,
 			EventId:   event.Id,
-			EventName: event.Name,
+			EventName: tartgetName,
 			StartTime: nowTime,
 			Remark:    normalizedTranscript,
 		})
 		if err != nil {
 			return "记录失败,请重试", false, true, err
 		}
-		finalReply = fmt.Sprintf("好的，已记录%s开始", event.Name)
+		finalReply = fmt.Sprintf("好的，已记录%s开始", tartgetName)
 		finishTalk = true
 		return finalReply, false, finishTalk, nil
 	case "end": //结束记录计时动作，自动补结束时间
-		event, ok := s.extractEventFromText(ctx, normalizedTranscript, events)
+		event, tartgetName, ok := s.extractEventFromText(ctx, normalizedTranscript, events)
 		if !ok { // 没有命中事件名，交给deepseek分析文案中的事件名
 			// 交给deepseek分析文案中的事件名,并落库后，再走命中事件流程
 			event, err = s.callDeepSeekEntityExtract(ctx, deviceNo, normalizedTranscript)
@@ -1061,7 +1061,7 @@ func (s *VoiceService) handleActionRecord(ctx context.Context, deviceNo string, 
 			if err != nil {
 				return "更新结束时间失败,请重试", false, true, err
 			}
-			finalReply = fmt.Sprintf("好的，已记录%s结束", event.Name)
+			finalReply = fmt.Sprintf("好的，已记录%s结束", tartgetName)
 			finishTalk = true
 			return finalReply, false, finishTalk, nil
 		} else {
@@ -1071,7 +1071,7 @@ func (s *VoiceService) handleActionRecord(ctx context.Context, deviceNo string, 
 			_, err = dao.History.Ctx(ctx).Insert(entity.History{
 				DeviceNo:  deviceNo,
 				EventId:   event.Id,
-				EventName: event.Name,
+				EventName: tartgetName,
 				StartTime: nowTime,
 				EndTime:   nowTime,
 				Remark:    normalizedTranscript,
@@ -1083,17 +1083,17 @@ func (s *VoiceService) handleActionRecord(ctx context.Context, deviceNo string, 
 			if lastEvent.EndTime == "" {
 				dao.History.Ctx(ctx).Where("device_no", deviceNo).Where("event_id", lastEvent.EventId).Update(g.Map{"end_time": nowTime})
 				if err != nil {
-					return fmt.Sprintf("好的，已记录%s结束，%s结束失败,请手动结束", event.Name, lastEvent.EventName), false, true, err
+					return fmt.Sprintf("好的，已记录%s结束，%s结束失败,请手动结束", tartgetName, lastEvent.EventName), false, true, err
 				}
-				finalReply = fmt.Sprintf("好的，已记录%s结束，%s自动结束", event.Name, lastEvent.EventName)
+				finalReply = fmt.Sprintf("好的，已记录%s结束，%s自动结束", tartgetName, lastEvent.EventName)
 			} else {
-				finalReply = fmt.Sprintf("好的，已记录%s结束", event.Name)
+				finalReply = fmt.Sprintf("好的，已记录%s结束", tartgetName)
 			}
 			finishTalk = true
 			return finalReply, false, finishTalk, nil
 		}
 	case "one": //记录一次性动作，记录一次
-		event, ok := s.extractEventFromText(ctx, normalizedTranscript, events)
+		event, tartgetName, ok := s.extractEventFromText(ctx, normalizedTranscript, events)
 		if !ok { // 没有命中事件名，交给deepseek分析文案中的事件名
 			// 交给deepseek分析文案中的事件名,并落库后，再走命中事件流程
 			event, err = s.callDeepSeekEntityExtract(ctx, deviceNo, normalizedTranscript)
@@ -1107,14 +1107,14 @@ func (s *VoiceService) handleActionRecord(ctx context.Context, deviceNo string, 
 		if event.NeedQuantity > 0 {
 			quantity, ok := extractNumberFromText(normalizedTranscript)
 			if !ok || quantity <= 0 {
-				finalReply = "请问 " + action.Name + " " + event.Name + " 的数量是" + quantityKeyword
+				finalReply = "请问 " + action.Name + " " + tartgetName + " 的数量是" + quantityKeyword
 				finishTalk = false
 				return finalReply, false, finishTalk, nil
 			}
 			_, err = dao.History.Ctx(ctx).Insert(entity.History{
 				DeviceNo:    deviceNo,
 				EventId:     event.Id,
-				EventName:   event.Name,
+				EventName:   tartgetName,
 				EventNumber: int64(quantity),
 				StartTime:   nowTime,
 				EndTime:     nowTime,
@@ -1123,14 +1123,14 @@ func (s *VoiceService) handleActionRecord(ctx context.Context, deviceNo string, 
 			if err != nil {
 				return "记录事件失败,请重试", false, true, err
 			}
-			finalReply = fmt.Sprintf("好的，已记录 %s %d", event.Name, quantity)
+			finalReply = fmt.Sprintf("好的，已记录 %s %d", tartgetName, quantity)
 			finishTalk = true
 			return finalReply, false, finishTalk, nil
 		} else {
 			_, err = dao.History.Ctx(ctx).Insert(entity.History{
 				DeviceNo:    deviceNo,
 				EventId:     event.Id,
-				EventName:   event.Name,
+				EventName:   tartgetName,
 				EventNumber: 1,
 				StartTime:   nowTime,
 				EndTime:     nowTime,
@@ -1139,7 +1139,7 @@ func (s *VoiceService) handleActionRecord(ctx context.Context, deviceNo string, 
 			if err != nil {
 				return "记录事件失败,请重试", false, true, err
 			}
-			finalReply = fmt.Sprintf("好的，已记录 %s", event.Name)
+			finalReply = fmt.Sprintf("好的，已记录 %s", tartgetName)
 			finishTalk = true
 			return finalReply, false, finishTalk, nil
 		}
@@ -1168,13 +1168,13 @@ func (s *VoiceService) handleActionRecord(ctx context.Context, deviceNo string, 
 }
 
 // 提取文本中的事件对象
-func (s *VoiceService) extractEventFromText(ctx context.Context, normalizedTranscript string, events []entity.Event) (entity.Event, bool) {
+func (s *VoiceService) extractEventFromText(ctx context.Context, normalizedTranscript string, events []entity.Event) (entity.Event, string, bool) {
 	for _, event := range events {
 		// 原事件名称为部分匹配
 		if hasSignificantOverlap(normalizedTranscript, event.Name) {
 			// 打印命中事件名
 			glog.Infof(ctx, "命中事件名: %s", event.Name)
-			return event, true
+			return event, event.Name, true
 		}
 		// 额外名称匹配为包含全量匹配，而不是部分匹配
 		if event.ExtraNames != "" {
@@ -1183,16 +1183,29 @@ func (s *VoiceService) extractEventFromText(ctx context.Context, normalizedTrans
 				if strings.Contains(normalizedTranscript, extraName) && extraName != "" {
 					// 打印命中额外名称
 					glog.Infof(ctx, "命中额外名称: %s", extraName)
-					return event, true
+					return event, extraName, true
 				}
 			}
 		}
 	}
-	return entity.Event{}, false
+	return entity.Event{}, "", false
 }
 
 // 提取文本中的数量值
 func extractNumberFromText(text string) (int, bool) {
+
+	// 把text中的一、二、三、四、五、六、七、八、九转换为1、2、3、4、5、6、7、8、9
+	text = strings.ReplaceAll(text, "一", "1")
+	text = strings.ReplaceAll(text, "二", "2")
+	text = strings.ReplaceAll(text, "三", "3")
+	text = strings.ReplaceAll(text, "四", "4")
+	text = strings.ReplaceAll(text, "五", "5")
+	text = strings.ReplaceAll(text, "六", "6")
+	text = strings.ReplaceAll(text, "七", "7")
+	text = strings.ReplaceAll(text, "八", "8")
+	text = strings.ReplaceAll(text, "九", "9")
+
+	text = strings.TrimSpace(text)
 	re := regexp.MustCompile(`\d+`)
 	match := re.FindString(text)
 	if match == "" {
