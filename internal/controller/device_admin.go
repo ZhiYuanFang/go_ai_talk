@@ -228,36 +228,3 @@ func (c *AdminCtrl) ActionDelete(ctx context.Context, req *v1.DeviceAdminActionD
 	}
 	return &v1.DeviceAdminActionDeleteRes{}, nil
 }
-
-// IntentionList 意图列表。
-func (c *AdminCtrl) IntentionList(ctx context.Context, req *v1.DeviceAdminIntentionListReq) (res *v1.DeviceAdminIntentionListRes, err error) {
-	_ = req
-	if err := c.requireAdmin(ctx); err != nil {
-		return nil, err
-	}
-	items, err := c.Admin.ListIntentions(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return &v1.DeviceAdminIntentionListRes{List: items}, nil
-}
-
-// IntentionUpdate 更新意图动态历史上限。
-func (c *AdminCtrl) IntentionUpdate(ctx context.Context, req *v1.DeviceAdminIntentionUpdateReq) (res *v1.DeviceAdminIntentionUpdateRes, err error) {
-	if err := c.requireAdmin(ctx); err != nil {
-		return nil, err
-	}
-	if req.Id <= 0 {
-		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "意图ID无效")
-	}
-	if req.UpperLimit < 0 {
-		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "upperLimit 不能小于0")
-	}
-	if err := c.Admin.UpdateIntentionUpperLimit(ctx, req.Id, req.UpperLimit); err != nil {
-		if err == service.ErrIntentionNotFound {
-			return nil, gerror.NewCode(gcode.CodeNotFound, err.Error())
-		}
-		return nil, err
-	}
-	return &v1.DeviceAdminIntentionUpdateRes{}, nil
-}

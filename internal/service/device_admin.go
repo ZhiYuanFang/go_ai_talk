@@ -21,7 +21,6 @@ var (
 	ErrDeviceNotRegistered = errors.New("设备未注册，请先注册设备号")
 	ErrEventExists         = errors.New("事件已存在")
 	ErrEventNotFound       = errors.New("事件不存在")
-	ErrIntentionNotFound   = errors.New("意图不存在")
 	ErrActionNotFound      = errors.New("动作不存在")
 	userCountByDevice      = func(ctx context.Context, deviceNo string) (int, error) {
 		return dao.User.Ctx(ctx).Where(dao.User.Columns().DeviceNo, deviceNo).Count()
@@ -144,24 +143,6 @@ var (
 	actionDeleteByID = func(ctx context.Context, id int64) error {
 		_, err := dao.Action.Ctx(ctx).Where(dao.Action.Columns().Id, id).Delete()
 		return err
-	}
-	intentionCountByID = func(ctx context.Context, id int64) (int, error) {
-		return dao.Intention.Ctx(ctx).Where(dao.Intention.Columns().Id, id).Count()
-	}
-	intentionUpdateUpperLimitByID = func(ctx context.Context, id int64, upperLimit int) error {
-		_, err := dao.Intention.Ctx(ctx).
-			Where(dao.Intention.Columns().Id, id).
-			Data(g.Map{dao.Intention.Columns().UpperLimit: upperLimit}).
-			Update()
-		return err
-	}
-	intentionListAll = func(ctx context.Context) ([]entity.Intention, error) {
-		var rows []entity.Intention
-		err := dao.Intention.Ctx(ctx).
-			Fields(dao.Intention.Columns().Id, dao.Intention.Columns().Name, dao.Intention.Columns().UpperLimit).
-			OrderAsc(dao.Intention.Columns().Id).
-			Scan(&rows)
-		return rows, err
 	}
 )
 
@@ -435,27 +416,6 @@ func (s *sDeviceAdmin) DeleteAction(ctx context.Context, id int64) error {
 		return ErrActionNotFound
 	}
 	return actionDeleteByID(ctx, id)
-}
-
-func (s *sDeviceAdmin) ListIntentions(ctx context.Context) ([]entity.Intention, error) {
-	return intentionListAll(ctx)
-}
-
-func (s *sDeviceAdmin) UpdateIntentionUpperLimit(ctx context.Context, id int64, upperLimit int) error {
-	if id <= 0 {
-		return errors.New("意图ID无效")
-	}
-	if upperLimit < 0 {
-		return errors.New("upperLimit 不能小于0")
-	}
-	count, err := intentionCountByID(ctx, id)
-	if err != nil {
-		return err
-	}
-	if count == 0 {
-		return ErrIntentionNotFound
-	}
-	return intentionUpdateUpperLimitByID(ctx, id, upperLimit)
 }
 
 func nowText() string {

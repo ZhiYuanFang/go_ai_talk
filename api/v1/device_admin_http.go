@@ -119,23 +119,3 @@ type DeviceAdminActionDeleteReq struct {
 
 // DeviceAdminActionDeleteRes 删除成功。
 type DeviceAdminActionDeleteRes struct{}
-
-// DeviceAdminIntentionListReq 意图列表。
-type DeviceAdminIntentionListReq struct {
-	g.Meta `path:"/device/admin/api/intention/list" method:"get" tags:"admin" summary:"意图列表"`
-}
-
-// DeviceAdminIntentionListRes 意图列表响应。
-type DeviceAdminIntentionListRes struct {
-	List []entity.Intention `json:"list"`
-}
-
-// DeviceAdminIntentionUpdateReq 更新意图动态历史上限。
-type DeviceAdminIntentionUpdateReq struct {
-	g.Meta     `path:"/device/admin/api/intention/update" method:"post" tags:"admin" summary:"更新意图历史上限"`
-	Id         int64 `json:"id" dc:"意图ID"`
-	UpperLimit int   `json:"upperLimit" dc:"动态历史消息上限(>=0)"`
-}
-
-// DeviceAdminIntentionUpdateRes 更新成功。
-type DeviceAdminIntentionUpdateRes struct{}

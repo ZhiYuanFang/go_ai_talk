@@ -174,10 +174,6 @@ type eventIntentResult struct {
 	Exit          bool `json:"exit"`
 }
 
-type intentionClassifyResult struct {
-	Id int64 `json:"id"`
-}
-
 type generalChatResult struct {
 	Reply         string `json:"reply"`
 	NeedUserReply bool   `json:"need_user_reply"`
@@ -187,12 +183,6 @@ type eventInfo struct {
 	Id           int64  `json:"id"`
 	Name         string `json:"name"`
 	NeedQuantity int    `json:"needQuantity"`
-}
-
-type intentionInfo struct {
-	Id         int64  `json:"id"`
-	Name       string `json:"name"`
-	UpperLimit int    `json:"upperLimit"`
 }
 
 // VoiceService 语音服务核心实现：
@@ -958,19 +948,40 @@ func (s *VoiceService) insertQa(ctx context.Context, question, answer string) er
 
 // 根据文本,请求deepSeek分析文案中的动作是什么,并判断该动作的目标类型(ActionTargetTypeStart,ActionTargetTypeEnd,ActionTargetTypeOne,ActionTargetTypeExit,ActionTargetTypeSuggest,ActionTargetTypeSearch),输出JSON:{"action":"动作名称","target_type":"目标类型"}
 func (s *VoiceService) callDeepSeekActionExtract(ctx context.Context, deviceNo, transcript string) (entity.Action, error) {
-	prompt := fmt.Sprintf("输入=%s。请提取核心动作名称和目标类型。仅输出JSON：{\"name\":\"动作名称\",\"targetType\":\"目标类型\"}。无法判断时输出{\"action\":\"\",\"targetType\":\"\"}。", transcript)
-	systemMessage := "你是一个精准的动作提取器，严格按指定JSON格式输出，不添加任何解释性内容。"
-	// 动作名称需要从文本中提取连续文案,不要输出解释性文本。
-	systemMessage += fmt.Sprintf("动作名称需要从文本中提取代表性的连续文案,不要输出解释性文本。")
-	// 告诉deepseek,动作类型有
-	systemMessage += fmt.Sprintf("目标类型需要从这里选择:%s(%s),%s(%s),%s(%s),%s(%s),%s(%s),%s(%s),%s(%s)",
-		ActionTargetTypeStart, ActionTargetTypeChinese(ActionTargetTypeStart), ActionTargetTypeEnd, ActionTargetTypeChinese(ActionTargetTypeEnd), ActionTargetTypeOne, ActionTargetTypeChinese(ActionTargetTypeOne),
-		ActionTargetTypeExit, ActionTargetTypeChinese(ActionTargetTypeExit), ActionTargetTypeSuggest, ActionTargetTypeChinese(ActionTargetTypeSuggest), ActionTargetTypeSearch, ActionTargetTypeChinese(ActionTargetTypeSearch),
-		ActionTargetTypeConversation, ActionTargetTypeChinese(ActionTargetTypeConversation))
-	// 如果是睡眠事件,你需要区分睡眠开始和睡眠结束
-	systemMessage += fmt.Sprintf("如果是睡眠事件,你需要区分睡眠开始和睡眠结束,睡着时目标类型为%s,睡醒时目标类型为%s", ActionTargetTypeStart, ActionTargetTypeEnd)
-	systemMessageWarn := "如果只有动作,但没有事件名称,则判定为闲聊目标"
-	raw, _, _, err := s.callDeepSeekRaw(ctx, deviceNo, prompt, 0, systemMessage, systemMessageWarn)
+	prompt := fmt.Sprintf("输入：%s", transcript)
+	systemMessage := fmt.Sprintf(
+		`你是一个精准的动作提取器，严格按指定JSON格式输出，不添加任何解释。
+
+动作名称提取：从输入文本中提取代表性的连续文案,至少两个字。
+
+目标类型选择：
+- %s(%s)：开始计时
+- %s(%s)：结束计时
+- %s(%s)：一次性记录
+- %s(%s)：退出
+- %s(%s)：成长建议
+- %s(%s)：搜索
+- %s(%s)：对话
+
+特别规则：
+1. 睡眠事件：睡着→%s，睡醒→%s
+2. 只有动作无事件→%s或%s
+3. 关于孩子的问题→%s
+4. 关于历史数据的问题→%s
+
+输出格式：{"name":"动作名称","targetType":"目标类型"}
+无法判断时：{"name":"","targetType":""}`,
+		ActionTargetTypeStart, ActionTargetTypeChinese(ActionTargetTypeStart),
+		ActionTargetTypeEnd, ActionTargetTypeChinese(ActionTargetTypeEnd),
+		ActionTargetTypeOne, ActionTargetTypeChinese(ActionTargetTypeOne),
+		ActionTargetTypeExit, ActionTargetTypeChinese(ActionTargetTypeExit),
+		ActionTargetTypeSuggest, ActionTargetTypeChinese(ActionTargetTypeSuggest),
+		ActionTargetTypeSearch, ActionTargetTypeChinese(ActionTargetTypeSearch),
+		ActionTargetTypeConversation, ActionTargetTypeChinese(ActionTargetTypeConversation),
+		ActionTargetTypeStart, ActionTargetTypeEnd,
+		ActionTargetTypeConversation, ActionTargetTypeExit,
+		ActionTargetTypeSuggest, ActionTargetTypeSearch)
+	raw, _, _, err := s.callDeepSeekRaw(ctx, deviceNo, prompt, 0, systemMessage)
 	if err != nil {
 		return entity.Action{}, err
 	}
@@ -982,6 +993,11 @@ func (s *VoiceService) callDeepSeekActionExtract(ctx context.Context, deviceNo, 
 	if parsed.TargetType == ActionTargetTypeConversation || parsed.TargetType == "" {
 		return entity.Action{}, errors.New("对话动作不需要落库")
 	} else {
+		// 如果动作名为空,则为输入的文本值
+		if parsed.Name == "" {
+			parsed.Name = transcript
+		}
+
 		// 将动作落库,保证动作名称唯一
 		existingAction := entity.Action{}
 		dao.Action.Ctx(ctx).Where("name", parsed.Name).Scan(&existingAction)
@@ -1272,25 +1288,6 @@ func normalizeIntentCandidateText(input string) string {
 	return trimmed
 }
 
-func parseIntentionClassifyID(reply string) (int64, bool) {
-	var out intentionClassifyResult
-	trimmed := normalizeIntentCandidateText(reply)
-	if strings.TrimSpace(trimmed) == "" {
-		return 0, false
-	}
-	if err := json.Unmarshal([]byte(trimmed), &out); err == nil && out.Id > 0 {
-		return out.Id, true
-	}
-	start := strings.Index(trimmed, "{")
-	end := strings.LastIndex(trimmed, "}")
-	if start >= 0 && end > start {
-		if err := json.Unmarshal([]byte(trimmed[start:end+1]), &out); err == nil && out.Id > 0 {
-			return out.Id, true
-		}
-	}
-	return 0, false
-}
-
 func parseGeneralChatResult(reply string) (generalChatResult, bool) {
 	var out generalChatResult
 	trimmed := normalizeIntentCandidateText(reply)
@@ -1318,7 +1315,7 @@ func (s *VoiceService) handleIntentGeneral(ctx context.Context, deviceNo, transc
 	birthday, gender := s.loadDeviceProfile(ctx, deviceNo)
 	systemMessage := fmt.Sprintf("用户的宝宝出生日期是%s，性别是%s。你还是一个语音助手，可以解答任何问题,回应内容控制在20字以内。", birthday, gender)
 	prompt := fmt.Sprintf("用户输入=%s。请仅输出JSON：{\"reply\":\"回复内容\",\"need_user_reply\":true|false}。", transcript)
-	raw, reply, _, err := s.callDeepSeekRaw(ctx, deviceNo, prompt, s.intentionUpperLimit(ctx, 3, 5), systemMessage)
+	raw, reply, _, err := s.callDeepSeekRaw(ctx, deviceNo, prompt, 5, systemMessage)
 	if err != nil {
 		return "", false, err
 	}
@@ -1349,13 +1346,23 @@ func (s *VoiceService) callDeepSeekEntityExtract(ctx context.Context, deviceNo, 
 	for _, event := range eventList {
 		eventNamesStr += event.Name + ","
 	}
-	systemMessageEventNames := fmt.Sprintf("原事件名称有:%s", eventNamesStr)
-	systemMessage := "你是一个精准的事件名称提取器，扩展词需要从文本中提取代表性的连续文案,事件名称需要联想为代表性名词,严格按指定JSON格式输出，不添加任何解释性内容。"
-	systemMessageOther := "如果是吃奶事件,你需要判断是母乳喂养还是配方奶喂养,如果无法确定,则输出：{\"name\":\"\",\"extraNames\":\"\",\"need_quantity\":\"0\"}"
-	prompt := fmt.Sprintf("输入=%s。分析文本中是否有与原事件名称背后的含义有准确相符的事件类型,如果有提取当前的事件扩展词并输出json:{\"name\":\"原表中的事件名\",\"extraNames\":\"当前事件扩展词\"},否则并判断是否需要计数（1表示需要，0表示不需要）输出json:{\"name\":当前事件名,\"extraNames\":\"\",\"need_quantity\":\"0或1\"}。如果无法确定事件名称，则输出：{\"name\":\"\",\"need_quantity\":\"0\"}", transcript)
+	systemMessage := fmt.Sprintf(`你是一个精准的事件提取器，严格输出JSON。
 
+事件列表：%s
+
+特别规则：
+1. 扩展词从文本提取连续文案
+2. 吃奶事件：如无法区分母乳/配方奶，输出{"name":"","extraNames":"","need_quantity":"0"}
+3. 不是想记录事件:输出{"name":"","extraNames":"","need_quantity":"0"}
+
+输出规则：
+1. 匹配事件列表 → {"name":"原事件名","extraNames":"扩展词"}
+2. 不匹配但可识别 → {"name":"新事件名","extraNames":"","need_quantity":"0或1"}
+3. 无法确定 → {"name":"","need_quantity":"0"}`, eventNamesStr)
+
+	prompt := fmt.Sprintf("输入=%s。按规则分析并输出JSON。", transcript)
 	// 你需要从事件列表中,查看是否有符合的事件类型,如果有则直接返回列表中的事件类型,如果没有则需要从文本中提取事件名称。
-	raw, _, _, err := s.callDeepSeekRaw(ctx, deviceNo, prompt, s.intentionUpperLimit(ctx, 1, 1), systemMessage, systemMessageEventNames, systemMessageOther)
+	raw, _, _, err := s.callDeepSeekRaw(ctx, deviceNo, prompt, 0, systemMessage)
 	if err != nil {
 		return out, err
 	}
@@ -1416,34 +1423,6 @@ func (s *VoiceService) callDeepSeekEntityExtract(ctx context.Context, deviceNo, 
 	}
 
 	return out, nil
-}
-
-func (s *VoiceService) listIntentions(ctx context.Context) ([]intentionInfo, error) {
-	var intentions []intentionInfo
-	err := dao.Intention.Ctx(ctx).
-		Fields(dao.Intention.Columns().Id, dao.Intention.Columns().Name, dao.Intention.Columns().UpperLimit).
-		OrderAsc(dao.Intention.Columns().Id).
-		Scan(&intentions)
-	return intentions, err
-}
-
-func (s *VoiceService) intentionUpperLimit(ctx context.Context, intentionID int64, fallback int) int {
-	if fallback < 0 {
-		fallback = 0
-	}
-	intentions, err := s.listIntentions(ctx)
-	if err != nil {
-		return fallback
-	}
-	for _, item := range intentions {
-		if item.Id == intentionID {
-			if item.UpperLimit < 0 {
-				return fallback
-			}
-			return item.UpperLimit
-		}
-	}
-	return fallback
 }
 
 // matchEventByName 使用宽松规则将模型输出事件名映射到库内事件。
@@ -1900,7 +1879,7 @@ func (s *VoiceService) callDeepSeekHistoryReply(ctx context.Context, deviceNo, t
 	historyBytes, _ := json.Marshal(history)
 	prompt := fmt.Sprintf("用户输入=%s。请基于最近%d小时记录回答。记录=%s。仅输出JSON：{\"reply\":\"回复内容\"}。", transcript, hours, string(historyBytes))
 	systemMessage := fmt.Sprintf("您是育儿助手，主要帮助家长根据历史事件回应用户提问。")
-	raw, reply, _, callErr := s.callDeepSeekRaw(ctx, deviceNo, prompt, s.intentionUpperLimit(ctx, 4, 0), systemMessage)
+	raw, reply, _, callErr := s.callDeepSeekRaw(ctx, deviceNo, prompt, 5, systemMessage)
 	if callErr != nil {
 		return "", callErr
 	}

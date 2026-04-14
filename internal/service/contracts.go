@@ -57,8 +57,6 @@ type DeviceAdminContract interface {
 	ListActionsForAdmin(ctx context.Context) ([]AdminActionItem, error)
 	UpdateAction(ctx context.Context, id int64, name, targetType string) error
 	DeleteAction(ctx context.Context, id int64) error
-	ListIntentions(ctx context.Context) ([]entity.Intention, error)
-	UpdateIntentionUpperLimit(ctx context.Context, id int64, upperLimit int) error
 }
 
 // DeviceHistoryContract 设备历史与建议、生日查询契约。

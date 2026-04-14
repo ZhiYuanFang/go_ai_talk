@@ -652,23 +652,6 @@ func TestVoiceServiceHandlePersistsTalkRecord(t *testing.T) {
 	}
 }
 
-func TestIsExitIntentFromUserInput(t *testing.T) {
-	cases := []struct {
-		text string
-		exit bool
-	}{
-		{text: "结束对话", exit: true},
-		{text: "  再见。", exit: true},
-		{text: "bye!", exit: true},
-		{text: "请介绍一下你自己", exit: false},
-	}
-	for _, tc := range cases {
-		if got := isExitIntentFromUserInput(tc.text); got != tc.exit {
-			t.Fatalf("text=%q got=%v want=%v", tc.text, got, tc.exit)
-		}
-	}
-}
-
 func TestExtractChatReplyDetectsExitMarker(t *testing.T) {
 	body := []byte(`{"choices":[{"message":{"content":"{\"exit\":true}"}}]}`)
 	reply, exit, err := extractChatReply(body)
