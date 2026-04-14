@@ -47,8 +47,10 @@
         .table-wrap{overflow-x:auto;margin-top:10px}
         table{width:max-content;min-width:100%;border-collapse:collapse}
         th,td{border-bottom:1px solid #eee;padding:10px;text-align:left;font-size:13px;white-space:nowrap;vertical-align:middle}
-        .suggest-item{padding:10px 12px;border:1px solid var(--accent-soft);border-radius:10px;margin-bottom:10px;background:#fff}
-        .suggest-time{font-size:12px;color:#666;margin-bottom:6px}
+        .suggest-item{display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--accent-soft);border-radius:10px;margin-bottom:10px;background:#fff}
+        .suggest-time{flex-shrink:0;font-size:12px;color:#666;margin:0;min-width:8.5em}
+        .suggest-item > div:last-child{flex:1;min-width:0;word-break:break-word}
+        td.history-remark{white-space:normal;word-break:break-word;max-width:320px;vertical-align:middle}
         .section-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
         .section-head h3{margin:0}
         .modal{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:center;justify-content:center;z-index:99}
@@ -370,7 +372,7 @@
                     '<td>'+escapeHtml(numberText)+'</td>'+
                     '<td>'+escapeHtml(formatHistoryDateTime(it.startTime))+'</td>'+
                     '<td>'+escapeHtml(formatHistoryDateTime(it.endTime))+'</td>'+
-                    '<td>'+escapeHtml(it.remark)+'</td>'+
+                    '<td class="history-remark">'+escapeHtml(it.remark)+'</td>'+
                     '<td><button type="button" class="history-edit-btn btn-primary" data-id="'+escapeHtml(it.id)+'">编辑</button> <button type="button" class="history-del-btn btn-danger" data-id="'+escapeHtml(it.id)+'">删除</button></td>';
                 historyBody.appendChild(tr);
             });
