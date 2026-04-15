@@ -950,7 +950,7 @@ func (s *VoiceService) insertQa(ctx context.Context, question, answer string) er
 func (s *VoiceService) callDeepSeekActionExtract(ctx context.Context, deviceNo, transcript string) (entity.Action, error) {
 	prompt := fmt.Sprintf("输入：%s", transcript)
 	systemMessage := fmt.Sprintf(
-		`你是一个精准的动作提取器，严格按指定JSON格式输出，不添加任何解释。
+		`你是一个主要记录母婴喂养的助手且具备精准的动作提取能力，严格按指定JSON格式输出，不添加任何解释。
 
 动作名称提取：从输入文本中提取代表性的连续文案,至少两个字。
 
