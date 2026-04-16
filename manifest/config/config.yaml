@@ -63,7 +63,7 @@ voiceChat:
     language: "zh"
     speed: "5" # 语速 1~15 
     pitch: "5" # 音调 1~15
-    volume: "15" # 音量 1~15
+    volume: "9" # 音量 1~15
     aue: "6" # 音频格式 3：mp3，4：pcm-16k，5：pcm-8k，6：wav
     cuid: "gofirst-device"
     timeoutSeconds: 100
