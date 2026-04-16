@@ -189,6 +189,7 @@ func voiceChatWS(r *ghttp.Request) {
 				},
 				func(chunk []byte, chunkMeta service.AudioMeta, chunkSeq int) error {
 					seq = chunkSeq
+					glog.Infof(ctx, "[TTS下发] 发送音频分片。deviceNo=%s mode=casual seq=%d audioBytes=%d sampleRate=%d", deviceNo, chunkSeq, len(chunk), chunkMeta.SampleRate)
 					payload, _ := json.Marshal(map[string]interface{}{
 						"type":       "audio_chunk",
 						"audio":      base64.StdEncoding.EncodeToString(chunk),
@@ -200,6 +201,7 @@ func voiceChatWS(r *ghttp.Request) {
 				},
 			)
 			if pErr == nil {
+				glog.Infof(ctx, "[TTS下发] 发送音频结束。deviceNo=%s mode=casual chunks=%d finishTalk=%v", deviceNo, seq, true)
 				endPayload, _ := json.Marshal(map[string]interface{}{
 					"type":        "audio_end",
 					"code":        0,
@@ -217,6 +219,7 @@ func voiceChatWS(r *ghttp.Request) {
 				seq := 0
 				_, pErr = service.Voice().StreamReplyWithBaiduTTS(ctx, meta, answer, func(chunk []byte, chunkMeta service.AudioMeta, chunkSeq int) error {
 					seq = chunkSeq
+					glog.Infof(ctx, "[TTS下发] 发送音频分片。deviceNo=%s mode=maternity seq=%d audioBytes=%d sampleRate=%d", deviceNo, chunkSeq, len(chunk), chunkMeta.SampleRate)
 					payload, _ := json.Marshal(map[string]interface{}{
 						"type":       "audio_chunk",
 						"audio":      base64.StdEncoding.EncodeToString(chunk),
@@ -227,6 +230,7 @@ func voiceChatWS(r *ghttp.Request) {
 					return safeWriteMessage(1, payload)
 				})
 				if pErr == nil {
+					glog.Infof(ctx, "[TTS下发] 发送音频结束。deviceNo=%s mode=maternity chunks=%d finishTalk=%v", deviceNo, seq, finishTalk)
 					endPayload, _ := json.Marshal(map[string]interface{}{
 						"type":        "audio_end",
 						"code":        0,
@@ -563,7 +567,7 @@ func voiceChatWS(r *ghttp.Request) {
 		}
 		if streamMode && waitEndAfterCommit {
 			if chunkCount == 0 || chunkCount%10 == 0 {
-				glog.Infof(ctx, "[语音WS][关键节点] 已完成commit并等待end，丢弃本轮后续音频。deviceNo=%s recvBytes=%d", deviceNo, len(msg))
+				// glog.Infof(ctx, "[语音WS][关键节点] 已完成commit并等待end，丢弃本轮后续音频。deviceNo=%s recvBytes=%d", deviceNo, len(msg))
 			}
 			continue
 		}
@@ -583,7 +587,7 @@ func voiceChatWS(r *ghttp.Request) {
 			now := time.Now()
 			if streamMode && streamASR != nil && !streamASRBroken && (lastInterruptJudgeLogAt.IsZero() || now.Sub(lastInterruptJudgeLogAt) >= wsInterruptJudgeLogGap) {
 				lastInterruptJudgeLogAt = now
-				glog.Infof(ctx, "[语音WS][关键节点] 当前未中断：本分片判定为有效音频，静默计时已重置。deviceNo=%s chunks=%d recvBytes=%d", deviceNo, chunkCount, audioBuffer.Len())
+				// glog.Infof(ctx, "[语音WS][关键节点] 当前未中断：本分片判定为有效音频，静默计时已重置。deviceNo=%s chunks=%d recvBytes=%d", deviceNo, chunkCount, audioBuffer.Len())
 			}
 		}
 		if !audioPassThroughLogged {

@@ -859,11 +859,14 @@ func (s *VoiceService) StreamReplyWithBaiduTTS(
 	if len(segments) == 0 {
 		return 0, StageError{Stage: "tts", Detail: "待合成文本为空"}
 	}
+	glog.Infof(ctx, "[TTS请求] 开始流式分段合成。segments=%d replyLen=%d sampleRate=%d", len(segments), utf8.RuneCountInString(strings.TrimSpace(reply)), meta.SampleRate)
 	for idx, segment := range segments {
+		glog.Infof(ctx, "[TTS请求] 请求百度TTS分段。chunk=%d/%d textLen=%d text=%q", idx+1, len(segments), utf8.RuneCountInString(strings.TrimSpace(segment)), truncateVoiceLogText(segment, 120))
 		audio, synthErr := s.invokeBaiduTTSChunk(ctx, meta, token, segment)
 		if synthErr != nil {
 			return idx, synthErr
 		}
+		glog.Infof(ctx, "[TTS响应] 百度TTS分段合成完成。chunk=%d/%d audioBytes=%d", idx+1, len(segments), len(audio))
 		if onAudioChunk != nil {
 			if cbErr := onAudioChunk(audio, meta, idx+1); cbErr != nil {
 				return idx, cbErr
@@ -1343,9 +1346,11 @@ func (s *VoiceService) synthesizeBaidu(ctx context.Context, meta AudioMeta, repl
 	if len(segments) == 0 {
 		return nil, StageError{Stage: "tts", Detail: "待合成文本为空"}
 	}
+	glog.Infof(ctx, "[TTS请求] 开始整段分段合成。segments=%d replyLen=%d sampleRate=%d", len(segments), utf8.RuneCountInString(strings.TrimSpace(reply)), meta.SampleRate)
 
 	var combined bytes.Buffer
 	for idx, segment := range segments {
+		glog.Infof(ctx, "[TTS请求] 请求百度TTS分段。chunk=%d/%d textLen=%d text=%q", idx+1, len(segments), utf8.RuneCountInString(strings.TrimSpace(segment)), truncateVoiceLogText(segment, 120))
 		audio, chunkErr := s.invokeBaiduTTSChunk(ctx, meta, token, segment)
 		if chunkErr != nil {
 			if se, ok := chunkErr.(StageError); ok {
@@ -1354,6 +1359,7 @@ func (s *VoiceService) synthesizeBaidu(ctx context.Context, meta AudioMeta, repl
 			}
 			return nil, chunkErr
 		}
+		glog.Infof(ctx, "[TTS响应] 百度TTS分段合成完成。chunk=%d/%d audioBytes=%d", idx+1, len(segments), len(audio))
 		combined.Write(audio)
 	}
 
