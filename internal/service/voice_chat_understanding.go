@@ -45,7 +45,23 @@ func detectChatModeByTranscript(text string) string {
 }
 
 func isModeSwitchCommand(text string) bool {
-	return strings.HasPrefix(strings.TrimSpace(text), "切换到")
+	// 如果text包含切换到或者相近意思
+	normalized := strings.TrimSpace(text)
+	if normalized == "" {
+		return false
+	}
+	commandKeywords := []string{
+		"切换到",
+		"改为",
+		"变成",
+		"设置为",
+	}
+	for _, kw := range commandKeywords {
+		if strings.Contains(normalized, kw) {
+			return true
+		}
+	}
+	return false
 }
 
 func isModeQueryCommand(text string) bool {
