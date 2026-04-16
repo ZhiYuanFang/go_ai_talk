@@ -48,6 +48,26 @@ func isModeSwitchCommand(text string) bool {
 	return strings.HasPrefix(strings.TrimSpace(text), "切换到")
 }
 
+func isModeQueryCommand(text string) bool {
+	normalized := strings.TrimSpace(text)
+	if normalized == "" {
+		return false
+	}
+	queryKeywords := []string{
+		"当前是什么模式",
+		"现在是什么模式",
+		"当前模式",
+		"现在模式",
+		"什么模式",
+	}
+	for _, kw := range queryKeywords {
+		if strings.Contains(normalized, kw) {
+			return true
+		}
+	}
+	return false
+}
+
 func chatModeDisplayName(mode string) string {
 	if mode == chatModeMaternity {
 		return "母婴"
@@ -109,6 +129,15 @@ func (s *VoiceService) chatWithResult(ctx context.Context, deviceNo, transcript 
 	normalizedTranscript, err := s.normalizeAndValidateChatText(transcript)
 	if err != nil {
 		return "", "", false, false, err
+	}
+	if isModeQueryCommand(normalizedTranscript) {
+		currentMode := s.getDeviceChatMode(deviceNo)
+		if currentMode == "" {
+			currentMode = chatModeCasual
+		}
+		reply := fmt.Sprintf("当前是%s模式", chatModeDisplayName(currentMode))
+		s.insertQa(ctx, normalizedTranscript, reply)
+		return reply, normalizedTranscript, false, true, nil
 	}
 	resolvedMode := s.resolveChatMode(deviceNo, normalizedTranscript)
 	if isModeSwitchCommand(normalizedTranscript) {
