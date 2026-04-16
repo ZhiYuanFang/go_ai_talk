@@ -20,6 +20,7 @@ import (
 const (
 	wsStreamCommitTimeout  = 8 * time.Second
 	wsInterruptCommitGap   = 1 * time.Second
+	wsInitialNoASRGap      = 2 * time.Second
 	wsInterruptJudgeLogGap = 500 * time.Millisecond
 	wsAutoCommitTimeout    = 4 * time.Second
 	wsNoASRAutoCommitChunk = 10
@@ -167,12 +168,14 @@ func voiceChatWS(r *ghttp.Request) {
 		var (
 			ask        string
 			answer     string
+			mode       string
+			casualFlow bool
 			exit       bool
 			finishTalk bool
 			pErr       error
 		)
-		if service.Voice().DetectChatMode(deviceNo, transcript) == "casual" {
-			ask = transcript
+		ask, answer, mode, casualFlow, exit, finishTalk, pErr = service.Voice().HandleTranscriptForStreaming(ctx, deviceNo, transcript)
+		if casualFlow {
 			seq := 0
 			answer, pErr = service.Voice().StreamCasualReplyWithBaiduTTS(
 				ctx,
@@ -213,13 +216,11 @@ func voiceChatWS(r *ghttp.Request) {
 				_ = safeWriteMessage(1, endPayload)
 				finishTalk = true
 			}
-		} else {
-			ask, answer, exit, finishTalk, pErr = service.Voice().HandleTranscriptChatOnly(ctx, deviceNo, transcript)
-			if pErr == nil && !exit {
+		} else if pErr == nil && !exit {
 				seq := 0
 				_, pErr = service.Voice().StreamReplyWithBaiduTTS(ctx, meta, answer, func(chunk []byte, chunkMeta service.AudioMeta, chunkSeq int) error {
 					seq = chunkSeq
-					glog.Infof(ctx, "[TTS下发] 发送音频分片。deviceNo=%s mode=maternity seq=%d audioBytes=%d sampleRate=%d", deviceNo, chunkSeq, len(chunk), chunkMeta.SampleRate)
+					glog.Infof(ctx, "[TTS下发] 发送音频分片。deviceNo=%s mode=%s seq=%d audioBytes=%d sampleRate=%d", deviceNo, mode, chunkSeq, len(chunk), chunkMeta.SampleRate)
 					payload, _ := json.Marshal(map[string]interface{}{
 						"type":       "audio_chunk",
 						"audio":      base64.StdEncoding.EncodeToString(chunk),
@@ -230,7 +231,7 @@ func voiceChatWS(r *ghttp.Request) {
 					return safeWriteMessage(1, payload)
 				})
 				if pErr == nil {
-					glog.Infof(ctx, "[TTS下发] 发送音频结束。deviceNo=%s mode=maternity chunks=%d finishTalk=%v", deviceNo, seq, finishTalk)
+					glog.Infof(ctx, "[TTS下发] 发送音频结束。deviceNo=%s mode=%s chunks=%d finishTalk=%v", deviceNo, mode, seq, finishTalk)
 					endPayload, _ := json.Marshal(map[string]interface{}{
 						"type":        "audio_end",
 						"code":        0,
@@ -241,7 +242,6 @@ func voiceChatWS(r *ghttp.Request) {
 					})
 					_ = safeWriteMessage(1, endPayload)
 				}
-			}
 		}
 		if pErr != nil {
 			// if stageErr, ok := pErr.(service.StageError); ok {
@@ -638,7 +638,14 @@ func voiceChatWS(r *ghttp.Request) {
 			}
 
 			hasFirstSTT := !lastASRAt.IsZero()
+			noFirstSTTTimeout := !hasFirstSTT && !streamStartAt.IsZero() && now.Sub(streamStartAt) >= wsInitialNoASRGap
 			sttTimeout := hasFirstSTT && sttSilence >= wsInterruptCommitGap
+
+			if noFirstSTTTimeout {
+				// glog.Warningf(ctx, "[语音WS] 触发主动commit中断。deviceNo=%s reason=no_stt_callback_since_start sinceStart=%s threshold=%s chunks=%d recvBytes=%d", deviceNo, now.Sub(streamStartAt), wsInitialNoASRGap, chunkCount, audioBuffer.Len())
+				runStreamCommit("interrupt")
+				continue
+			}
 
 			if sttTimeout {
 				// glog.Warningf(ctx, "[语音WS] 触发主动commit中断。deviceNo=%s reason=stt_callback_timeout sttSilence=%s threshold=%s chunks=%d recvBytes=%d", deviceNo, sttSilence, wsInterruptCommitGap, chunkCount, audioBuffer.Len())

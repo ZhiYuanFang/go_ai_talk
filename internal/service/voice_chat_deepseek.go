@@ -337,6 +337,25 @@ func (s *VoiceService) streamCasualReplyWithBaiduTTS(
 	if strings.ToLower(strings.TrimSpace(s.cfg.TTS.Provider)) != "baidu" {
 		return "", StageError{Stage: "tts", Detail: "闲聊流式音频下发仅支持百度TTS"}
 	}
+	normalized := strings.TrimSpace(transcript)
+	// 模式切换/模式查询属于控制指令，统一复用 chatWithResult，
+	// 避免在闲聊流式分支里被直接交给 DeepSeek 自由回答。
+	if isModeSwitchCommand(normalized) || isModeQueryCommand(normalized) {
+		chatRes, err := s.chatWithResult(ctx, deviceNo, normalized, true)
+		if err != nil {
+			return "", err
+		}
+		reply := chatRes.Reply
+		if onTextDelta != nil && strings.TrimSpace(reply) != "" {
+			if cbErr := onTextDelta(reply); cbErr != nil {
+				return "", cbErr
+			}
+		}
+		if _, ttsErr := s.StreamReplyWithBaiduTTS(ctx, meta, reply, onAudioChunk); ttsErr != nil {
+			return "", ttsErr
+		}
+		return reply, nil
+	}
 	messages := s.buildChatMessagesWithLimit(deviceNo, transcript, 6, "你是闲聊助手，请直接回答用户问题，语言自然简洁。不要使用表情符号或特殊颜文字。")
 	payload := map[string]interface{}{
 		"model":    s.cfg.DeepSeek.Model,

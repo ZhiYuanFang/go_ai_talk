@@ -32,6 +32,15 @@ type deepSeekUnifiedIntent struct {
 	TargetType    string `json:"target_type"`
 }
 
+type chatResult struct {
+	Reply            string
+	Ask              string
+	Mode             string
+	Exit             bool
+	FinishTalk       bool
+	NeedCasualStream bool
+}
+
 const (
 	chatModeMaternity = "maternity"
 	chatModeCasual    = "casual"
@@ -141,10 +150,10 @@ func (s *VoiceService) normalizeAndValidateChatText(text string) (string, error)
 // - 处理待补量词
 // - 处理“成长建议”特殊意图
 // - 调用 DeepSeek 进行结构化事件识别并落库
-func (s *VoiceService) chatWithResult(ctx context.Context, deviceNo, transcript string) (string, string, bool, bool, error) {
+func (s *VoiceService) chatWithResult(ctx context.Context, deviceNo, transcript string, directCasual bool) (chatResult, error) {
 	normalizedTranscript, err := s.normalizeAndValidateChatText(transcript)
 	if err != nil {
-		return "", "", false, false, err
+		return chatResult{}, err
 	}
 	if isModeQueryCommand(normalizedTranscript) {
 		currentMode := s.getDeviceChatMode(deviceNo)
@@ -153,22 +162,40 @@ func (s *VoiceService) chatWithResult(ctx context.Context, deviceNo, transcript 
 		}
 		reply := fmt.Sprintf("当前是%s模式", chatModeDisplayName(currentMode))
 		s.insertQa(ctx, normalizedTranscript, reply)
-		return reply, normalizedTranscript, false, true, nil
+		return chatResult{Reply: reply, Ask: normalizedTranscript, Mode: currentMode, FinishTalk: true}, nil
 	}
 	resolvedMode := s.resolveChatMode(deviceNo, normalizedTranscript)
 	if isModeSwitchCommand(normalizedTranscript) {
 		s.setDeviceChatMode(deviceNo, resolvedMode)
 		reply := fmt.Sprintf("已切换到%s模式", chatModeDisplayName(resolvedMode))
 		s.insertQa(ctx, normalizedTranscript, reply)
-		return reply, normalizedTranscript, false, true, nil
+		return chatResult{Reply: reply, Ask: normalizedTranscript, Mode: resolvedMode, FinishTalk: true}, nil
 	}
 	if resolvedMode == chatModeCasual {
+		if !directCasual {
+			return chatResult{
+				Ask:              normalizedTranscript,
+				Mode:             resolvedMode,
+				FinishTalk:       true,
+				NeedCasualStream: true,
+			}, nil
+		}
 		reply, chatErr := s.callDeepSeekDirectReply(ctx, deviceNo, normalizedTranscript)
 		if chatErr != nil {
-			return "我暂时没理解清楚你的意思，请再说一次", normalizedTranscript, false, true, chatErr
+			return chatResult{
+				Reply:      "我暂时没理解清楚你的意思，请再说一次",
+				Ask:        normalizedTranscript,
+				Mode:       resolvedMode,
+				FinishTalk: true,
+			}, chatErr
 		}
 		s.insertQa(ctx, normalizedTranscript, reply)
-		return reply, normalizedTranscript, false, true, nil
+		return chatResult{
+			Reply:      reply,
+			Ask:        normalizedTranscript,
+			Mode:       resolvedMode,
+			FinishTalk: true,
+		}, nil
 	}
 	events := []entity.Event{}
 	dao.Event.Ctx(ctx).Scan(&events)
@@ -233,13 +260,25 @@ func (s *VoiceService) chatWithResult(ctx context.Context, deviceNo, transcript 
 			}
 			// 往QA里录入问题和答案
 			s.insertQa(ctx, normalizedTranscript, finalReply)
-			return finalReply, normalizedTranscript, exit, finishTalk, err
+			return chatResult{
+				Reply:      finalReply,
+				Ask:        normalizedTranscript,
+				Mode:       resolvedMode,
+				Exit:       exit,
+				FinishTalk: finishTalk,
+			}, err
 		}
 	}
 	// 没有命中预设动作: 单次请求 DeepSeek 返回全量结构，再统一处理。
 	intent, err := s.callDeepSeekUnifiedIntent(ctx, deviceNo, normalizedTranscript)
 	if err != nil {
-		return "我暂时没理解清楚你的意思，请再说一次", normalizedTranscript, exit, false, err
+		return chatResult{
+			Reply:      "我暂时没理解清楚你的意思，请再说一次",
+			Ask:        normalizedTranscript,
+			Mode:       resolvedMode,
+			Exit:       exit,
+			FinishTalk: false,
+		}, err
 	}
 
 	if intent.TargetType == ActionTargetTypeConversation || intent.TargetType == "" {
@@ -248,7 +287,12 @@ func (s *VoiceService) chatWithResult(ctx context.Context, deviceNo, transcript 
 			reply = "我明白了，请再具体一点，我马上帮你处理。"
 		}
 		s.insertQa(ctx, normalizedTranscript, reply)
-		return reply, normalizedTranscript, false, true, nil
+		return chatResult{
+			Reply:      reply,
+			Ask:        normalizedTranscript,
+			Mode:       resolvedMode,
+			FinishTalk: true,
+		}, nil
 	}
 
 	action := entity.Action{
@@ -267,7 +311,13 @@ func (s *VoiceService) chatWithResult(ctx context.Context, deviceNo, transcript 
 	if err == nil {
 		s.insertQa(ctx, normalizedTranscript, finalReply)
 	}
-	return finalReply, normalizedTranscript, exit, finishTalk, err
+	return chatResult{
+		Reply:      finalReply,
+		Ask:        normalizedTranscript,
+		Mode:       resolvedMode,
+		Exit:       exit,
+		FinishTalk: finishTalk,
+	}, err
 }
 
 func (s *VoiceService) callDeepSeekUnifiedIntent(ctx context.Context, deviceNo, transcript string) (deepSeekUnifiedIntent, error) {

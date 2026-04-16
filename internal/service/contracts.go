@@ -45,6 +45,7 @@ type VoiceContract interface {
 	HandleWithDialogue(ctx context.Context, deviceNo string, meta AudioMeta, audioBase64 string) ([]byte, AudioMeta, string, string, bool, bool, error)
 	HandleWithTranscript(ctx context.Context, deviceNo string, meta AudioMeta, transcript string) ([]byte, AudioMeta, string, string, bool, bool, error)
 	HandleTranscriptChatOnly(ctx context.Context, deviceNo, transcript string) (ask string, answer string, exit bool, finishTalk bool, err error)
+	HandleTranscriptForStreaming(ctx context.Context, deviceNo, transcript string) (ask string, answer string, mode string, needCasualStream bool, exit bool, finishTalk bool, err error)
 	DetectChatMode(deviceNo, transcript string) string
 	CreateStreamTTSSession(ctx context.Context, meta AudioMeta, onAudioChunk func(audio []byte, meta AudioMeta) error) (StreamTTSSession, error)
 	StreamCasualReplyWithBaiduTTS(ctx context.Context, deviceNo string, meta AudioMeta, transcript string, onTextDelta func(text string) error, onAudioChunk func(audio []byte, meta AudioMeta, seq int) error) (string, error)

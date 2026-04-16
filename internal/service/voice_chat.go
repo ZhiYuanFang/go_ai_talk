@@ -466,7 +466,7 @@ func (s *VoiceService) HandleWithDialogue(ctx context.Context, deviceNo string, 
 	}
 
 	chatStart := time.Now()
-	reply, ask, exit, finishTalk, err := s.chatWithResult(ctx, deviceNo, transcript)
+	chatRes, err := s.chatWithResult(ctx, deviceNo, transcript, true)
 	if err != nil {
 		if isTimeoutErr(err) {
 			glog.Warningf(ctx, "[语音链路] 对话阶段超时。deviceNo=%s 耗时=%s err=%v", deviceNo, time.Since(chatStart), err)
@@ -477,20 +477,20 @@ func (s *VoiceService) HandleWithDialogue(ctx context.Context, deviceNo string, 
 	}
 	chatCost := time.Since(chatStart)
 	if chatCost >= voiceStageSlowThreshold {
-		glog.Warningf(ctx, "[语音链路] 对话阶段耗时偏长。deviceNo=%s 耗时=%s exit=%v askLen=%d replyLen=%d", deviceNo, chatCost, exit, utf8.RuneCountInString(strings.TrimSpace(ask)), utf8.RuneCountInString(strings.TrimSpace(reply)))
+		glog.Warningf(ctx, "[语音链路] 对话阶段耗时偏长。deviceNo=%s 耗时=%s exit=%v askLen=%d replyLen=%d", deviceNo, chatCost, chatRes.Exit, utf8.RuneCountInString(strings.TrimSpace(chatRes.Ask)), utf8.RuneCountInString(strings.TrimSpace(chatRes.Reply)))
 	}
 
-	if exit {
+	if chatRes.Exit {
 		// 当检测到退出意图时，不合成音频，直接返回 exit 标志
 		totalCost := time.Since(requestStart)
 		if totalCost >= voiceTotalSlowThreshold {
 			glog.Warningf(ctx, "[语音链路] 退出请求总耗时偏长。deviceNo=%s 总耗时=%s", deviceNo, totalCost)
 		}
-		return nil, meta, ask, "", true, false, nil
+		return nil, meta, chatRes.Ask, "", true, false, nil
 	}
 
 	ttsStart := time.Now()
-	audio, err := s.synthesize(ctx, meta, reply)
+	audio, err := s.synthesize(ctx, meta, chatRes.Reply)
 	if err != nil {
 		if isTimeoutErr(err) {
 			glog.Warningf(ctx, "[语音链路] TTS 阶段超时。deviceNo=%s 耗时=%s err=%v", deviceNo, time.Since(ttsStart), err)
@@ -508,7 +508,7 @@ func (s *VoiceService) HandleWithDialogue(ctx context.Context, deviceNo string, 
 		glog.Warningf(ctx, "[语音链路] 请求总耗时偏长。deviceNo=%s 总耗时=%s", deviceNo, totalCost)
 	}
 
-	return audio, meta, ask, reply, false, finishTalk, nil
+	return audio, meta, chatRes.Ask, chatRes.Reply, false, chatRes.FinishTalk, nil
 }
 
 // HandleWithTranscript 直接基于已识别文本继续执行对话与TTS。
@@ -522,7 +522,7 @@ func (s *VoiceService) HandleWithTranscript(ctx context.Context, deviceNo string
 	}
 
 	chatStart := time.Now()
-	reply, ask, exit, finishTalk, err := s.chatWithResult(ctx, deviceNo, transcript)
+	chatRes, err := s.chatWithResult(ctx, deviceNo, transcript, true)
 	if err != nil {
 		if isTimeoutErr(err) {
 			glog.Warningf(ctx, "[语音链路] 对话阶段超时。deviceNo=%s 耗时=%s err=%v", deviceNo, time.Since(chatStart), err)
@@ -533,19 +533,19 @@ func (s *VoiceService) HandleWithTranscript(ctx context.Context, deviceNo string
 	}
 	chatCost := time.Since(chatStart)
 	if chatCost >= voiceStageSlowThreshold {
-		glog.Warningf(ctx, "[语音链路] 对话阶段耗时偏长。deviceNo=%s 耗时=%s exit=%v askLen=%d replyLen=%d", deviceNo, chatCost, exit, utf8.RuneCountInString(strings.TrimSpace(ask)), utf8.RuneCountInString(strings.TrimSpace(reply)))
+		glog.Warningf(ctx, "[语音链路] 对话阶段耗时偏长。deviceNo=%s 耗时=%s exit=%v askLen=%d replyLen=%d", deviceNo, chatCost, chatRes.Exit, utf8.RuneCountInString(strings.TrimSpace(chatRes.Ask)), utf8.RuneCountInString(strings.TrimSpace(chatRes.Reply)))
 	}
 
-	if exit {
+	if chatRes.Exit {
 		totalCost := time.Since(requestStart)
 		if totalCost >= voiceTotalSlowThreshold {
 			glog.Warningf(ctx, "[语音链路] 退出请求总耗时偏长。deviceNo=%s 总耗时=%s", deviceNo, totalCost)
 		}
-		return nil, meta, ask, "", true, false, nil
+		return nil, meta, chatRes.Ask, "", true, false, nil
 	}
 
 	ttsStart := time.Now()
-	audio, err := s.synthesize(ctx, meta, reply)
+	audio, err := s.synthesize(ctx, meta, chatRes.Reply)
 	if err != nil {
 		if isTimeoutErr(err) {
 			glog.Warningf(ctx, "[语音链路] TTS 阶段超时。deviceNo=%s 耗时=%s err=%v", deviceNo, time.Since(ttsStart), err)
@@ -563,7 +563,7 @@ func (s *VoiceService) HandleWithTranscript(ctx context.Context, deviceNo string
 		glog.Warningf(ctx, "[语音链路] 请求总耗时偏长。deviceNo=%s 总耗时=%s", deviceNo, totalCost)
 	}
 
-	return audio, meta, ask, reply, false, finishTalk, nil
+	return audio, meta, chatRes.Ask, chatRes.Reply, false, chatRes.FinishTalk, nil
 }
 
 // TranscribeAudioRaw 仅执行音频参数校验与转写，不进入对话/TTS。
@@ -821,8 +821,8 @@ func (s *VoiceService) transcribeBaidu(ctx context.Context, meta AudioMeta, audi
 }
 
 func (s *VoiceService) chat(ctx context.Context, deviceNo, transcript string) (string, error) {
-	reply, _, _, _, err := s.chatWithResult(ctx, deviceNo, transcript)
-	return reply, err
+	chatRes, err := s.chatWithResult(ctx, deviceNo, transcript, true)
+	return chatRes.Reply, err
 }
 
 // TextChat 文本对话：在校验设备已注册后调用 chat，与 HandleWithTranscript 中对话阶段一致（不经 STT/TTS）。
@@ -867,8 +867,22 @@ func (s *VoiceService) HandleTranscriptChatOnly(ctx context.Context, deviceNo, t
 	if err = s.ensureDeviceRegistered(ctx, deviceNo); err != nil {
 		return "", "", false, false, err
 	}
-	answer, ask, exit, finishTalk, err = s.chatWithResult(ctx, deviceNo, transcript)
-	return ask, answer, exit, finishTalk, err
+	chatRes, cErr := s.chatWithResult(ctx, deviceNo, transcript, true)
+	if cErr != nil {
+		return chatRes.Ask, chatRes.Reply, chatRes.Exit, chatRes.FinishTalk, cErr
+	}
+	return chatRes.Ask, chatRes.Reply, chatRes.Exit, chatRes.FinishTalk, nil
+}
+
+func (s *VoiceService) HandleTranscriptForStreaming(ctx context.Context, deviceNo, transcript string) (ask string, answer string, mode string, needCasualStream bool, exit bool, finishTalk bool, err error) {
+	if err = s.ensureDeviceRegistered(ctx, deviceNo); err != nil {
+		return "", "", "", false, false, false, err
+	}
+	chatRes, cErr := s.chatWithResult(ctx, deviceNo, transcript, false)
+	if cErr != nil {
+		return chatRes.Ask, chatRes.Reply, chatRes.Mode, chatRes.NeedCasualStream, chatRes.Exit, chatRes.FinishTalk, cErr
+	}
+	return chatRes.Ask, chatRes.Reply, chatRes.Mode, chatRes.NeedCasualStream, chatRes.Exit, chatRes.FinishTalk, nil
 }
 
 func (s *VoiceService) StreamReplyWithBaiduTTS(
