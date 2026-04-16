@@ -1041,18 +1041,39 @@ func normalizeReplyAndDetectExit(reply string) (string, bool) {
 	}
 	var obj map[string]interface{}
 	if json.Unmarshal([]byte(trimmed), &obj) != nil {
-		return trimmed, false
+		return sanitizeModelReplyText(trimmed), false
 	}
 	if hasExitMarker(obj) {
 		return "", true
 	}
 	if v, ok := obj["reply"].(string); ok {
-		return strings.TrimSpace(v), false
+		return sanitizeModelReplyText(v), false
 	}
 	if v, ok := obj["content"].(string); ok {
-		return strings.TrimSpace(v), false
+		return sanitizeModelReplyText(v), false
 	}
-	return trimmed, false
+	return sanitizeModelReplyText(trimmed), false
+}
+
+// sanitizeModelReplyText removes emoji-like symbols for TTS/display stability.
+func sanitizeModelReplyText(input string) string {
+	trimmed := strings.TrimSpace(input)
+	if trimmed == "" {
+		return ""
+	}
+	cleaned := strings.Map(func(r rune) rune {
+		if r >= 0x1F300 && r <= 0x1FAFF {
+			return -1
+		}
+		if r >= 0x2600 && r <= 0x27BF {
+			return -1
+		}
+		if unicode.Is(unicode.So, r) {
+			return -1
+		}
+		return r
+	}, trimmed)
+	return strings.TrimSpace(cleaned)
 }
 
 func hasExitMarker(obj map[string]interface{}) bool {

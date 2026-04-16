@@ -314,12 +314,12 @@ func (s *VoiceService) callDeepSeekRaw(ctx context.Context, deviceNo, prompt str
 }
 
 func (s *VoiceService) callDeepSeekDirectReply(ctx context.Context, deviceNo, transcript string) (string, error) {
-	systemMessage := "你是闲聊助手，请直接回答用户问题，语言自然简洁。"
+	systemMessage := "你是闲聊助手，请直接回答用户问题，语言自然简洁。不要使用表情符号或特殊颜文字。"
 	_, reply, _, err := s.callDeepSeekRaw(ctx, deviceNo, transcript, 6, systemMessage)
 	if err != nil {
 		return "", err
 	}
-	reply = strings.TrimSpace(reply)
+	reply = sanitizeModelReplyText(reply)
 	if reply == "" {
 		reply = "我在，请继续说。"
 	}
@@ -337,7 +337,7 @@ func (s *VoiceService) streamCasualReplyWithBaiduTTS(
 	if strings.ToLower(strings.TrimSpace(s.cfg.TTS.Provider)) != "baidu" {
 		return "", StageError{Stage: "tts", Detail: "闲聊流式音频下发仅支持百度TTS"}
 	}
-	messages := s.buildChatMessagesWithLimit(deviceNo, transcript, 6, "你是闲聊助手，请直接回答用户问题，语言自然简洁。")
+	messages := s.buildChatMessagesWithLimit(deviceNo, transcript, 6, "你是闲聊助手，请直接回答用户问题，语言自然简洁。不要使用表情符号或特殊颜文字。")
 	payload := map[string]interface{}{
 		"model":    s.cfg.DeepSeek.Model,
 		"messages": messages,
@@ -407,7 +407,7 @@ func (s *VoiceService) streamCasualReplyWithBaiduTTS(
 		if chunkErr != nil {
 			return "", chunkErr
 		}
-		chunk = strings.TrimSpace(chunk)
+		chunk = sanitizeModelReplyText(chunk)
 		if chunk == "" {
 			continue
 		}
@@ -436,7 +436,7 @@ func (s *VoiceService) streamCasualReplyWithBaiduTTS(
 	if err := flushSentence(sentenceBuf.String()); err != nil {
 		return "", err
 	}
-	reply := strings.TrimSpace(fullReply.String())
+	reply := sanitizeModelReplyText(fullReply.String())
 	if reply == "" {
 		reply = "我在，请继续说。"
 	}

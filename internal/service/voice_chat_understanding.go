@@ -234,7 +234,7 @@ func (s *VoiceService) callDeepSeekUnifiedIntent(ctx context.Context, deviceNo, 
 	intent.ActionName = strings.TrimSpace(intent.ActionName)
 	intent.EventName = strings.TrimSpace(intent.EventName)
 	intent.ExtraEvent = strings.TrimSpace(intent.ExtraEvent)
-	intent.Reply = strings.TrimSpace(intent.Reply)
+	intent.Reply = sanitizeModelReplyText(intent.Reply)
 	return intent, nil
 }
 
@@ -674,7 +674,7 @@ func parseEventIntentFromReply(reply string) (eventIntentResult, bool) {
 		intent.EventName = strings.TrimSpace(intent.EventName)
 		intent.ActionKeyWord = strings.TrimSpace(intent.ActionKeyWord)
 		intent.Remark = strings.TrimSpace(intent.Remark)
-		intent.Reply = strings.TrimSpace(intent.Reply)
+		intent.Reply = sanitizeModelReplyText(intent.Reply)
 		intent.Reason = strings.TrimSpace(intent.Reason)
 		if intent.Action == "" {
 			intent.Action = "none"
@@ -690,7 +690,7 @@ func parseEventIntentFromReply(reply string) (eventIntentResult, bool) {
 			intent.EventName = strings.TrimSpace(intent.EventName)
 			intent.ActionKeyWord = strings.TrimSpace(intent.ActionKeyWord)
 			intent.Remark = strings.TrimSpace(intent.Remark)
-			intent.Reply = strings.TrimSpace(intent.Reply)
+			intent.Reply = sanitizeModelReplyText(intent.Reply)
 			intent.Reason = strings.TrimSpace(intent.Reason)
 			if intent.Action == "" {
 				intent.Action = "none"
@@ -731,14 +731,14 @@ func parseGeneralChatResult(reply string) (generalChatResult, bool) {
 		return out, false
 	}
 	if err := json.Unmarshal([]byte(trimmed), &out); err == nil {
-		out.Reply = strings.TrimSpace(out.Reply)
+		out.Reply = sanitizeModelReplyText(out.Reply)
 		return out, true
 	}
 	start := strings.Index(trimmed, "{")
 	end := strings.LastIndex(trimmed, "}")
 	if start >= 0 && end > start {
 		if err := json.Unmarshal([]byte(trimmed[start:end+1]), &out); err == nil {
-			out.Reply = strings.TrimSpace(out.Reply)
+			out.Reply = sanitizeModelReplyText(out.Reply)
 			return out, true
 		}
 	}
