@@ -186,7 +186,7 @@ func (s *VoiceService) chatWithResult(ctx context.Context, deviceNo, transcript 
 				Reply:      "我暂时没理解清楚你的意思，请再说一次",
 				Ask:        normalizedTranscript,
 				Mode:       resolvedMode,
-				FinishTalk: true,
+				FinishTalk: false,
 			}, chatErr
 		}
 		s.insertQa(ctx, normalizedTranscript, reply)
@@ -194,7 +194,7 @@ func (s *VoiceService) chatWithResult(ctx context.Context, deviceNo, transcript 
 			Reply:      reply,
 			Ask:        normalizedTranscript,
 			Mode:       resolvedMode,
-			FinishTalk: true,
+			FinishTalk: false,
 		}, nil
 	}
 	events := []entity.Event{}
@@ -291,7 +291,7 @@ func (s *VoiceService) chatWithResult(ctx context.Context, deviceNo, transcript 
 			Reply:      reply,
 			Ask:        normalizedTranscript,
 			Mode:       resolvedMode,
-			FinishTalk: true,
+			FinishTalk: !intent.NeedUserReply,
 		}, nil
 	}
 
