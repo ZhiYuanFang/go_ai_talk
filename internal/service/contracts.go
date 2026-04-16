@@ -33,12 +33,20 @@ type StreamASRSession interface {
 	Close() error
 }
 
+// StreamTTSSession 表示一个流式 TTS 会话。
+type StreamTTSSession interface {
+	WriteText(text string) error
+	Finish(ctx context.Context) error
+	Close() error
+}
+
 // VoiceContract 语音对话服务契约。
 type VoiceContract interface {
 	HandleWithDialogue(ctx context.Context, deviceNo string, meta AudioMeta, audioBase64 string) ([]byte, AudioMeta, string, string, bool, bool, error)
 	HandleWithTranscript(ctx context.Context, deviceNo string, meta AudioMeta, transcript string) ([]byte, AudioMeta, string, string, bool, bool, error)
 	HandleTranscriptChatOnly(ctx context.Context, deviceNo, transcript string) (ask string, answer string, exit bool, finishTalk bool, err error)
-	DetectChatMode(transcript string) string
+	DetectChatMode(deviceNo, transcript string) string
+	CreateStreamTTSSession(ctx context.Context, meta AudioMeta, onAudioChunk func(audio []byte, meta AudioMeta) error) (StreamTTSSession, error)
 	StreamCasualReplyWithBaiduTTS(ctx context.Context, deviceNo string, meta AudioMeta, transcript string, onTextDelta func(text string) error, onAudioChunk func(audio []byte, meta AudioMeta, seq int) error) (string, error)
 	StreamReplyWithBaiduTTS(ctx context.Context, meta AudioMeta, reply string, onAudioChunk func(audio []byte, meta AudioMeta, seq int) error) (chunks int, err error)
 	CreateStreamASRSession(ctx context.Context, meta AudioMeta, onPartial func(text string), onFinal func(text string)) (StreamASRSession, error)

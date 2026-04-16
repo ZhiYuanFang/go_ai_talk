@@ -365,30 +365,31 @@ func (s *VoiceService) streamCasualReplyWithBaiduTTS(
 		return "", fmt.Errorf("status %d: %s", resp.StatusCode, string(respBody))
 	}
 
-	token, err := s.getBaiduAccessToken(ctx, &s.ttsToken, s.cfg.TTS.APIKey, s.cfg.TTS.APISecret, s.cfg.TTS.TokenEndpoint, s.cfg.TTS.TimeoutSeconds)
-	if err != nil {
-		return "", StageError{Stage: "tts", Detail: err.Error()}
-	}
-
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	var fullReply strings.Builder
 	var sentenceBuf strings.Builder
 	seq := 0
+	if !s.cfg.TTS.StreamEnabled {
+		return "", StageError{Stage: "tts", Detail: "未启用百度流式TTS（tts.streamEnabled=false）"}
+	}
+	ttsSession, sessionErr := s.CreateStreamTTSSession(ctx, meta, func(audio []byte, chunkMeta AudioMeta) error {
+		seq++
+		if onAudioChunk != nil {
+			return onAudioChunk(audio, chunkMeta, seq)
+		}
+		return nil
+	})
+	if sessionErr != nil {
+		return "", sessionErr
+	}
+	defer ttsSession.Close()
 	flushSentence := func(text string) error {
 		trimmed := strings.TrimSpace(text)
 		if trimmed == "" {
 			return nil
 		}
-		seq++
-		audio, ttsErr := s.invokeBaiduTTSChunk(ctx, meta, token, trimmed)
-		if ttsErr != nil {
-			return ttsErr
-		}
-		if onAudioChunk != nil {
-			return onAudioChunk(audio, meta, seq)
-		}
-		return nil
+		return ttsSession.WriteText(trimmed)
 	}
 
 	for scanner.Scan() {
@@ -434,6 +435,9 @@ func (s *VoiceService) streamCasualReplyWithBaiduTTS(
 		return "", err
 	}
 	if err := flushSentence(sentenceBuf.String()); err != nil {
+		return "", err
+	}
+	if err := ttsSession.Finish(ctx); err != nil {
 		return "", err
 	}
 	reply := sanitizeModelReplyText(fullReply.String())

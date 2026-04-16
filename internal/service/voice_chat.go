@@ -105,7 +105,8 @@ type VoiceChatConfig struct {
 	} `json:"deepseek"`
 	TTS struct {
 		Provider       string `json:"provider"`
-		Endpoint       string `json:"endpoint"`
+		StreamEnabled  bool   `json:"streamEnabled"`
+		StreamEndpoint string `json:"streamEndpoint"`
 		APIKey         string `json:"apiKey"`
 		APISecret      string `json:"apiSecret"`
 		TokenEndpoint  string `json:"tokenEndpoint"`
@@ -118,6 +119,8 @@ type VoiceChatConfig struct {
 		Pitch          string `json:"pitch"`
 		Volume         string `json:"volume"`
 		AUE            string `json:"aue"`
+		StreamIdleTimeoutSeconds   int `json:"streamIdleTimeoutSeconds"`
+		StreamFinishTimeoutSeconds int `json:"streamFinishTimeoutSeconds"`
 	} `json:"tts"`
 }
 
@@ -194,6 +197,8 @@ type VoiceService struct {
 	ttsToken               baiduTokenCache
 	sttLimiter             chan struct{}
 	chatLimiter            chan struct{}
+	modeMu                 sync.Mutex
+	deviceModes            map[string]string
 	sessionMu              sync.Mutex
 	sessions               map[string]*deviceChatSession
 	pendingQuantityMu      sync.Mutex
@@ -282,6 +287,7 @@ func NewVoiceService(cfg VoiceChatConfig) *VoiceService {
 		},
 		sttLimiter:             newLimiter(cfg.STT.MaxConcurrency),
 		chatLimiter:            newLimiter(cfg.DeepSeek.MaxConcurrency),
+		deviceModes:            make(map[string]string),
 		sessions:               make(map[string]*deviceChatSession),
 		pendingQuantity:        make(map[string]pendingQuantityState),
 		ensureDeviceRegistered: func(ctx context.Context, deviceNo string) error { return nil },
@@ -383,8 +389,19 @@ func applyConfigDefaults(cfg *VoiceChatConfig) {
 	if cfg.TTS.AUE == "" {
 		cfg.TTS.AUE = "6"
 	}
-	if cfg.TTS.Provider == "baidu" && cfg.TTS.TokenEndpoint == "" {
-		cfg.TTS.TokenEndpoint = "https://aip.baidubce.com/oauth/2.0/token"
+	if cfg.TTS.StreamIdleTimeoutSeconds <= 0 {
+		cfg.TTS.StreamIdleTimeoutSeconds = 15
+	}
+	if cfg.TTS.StreamFinishTimeoutSeconds <= 0 {
+		cfg.TTS.StreamFinishTimeoutSeconds = 8
+	}
+	if cfg.TTS.Provider == "baidu" {
+		if cfg.TTS.TokenEndpoint == "" {
+			cfg.TTS.TokenEndpoint = "https://aip.baidubce.com/oauth/2.0/token"
+		}
+		if cfg.TTS.StreamEndpoint == "" {
+			cfg.TTS.StreamEndpoint = "wss://aip.baidubce.com/ws/2.0/speech/publiccloudspeech/v1/tts"
+		}
 	}
 }
 
@@ -816,8 +833,20 @@ func (s *VoiceService) TextChat(ctx context.Context, deviceNo, transcript string
 	return s.chat(ctx, deviceNo, transcript)
 }
 
-func (s *VoiceService) DetectChatMode(transcript string) string {
-	return detectChatModeByTranscript(transcript)
+func (s *VoiceService) DetectChatMode(deviceNo, transcript string) string {
+	return s.resolveChatMode(deviceNo, transcript)
+}
+
+func (s *VoiceService) CreateStreamTTSSession(ctx context.Context, meta AudioMeta, onAudioChunk func(audio []byte, meta AudioMeta) error) (StreamTTSSession, error) {
+	switch strings.ToLower(strings.TrimSpace(s.cfg.TTS.Provider)) {
+	case "baidu":
+		if s.cfg.TTS.StreamEnabled {
+			return newBaiduStreamTTSSession(ctx, s, meta, onAudioChunk)
+		}
+		return nil, StageError{Stage: "tts", Detail: "未启用流式TTS（tts.streamEnabled=false）"}
+	default:
+		return nil, StageError{Stage: "tts", Detail: "当前 provider 不支持流式TTS"}
+	}
 }
 
 func (s *VoiceService) StreamCasualReplyWithBaiduTTS(
@@ -851,29 +880,28 @@ func (s *VoiceService) StreamReplyWithBaiduTTS(
 	if strings.ToLower(strings.TrimSpace(s.cfg.TTS.Provider)) != "baidu" {
 		return 0, StageError{Stage: "tts", Detail: "当前仅支持百度TTS流式分段下发"}
 	}
-	token, err := s.getBaiduAccessToken(ctx, &s.ttsToken, s.cfg.TTS.APIKey, s.cfg.TTS.APISecret, s.cfg.TTS.TokenEndpoint, s.cfg.TTS.TimeoutSeconds)
-	if err != nil {
-		return 0, StageError{Stage: "tts", Detail: err.Error()}
+	if !s.cfg.TTS.StreamEnabled {
+		return 0, StageError{Stage: "tts", Detail: "未启用百度流式TTS（tts.streamEnabled=false）"}
 	}
-	segments := chunkBaiduText(reply)
-	if len(segments) == 0 {
-		return 0, StageError{Stage: "tts", Detail: "待合成文本为空"}
-	}
-	glog.Infof(ctx, "[TTS请求] 开始流式分段合成。segments=%d replyLen=%d sampleRate=%d", len(segments), utf8.RuneCountInString(strings.TrimSpace(reply)), meta.SampleRate)
-	for idx, segment := range segments {
-		glog.Infof(ctx, "[TTS请求] 请求百度TTS分段。chunk=%d/%d textLen=%d text=%q", idx+1, len(segments), utf8.RuneCountInString(strings.TrimSpace(segment)), truncateVoiceLogText(segment, 120))
-		audio, synthErr := s.invokeBaiduTTSChunk(ctx, meta, token, segment)
-		if synthErr != nil {
-			return idx, synthErr
-		}
-		glog.Infof(ctx, "[TTS响应] 百度TTS分段合成完成。chunk=%d/%d audioBytes=%d", idx+1, len(segments), len(audio))
+	seq := 0
+	session, err := s.CreateStreamTTSSession(ctx, meta, func(audio []byte, chunkMeta AudioMeta) error {
+		seq++
 		if onAudioChunk != nil {
-			if cbErr := onAudioChunk(audio, meta, idx+1); cbErr != nil {
-				return idx, cbErr
-			}
+			return onAudioChunk(audio, chunkMeta, seq)
 		}
+		return nil
+	})
+	if err != nil {
+		return 0, err
 	}
-	return len(segments), nil
+	defer session.Close()
+	if writeErr := session.WriteText(reply); writeErr != nil {
+		return 0, writeErr
+	}
+	if finishErr := session.Finish(ctx); finishErr != nil {
+		return seq, finishErr
+	}
+	return seq, nil
 }
 
 // 往qa里录入问题和答案
@@ -1280,197 +1308,33 @@ func (s *VoiceService) synthesize(ctx context.Context, meta AudioMeta, reply str
 	case "baidu":
 		return s.synthesizeBaidu(ctx, meta, reply)
 	default:
-		return s.synthesizeGeneric(ctx, meta, reply)
+		return nil, StageError{Stage: "tts", Detail: "当前 provider 不支持TTS"}
 	}
 }
 
-// synthesizeGeneric 通用 TTS 调用。
-func (s *VoiceService) synthesizeGeneric(ctx context.Context, meta AudioMeta, reply string) ([]byte, error) {
-	if s.cfg.TTS.Endpoint == "" {
-		return nil, StageError{Stage: "tts", Detail: "TTS endpoint 未配置"}
-	}
-
-	cctx, cancel := context.WithTimeout(ctx, time.Duration(s.cfg.TTS.TimeoutSeconds)*time.Second)
-	defer cancel()
-
-	payload := map[string]interface{}{
-		"text":        reply,
-		"voice":       s.cfg.TTS.Voice,
-		"model":       s.cfg.TTS.Model,
-		"sample_rate": meta.SampleRate,
-		"format":      "wav",
-	}
-
-	bodyBytes, _ := json.Marshal(payload)
-	req, err := http.NewRequestWithContext(cctx, http.MethodPost, s.cfg.TTS.Endpoint, bytes.NewReader(bodyBytes))
-	if err != nil {
-		return nil, StageError{Stage: "tts", Detail: err.Error()}
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/octet-stream")
-	if s.cfg.TTS.APIKey != "" {
-		req.Header.Set("Authorization", "Bearer "+s.cfg.TTS.APIKey)
-	}
-
-	resp, err := s.httpClient.Do(req)
-	if err != nil {
-		return nil, StageError{Stage: "tts", Detail: err.Error()}
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, StageError{Stage: "tts", Detail: err.Error()}
-	}
-	if resp.StatusCode >= 300 {
-		return nil, StageError{Stage: "tts", Detail: fmt.Sprintf("status %d: %s", resp.StatusCode, string(respBody))}
-	}
-	if len(respBody) == 0 {
-		return nil, StageError{Stage: "tts", Detail: "合成音频为空"}
-	}
-
-	return respBody, nil
-}
-
-// synthesizeBaidu 百度 TTS 调用，并按上限自动分段合成后拼接。
+// synthesizeBaidu 百度 TTS 调用，基于流式 TTS 聚合完整音频。
 func (s *VoiceService) synthesizeBaidu(ctx context.Context, meta AudioMeta, reply string) ([]byte, error) {
-	if s.cfg.TTS.Endpoint == "" {
-		return nil, StageError{Stage: "tts", Detail: "Baidu TTS endpoint 未配置"}
+	if !s.cfg.TTS.StreamEnabled {
+		return nil, StageError{Stage: "tts", Detail: "未启用百度流式TTS（tts.streamEnabled=false）"}
 	}
-	token, err := s.getBaiduAccessToken(ctx, &s.ttsToken, s.cfg.TTS.APIKey, s.cfg.TTS.APISecret, s.cfg.TTS.TokenEndpoint, s.cfg.TTS.TimeoutSeconds)
-	if err != nil {
-		return nil, StageError{Stage: "tts", Detail: err.Error()}
-	}
-
-	segments := chunkBaiduText(reply)
-	if len(segments) == 0 {
-		return nil, StageError{Stage: "tts", Detail: "待合成文本为空"}
-	}
-	glog.Infof(ctx, "[TTS请求] 开始整段分段合成。segments=%d replyLen=%d sampleRate=%d", len(segments), utf8.RuneCountInString(strings.TrimSpace(reply)), meta.SampleRate)
-
 	var combined bytes.Buffer
-	for idx, segment := range segments {
-		glog.Infof(ctx, "[TTS请求] 请求百度TTS分段。chunk=%d/%d textLen=%d text=%q", idx+1, len(segments), utf8.RuneCountInString(strings.TrimSpace(segment)), truncateVoiceLogText(segment, 120))
-		audio, chunkErr := s.invokeBaiduTTSChunk(ctx, meta, token, segment)
-		if chunkErr != nil {
-			if se, ok := chunkErr.(StageError); ok {
-				se.Detail = fmt.Sprintf("chunk %d/%d: %s", idx+1, len(segments), se.Detail)
-				return nil, se
-			}
-			return nil, chunkErr
-		}
-		glog.Infof(ctx, "[TTS响应] 百度TTS分段合成完成。chunk=%d/%d audioBytes=%d", idx+1, len(segments), len(audio))
+	session, err := s.CreateStreamTTSSession(ctx, meta, func(audio []byte, meta AudioMeta) error {
 		combined.Write(audio)
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
-
+	defer session.Close()
+	if err := session.WriteText(reply); err != nil {
+		return nil, err
+	}
+	if err := session.Finish(ctx); err != nil {
+		return nil, err
+	}
 	return combined.Bytes(), nil
 }
 
-// invokeBaiduTTSChunk 调用百度 TTS 的单段合成。
-func (s *VoiceService) invokeBaiduTTSChunk(ctx context.Context, meta AudioMeta, token, text string) ([]byte, error) {
-	cctx, cancel := context.WithTimeout(ctx, time.Duration(s.cfg.TTS.TimeoutSeconds)*time.Second)
-	defer cancel()
-
-	if strings.TrimSpace(text) == "" {
-		return nil, StageError{Stage: "tts", Detail: "chunk 文本为空"}
-	}
-
-	form := url.Values{}
-	form.Set("tex", text)
-	form.Set("tok", token)
-	form.Set("cuid", s.cfg.TTS.CUID)
-	form.Set("ctp", "1")
-	form.Set("lan", s.cfg.TTS.Language)
-	form.Set("per", s.cfg.TTS.Voice)
-	form.Set("aue", s.cfg.TTS.AUE)
-	form.Set("spd", s.cfg.TTS.Speed)
-	form.Set("pit", s.cfg.TTS.Pitch)
-	form.Set("vol", s.cfg.TTS.Volume)
-	sampleRate := meta.SampleRate
-	if sampleRate <= 0 {
-		sampleRate = s.cfg.Audio.SampleRate
-	}
-	if sampleRate <= 0 {
-		sampleRate = 16000
-	}
-	form.Set("audio_ctrl", fmt.Sprintf("{\"sampling_rate\":%d}", sampleRate))
-
-	req, err := http.NewRequestWithContext(cctx, http.MethodPost, s.cfg.TTS.Endpoint, strings.NewReader(form.Encode()))
-	if err != nil {
-		return nil, StageError{Stage: "tts", Detail: err.Error()}
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-	resp, err := s.httpClient.Do(req)
-	if err != nil {
-		return nil, StageError{Stage: "tts", Detail: err.Error()}
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, StageError{Stage: "tts", Detail: err.Error()}
-	}
-	contentType := resp.Header.Get("Content-Type")
-	if resp.StatusCode >= 300 || strings.Contains(contentType, "application/json") || strings.Contains(contentType, "text/plain") {
-		var errObj struct {
-			ErrNo  int    `json:"err_no"`
-			ErrMsg string `json:"err_msg"`
-		}
-		if err := json.Unmarshal(respBody, &errObj); err == nil && errObj.ErrNo != 0 {
-			return nil, StageError{Stage: "tts", Detail: fmt.Sprintf("baidu err %d: %s", errObj.ErrNo, errObj.ErrMsg)}
-		}
-		return nil, StageError{Stage: "tts", Detail: fmt.Sprintf("status %d: %s", resp.StatusCode, string(respBody))}
-	}
-	if len(respBody) == 0 {
-		return nil, StageError{Stage: "tts", Detail: "合成音频为空"}
-	}
-
-	return respBody, nil
-}
-
-func chunkBaiduText(text string) []string {
-	clean := sanitizeBaiduText(text)
-	if clean == "" {
-		return nil
-	}
-	if len(url.QueryEscape(clean)) <= baiduTTSMaxTextBytes {
-		return []string{clean}
-	}
-
-	var chunks []string
-	current := ""
-	for _, r := range clean {
-		candidate := current + string(r)
-		if len(url.QueryEscape(candidate)) > baiduTTSMaxTextBytes {
-			trimmed := strings.TrimSpace(current)
-			if trimmed != "" {
-				chunks = append(chunks, trimmed)
-			}
-			current = string(r)
-			if len(url.QueryEscape(current)) > baiduTTSMaxTextBytes {
-				current = ""
-			}
-			continue
-		}
-		current = candidate
-	}
-	trimmed := strings.TrimSpace(current)
-	if trimmed != "" {
-		chunks = append(chunks, trimmed)
-	}
-	return chunks
-}
-
-func sanitizeBaiduText(text string) string {
-	if text == "" {
-		return ""
-	}
-	replacer := strings.NewReplacer("\r", " ", "\n", " ")
-	collapsed := replacer.Replace(text)
-	fields := strings.Fields(collapsed)
-	return strings.Join(fields, " ")
-}
 
 // decodeBase64Audio 兼容多种 base64 编码并进行解码。
 func decodeBase64Audio(input string) ([]byte, error) {

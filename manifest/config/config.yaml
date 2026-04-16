@@ -53,7 +53,8 @@ voiceChat:
     maxConcurrency: 100
   tts:
     provider: "baidu"
-    endpoint: "https://tsn.baidu.com/text2audio" # 语音合成短文本接口
+    streamEnabled: true
+    streamEndpoint: "wss://aip.baidubce.com/ws/2.0/speech/publiccloudspeech/v1/tts" # 语音合成流式接口
     tokenEndpoint: "https://aip.baidubce.com/oauth/2.0/token"
     apiKey: "iZZApLGcYBhyR5Djqtp7Kc1m"
     apiSecret: "F8uXBqwGwUkpy3tYp6eMEBqX2s1R5wsm"
@@ -66,3 +67,5 @@ voiceChat:
     aue: "6" # 音频格式 3：mp3，4：pcm-16k，5：pcm-8k，6：wav
     cuid: "gofirst-device"
     timeoutSeconds: 100
+    streamIdleTimeoutSeconds: 15
+    streamFinishTimeoutSeconds: 8

@@ -44,6 +44,48 @@ func detectChatModeByTranscript(text string) string {
 	return chatModeCasual
 }
 
+func isModeSwitchCommand(text string) bool {
+	return strings.HasPrefix(strings.TrimSpace(text), "切换到")
+}
+
+func chatModeDisplayName(mode string) string {
+	if mode == chatModeMaternity {
+		return "母婴"
+	}
+	return "闲聊"
+}
+
+func (s *VoiceService) setDeviceChatMode(deviceNo, mode string) {
+	deviceNo = strings.TrimSpace(deviceNo)
+	if deviceNo == "" {
+		return
+	}
+	s.modeMu.Lock()
+	defer s.modeMu.Unlock()
+	s.deviceModes[deviceNo] = mode
+}
+
+func (s *VoiceService) getDeviceChatMode(deviceNo string) string {
+	deviceNo = strings.TrimSpace(deviceNo)
+	if deviceNo == "" {
+		return ""
+	}
+	s.modeMu.Lock()
+	defer s.modeMu.Unlock()
+	return strings.TrimSpace(s.deviceModes[deviceNo])
+}
+
+func (s *VoiceService) resolveChatMode(deviceNo, text string) string {
+	normalized := strings.TrimSpace(text)
+	if isModeSwitchCommand(normalized) {
+		return detectChatModeByTranscript(normalized)
+	}
+	if mode := s.getDeviceChatMode(deviceNo); mode != "" {
+		return mode
+	}
+	return detectChatModeByTranscript(normalized)
+}
+
 // normalizeAndValidateChatText 统一清理并校验转写文本长度。
 func (s *VoiceService) normalizeAndValidateChatText(text string) (string, error) {
 	normalized := strings.TrimSpace(text)
@@ -68,7 +110,14 @@ func (s *VoiceService) chatWithResult(ctx context.Context, deviceNo, transcript 
 	if err != nil {
 		return "", "", false, false, err
 	}
-	if detectChatModeByTranscript(normalizedTranscript) == chatModeCasual {
+	resolvedMode := s.resolveChatMode(deviceNo, normalizedTranscript)
+	if isModeSwitchCommand(normalizedTranscript) {
+		s.setDeviceChatMode(deviceNo, resolvedMode)
+		reply := fmt.Sprintf("已切换到%s模式", chatModeDisplayName(resolvedMode))
+		s.insertQa(ctx, normalizedTranscript, reply)
+		return reply, normalizedTranscript, false, true, nil
+	}
+	if resolvedMode == chatModeCasual {
 		reply, chatErr := s.callDeepSeekDirectReply(ctx, deviceNo, normalizedTranscript)
 		if chatErr != nil {
 			return "我暂时没理解清楚你的意思，请再说一次", normalizedTranscript, false, true, chatErr

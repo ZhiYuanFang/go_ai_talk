@@ -9,12 +9,66 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/gorilla/websocket"
 )
+
+func newMockBaiduTTSServers(t *testing.T, audioChunks [][]byte) (*httptest.Server, *httptest.Server) {
+	t.Helper()
+
+	tokenSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"access_token": "token",
+			"expires_in":   3600,
+		})
+	}))
+
+	upgrader := websocket.Upgrader{}
+	wsSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("access_token"); got != "token" {
+			t.Fatalf("unexpected access_token: %s", got)
+		}
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			t.Fatalf("upgrade failed: %v", err)
+		}
+		defer conn.Close()
+
+		for {
+			mt, msg, err := conn.ReadMessage()
+			if err != nil {
+				return
+			}
+			if mt != websocket.TextMessage {
+				continue
+			}
+			var obj map[string]interface{}
+			if err := json.Unmarshal(msg, &obj); err != nil {
+				t.Fatalf("bad client json: %v", err)
+			}
+			switch obj["type"] {
+			case "system.start":
+				_ = conn.WriteJSON(map[string]interface{}{"type": "system.started", "code": 0})
+			case "text":
+				for _, chunk := range audioChunks {
+					if err := conn.WriteMessage(websocket.BinaryMessage, chunk); err != nil {
+						t.Fatalf("write binary failed: %v", err)
+					}
+				}
+			case "system.finish":
+				_ = conn.WriteJSON(map[string]interface{}{"type": "system.finished", "code": 0})
+				return
+			}
+		}
+	}))
+
+	return tokenSrv, wsSrv
+}
 
 func TestVoiceServiceHandleHappyPath(t *testing.T) {
 	sttSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -36,16 +90,20 @@ func TestVoiceServiceHandleHappyPath(t *testing.T) {
 	defer chatSrv.Close()
 
 	ttsAudio := []byte{1, 2, 3, 4}
-	ttsSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/octet-stream")
-		_, _ = w.Write(ttsAudio)
-	}))
+	tokenSrv, ttsSrv := newMockBaiduTTSServers(t, [][]byte{ttsAudio})
+	defer tokenSrv.Close()
 	defer ttsSrv.Close()
 
 	cfg := VoiceChatConfig{}
 	cfg.STT.Endpoint = sttSrv.URL
 	cfg.DeepSeek.Endpoint = chatSrv.URL
-	cfg.TTS.Endpoint = ttsSrv.URL
+	cfg.TTS.Provider = "baidu"
+	cfg.TTS.StreamEnabled = true
+	cfg.TTS.StreamEndpoint = "ws" + strings.TrimPrefix(ttsSrv.URL, "http")
+	cfg.TTS.TokenEndpoint = tokenSrv.URL
+	cfg.TTS.APIKey = "tts-key"
+	cfg.TTS.APISecret = "tts-secret"
+	cfg.TTS.CUID = "device"
 	svc := NewVoiceService(cfg)
 
 	pcm := []byte("test pcm data")
@@ -130,18 +188,38 @@ func TestVoiceServiceBaiduProviders(t *testing.T) {
 	defer chatSrv.Close()
 
 	ttsAudio := []byte{7, 8, 9}
+	upgrader := websocket.Upgrader{}
 	ttsSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = r.ParseForm()
-		if r.FormValue("tok") != "token" {
-			t.Fatalf("unexpected token: %s", r.FormValue("tok"))
+		if r.URL.Query().Get("access_token") != "token" {
+			t.Fatalf("unexpected access_token: %s", r.URL.Query().Get("access_token"))
 		}
-		ctrl := r.FormValue("audio_ctrl")
-		expectedCtrl := fmt.Sprintf("{\"sampling_rate\":%d}", expectedSampleRate)
-		if ctrl != expectedCtrl {
-			t.Fatalf("unexpected audio_ctrl: %s", ctrl)
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			t.Fatalf("upgrade failed: %v", err)
 		}
-		w.Header().Set("Content-Type", "audio/wav")
-		_, _ = w.Write(ttsAudio)
+		defer conn.Close()
+		for {
+			mt, msg, err := conn.ReadMessage()
+			if err != nil {
+				return
+			}
+			if mt != websocket.TextMessage {
+				continue
+			}
+			var obj map[string]interface{}
+			if err := json.Unmarshal(msg, &obj); err != nil {
+				t.Fatalf("bad client json: %v", err)
+			}
+			switch obj["type"] {
+			case "system.start":
+				_ = conn.WriteJSON(map[string]interface{}{"type": "system.started", "code": 0})
+			case "text":
+				_ = conn.WriteMessage(websocket.BinaryMessage, ttsAudio)
+			case "system.finish":
+				_ = conn.WriteJSON(map[string]interface{}{"type": "system.finished", "code": 0})
+				return
+			}
+		}
 	}))
 	defer ttsSrv.Close()
 
@@ -153,11 +231,13 @@ func TestVoiceServiceBaiduProviders(t *testing.T) {
 	cfg.STT.APISecret = "stt-secret"
 	cfg.STT.CUID = "device"
 	cfg.TTS.Provider = "baidu"
-	cfg.TTS.Endpoint = ttsSrv.URL
+	cfg.TTS.StreamEnabled = true
+	cfg.TTS.StreamEndpoint = "ws" + strings.TrimPrefix(ttsSrv.URL, "http")
 	cfg.TTS.TokenEndpoint = tokenSrv.URL
 	cfg.TTS.APIKey = "tts-key"
 	cfg.TTS.APISecret = "tts-secret"
 	cfg.TTS.CUID = "device"
+	cfg.TTS.Voice = "0"
 	cfg.DeepSeek.Endpoint = chatSrv.URL
 
 	svc := NewVoiceService(cfg)
@@ -219,19 +299,12 @@ func TestVoiceServiceConcurrencyLimits(t *testing.T) {
 	}))
 	defer chatSrv.Close()
 
-	ttsSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/octet-stream")
-		_, _ = w.Write([]byte{1})
-	}))
-	defer ttsSrv.Close()
-
 	cfg := VoiceChatConfig{}
 	cfg.STT.Endpoint = sttSrv.URL
 	cfg.STT.MaxConcurrency = 2
 	cfg.DeepSeek.Endpoint = chatSrv.URL
 	cfg.DeepSeek.Model = "deepseek-chat"
 	cfg.DeepSeek.MaxConcurrency = 2
-	cfg.TTS.Endpoint = ttsSrv.URL
 
 	svc := NewVoiceService(cfg)
 	pcm := []byte("test pcm data")
@@ -477,25 +550,7 @@ func TestVoiceServiceHandleRejectsShortTranscriptWithoutDeepSeekCall(t *testing.
 	}
 }
 
-func TestChunkBaiduText(t *testing.T) {
-	text := strings.Repeat("你好世界", 200)
-	chunks := chunkBaiduText(text)
-	if len(chunks) < 2 {
-		t.Fatalf("expected multiple chunks, got %d", len(chunks))
-	}
-	joined := strings.Join(chunks, "")
-	if joined != sanitizeBaiduText(text) {
-		t.Fatalf("unexpected joined text")
-	}
-	for i, c := range chunks {
-		if len(url.QueryEscape(c)) > baiduTTSMaxTextBytes {
-			t.Fatalf("chunk %d exceeds limit", i)
-		}
-	}
-}
-
 func TestVoiceServiceSynthesizeBaiduChunks(t *testing.T) {
-	expectedSampleRate := 16000
 	tokenSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
@@ -505,60 +560,153 @@ func TestVoiceServiceSynthesizeBaiduChunks(t *testing.T) {
 	}))
 	defer tokenSrv.Close()
 
-	var (
-		mu    sync.Mutex
-		texts []string
-	)
-	ttsSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = r.ParseForm()
-		tex := r.FormValue("tex")
-		if tex == "" {
-			t.Fatal("missing tex")
+	upgrader := websocket.Upgrader{}
+	wsSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			t.Fatalf("upgrade failed: %v", err)
 		}
-		if len(url.QueryEscape(tex)) > baiduTTSMaxTextBytes {
-			t.Fatalf("chunk exceeds limit")
+		defer conn.Close()
+		for {
+			mt, msg, err := conn.ReadMessage()
+			if err != nil {
+				return
+			}
+			if mt != websocket.TextMessage {
+				continue
+			}
+			var obj map[string]interface{}
+			if err := json.Unmarshal(msg, &obj); err != nil {
+				t.Fatalf("bad client json: %v", err)
+			}
+			switch obj["type"] {
+			case "system.start":
+				_ = conn.WriteJSON(map[string]interface{}{"type": "system.started", "code": 0})
+			case "text":
+				payload, _ := obj["payload"].(map[string]interface{})
+				text := strings.TrimSpace(anyString(payload["text"]))
+				if text == "" {
+					t.Fatal("missing text payload")
+				}
+				_ = conn.WriteMessage(websocket.BinaryMessage, []byte{byte(len(text) % 255)})
+			case "system.finish":
+				_ = conn.WriteJSON(map[string]interface{}{"type": "system.finished", "code": 0})
+				return
+			}
 		}
-		ctrl := r.FormValue("audio_ctrl")
-		expectedCtrl := fmt.Sprintf("{\"sampling_rate\":%d}", expectedSampleRate)
-		if ctrl != expectedCtrl {
-			t.Fatalf("unexpected audio_ctrl: %s", ctrl)
-		}
-		mu.Lock()
-		texts = append(texts, tex)
-		mu.Unlock()
-		w.Header().Set("Content-Type", "audio/wav")
-		_, _ = w.Write([]byte{byte(len(tex) % 255)})
 	}))
-	defer ttsSrv.Close()
+	defer wsSrv.Close()
 
 	cfg := VoiceChatConfig{}
 	cfg.TTS.Provider = "baidu"
-	cfg.TTS.Endpoint = ttsSrv.URL
+	cfg.TTS.StreamEnabled = true
+	cfg.TTS.StreamEndpoint = "ws" + strings.TrimPrefix(wsSrv.URL, "http")
 	cfg.TTS.TokenEndpoint = tokenSrv.URL
 	cfg.TTS.APIKey = "key"
 	cfg.TTS.APISecret = "secret"
 	cfg.TTS.CUID = "device"
+	cfg.TTS.Voice = "0"
 	cfg.TTS.TimeoutSeconds = 5
+	cfg.TTS.StreamFinishTimeoutSeconds = 3
 
 	svc := NewVoiceService(cfg)
-	meta := AudioMeta{SampleRate: expectedSampleRate, Bits: 16, Channels: 1}
+	meta := AudioMeta{SampleRate: 16000, Bits: 16, Channels: 1}
 	reply := strings.Repeat("你好世界。", 200)
 	audio, err := svc.synthesizeBaidu(context.Background(), meta, reply)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	mu.Lock()
-	chunkCount := len(texts)
-	joined := strings.Join(texts, "")
-	mu.Unlock()
-	if chunkCount < 2 {
-		t.Fatalf("expected chunked requests, got %d", chunkCount)
+	if len(audio) != 1 {
+		t.Fatalf("unexpected audio length: %d", len(audio))
 	}
-	if joined != sanitizeBaiduText(reply) {
-		t.Fatalf("joined text mismatch")
+}
+
+func TestVoiceServiceStreamReplyWithBaiduStreamingTTS(t *testing.T) {
+	tokenSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"access_token": "token",
+			"expires_in":   3600,
+		})
+	}))
+	defer tokenSrv.Close()
+
+	upgrader := websocket.Upgrader{}
+	wsSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("access_token"); got != "token" {
+			t.Fatalf("unexpected access_token: %s", got)
+		}
+		if got := r.URL.Query().Get("per"); got != "0" {
+			t.Fatalf("unexpected per: %s", got)
+		}
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			t.Fatalf("upgrade failed: %v", err)
+		}
+		defer conn.Close()
+
+		for {
+			mt, msg, err := conn.ReadMessage()
+			if err != nil {
+				return
+			}
+			if mt != websocket.TextMessage {
+				continue
+			}
+			var obj map[string]interface{}
+			if err := json.Unmarshal(msg, &obj); err != nil {
+				t.Fatalf("bad client json: %v", err)
+			}
+			switch obj["type"] {
+			case "system.start":
+				_ = conn.WriteJSON(map[string]interface{}{"type": "system.started", "code": 0})
+			case "text":
+				payload, _ := obj["payload"].(map[string]interface{})
+				if strings.TrimSpace(anyString(payload["text"])) == "" {
+					t.Fatal("missing text payload")
+				}
+				if err := conn.WriteMessage(websocket.BinaryMessage, []byte{1, 2, 3, 4}); err != nil {
+					t.Fatalf("write binary failed: %v", err)
+				}
+			case "system.finish":
+				_ = conn.WriteJSON(map[string]interface{}{"type": "system.finished", "code": 0})
+				return
+			}
+		}
+	}))
+	defer wsSrv.Close()
+
+	cfg := VoiceChatConfig{}
+	cfg.TTS.Provider = "baidu"
+	cfg.TTS.StreamEnabled = true
+	cfg.TTS.StreamEndpoint = "ws" + strings.TrimPrefix(wsSrv.URL, "http")
+	cfg.TTS.TokenEndpoint = tokenSrv.URL
+	cfg.TTS.APIKey = "key"
+	cfg.TTS.APISecret = "secret"
+	cfg.TTS.CUID = "device"
+	cfg.TTS.Voice = "0"
+	cfg.TTS.TimeoutSeconds = 5
+	cfg.TTS.StreamFinishTimeoutSeconds = 3
+
+	svc := NewVoiceService(cfg)
+	meta := AudioMeta{SampleRate: 16000, Bits: 16, Channels: 1}
+
+	var got [][]byte
+	chunks, err := svc.StreamReplyWithBaiduTTS(context.Background(), meta, "你好", func(audio []byte, meta AudioMeta, seq int) error {
+		got = append(got, append([]byte(nil), audio...))
+		if seq != 1 {
+			t.Fatalf("unexpected seq: %d", seq)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(audio) != chunkCount {
-		t.Fatalf("audio length mismatch: got %d want %d", len(audio), chunkCount)
+	if chunks != 1 {
+		t.Fatalf("unexpected chunks: %d", chunks)
+	}
+	if len(got) != 1 || !bytes.Equal(got[0], []byte{1, 2, 3, 4}) {
+		t.Fatalf("unexpected audio chunks: %+v", got)
 	}
 }
 
@@ -616,16 +764,20 @@ func TestVoiceServiceHandlePersistsTalkRecord(t *testing.T) {
 	}))
 	defer chatSrv.Close()
 
-	ttsSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/octet-stream")
-		_, _ = w.Write([]byte{1, 2, 3})
-	}))
+	tokenSrv, ttsSrv := newMockBaiduTTSServers(t, [][]byte{{1, 2, 3}})
+	defer tokenSrv.Close()
 	defer ttsSrv.Close()
 
 	cfg := VoiceChatConfig{}
 	cfg.STT.Endpoint = sttSrv.URL
 	cfg.DeepSeek.Endpoint = chatSrv.URL
-	cfg.TTS.Endpoint = ttsSrv.URL
+	cfg.TTS.Provider = "baidu"
+	cfg.TTS.StreamEnabled = true
+	cfg.TTS.StreamEndpoint = "ws" + strings.TrimPrefix(ttsSrv.URL, "http")
+	cfg.TTS.TokenEndpoint = tokenSrv.URL
+	cfg.TTS.APIKey = "tts-key"
+	cfg.TTS.APISecret = "tts-secret"
+	cfg.TTS.CUID = "device"
 	svc := NewVoiceService(cfg)
 	svc.ensureDeviceRegistered = func(ctx context.Context, deviceNo string) error { return nil }
 

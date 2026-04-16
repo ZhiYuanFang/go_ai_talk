@@ -171,7 +171,7 @@ func voiceChatWS(r *ghttp.Request) {
 			finishTalk bool
 			pErr       error
 		)
-		if service.Voice().DetectChatMode(transcript) == "casual" {
+		if service.Voice().DetectChatMode(deviceNo, transcript) == "casual" {
 			ask = transcript
 			seq := 0
 			answer, pErr = service.Voice().StreamCasualReplyWithBaiduTTS(
@@ -597,14 +597,14 @@ func voiceChatWS(r *ghttp.Request) {
 		_, _ = audioBuffer.Write(msg)
 		chunkCount++
 		if streamMode && (chunkCount == 1 || chunkCount%wsAudioChunkLogEvery == 0) {
-			glog.Infof(ctx, "[语音WS][关键节点] stream音频接收心跳。deviceNo=%s chunks=%d recvBytes=%d asrConnected=%v asrBroken=%v callbacks=%d",
-				deviceNo,
-				chunkCount,
-				audioBuffer.Len(),
-				streamASR != nil,
-				streamASRBroken,
-				asrCallbackCount,
-			)
+			// glog.Infof(ctx, "[语音WS][关键节点] stream音频接收心跳。deviceNo=%s chunks=%d recvBytes=%d asrConnected=%v asrBroken=%v callbacks=%d",
+			// 	deviceNo,
+			// 	chunkCount,
+			// 	audioBuffer.Len(),
+			// 	streamASR != nil,
+			// 	streamASRBroken,
+			// 	asrCallbackCount,
+			// )
 		}
 		if streamMode && streamASR == nil && !streamASRBroken {
 			if effectiveChunk {
