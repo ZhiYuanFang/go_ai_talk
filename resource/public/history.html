@@ -215,6 +215,17 @@
         let currentRows = [];
         let eventOptions = [];
         let currentSex = 1;
+        let voiceWS = null;
+        const streamAudioState = {
+            pendingChunks: new Map(),
+            nextSeq: 1,
+            playing: false,
+            ended: false
+        };
+        const streamReplyState = {
+            active: false,
+            text: ''
+        };
 
         function applyThemeBySex(sex){
             document.body.classList.remove('sex-male', 'sex-female');
@@ -308,6 +319,127 @@
 
         function escapeHtml(v){
             return String(v ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        }
+
+        function appendChatDeltaText(delta){
+            const text = String(delta || '');
+            if(text === ''){
+                return;
+            }
+            if(!streamReplyState.active){
+                streamReplyState.active = true;
+                streamReplyState.text = '';
+                chatReplyWrap.style.display = 'block';
+                chatReplyWrap.innerHTML = '<div class="suggest-time">模型回复</div><div id="chatStreamingReply"></div>';
+            }
+            streamReplyState.text += text;
+            const slot = document.getElementById('chatStreamingReply');
+            if(slot){
+                slot.textContent = streamReplyState.text;
+            }
+        }
+
+        function resetStreamingUI(){
+            streamReplyState.active = false;
+            streamReplyState.text = '';
+            streamAudioState.pendingChunks.clear();
+            streamAudioState.nextSeq = 1;
+            streamAudioState.playing = false;
+            streamAudioState.ended = false;
+        }
+
+        function base64ToBlob(base64Data){
+            const binary = atob(String(base64Data || ''));
+            const len = binary.length;
+            const bytes = new Uint8Array(len);
+            for(let i = 0; i < len; i += 1){
+                bytes[i] = binary.charCodeAt(i);
+            }
+            return new Blob([bytes], {type: 'audio/wav'});
+        }
+
+        function playAudioBlob(blob){
+            return new Promise((resolve, reject) => {
+                const url = URL.createObjectURL(blob);
+                const audio = new Audio(url);
+                audio.onended = () => {
+                    URL.revokeObjectURL(url);
+                    resolve();
+                };
+                audio.onerror = () => {
+                    URL.revokeObjectURL(url);
+                    reject(new Error('音频播放失败'));
+                };
+                audio.play().catch((err) => {
+                    URL.revokeObjectURL(url);
+                    reject(err);
+                });
+            });
+        }
+
+        async function drainStreamingAudioQueue(){
+            if(streamAudioState.playing){
+                return;
+            }
+            streamAudioState.playing = true;
+            try{
+                while(streamAudioState.pendingChunks.has(streamAudioState.nextSeq)){
+                    const base64Chunk = streamAudioState.pendingChunks.get(streamAudioState.nextSeq);
+                    streamAudioState.pendingChunks.delete(streamAudioState.nextSeq);
+                    streamAudioState.nextSeq += 1;
+                    const blob = base64ToBlob(base64Chunk);
+                    await playAudioBlob(blob);
+                }
+            }finally{
+                streamAudioState.playing = false;
+            }
+        }
+
+        async function onVoiceWSMessage(raw){
+            let data = raw;
+            if(typeof raw === 'string'){
+                try{
+                    data = JSON.parse(raw);
+                }catch(_e){
+                    return;
+                }
+            }
+            if(!data || typeof data !== 'object'){
+                return;
+            }
+            const type = String(data.type || '').trim();
+            if(type === 'chat_delta'){
+                appendChatDeltaText(data.delta);
+                chatMeta.textContent = '模型流式回复中...';
+                return;
+            }
+            if(type === 'audio_chunk'){
+                const seq = Number(data.seq || 0);
+                const audio = String(data.audio || '');
+                if(audio === ''){
+                    return;
+                }
+                // streaming=true 时按 seq 有序播放；兼容旧协议（无 seq）直接顺序播放。
+                if(data.streaming === true && seq > 0){
+                    streamAudioState.pendingChunks.set(seq, audio);
+                }else{
+                    streamAudioState.pendingChunks.set(streamAudioState.nextSeq, audio);
+                }
+                await drainStreamingAudioQueue();
+                return;
+            }
+            if(type === 'audio_end'){
+                if(data.streaming === true){
+                    streamAudioState.ended = true;
+                    await drainStreamingAudioQueue();
+                    chatMeta.textContent = '流式语音播放完成';
+                }
+                return;
+            }
+            if(type === 'error'){
+                chatMeta.textContent = '语音链路错误：' + String(data.message || '未知错误');
+                return;
+            }
         }
 
         /** 兼容 GoFrame 统一响应：列表类 data 为 { list: [...] } */
@@ -458,6 +590,7 @@
             }
             chatSendBtn.disabled = true;
             chatMeta.textContent = '发送中...';
+            resetStreamingUI();
             try{
                 const data = await apiPost('/device/history/api/chat', {deviceNo, transcript});
                 const reply = String((data && data.reply) || '').trim();
@@ -610,6 +743,9 @@
         });
         boot();
         applyThemeBySex(currentSex);
+        // 供语音WS调试使用：可在控制台把 ws.onmessage 代理到该方法。
+        // 示例：ws.onmessage = (evt) => window.handleVoiceWSMessage(evt.data)
+        window.handleVoiceWSMessage = onVoiceWSMessage;
 
         function syncEventUnitAndNumberReadonly(){
             const selected = fEventSelect.options[fEventSelect.selectedIndex];

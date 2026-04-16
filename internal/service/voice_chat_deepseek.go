@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -310,6 +311,155 @@ func (s *VoiceService) callDeepSeekRaw(ctx context.Context, deviceNo, prompt str
 		glog.Infof(ctx, "[大模型响应] 收到 DeepSeek 原始响应（统一调用）。deviceNo=%s 响应体=%s", deviceNo, string(body))
 	}
 	return extractChatReplyRaw(body)
+}
+
+func (s *VoiceService) callDeepSeekDirectReply(ctx context.Context, deviceNo, transcript string) (string, error) {
+	systemMessage := "你是闲聊助手，请直接回答用户问题，语言自然简洁。"
+	_, reply, _, err := s.callDeepSeekRaw(ctx, deviceNo, transcript, 6, systemMessage)
+	if err != nil {
+		return "", err
+	}
+	reply = strings.TrimSpace(reply)
+	if reply == "" {
+		reply = "我在，请继续说。"
+	}
+	return reply, nil
+}
+
+func (s *VoiceService) streamCasualReplyWithBaiduTTS(
+	ctx context.Context,
+	deviceNo string,
+	meta AudioMeta,
+	transcript string,
+	onTextDelta func(text string) error,
+	onAudioChunk func(audio []byte, meta AudioMeta, seq int) error,
+) (string, error) {
+	if strings.ToLower(strings.TrimSpace(s.cfg.TTS.Provider)) != "baidu" {
+		return "", StageError{Stage: "tts", Detail: "闲聊流式音频下发仅支持百度TTS"}
+	}
+	messages := s.buildChatMessagesWithLimit(deviceNo, transcript, 6, "你是闲聊助手，请直接回答用户问题，语言自然简洁。")
+	payload := map[string]interface{}{
+		"model":    s.cfg.DeepSeek.Model,
+		"messages": messages,
+		"stream":   true,
+	}
+	bodyBytes, _ := json.Marshal(payload)
+	cctx, cancel := context.WithTimeout(ctx, time.Duration(s.cfg.DeepSeek.TimeoutSeconds)*time.Second)
+	defer cancel()
+
+	req, reqErr := http.NewRequestWithContext(cctx, http.MethodPost, s.cfg.DeepSeek.Endpoint, bytes.NewReader(bodyBytes))
+	if reqErr != nil {
+		return "", reqErr
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if s.cfg.DeepSeek.APIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+s.cfg.DeepSeek.APIKey)
+	}
+	resp, doErr := s.httpClient.Do(req)
+	if doErr != nil {
+		return "", doErr
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		respBody, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("status %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	token, err := s.getBaiduAccessToken(ctx, &s.ttsToken, s.cfg.TTS.APIKey, s.cfg.TTS.APISecret, s.cfg.TTS.TokenEndpoint, s.cfg.TTS.TimeoutSeconds)
+	if err != nil {
+		return "", StageError{Stage: "tts", Detail: err.Error()}
+	}
+
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	var fullReply strings.Builder
+	var sentenceBuf strings.Builder
+	seq := 0
+	flushSentence := func(text string) error {
+		trimmed := strings.TrimSpace(text)
+		if trimmed == "" {
+			return nil
+		}
+		seq++
+		audio, ttsErr := s.invokeBaiduTTSChunk(ctx, meta, token, trimmed)
+		if ttsErr != nil {
+			return ttsErr
+		}
+		if onAudioChunk != nil {
+			return onAudioChunk(audio, meta, seq)
+		}
+		return nil
+	}
+
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		event := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if event == "" {
+			continue
+		}
+		if event == "[DONE]" {
+			break
+		}
+		chunk, chunkErr := extractChatStreamChunk(event)
+		if chunkErr != nil {
+			return "", chunkErr
+		}
+		chunk = strings.TrimSpace(chunk)
+		if chunk == "" {
+			continue
+		}
+		fullReply.WriteString(chunk)
+		if onTextDelta != nil {
+			if cbErr := onTextDelta(chunk); cbErr != nil {
+				return "", cbErr
+			}
+		}
+		sentenceBuf.WriteString(chunk)
+		parts := splitBySentence(sentenceBuf.String())
+		if len(parts) == 0 {
+			continue
+		}
+		for i := 0; i < len(parts)-1; i++ {
+			if err := flushSentence(parts[i]); err != nil {
+				return "", err
+			}
+		}
+		sentenceBuf.Reset()
+		sentenceBuf.WriteString(parts[len(parts)-1])
+	}
+	if err := scanner.Err(); err != nil {
+		return "", err
+	}
+	if err := flushSentence(sentenceBuf.String()); err != nil {
+		return "", err
+	}
+	reply := strings.TrimSpace(fullReply.String())
+	if reply == "" {
+		reply = "我在，请继续说。"
+	}
+	return reply, nil
+}
+
+func splitBySentence(input string) []string {
+	text := strings.TrimSpace(input)
+	if text == "" {
+		return nil
+	}
+	cutRunes := map[rune]bool{'。': true, '！': true, '？': true, '.': true, '!': true, '?': true, '\n': true}
+	var out []string
+	var buf []rune
+	for _, r := range []rune(text) {
+		buf = append(buf, r)
+		if cutRunes[r] {
+			out = append(out, strings.TrimSpace(string(buf)))
+			buf = buf[:0]
+		}
+	}
+	out = append(out, strings.TrimSpace(string(buf)))
+	return out
 }
 
 func (s *VoiceService) callDeepSeekHistoryReply(ctx context.Context, deviceNo, transcript string, hours int) (string, error) {

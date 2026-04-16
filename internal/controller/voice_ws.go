@@ -3,6 +3,7 @@ package controller
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -17,8 +18,6 @@ import (
 )
 
 const (
-	wsSlowReceiveThreshold = 5 * time.Second
-	wsSlowProcessThreshold = 8 * time.Second
 	wsStreamCommitTimeout  = 8 * time.Second
 	wsInterruptCommitGap   = 1 * time.Second
 	wsInterruptJudgeLogGap = 500 * time.Millisecond
@@ -99,11 +98,6 @@ func voiceChatWS(r *ghttp.Request) {
 	safeWriteWSError := func(stage, detail string) {
 		writeWSError(safeWriteMessage, stage, detail)
 	}
-	safeWriteAudioChunks := func(audio []byte, outMeta service.AudioMeta, finishTalk bool) error {
-		wsWriteMu.Lock()
-		defer wsWriteMu.Unlock()
-		return writeWSAudioChunks(ws, audio, outMeta, finishTalk)
-	}
 	resetRealtimeState := func(clearProcessed bool) {}
 	var resetStreamASRUntilNextValid func()
 	resetStreamBuffers := func() {
@@ -171,15 +165,80 @@ func voiceChatWS(r *ghttp.Request) {
 			return
 		}
 		var (
-			audio      []byte
-			outMeta    service.AudioMeta
 			ask        string
 			answer     string
 			exit       bool
 			finishTalk bool
 			pErr       error
 		)
-		audio, outMeta, ask, answer, exit, finishTalk, pErr = processVoiceTranscript(ctx, deviceNo, meta, transcript)
+		if service.Voice().DetectChatMode(transcript) == "casual" {
+			ask = transcript
+			seq := 0
+			answer, pErr = service.Voice().StreamCasualReplyWithBaiduTTS(
+				ctx,
+				deviceNo,
+				meta,
+				transcript,
+				func(delta string) error {
+					payload, _ := json.Marshal(map[string]interface{}{
+						"type":  "chat_delta",
+						"code":  0,
+						"delta": delta,
+					})
+					return safeWriteMessage(1, payload)
+				},
+				func(chunk []byte, chunkMeta service.AudioMeta, chunkSeq int) error {
+					seq = chunkSeq
+					payload, _ := json.Marshal(map[string]interface{}{
+						"type":       "audio_chunk",
+						"audio":      base64.StdEncoding.EncodeToString(chunk),
+						"sampleRate": chunkMeta.SampleRate,
+						"seq":        chunkSeq,
+						"streaming":  true,
+					})
+					return safeWriteMessage(1, payload)
+				},
+			)
+			if pErr == nil {
+				endPayload, _ := json.Marshal(map[string]interface{}{
+					"type":        "audio_end",
+					"code":        0,
+					"exit":        false,
+					"finish_talk": true,
+					"streaming":   true,
+					"chunks":      seq,
+				})
+				_ = safeWriteMessage(1, endPayload)
+				finishTalk = true
+			}
+		} else {
+			ask, answer, exit, finishTalk, pErr = service.Voice().HandleTranscriptChatOnly(ctx, deviceNo, transcript)
+			if pErr == nil && !exit {
+				seq := 0
+				_, pErr = service.Voice().StreamReplyWithBaiduTTS(ctx, meta, answer, func(chunk []byte, chunkMeta service.AudioMeta, chunkSeq int) error {
+					seq = chunkSeq
+					payload, _ := json.Marshal(map[string]interface{}{
+						"type":       "audio_chunk",
+						"audio":      base64.StdEncoding.EncodeToString(chunk),
+						"sampleRate": chunkMeta.SampleRate,
+						"seq":        chunkSeq,
+						"streaming":  true,
+					})
+					return safeWriteMessage(1, payload)
+				})
+				if pErr == nil {
+					endPayload, _ := json.Marshal(map[string]interface{}{
+						"type":        "audio_end",
+						"code":        0,
+						"exit":        false,
+						"finish_talk": finishTalk,
+						"streaming":   true,
+						"chunks":      seq,
+					})
+					_ = safeWriteMessage(1, endPayload)
+				}
+			}
+		}
 		if pErr != nil {
 			// if stageErr, ok := pErr.(service.StageError); ok {
 			// glog.Warningf(ctx, "[语音WS] commit处理失败。deviceNo=%s stage=%s detail=%s 处理耗时=%s", deviceNo, stageErr.Stage, stageErr.Detail, time.Since(processStartAt))
@@ -206,15 +265,6 @@ func voiceChatWS(r *ghttp.Request) {
 			return
 		}
 
-		// glog.Infof(ctx, "[语音WS][关键节点] 进入音频下发阶段（commit）。deviceNo=%s sampleRate=%d ttsBytes=%d", deviceNo, outMeta.SampleRate, len(audio))
-		sendErr := safeWriteAudioChunks(audio, outMeta, finishTalk)
-		if sendErr != nil {
-			safeWriteWSError("service", sendErr.Error())
-			resetStreamBuffers()
-			resetStreamASRUntilNextValid()
-			resetRealtimeState(true)
-			return
-		}
 		if talkErr := service.DeviceAdmin().UpdateLastTalk(ctx, deviceNo, ask, answer); talkErr != nil {
 			// glog.Warningf(ctx, "[语音WS] 对话记录落库失败。deviceNo=%s error=%v", deviceNo, talkErr)
 			safeWriteWSError("service", talkErr.Error())
@@ -389,6 +439,10 @@ func voiceChatWS(r *ghttp.Request) {
 					safeWriteWSError("validate", vErr.Error())
 					continue
 				}
+				if !strings.EqualFold(strings.TrimSpace(startMsg.Mode), "stream") {
+					safeWriteWSError("unsupported", "仅支持 stream 模式，请在 start 中设置 mode=stream")
+					continue
+				}
 
 				if deviceNo != "" && deviceNo != startMsg.DeviceNo {
 					service.VoiceWSManager().Unregister(deviceNo, ws)
@@ -401,7 +455,7 @@ func voiceChatWS(r *ghttp.Request) {
 					Length:     startMsg.Length,
 				}
 				started = true
-				streamMode = strings.EqualFold(strings.TrimSpace(startMsg.Mode), "stream")
+				streamMode = true
 				audioBuffer.Reset()
 				chunkCount = 0
 				streamStartAt = time.Now()
@@ -437,12 +491,7 @@ func voiceChatWS(r *ghttp.Request) {
 				if replaced != nil && replaced != ws {
 					_ = replaced.Close()
 				}
-				ack, _ := json.Marshal(map[string]interface{}{"type": "started", "code": 0, "mode": func() string {
-					if streamMode {
-						return "stream"
-					}
-					return "legacy"
-				}()})
+				ack, _ := json.Marshal(map[string]interface{}{"type": "started", "code": 0, "mode": "stream"})
 				if streamMode {
 					glog.Infof(ctx, "[语音WS] 实时翻译配置已生效。deviceNo=%s debounce=%s minRunes=%d", deviceNo, realtimeDebounce, realtimeMinRunes)
 				}
@@ -479,113 +528,25 @@ func voiceChatWS(r *ghttp.Request) {
 					safeWriteWSError("state", "请先发送 start")
 					continue
 				}
-				if streamMode {
-					glog.Infof(ctx, "[语音WS][关键节点] 收到end并关闭stream会话。deviceNo=%s chunks=%d recvBytes=%d", deviceNo, chunkCount, audioBuffer.Len())
-					started = false
-					audioBuffer.Reset()
-					chunkCount = 0
-					streamASRBroken = false
-					lastPartialText = ""
-					latestTranscript = ""
-					lastInterruptJudgeLogAt = time.Time{}
-					waitEndAfterCommit = false
-					dropAudioAfterInterrupt = false
-					droppedAudioChunks = 0
-					resetRealtimeState(true)
-					if streamASR != nil {
-						_ = streamASR.Close()
-						streamASR = nil
-					}
-					streamStartAt = time.Time{}
-					endPayload, _ := json.Marshal(map[string]interface{}{"type": "ended", "code": 0})
-					_ = safeWriteMessage(1, endPayload)
-					continue
-				}
-				if audioBuffer.Len() == 0 {
-					safeWriteWSError("validate", "audio chunk empty before end")
-					continue
-				}
-
-				receiveCost := time.Since(streamStartAt)
-				if receiveCost >= wsSlowReceiveThreshold {
-					// glog.Warningf(ctx, "[语音WS] 音频接收偏慢。deviceNo=%s chunks=%d recvBytes=%d 接收耗时=%s", deviceNo, chunkCount, audioBuffer.Len(), receiveCost)
-				}
-
-				// processStartAt := time.Now()
-				effective, stats := detectEffectiveSpeechPCM(audioBuffer.Bytes())
-				if !effective {
-					glog.Infof(ctx, "[语音WS] end音频判定为无效语音，跳过整段识别。deviceNo=%s recvBytes=%d avgAbs=%d peakAbs=%d nonZeroRatio=%.4f", deviceNo, audioBuffer.Len(), stats.AvgAbs, stats.PeakAbs, stats.NonZeroRatio)
-					noResultPayload, _ := json.Marshal(map[string]interface{}{
-						"type":    "asr_no_result",
-						"code":    0,
-						"message": "当前片段无有效语音，已跳过识别",
-					})
-					_ = safeWriteMessage(1, noResultPayload)
-					audioBuffer.Reset()
-					chunkCount = 0
-					streamStartAt = time.Time{}
-					continue
-				}
-				audio, outMeta, ask, answer, exit, finishTalk, pErr := processVoiceBuffer(ctx, deviceNo, meta, audioBuffer.Bytes())
-				if pErr != nil {
-					// if stageErr, ok := pErr.(service.StageError); ok {
-					// 	glog.Warningf(ctx, "[语音WS] 音频处理失败。deviceNo=%s stage=%s detail=%s 处理耗时=%s", deviceNo, stageErr.Stage, stageErr.Detail, time.Since(processStartAt))
-					// } else {
-					// 	glog.Warningf(ctx, "[语音WS] 音频处理失败。deviceNo=%s error=%v 处理耗时=%s", deviceNo, pErr, time.Since(processStartAt))
-					// }
-					safeWriteWSError("service", pErr.Error())
-					audioBuffer.Reset()
-					chunkCount = 0
-					streamStartAt = time.Time{}
-					continue
-				}
-				if exit {
-					// processCost := time.Since(processStartAt)
-					// if processCost >= wsSlowProcessThreshold {
-					// 	glog.Warningf(ctx, "[语音WS] 退出意图处理偏慢。deviceNo=%s 处理耗时=%s", deviceNo, processCost)
-					// }
-					// 发送退出事件给前端，前端应进入待唤醒状态
-					exitPayload, _ := json.Marshal(map[string]interface{}{
-						"type": "exit",
-						"code": 0,
-						"exit": true,
-					})
-					_ = safeWriteMessage(1, exitPayload)
-					audioBuffer.Reset()
-					chunkCount = 0
-					streamStartAt = time.Time{}
-					continue
-				}
-
-				// glog.Infof(ctx, "[语音WS][关键节点] 进入音频下发阶段（legacy end）。deviceNo=%s sampleRate=%d ttsBytes=%d", deviceNo, outMeta.SampleRate, len(audio))
-				sendErr := safeWriteAudioChunks(audio, outMeta, finishTalk)
-				if sendErr != nil {
-					safeWriteWSError("service", sendErr.Error())
-					audioBuffer.Reset()
-					continue
-				}
-				if talkErr := service.DeviceAdmin().UpdateLastTalk(ctx, deviceNo, ask, answer); talkErr != nil {
-					glog.Warningf(ctx, "[语音WS] 对话记录落库失败。deviceNo=%s error=%v", deviceNo, talkErr)
-					safeWriteWSError("service", talkErr.Error())
-					audioBuffer.Reset()
-					chunkCount = 0
-					streamStartAt = time.Time{}
-					continue
-				}
-				// processCost := time.Since(processStartAt)
-				// if processCost >= wsSlowProcessThreshold {
-				// glog.Warningf(ctx, "[语音WS] 语音处理偏慢。deviceNo=%s sampleRate=%d bits=%d channels=%d audioBytes=%d 处理耗时=%s",
-				// 	deviceNo,
-				// 	outMeta.SampleRate,
-				// 	outMeta.Bits,
-				// 	outMeta.Channels,
-				// 	len(audio),
-				// 	processCost,
-				// )
-				// }
+				glog.Infof(ctx, "[语音WS][关键节点] 收到end并关闭stream会话。deviceNo=%s chunks=%d recvBytes=%d", deviceNo, chunkCount, audioBuffer.Len())
+				started = false
 				audioBuffer.Reset()
 				chunkCount = 0
+				streamASRBroken = false
+				lastPartialText = ""
+				latestTranscript = ""
+				lastInterruptJudgeLogAt = time.Time{}
+				waitEndAfterCommit = false
+				dropAudioAfterInterrupt = false
+				droppedAudioChunks = 0
+				resetRealtimeState(true)
+				if streamASR != nil {
+					_ = streamASR.Close()
+					streamASR = nil
+				}
 				streamStartAt = time.Time{}
+				endPayload, _ := json.Marshal(map[string]interface{}{"type": "ended", "code": 0})
+				_ = safeWriteMessage(1, endPayload)
 				continue
 
 			default:

@@ -32,6 +32,18 @@ type deepSeekUnifiedIntent struct {
 	TargetType    string `json:"target_type"`
 }
 
+const (
+	chatModeMaternity = "maternity"
+	chatModeCasual    = "casual"
+)
+
+func detectChatModeByTranscript(text string) string {
+	if strings.Contains(strings.TrimSpace(text), "母婴") {
+		return chatModeMaternity
+	}
+	return chatModeCasual
+}
+
 // normalizeAndValidateChatText 统一清理并校验转写文本长度。
 func (s *VoiceService) normalizeAndValidateChatText(text string) (string, error) {
 	normalized := strings.TrimSpace(text)
@@ -55,6 +67,14 @@ func (s *VoiceService) chatWithResult(ctx context.Context, deviceNo, transcript 
 	normalizedTranscript, err := s.normalizeAndValidateChatText(transcript)
 	if err != nil {
 		return "", "", false, false, err
+	}
+	if detectChatModeByTranscript(normalizedTranscript) == chatModeCasual {
+		reply, chatErr := s.callDeepSeekDirectReply(ctx, deviceNo, normalizedTranscript)
+		if chatErr != nil {
+			return "我暂时没理解清楚你的意思，请再说一次", normalizedTranscript, false, true, chatErr
+		}
+		s.insertQa(ctx, normalizedTranscript, reply)
+		return reply, normalizedTranscript, false, true, nil
 	}
 	events := []entity.Event{}
 	dao.Event.Ctx(ctx).Scan(&events)

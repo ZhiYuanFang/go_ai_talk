@@ -816,6 +816,63 @@ func (s *VoiceService) TextChat(ctx context.Context, deviceNo, transcript string
 	return s.chat(ctx, deviceNo, transcript)
 }
 
+func (s *VoiceService) DetectChatMode(transcript string) string {
+	return detectChatModeByTranscript(transcript)
+}
+
+func (s *VoiceService) StreamCasualReplyWithBaiduTTS(
+	ctx context.Context,
+	deviceNo string,
+	meta AudioMeta,
+	transcript string,
+	onTextDelta func(text string) error,
+	onAudioChunk func(audio []byte, meta AudioMeta, seq int) error,
+) (string, error) {
+	if err := s.ensureDeviceRegistered(ctx, deviceNo); err != nil {
+		return "", err
+	}
+	return s.streamCasualReplyWithBaiduTTS(ctx, deviceNo, meta, transcript, onTextDelta, onAudioChunk)
+}
+
+func (s *VoiceService) HandleTranscriptChatOnly(ctx context.Context, deviceNo, transcript string) (ask string, answer string, exit bool, finishTalk bool, err error) {
+	if err = s.ensureDeviceRegistered(ctx, deviceNo); err != nil {
+		return "", "", false, false, err
+	}
+	answer, ask, exit, finishTalk, err = s.chatWithResult(ctx, deviceNo, transcript)
+	return ask, answer, exit, finishTalk, err
+}
+
+func (s *VoiceService) StreamReplyWithBaiduTTS(
+	ctx context.Context,
+	meta AudioMeta,
+	reply string,
+	onAudioChunk func(audio []byte, meta AudioMeta, seq int) error,
+) (int, error) {
+	if strings.ToLower(strings.TrimSpace(s.cfg.TTS.Provider)) != "baidu" {
+		return 0, StageError{Stage: "tts", Detail: "当前仅支持百度TTS流式分段下发"}
+	}
+	token, err := s.getBaiduAccessToken(ctx, &s.ttsToken, s.cfg.TTS.APIKey, s.cfg.TTS.APISecret, s.cfg.TTS.TokenEndpoint, s.cfg.TTS.TimeoutSeconds)
+	if err != nil {
+		return 0, StageError{Stage: "tts", Detail: err.Error()}
+	}
+	segments := chunkBaiduText(reply)
+	if len(segments) == 0 {
+		return 0, StageError{Stage: "tts", Detail: "待合成文本为空"}
+	}
+	for idx, segment := range segments {
+		audio, synthErr := s.invokeBaiduTTSChunk(ctx, meta, token, segment)
+		if synthErr != nil {
+			return idx, synthErr
+		}
+		if onAudioChunk != nil {
+			if cbErr := onAudioChunk(audio, meta, idx+1); cbErr != nil {
+				return idx, cbErr
+			}
+		}
+	}
+	return len(segments), nil
+}
+
 // 往qa里录入问题和答案
 func (s *VoiceService) insertQa(ctx context.Context, question, answer string) error {
 	// 如果已经存在相同的问题,则更新对应问题的命中次数+1
