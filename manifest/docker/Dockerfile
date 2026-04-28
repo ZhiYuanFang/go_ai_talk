@@ -6,6 +6,7 @@ FROM loads/alpine:3.8
 ###############################################################################
 #在镜像中声明环境变量，理解为一个常量定义
 ENV WORKDIR                 /app
+ENV GOPROXY=https://goproxy.cn,https://goproxy.io,direct
 #把resource文件添加到基础镜像，文件保存路径指定在$WORKDIR中
 ADD resource                $WORKDIR/resource
 #把./temp/linux_amd64/main文件添加到基础镜像，文件保存路径指定在$WORKDIR/main中
