@@ -15,7 +15,11 @@ func resolveDBGroup(ctx context.Context, preferred string) string {
 	if preferred == "" || strings.EqualFold(preferred, defaultDBGroup) {
 		return defaultDBGroup
 	}
-	if g.Cfg().MustGet(ctx, "database."+preferred+".link").String() == "" {
+	link, err := g.Cfg().Get(ctx, "database."+preferred+".link")
+	if err != nil {
+		return defaultDBGroup
+	}
+	if link.String() == "" {
 		return defaultDBGroup
 	}
 	return preferred

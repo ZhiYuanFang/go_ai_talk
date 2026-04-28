@@ -31,6 +31,8 @@ spec:
             - containerPort: 9901
               name: http
           env:
+            - name: GF_GCFG_FILE
+              value: manifest/config/config.yaml
             - name: WORKER_HEALTH_ADDR
               value: ":9901"
             - name: MQ_CONSUMER_ENABLED

@@ -12,9 +12,11 @@ FROM alpine:3.19
 
 ENV WORKDIR=/app
 ENV WORKER_HEALTH_ADDR=:9901
+ENV GF_GCFG_FILE=manifest/config/config.yaml
 WORKDIR ${WORKDIR}
 
 COPY --from=builder /out/worker-service ${WORKDIR}/worker-service
+COPY manifest/config/config.yaml ${WORKDIR}/manifest/config/config.yaml
 
 EXPOSE 9901
 HEALTHCHECK --interval=10s --timeout=3s --retries=6 CMD wget -q -O - http://127.0.0.1:9901/healthz > /dev/null || exit 1

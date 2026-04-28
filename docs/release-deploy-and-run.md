@@ -50,10 +50,15 @@
 1. Redis 集群：
 
 - `powershell -ExecutionPolicy Bypass -File "hack/redis-cluster-init.ps1"`
+- > cd /www/wwwroot/go/go_ai_talk
+- > docker compose -f manifest/docker/docker-compose.redis-cluster.yml up -d
 
 1. RabbitMQ（含交换机和队列初始化）：
 
 - `powershell -ExecutionPolicy Bypass -File "hack/rabbitmq-init.ps1"`
+- > cd /www/wwwroot/go/go_ai_talk
+- > docker compose -f manifest/docker/docker-compose.rabbitmq.yml up -d
+
 
 #### 3.2 启动业务微服务
 

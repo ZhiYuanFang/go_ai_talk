@@ -47,6 +47,7 @@ services:
     image: go-ai-talk/worker:local
     container_name: go-ai-talk-worker
     environment:
+      GF_GCFG_FILE: manifest/config/config.yaml
       WORKER_HEALTH_ADDR: ":9901"
       MQ_CONSUMER_ENABLED: "true"
       OUTBOX_RELAY_ENABLED: "true"
