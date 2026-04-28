@@ -5,7 +5,10 @@
 package dao
 
 import (
+	"context"
 	"hello/internal/dao/internal"
+
+	"github.com/gogf/gf/v2/database/gdb"
 )
 
 // internalActionDao is internal type for wrapping internal DAO implements.
@@ -25,3 +28,10 @@ var (
 )
 
 // Fill with you ideas below.
+func (dao actionDao) Group() string {
+	return resolveDBGroup(context.Background(), "device")
+}
+
+func (dao actionDao) Ctx(ctx context.Context) *gdb.Model {
+	return domainModel(ctx, "device", dao.Table())
+}

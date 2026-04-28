@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"hello/internal/dao"
 	"hello/internal/model/entity"
 
+	"github.com/gogf/gf/v2/database/gdb"
 	"github.com/gogf/gf/v2/frame/g"
 )
 
@@ -15,8 +17,8 @@ type sDeviceHistory struct{}
 
 var insDeviceHistory sDeviceHistory
 
-// DeviceHistory 返回设备历史/建议等查询实现。
-func DeviceHistory() DeviceHistoryContract {
+// deviceHistoryLocal 返回本地设备历史/建议实现（单体模式）。
+func deviceHistoryLocal() DeviceHistoryContract {
 	return &insDeviceHistory
 }
 
@@ -64,7 +66,7 @@ func ListDeviceHistory(ctx context.Context, deviceNo string) ([]DeviceHistoryIte
 		return []DeviceHistoryItem{}, nil
 	}
 
-	rows, err := dao.History.Ctx(ctx).
+	rows, err := dao.History.ReadCtx(ctx).
 		Fields(
 			dao.History.Columns().Id,
 			dao.History.Columns().DeviceNo,
@@ -189,19 +191,35 @@ func AddDeviceHistory(ctx context.Context, item entity.History) (int64, error) {
 	if item.DeviceNo == "" {
 		return 0, fmt.Errorf("deviceNo 不能为空")
 	}
-	res, err := dao.History.Ctx(ctx).Data(g.Map{
-		dao.History.Columns().DeviceNo:    item.DeviceNo,
-		dao.History.Columns().EventId:     item.EventId,
-		dao.History.Columns().EventName:   item.EventName,
-		dao.History.Columns().EventNumber: item.EventNumber,
-		dao.History.Columns().StartTime:   item.StartTime,
-		dao.History.Columns().EndTime:     item.EndTime,
-		dao.History.Columns().Remark:      item.Remark,
-	}).Insert()
+	var id int64
+	err := g.DB(dao.History.Group()).Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
+		res, err := tx.Model(dao.History.Table()).Data(g.Map{
+			dao.History.Columns().DeviceNo:    item.DeviceNo,
+			dao.History.Columns().EventId:     item.EventId,
+			dao.History.Columns().EventName:   item.EventName,
+			dao.History.Columns().EventNumber: item.EventNumber,
+			dao.History.Columns().StartTime:   item.StartTime,
+			dao.History.Columns().EndTime:     item.EndTime,
+			dao.History.Columns().Remark:      item.Remark,
+		}).Insert()
+		if err != nil {
+			return err
+		}
+		id, _ = res.LastInsertId()
+		if !isOutboxRelayEnabled() {
+			return nil
+		}
+		return insertOutboxEventTx(tx, "history.record.created", map[string]interface{}{
+			"event_id":    fmt.Sprintf("history-created-%d", time.Now().UnixNano()),
+			"history_id":  id,
+			"device_no":   item.DeviceNo,
+			"event_name":  item.EventName,
+			"occurred_at": time.Now().Format(time.RFC3339Nano),
+		})
+	})
 	if err != nil {
 		return 0, err
 	}
-	id, _ := res.LastInsertId()
 	return id, nil
 }
 
@@ -217,18 +235,32 @@ func UpdateDeviceHistory(ctx context.Context, item entity.History) error {
 	if item.DeviceNo == "" {
 		return fmt.Errorf("deviceNo 不能为空")
 	}
-	_, err := dao.History.Ctx(ctx).
-		Where(dao.History.Columns().Id, item.Id).
-		Where(dao.History.Columns().DeviceNo, item.DeviceNo).
-		Data(g.Map{
-			dao.History.Columns().EventId:     item.EventId,
-			dao.History.Columns().EventName:   item.EventName,
-			dao.History.Columns().EventNumber: item.EventNumber,
-			dao.History.Columns().StartTime:   item.StartTime,
-			dao.History.Columns().EndTime:     item.EndTime,
-			dao.History.Columns().Remark:      item.Remark,
-		}).Update()
-	return err
+	return g.DB(dao.History.Group()).Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
+		_, err := tx.Model(dao.History.Table()).
+			Where(dao.History.Columns().Id, item.Id).
+			Where(dao.History.Columns().DeviceNo, item.DeviceNo).
+			Data(g.Map{
+				dao.History.Columns().EventId:     item.EventId,
+				dao.History.Columns().EventName:   item.EventName,
+				dao.History.Columns().EventNumber: item.EventNumber,
+				dao.History.Columns().StartTime:   item.StartTime,
+				dao.History.Columns().EndTime:     item.EndTime,
+				dao.History.Columns().Remark:      item.Remark,
+			}).Update()
+		if err != nil {
+			return err
+		}
+		if !isOutboxRelayEnabled() {
+			return nil
+		}
+		return insertOutboxEventTx(tx, "history.record.updated", map[string]interface{}{
+			"event_id":    fmt.Sprintf("history-updated-%d", time.Now().UnixNano()),
+			"history_id":  item.Id,
+			"device_no":   item.DeviceNo,
+			"event_name":  item.EventName,
+			"occurred_at": time.Now().Format(time.RFC3339Nano),
+		})
+	})
 }
 
 func DeleteDeviceHistory(ctx context.Context, id int64, deviceNo string) error {
@@ -236,9 +268,22 @@ func DeleteDeviceHistory(ctx context.Context, id int64, deviceNo string) error {
 	if id <= 0 || deviceNo == "" {
 		return fmt.Errorf("参数无效")
 	}
-	_, err := dao.History.Ctx(ctx).
-		Where(dao.History.Columns().Id, id).
-		Where(dao.History.Columns().DeviceNo, deviceNo).
-		Delete()
-	return err
+	return g.DB(dao.History.Group()).Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
+		_, err := tx.Model(dao.History.Table()).
+			Where(dao.History.Columns().Id, id).
+			Where(dao.History.Columns().DeviceNo, deviceNo).
+			Delete()
+		if err != nil {
+			return err
+		}
+		if !isOutboxRelayEnabled() {
+			return nil
+		}
+		return insertOutboxEventTx(tx, "history.record.deleted", map[string]interface{}{
+			"event_id":    fmt.Sprintf("history-deleted-%d", time.Now().UnixNano()),
+			"history_id":  id,
+			"device_no":   deviceNo,
+			"occurred_at": time.Now().Format(time.RFC3339Nano),
+		})
+	})
 }

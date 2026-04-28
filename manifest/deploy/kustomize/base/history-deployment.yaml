@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: history-service
+  labels:
+    app: history-service
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: history-service
+  template:
+    metadata:
+      labels:
+        app: history-service
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9801"
+        prometheus.io/path: /api.json
+    spec:
+      containers:
+        - name: history-service
+          image: go-ai-talk/history-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 9801
+              name: http
+          env:
+            - name: GF_GCFG_FILE
+              value: manifest/config/config.history-service.yaml
+            - name: OTEL_SERVICE_NAME
+              value: history-service
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://otel-collector:4317
+            - name: OTEL_EXPORTER_OTLP_INSECURE
+              value: "true"
+          livenessProbe:
+            httpGet:
+              path: /api.json
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /api.json
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5

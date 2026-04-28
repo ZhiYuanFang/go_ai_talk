@@ -1,0 +1,20 @@
+FROM golang:1.23-alpine AS builder
+
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/worker-service ./cmd/worker-service
+
+FROM alpine:3.19
+
+ENV WORKDIR=/app
+ENV WORKER_HEALTH_ADDR=:9901
+WORKDIR ${WORKDIR}
+
+COPY --from=builder /out/worker-service ${WORKDIR}/worker-service
+
+EXPOSE 9901
+HEALTHCHECK --interval=10s --timeout=3s --retries=6 CMD wget -q -O - http://127.0.0.1:9901/healthz > /dev/null || exit 1
+CMD ["./worker-service"]

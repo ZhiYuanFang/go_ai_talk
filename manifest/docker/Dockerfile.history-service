@@ -1,0 +1,21 @@
+FROM golang:1.19-alpine AS builder
+
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/history-service ./cmd/history-service
+
+FROM alpine:3.19
+
+ENV WORKDIR=/app
+ENV GF_GCFG_FILE=manifest/config/config.history-service.yaml
+WORKDIR ${WORKDIR}
+
+COPY --from=builder /out/history-service ${WORKDIR}/history-service
+COPY manifest/config/config.history-service.yaml ${WORKDIR}/manifest/config/config.history-service.yaml
+
+EXPOSE 9801
+HEALTHCHECK --interval=10s --timeout=3s --retries=6 CMD wget -q -O - http://127.0.0.1:9801/api.json > /dev/null || exit 1
+CMD ["./history-service"]

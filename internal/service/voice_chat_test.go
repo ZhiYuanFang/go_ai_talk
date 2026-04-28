@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -801,6 +802,54 @@ func TestVoiceServiceHandlePersistsTalkRecord(t *testing.T) {
 	}
 	if gotAsk == "" || gotAnswer == "" {
 		t.Fatalf("ask/answer should be captured, got ask=%q answer=%q", gotAsk, gotAnswer)
+	}
+}
+
+func TestVoiceServiceGetLastUserMessageFromSessionMemory(t *testing.T) {
+	cfg := VoiceChatConfig{}
+	cfg.Session.MaxRounds = 10
+	svc := NewVoiceService(cfg)
+
+	svc.appendChatHistory("device-1", "你好", "你好呀")
+	got := svc.getLastUserMessageFromSession(context.Background(), "device-1", time.Now())
+	if got == "" {
+		t.Fatal("expected non-empty last user message")
+	}
+}
+
+func TestVoiceServiceUseRedisSessionFlag(t *testing.T) {
+	old := os.Getenv("VOICE_SESSION_BACKEND")
+	defer func() { _ = os.Setenv("VOICE_SESSION_BACKEND", old) }()
+
+	cfg := VoiceChatConfig{}
+	svc := NewVoiceService(cfg)
+
+	_ = os.Setenv("VOICE_SESSION_BACKEND", "memory")
+	if svc.useRedisSession() {
+		t.Fatal("memory backend should not enable redis session")
+	}
+
+	_ = os.Setenv("VOICE_SESSION_BACKEND", "redis")
+	if !svc.useRedisSession() {
+		t.Fatal("redis backend should enable redis session")
+	}
+}
+
+func TestVoiceServiceUseRedisGuardsFlag(t *testing.T) {
+	old := os.Getenv("VOICE_GUARD_REDIS_ENABLED")
+	defer func() { _ = os.Setenv("VOICE_GUARD_REDIS_ENABLED", old) }()
+
+	cfg := VoiceChatConfig{}
+	svc := NewVoiceService(cfg)
+
+	_ = os.Setenv("VOICE_GUARD_REDIS_ENABLED", "false")
+	if svc.useRedisGuards() {
+		t.Fatal("false should disable redis guards")
+	}
+
+	_ = os.Setenv("VOICE_GUARD_REDIS_ENABLED", "true")
+	if !svc.useRedisGuards() {
+		t.Fatal("true should enable redis guards")
 	}
 }
 

@@ -3,12 +3,23 @@ kind: Kustomization
 
 resources:
 - ../../base
-- configmap.yaml
-
-patchesStrategicMerge:
-- deployment.yaml
+- gateway-deployment.patch.yaml
+- history-deployment.patch.yaml
+- worker-deployment.patch.yaml
+- ingress.patch.yaml
+- gateway-hpa.yaml
+- history-hpa.yaml
+- worker-hpa.yaml
+- gateway-pdb.yaml
+- history-pdb.yaml
+- worker-pdb.yaml
+- prometheus-rules.yaml
 
 namespace: default
-
-
-
+images:
+- name: go-ai-talk/gateway
+  newTag: develop
+- name: go-ai-talk/history-service
+  newTag: develop
+- name: go-ai-talk/worker
+  newTag: develop

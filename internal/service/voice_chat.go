@@ -9,9 +9,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -104,23 +106,23 @@ type VoiceChatConfig struct {
 		MaxConcurrency int    `json:"maxConcurrency"`
 	} `json:"deepseek"`
 	TTS struct {
-		Provider       string `json:"provider"`
-		StreamEnabled  bool   `json:"streamEnabled"`
-		StreamEndpoint string `json:"streamEndpoint"`
-		APIKey         string `json:"apiKey"`
-		APISecret      string `json:"apiSecret"`
-		TokenEndpoint  string `json:"tokenEndpoint"`
-		Model          string `json:"model"`
-		Voice          string `json:"voice"`
-		TimeoutSeconds int    `json:"timeoutSeconds"`
-		CUID           string `json:"cuid"`
-		Language       string `json:"language"`
-		Speed          string `json:"speed"`
-		Pitch          string `json:"pitch"`
-		Volume         string `json:"volume"`
-		AUE            string `json:"aue"`
-		StreamIdleTimeoutSeconds   int `json:"streamIdleTimeoutSeconds"`
-		StreamFinishTimeoutSeconds int `json:"streamFinishTimeoutSeconds"`
+		Provider                   string `json:"provider"`
+		StreamEnabled              bool   `json:"streamEnabled"`
+		StreamEndpoint             string `json:"streamEndpoint"`
+		APIKey                     string `json:"apiKey"`
+		APISecret                  string `json:"apiSecret"`
+		TokenEndpoint              string `json:"tokenEndpoint"`
+		Model                      string `json:"model"`
+		Voice                      string `json:"voice"`
+		TimeoutSeconds             int    `json:"timeoutSeconds"`
+		CUID                       string `json:"cuid"`
+		Language                   string `json:"language"`
+		Speed                      string `json:"speed"`
+		Pitch                      string `json:"pitch"`
+		Volume                     string `json:"volume"`
+		AUE                        string `json:"aue"`
+		StreamIdleTimeoutSeconds   int    `json:"streamIdleTimeoutSeconds"`
+		StreamFinishTimeoutSeconds int    `json:"streamFinishTimeoutSeconds"`
 	} `json:"tts"`
 }
 
@@ -129,6 +131,11 @@ const (
 	voiceStageSlowThreshold = 6 * time.Second
 	voiceTotalSlowThreshold = 10 * time.Second
 	quantityKeyword         = "多少?"
+	voiceSessionBackendEnv  = "VOICE_SESSION_BACKEND" // memory | redis
+	voiceSessionRedisPrefix = "VOICE_SESSION_REDIS_PREFIX"
+	voiceGuardRedisEnv      = "VOICE_GUARD_REDIS_ENABLED"
+	voiceIdempotencyTTL     = "VOICE_TEXT_IDEMPOTENCY_TTL_SECONDS"
+	voiceRateLimitPerMinute = "VOICE_TEXT_RATE_LIMIT_PER_MINUTE"
 )
 
 type baiduTokenCache struct {
@@ -208,6 +215,7 @@ type VoiceService struct {
 	janitorStop            chan struct{}
 	ensureDeviceRegistered func(ctx context.Context, deviceNo string) error
 	persistTalkRecord      func(ctx context.Context, deviceNo, ask, answer string) error
+	taskProducer           *voiceTaskProducer
 }
 
 var (
@@ -292,6 +300,7 @@ func NewVoiceService(cfg VoiceChatConfig) *VoiceService {
 		pendingQuantity:        make(map[string]pendingQuantityState),
 		ensureDeviceRegistered: func(ctx context.Context, deviceNo string) error { return nil },
 		persistTalkRecord:      func(ctx context.Context, deviceNo, ask, answer string) error { return nil },
+		taskProducer:           newVoiceTaskProducer(),
 	}
 }
 
@@ -830,6 +839,14 @@ func (s *VoiceService) TextChat(ctx context.Context, deviceNo, transcript string
 	if err := s.ensureDeviceRegistered(ctx, deviceNo); err != nil {
 		return "", err
 	}
+	if err := s.applyTextChatGuards(ctx, deviceNo, transcript); err != nil {
+		return "", err
+	}
+	if s.taskProducer != nil {
+		if err := s.taskProducer.publishTaskRequested(ctx, deviceNo, transcript, "text-chat"); err != nil {
+			glog.Warningf(ctx, "publish voice.task.requested failed: %v", err)
+		}
+	}
 	return s.chat(ctx, deviceNo, transcript)
 }
 
@@ -867,6 +884,9 @@ func (s *VoiceService) HandleTranscriptChatOnly(ctx context.Context, deviceNo, t
 	if err = s.ensureDeviceRegistered(ctx, deviceNo); err != nil {
 		return "", "", false, false, err
 	}
+	if err = s.applyTextChatGuards(ctx, deviceNo, transcript); err != nil {
+		return "", "", false, false, err
+	}
 	chatRes, cErr := s.chatWithResult(ctx, deviceNo, transcript, true)
 	if cErr != nil {
 		return chatRes.Ask, chatRes.Reply, chatRes.Exit, chatRes.FinishTalk, cErr
@@ -876,6 +896,9 @@ func (s *VoiceService) HandleTranscriptChatOnly(ctx context.Context, deviceNo, t
 
 func (s *VoiceService) HandleTranscriptForStreaming(ctx context.Context, deviceNo, transcript string) (ask string, answer string, mode string, needCasualStream bool, exit bool, finishTalk bool, err error) {
 	if err = s.ensureDeviceRegistered(ctx, deviceNo); err != nil {
+		return "", "", "", false, false, false, err
+	}
+	if err = s.applyTextChatGuards(ctx, deviceNo, transcript); err != nil {
 		return "", "", "", false, false, false, err
 	}
 	chatRes, cErr := s.chatWithResult(ctx, deviceNo, transcript, false)
@@ -1204,6 +1227,19 @@ func (s *VoiceService) buildChatMessagesWithLimit(deviceNo, currentPrompt string
 		}
 	}
 	if strings.TrimSpace(deviceNo) != "" {
+		if s.useRedisSession() {
+			if sess, ok := s.getSessionByDevice(gctx.New(), deviceNo, now); ok {
+				historyMessages := sess.Messages
+				if historyLimit >= 0 && len(historyMessages) > historyLimit {
+					historyMessages = historyMessages[len(historyMessages)-historyLimit:]
+				}
+				for _, msg := range historyMessages {
+					messages = append(messages, map[string]string{"role": msg.Role, "content": msg.Content})
+				}
+			}
+			messages = append(messages, map[string]string{"role": "user", "content": currentPrompt})
+			return messages
+		}
 		s.sessionMu.Lock()
 		s.pruneSessionsLocked(now)
 		if sess, ok := s.sessions[deviceNo]; ok {
@@ -1233,6 +1269,27 @@ func (s *VoiceService) appendChatHistory(deviceNo, userPrompt, assistantReply st
 		return
 	}
 	now := time.Now()
+	if s.useRedisSession() {
+		ctx := gctx.New()
+		sess, _ := s.getSessionByDevice(ctx, deviceNo, now)
+		if sess == nil {
+			sess = &deviceChatSession{}
+		}
+		sess.Messages = append(sess.Messages,
+			chatHistoryMessage{Role: "user", Content: userPrompt},
+			chatHistoryMessage{Role: "assistant", Content: assistantReply},
+		)
+		maxMessages := s.cfg.Session.MaxRounds * 2
+		if maxMessages > 0 && len(sess.Messages) > maxMessages {
+			sess.Messages = sess.Messages[len(sess.Messages)-maxMessages:]
+		}
+		sess.LastActive = now
+		if err := s.setSessionByDevice(ctx, deviceNo, sess); err != nil {
+			glog.Warningf(ctx, "写入redis会话失败，降级本地内存。deviceNo=%s err=%v", deviceNo, err)
+		}
+		return
+	}
+
 	s.sessionMu.Lock()
 	defer s.sessionMu.Unlock()
 
@@ -1316,6 +1373,170 @@ func (s *VoiceService) evictExcessSessionsLocked() {
 	}
 }
 
+func (s *VoiceService) useRedisSession() bool {
+	return strings.EqualFold(strings.TrimSpace(os.Getenv(voiceSessionBackendEnv)), "redis")
+}
+
+func (s *VoiceService) sessionRedisKey(deviceNo string) string {
+	prefix := strings.TrimSpace(os.Getenv(voiceSessionRedisPrefix))
+	if prefix == "" {
+		prefix = "voice:session:"
+	}
+	return prefix + strings.TrimSpace(deviceNo)
+}
+
+func (s *VoiceService) getSessionByDevice(ctx context.Context, deviceNo string, now time.Time) (*deviceChatSession, bool) {
+	deviceNo = strings.TrimSpace(deviceNo)
+	if deviceNo == "" {
+		return nil, false
+	}
+	if !s.useRedisSession() {
+		s.sessionMu.Lock()
+		defer s.sessionMu.Unlock()
+		s.pruneSessionsLocked(now)
+		sess, ok := s.sessions[deviceNo]
+		if !ok {
+			return nil, false
+		}
+		if s.isExpired(sess.LastActive, now) {
+			delete(s.sessions, deviceNo)
+			s.deviceLocks.Delete(deviceNo)
+			return nil, false
+		}
+		return sess, true
+	}
+
+	key := s.sessionRedisKey(deviceNo)
+	exists, err := g.Redis().Do(ctx, "EXISTS", key)
+	if err != nil || exists.Int() == 0 {
+		return nil, false
+	}
+	raw, err := g.Redis().Do(ctx, "GET", key)
+	if err != nil {
+		return nil, false
+	}
+	text := strings.TrimSpace(raw.String())
+	if text == "" {
+		return nil, false
+	}
+	var sess deviceChatSession
+	if err := json.Unmarshal([]byte(text), &sess); err != nil {
+		return nil, false
+	}
+	if s.isExpired(sess.LastActive, now) {
+		_, _ = g.Redis().Do(ctx, "DEL", key)
+		return nil, false
+	}
+	return &sess, true
+}
+
+func (s *VoiceService) setSessionByDevice(ctx context.Context, deviceNo string, sess *deviceChatSession) error {
+	deviceNo = strings.TrimSpace(deviceNo)
+	if deviceNo == "" || sess == nil {
+		return nil
+	}
+	if !s.useRedisSession() {
+		return nil
+	}
+	data, err := json.Marshal(sess)
+	if err != nil {
+		return err
+	}
+	key := s.sessionRedisKey(deviceNo)
+	ttl := s.cfg.Session.TTLSeconds
+	if ttl <= 0 {
+		ttl = 1800
+	}
+	_, err = g.Redis().Do(ctx, "SET", key, string(data), "EX", ttl)
+	return err
+}
+
+func (s *VoiceService) getLastUserMessageFromSession(ctx context.Context, deviceNo string, now time.Time) string {
+	sess, ok := s.getSessionByDevice(ctx, deviceNo, now)
+	if !ok || sess == nil {
+		return ""
+	}
+	historyMessages := sess.Messages
+	if len(historyMessages) > 1 {
+		return historyMessages[len(historyMessages)-1].Content
+	}
+	return ""
+}
+
+func (s *VoiceService) applyTextChatGuards(ctx context.Context, deviceNo, transcript string) error {
+	if !s.useRedisGuards() {
+		return nil
+	}
+	if err := s.checkTextRateLimit(ctx, deviceNo); err != nil {
+		return err
+	}
+	if err := s.checkTextIdempotency(ctx, deviceNo, transcript); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *VoiceService) useRedisGuards() bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv(voiceGuardRedisEnv)))
+	return v == "1" || v == "true" || v == "yes" || v == "on"
+}
+
+func (s *VoiceService) checkTextRateLimit(ctx context.Context, deviceNo string) error {
+	deviceNo = strings.TrimSpace(deviceNo)
+	if deviceNo == "" {
+		return nil
+	}
+	limit := envIntOrDefault(voiceRateLimitPerMinute, 30)
+	if limit <= 0 {
+		return nil
+	}
+	minuteBucket := time.Now().Format("200601021504")
+	key := fmt.Sprintf("voice:guard:rate:%s:%s", deviceNo, minuteBucket)
+	count, err := g.Redis().Do(ctx, "INCR", key)
+	if err != nil {
+		glog.Warningf(ctx, "redis rate limit check failed, allow fallback: %v", err)
+		return nil
+	}
+	if count.Int() == 1 {
+		_, _ = g.Redis().Do(ctx, "EXPIRE", key, 90)
+	}
+	if count.Int() > limit {
+		return StageError{Stage: "rate_limit", Detail: "请求频率过高，请稍后再试"}
+	}
+	return nil
+}
+
+func (s *VoiceService) checkTextIdempotency(ctx context.Context, deviceNo, transcript string) error {
+	deviceNo = strings.TrimSpace(deviceNo)
+	if deviceNo == "" {
+		return nil
+	}
+	ttl := envIntOrDefault(voiceIdempotencyTTL, 3)
+	if ttl <= 0 {
+		return nil
+	}
+	sum := fnv.New32a()
+	_, _ = sum.Write([]byte(strings.TrimSpace(transcript)))
+	key := fmt.Sprintf("voice:guard:idem:%s:%d", deviceNo, sum.Sum32())
+	ok, err := g.Redis().Do(ctx, "SET", key, "1", "NX", "EX", ttl)
+	if err != nil {
+		glog.Warningf(ctx, "redis idempotency check failed, allow fallback: %v", err)
+		return nil
+	}
+	if strings.ToUpper(strings.TrimSpace(ok.String())) != "OK" {
+		return StageError{Stage: "idempotent", Detail: "重复请求过于频繁，请稍后重试"}
+	}
+	return nil
+}
+
+func envIntOrDefault(key string, d int) int {
+	v, err := strconv.Atoi(strings.TrimSpace(os.Getenv(key)))
+	if err != nil || v <= 0 {
+		return d
+	}
+	return v
+}
+
 // synthesize 按配置分发到对应 TTS 实现。
 func (s *VoiceService) synthesize(ctx context.Context, meta AudioMeta, reply string) ([]byte, error) {
 	switch strings.ToLower(s.cfg.TTS.Provider) {
@@ -1348,7 +1569,6 @@ func (s *VoiceService) synthesizeBaidu(ctx context.Context, meta AudioMeta, repl
 	}
 	return combined.Bytes(), nil
 }
-
 
 // decodeBase64Audio 兼容多种 base64 编码并进行解码。
 func decodeBase64Audio(input string) ([]byte, error) {

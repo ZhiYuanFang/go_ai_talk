@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"hello/internal/controller"
+	"hello/internal/service"
 
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/gcmd"
@@ -16,6 +17,8 @@ var Main = gcmd.Command{
 	Brief: "start http server",
 
 	Func: func(ctx context.Context, parser *gcmd.Parser) (err error) {
+		prepareDomainDBRuntime()
+		service.StartBackgroundWorkers(ctx)
 		s := g.Server()
 		controller.RegisterHTTP(s)
 		s.Run()

@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+  labels:
+    app: gateway
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: gateway
+  template:
+    metadata:
+      labels:
+        app: gateway
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9701"
+        prometheus.io/path: /api.json
+    spec:
+      containers:
+        - name: gateway
+          image: go-ai-talk/gateway:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 9701
+              name: http
+          env:
+            - name: GF_GCFG_FILE
+              value: manifest/config/config.yaml
+            - name: HISTORY_SERVICE_MODE
+              value: proxy
+            - name: HISTORY_SERVICE_URL
+              value: http://history-service:9801
+            - name: MQ_CONSUMER_ENABLED
+              value: "false"
+            - name: OUTBOX_RELAY_ENABLED
+              value: "false"
+            - name: OTEL_SERVICE_NAME
+              value: gateway
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://otel-collector:4317
+            - name: OTEL_EXPORTER_OTLP_INSECURE
+              value: "true"
+          livenessProbe:
+            httpGet:
+              path: /api.json
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /api.json
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5

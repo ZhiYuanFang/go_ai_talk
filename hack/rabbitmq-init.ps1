@@ -1,0 +1,65 @@
+param(
+    [string]$ComposeFile = "manifest/docker/docker-compose.rabbitmq.yml",
+    [string]$ApiBase = "http://127.0.0.1:15672/api",
+    [string]$User = "guest",
+    [string]$Password = "guest",
+    [switch]$PrintOnly
+)
+
+$ErrorActionPreference = "Stop"
+
+function Invoke-RabbitApi {
+    param(
+        [string]$Method,
+        [string]$Path,
+        [object]$Body = $null
+    )
+    $uri = $ApiBase.TrimEnd("/") + $Path
+    $pair = "{0}:{1}" -f $User, $Password
+    $token = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes($pair))
+    $headers = @{ Authorization = "Basic $token" }
+    if ($Body -ne $null) {
+        $json = $Body | ConvertTo-Json -Compress
+        return Invoke-RestMethod -Method $Method -Uri $uri -Headers $headers -Body $json -ContentType "application/json"
+    }
+    return Invoke-RestMethod -Method $Method -Uri $uri -Headers $headers
+}
+
+if (-not $PrintOnly) {
+    Write-Host "Starting RabbitMQ..."
+    docker compose -f $ComposeFile up -d
+    Start-Sleep -Seconds 6
+}
+
+Write-Host "Declaring exchange and queues..."
+
+$exchange = "/exchanges/%2F/voice.events"
+$queues = @(
+    @{ Name = "voice.task.requested.q"; RoutingKey = "voice.task.requested" },
+    @{ Name = "voice.task.completed.q"; RoutingKey = "voice.task.completed" },
+    @{ Name = "voice.task.failed.q"; RoutingKey = "voice.task.failed" },
+    @{ Name = "notify.events.q"; RoutingKey = "notify.*" },
+    @{ Name = "history.events.q"; RoutingKey = "history.#" }
+)
+
+if ($PrintOnly) {
+    Write-Host "PrintOnly mode: skip actual API calls."
+} else {
+    Invoke-RabbitApi -Method Put -Path $exchange -Body @{ type = "topic"; durable = $true; auto_delete = $false }
+    foreach ($q in $queues) {
+        $queuePath = "/queues/%2F/$($q.Name)"
+        Invoke-RabbitApi -Method Put -Path $queuePath -Body @{ durable = $true; auto_delete = $false; arguments = @{} }
+        $bindPath = "/bindings/%2F/e/voice.events/q/$($q.Name)"
+        Invoke-RabbitApi -Method Post -Path $bindPath -Body @{ routing_key = $q.RoutingKey; arguments = @{} }
+    }
+}
+
+Write-Host ""
+Write-Host "RabbitMQ baseline initialized."
+Write-Host "Exchange: voice.events (topic)"
+Write-Host "Queues:"
+foreach ($q in $queues) {
+    Write-Host (" - " + $q.Name + " <= " + $q.RoutingKey)
+}
+Write-Host ""
+Write-Host "Verify in UI: http://127.0.0.1:15672 (guest/guest)"

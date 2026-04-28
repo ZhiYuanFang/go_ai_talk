@@ -1,0 +1,15 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: worker
+          env:
+            - name: MQ_CONSUMER_ENABLED
+              value: "true"
+            - name: OUTBOX_RELAY_ENABLED
+              value: "true"

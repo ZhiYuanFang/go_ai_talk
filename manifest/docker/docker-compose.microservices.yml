@@ -1,0 +1,62 @@
+version: "3.9"
+
+services:
+  gateway:
+    build:
+      context: ../..
+      dockerfile: manifest/docker/Dockerfile.gateway-service
+    image: go-ai-talk/gateway:local
+    container_name: go-ai-talk-gateway
+    environment:
+      GF_GCFG_FILE: manifest/config/config.yaml
+      HISTORY_SERVICE_MODE: proxy
+      HISTORY_SERVICE_URL: http://history-service:9801
+      MQ_CONSUMER_ENABLED: "false"
+      OUTBOX_RELAY_ENABLED: "false"
+    ports:
+      - "9701:9701"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:9701/api.json > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+    depends_on:
+      history-service:
+        condition: service_healthy
+
+  history-service:
+    build:
+      context: ../..
+      dockerfile: manifest/docker/Dockerfile.history-service
+    image: go-ai-talk/history-service:local
+    container_name: go-ai-talk-history-service
+    environment:
+      GF_GCFG_FILE: manifest/config/config.history-service.yaml
+    ports:
+      - "9801:9801"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:9801/api.json > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+
+  worker:
+    build:
+      context: ../..
+      dockerfile: manifest/docker/Dockerfile.worker-service
+    image: go-ai-talk/worker:local
+    container_name: go-ai-talk-worker
+    environment:
+      WORKER_HEALTH_ADDR: ":9901"
+      MQ_CONSUMER_ENABLED: "true"
+      OUTBOX_RELAY_ENABLED: "true"
+      MQ_HTTP_API_BASE: "http://rabbitmq:15672/api"
+      MQ_USER: "guest"
+      MQ_PASSWORD: "guest"
+    ports:
+      - "9901:9901"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:9901/healthz > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 6

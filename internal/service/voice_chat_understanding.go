@@ -206,23 +206,7 @@ func (s *VoiceService) chatWithResult(ctx context.Context, deviceNo, transcript 
 
 	// 获取上一次的对话缓存中，我回答的最后一条记录
 	now := time.Now()
-	lastUserMessage := ""
-	if strings.TrimSpace(deviceNo) != "" {
-		s.sessionMu.Lock()
-		s.pruneSessionsLocked(now)
-		if sess, ok := s.sessions[deviceNo]; ok {
-			if !s.isExpired(sess.LastActive, now) {
-				historyMessages := sess.Messages
-				if len(historyMessages) > 1 {
-					lastUserMessage = historyMessages[len(historyMessages)-1].Content
-				}
-			} else {
-				delete(s.sessions, deviceNo)
-				s.deviceLocks.Delete(deviceNo)
-			}
-		}
-		s.sessionMu.Unlock()
-	}
+	lastUserMessage := s.getLastUserMessageFromSession(ctx, deviceNo, now)
 
 	// 上一次的对话缓存中，我回答的最后一条记录，是否包含"多少"关键词
 	mayReplayQuantity := false

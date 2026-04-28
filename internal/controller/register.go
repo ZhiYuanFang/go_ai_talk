@@ -23,16 +23,28 @@ func RegisterHTTP(s *ghttp.Server) {
 		r.Response.ServeFile("resource/public/history.html")
 	})
 
+	// 历史 API 代理中间件。控制流量流向，支持本地新版、代理旧版、金丝雀发布。
+	installHistoryProxyMiddleware(s)
 	registerVoiceChatWS(s)
 
 	s.Use(ghttp.MiddlewareHandlerResponse)
+	deps := service.NewHTTPDeps()
 	s.Group("/", func(group *ghttp.RouterGroup) {
-		group.Bind(
-			NewHistoryCtrl(service.DeviceHistory(), service.Voice()),
-			NewAdminCtrl(service.DeviceAdmin()),
-			NewVoiceTextCtrl(service.Voice(), service.DeviceAdmin()),
-			Voice,
-		)
+		registerHistoryRoutes(group, deps)
+		registerAdminRoutes(group, deps)
+		registerVoiceTextRoutes(group, deps)
 	})
 	s.SetServerRoot(gfile.MainPkgPath())
+}
+
+func registerHistoryRoutes(group *ghttp.RouterGroup, deps service.HTTPDeps) {
+	group.Bind(NewHistoryCtrl(deps.History, deps.Voice))
+}
+
+func registerAdminRoutes(group *ghttp.RouterGroup, deps service.HTTPDeps) {
+	group.Bind(NewAdminCtrl(deps.Admin))
+}
+
+func registerVoiceTextRoutes(group *ghttp.RouterGroup, deps service.HTTPDeps) {
+	group.Bind(NewVoiceTextCtrl(deps.Voice, deps.Admin), Voice)
 }

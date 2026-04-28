@@ -12,6 +12,19 @@ database:
   default:
     link:   "mysql:root:Fang930927@tcp(120.55.50.105:3306)/ai_voice"
     debug:  true
+  # 领域库组：未配置时代码会自动回退到 default
+  device:
+    link:   "mysql:root:Fang930927@tcp(120.55.50.105:3306)/ai_voice_device"
+    debug:  true
+  voice:
+    link:   "mysql:root:Fang930927@tcp(120.55.50.105:3306)/ai_voice_voice"
+    debug:  true
+  history:
+    link:   "mysql:root:Fang930927@tcp(120.55.50.105:3306)/ai_voice_history"
+    debug:  true
+  history_ro:
+    link:   "mysql:root:Fang930927@tcp(120.55.50.105:3306)/ai_voice_history"
+    debug:  true
 
 voiceChat:
   debugLog: true
