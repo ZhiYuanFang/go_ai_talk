@@ -1,6 +1,0 @@
-- Define requirement and scenarios in spec
-- Implement detection logic to identify "退出对话" intent from DeepSeek output
-- Extend voice API to return an explicit `exit` marker when intent detected
-- Update websocket handlers / REST endpoints to include `exit` flag and avoid TTS playback
-- Add unit tests for detection and integration tests for full flow
-- Update docs and changelog
