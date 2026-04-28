@@ -11,8 +11,9 @@ services:
       GF_GCFG_FILE: manifest/config/config.yaml
       HISTORY_SERVICE_MODE: proxy
       HISTORY_SERVICE_URL: http://history-service:9801
-      MQ_CONSUMER_ENABLED: "false"
-      OUTBOX_RELAY_ENABLED: "false"
+      VOICE_SESSION_BACKEND: redis
+      MQ_CONSUMER_ENABLED: "true"
+      OUTBOX_RELAY_ENABLED: "true"
     ports:
       - "9701:9701"
     healthcheck:
@@ -32,6 +33,7 @@ services:
     container_name: go-ai-talk-history-service
     environment:
       GF_GCFG_FILE: manifest/config/config.history-service.yaml
+      OUTBOX_RELAY_ENABLED: "true"
     ports:
       - "9801:9801"
     healthcheck:
