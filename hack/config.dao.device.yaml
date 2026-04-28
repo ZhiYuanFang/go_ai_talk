@@ -1,0 +1,6 @@
+gfcli:
+  gen:
+    dao:
+      - link: "mysql:root:Fang930927@tcp(120.55.50.105:3306)/ai_voice_device"
+        tables: "user,event,action"
+        jsonCase: "CamelLower"

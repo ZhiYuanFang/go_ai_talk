@@ -47,17 +47,19 @@
 
 #### 3.1 启动依赖组件
 
-1. Redis 集群：
-
+1. Redis 集群（Windows）：
 - `powershell -ExecutionPolicy Bypass -File "hack/redis-cluster-init.ps1"`
-- > cd /www/wwwroot/go/go_ai_talk
-- > docker compose -f manifest/docker/docker-compose.redis-cluster.yml up -d
 
-1. RabbitMQ（含交换机和队列初始化）：
+2. Redis 集群（Linux）：
+- `cd /www/wwwroot/go/go_ai_talk`
+- `docker compose -f manifest/docker/docker-compose.redis-cluster.yml up -d`
 
+3. RabbitMQ（Windows，含交换机和队列初始化）：
 - `powershell -ExecutionPolicy Bypass -File "hack/rabbitmq-init.ps1"`
-- > cd /www/wwwroot/go/go_ai_talk
-- > docker compose -f manifest/docker/docker-compose.rabbitmq.yml up -d
+
+4. RabbitMQ（Linux）：
+- `cd /www/wwwroot/go/go_ai_talk`
+- `docker compose -f manifest/docker/docker-compose.rabbitmq.yml up -d`
 
 
 #### 3.2 启动业务微服务
@@ -81,27 +83,94 @@
 
 ---
 
-### 4. Kubernetes 部署（推荐学习路径）
+### 4. Kubernetes 部署（一步一步）
 
-#### 4.1 渲染与部署
+> 本项目当前 K8s 清单主要部署业务服务（gateway/history/worker）。  
+> Redis、RabbitMQ 可先继续用 Docker Compose 在宿主机运行，作为外部依赖接入。
 
-1. 渲染 develop 清单：
+#### 4.1 前置条件
 
+1. 安装并验证 `kubectl`：
+- `kubectl version --client`
+
+2. 准备一个本地 K8s 集群（任选其一）：
+- Docker Desktop Kubernetes
+- minikube
+- kind
+
+3. 确认集群可用：
+- `kubectl get nodes`
+
+#### 4.2 准备镜像
+
+方式 A（推荐学习期）：先在本机构建镜像，再推到你的镜像仓库。
+
+1. 构建镜像：
+- `docker build -f manifest/docker/Dockerfile.gateway-service -t <registry>/go-ai-talk/gateway:develop .`
+- `docker build -f manifest/docker/Dockerfile.history-service -t <registry>/go-ai-talk/history-service:develop .`
+- `docker build -f manifest/docker/Dockerfile.worker-service -t <registry>/go-ai-talk/worker:develop .`
+
+2. 推送镜像：
+- `docker push <registry>/go-ai-talk/gateway:develop`
+- `docker push <registry>/go-ai-talk/history-service:develop`
+- `docker push <registry>/go-ai-talk/worker:develop`
+
+> 若用 minikube/kind，也可用其本地镜像加载方式替代 push。
+
+#### 4.3 配置 overlay 镜像地址
+
+编辑 `manifest/deploy/kustomize/overlays/develop/kustomization.yaml` 中 `images`：
+- `name: go-ai-talk/gateway`
+- `name: go-ai-talk/history-service`
+- `name: go-ai-talk/worker`
+
+把 `newName/newTag`（或 `newTag`）改成你的实际仓库与版本。
+
+#### 4.4 部署到集群
+
+1. 预览渲染结果：
 - `kubectl kustomize manifest/deploy/kustomize/overlays/develop`
 
-1. 应用到集群：
-
+2. 应用清单：
 - `kubectl apply -k manifest/deploy/kustomize/overlays/develop`
 
-1. 查看状态：
-
+3. 查看资源状态：
 - `kubectl get deploy,svc,ingress,hpa,pdb -n default`
+- `kubectl get pods -n default -o wide`
 
-#### 4.2 环境化调整（values 等价）
+4. 查看启动日志（排障）：
+- `kubectl logs -n default deploy/gateway --tail=100`
+- `kubectl logs -n default deploy/history-service --tail=100`
+- `kubectl logs -n default deploy/worker --tail=100`
+
+#### 4.5 访问服务
+
+1. 先用端口转发验证：
+- `kubectl port-forward -n default svc/gateway 9701:9701`
+
+2. 本机访问：
+- [http://127.0.0.1:9701/api.json](http://127.0.0.1:9701/api.json)
+
+3. 若已安装 Ingress Controller，再通过 `ingress.patch.yaml` 配置的 host 访问。
+
+#### 4.6 更新发布与回滚
+
+1. 发布新版本：
+- 更新 `kustomization.yaml` 的镜像 tag
+- `kubectl apply -k manifest/deploy/kustomize/overlays/develop`
+
+2. 观察滚动更新：
+- `kubectl rollout status deploy/gateway -n default`
+- `kubectl rollout status deploy/history-service -n default`
+- `kubectl rollout status deploy/worker -n default`
+
+3. 快速回滚（示例）：
+- `kubectl rollout undo deploy/gateway -n default`
+
+#### 4.7 环境化调整（values 等价）
 
 在 `manifest/deploy/kustomize/overlays/develop` 调整：
-
-- 镜像 tag：`kustomization.yaml` 的 `images`
+- 镜像/tag：`kustomization.yaml` 的 `images`
 - 副本与变量：`*-deployment.patch.yaml`
 - 域名入口：`ingress.patch.yaml`
 - 告警规则：`prometheus-rules.yaml`

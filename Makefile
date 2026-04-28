@@ -28,6 +28,24 @@ cli.install:
 dao: cli.install
 	@gf gen dao
 
+# Sync DAO for all domain databases using hack/config.yaml.
+.PHONY: dao.sync
+dao.sync: cli.install
+	@GF_GCFG_FILE=hack/config.yaml gf gen dao
+
+# Sync DAO for a single domain database.
+.PHONY: dao.sync.device
+dao.sync.device: cli.install
+	@GF_GCFG_FILE=hack/config.dao.device.yaml gf gen dao
+
+.PHONY: dao.sync.voice
+dao.sync.voice: cli.install
+	@GF_GCFG_FILE=hack/config.dao.voice.yaml gf gen dao
+
+.PHONY: dao.sync.history
+dao.sync.history: cli.install
+	@GF_GCFG_FILE=hack/config.dao.history.yaml gf gen dao
+
 # Generate Go files for Service.
 .PHONY: service
 service: cli.install

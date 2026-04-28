@@ -5,10 +5,7 @@
 package dao
 
 import (
-	"context"
 	"hello/internal/dao/internal"
-
-	"github.com/gogf/gf/v2/database/gdb"
 )
 
 // internalQaDao is internal type for wrapping internal DAO implements.
@@ -26,12 +23,3 @@ var (
 		internal.NewQaDao(),
 	}
 )
-
-// Fill with you ideas below.
-func (dao qaDao) Group() string {
-	return resolveDBGroup(context.Background(), "voice")
-}
-
-func (dao qaDao) Ctx(ctx context.Context) *gdb.Model {
-	return domainModel(ctx, "voice", dao.Table())
-}
