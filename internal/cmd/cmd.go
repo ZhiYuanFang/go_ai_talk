@@ -5,6 +5,7 @@ import (
 
 	"hello/internal/controller"
 	"hello/internal/platform/runtimecheck"
+	_ "hello/internal/shared/runtime"
 
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/gcmd"

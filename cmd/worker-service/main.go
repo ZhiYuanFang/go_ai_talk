@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"hello/internal/platform/runtimecheck"
+	_ "hello/internal/shared/runtime"
 	async "hello/internal/services/async"
 
 	"github.com/gogf/gf/v2/os/gctx"

@@ -11,12 +11,12 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/device-service ./cmd/
 FROM alpine:3.19
 
 ENV WORKDIR=/app
-ENV GF_GCFG_FILE=manifest/config/config.yaml
+ENV GF_GCFG_FILE=manifest/config/config.device-service.yaml
 WORKDIR ${WORKDIR}
 
 COPY --from=builder /out/device-service ${WORKDIR}/device-service
 COPY resource ${WORKDIR}/resource
-COPY manifest/config/config.yaml ${WORKDIR}/manifest/config/config.yaml
+COPY manifest/config/config.device-service.yaml ${WORKDIR}/manifest/config/config.device-service.yaml
 
 EXPOSE 9803
 HEALTHCHECK --interval=10s --timeout=3s --retries=6 CMD wget -q -O - http://127.0.0.1:9803/api.json > /dev/null || exit 1

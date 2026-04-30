@@ -18,7 +18,9 @@
 ### 2. 本地 Compose 启动
 
 1) 启动依赖：
-
+- 创建共享网络：
+> docker network create go-ai-talk-net
+> docker network ls
 - Redis 集群：`docker compose -f manifest/docker/docker-compose.redis-cluster.yml up -d`
 - RabbitMQ：`docker compose -f manifest/docker/docker-compose.rabbitmq.yml up -d`
 
