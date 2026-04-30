@@ -5,7 +5,8 @@ import (
 	"strings"
 
 	v1 "hello/api/v1"
-	"hello/internal/service"
+	contracts "hello/internal/services/contracts"
+	device "hello/internal/services/device"
 
 	"github.com/gogf/gf/v2/errors/gcode"
 	"github.com/gogf/gf/v2/errors/gerror"
@@ -14,11 +15,11 @@ import (
 
 // AdminCtrl 设备管理后台 API（Header: X-Admin-Password）。
 type AdminCtrl struct {
-	Admin service.DeviceAdminContract
+	Admin contracts.DeviceAdminContract
 }
 
 // NewAdminCtrl 构造 AdminCtrl。
-func NewAdminCtrl(admin service.DeviceAdminContract) *AdminCtrl {
+func NewAdminCtrl(admin contracts.DeviceAdminContract) *AdminCtrl {
 	return &AdminCtrl{Admin: admin}
 }
 
@@ -48,7 +49,7 @@ func (c *AdminCtrl) Register(ctx context.Context, req *v1.DeviceAdminRegisterReq
 	}
 	activeTime, err := c.Admin.Register(ctx, deviceNo)
 	if err != nil {
-		if err == service.ErrDeviceExists {
+		if err == device.ErrDeviceExists {
 			return nil, gerror.NewCode(gcode.CodeInvalidOperation, err.Error())
 		}
 		return nil, err
@@ -97,7 +98,7 @@ func (c *AdminCtrl) EventAdd(ctx context.Context, req *v1.DeviceAdminEventAddReq
 	}
 	err = c.Admin.AddEvent(ctx, name, needQuantity, req.ExtraNames)
 	if err != nil {
-		if err == service.ErrEventExists {
+		if err == device.ErrEventExists {
 			return nil, gerror.NewCode(gcode.CodeInvalidOperation, err.Error())
 		}
 		return nil, err
@@ -124,9 +125,9 @@ func (c *AdminCtrl) EventUpdate(ctx context.Context, req *v1.DeviceAdminEventUpd
 	err = c.Admin.UpdateEvent(ctx, req.Id, name, needQuantity, req.ExtraNames)
 	if err != nil {
 		switch err {
-		case service.ErrEventExists:
+		case device.ErrEventExists:
 			return nil, gerror.NewCode(gcode.CodeInvalidOperation, err.Error())
-		case service.ErrEventNotFound:
+		case device.ErrEventNotFound:
 			return nil, gerror.NewCode(gcode.CodeNotFound, err.Error())
 		default:
 			return nil, err
@@ -144,7 +145,7 @@ func (c *AdminCtrl) EventDelete(ctx context.Context, req *v1.DeviceAdminEventDel
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "事件ID无效")
 	}
 	if err := c.Admin.DeleteEvent(ctx, req.Id); err != nil {
-		if err == service.ErrEventNotFound {
+		if err == device.ErrEventNotFound {
 			return nil, gerror.NewCode(gcode.CodeNotFound, err.Error())
 		}
 		return nil, err
@@ -204,7 +205,7 @@ func (c *AdminCtrl) ActionUpdate(ctx context.Context, req *v1.DeviceAdminActionU
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "动作目标不能为空")
 	}
 	if err := c.Admin.UpdateAction(ctx, req.Id, name, targetType); err != nil {
-		if err == service.ErrActionNotFound {
+		if err == device.ErrActionNotFound {
 			return nil, gerror.NewCode(gcode.CodeNotFound, err.Error())
 		}
 		return nil, err
@@ -221,7 +222,7 @@ func (c *AdminCtrl) ActionDelete(ctx context.Context, req *v1.DeviceAdminActionD
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "动作ID无效")
 	}
 	if err := c.Admin.DeleteAction(ctx, req.Id); err != nil {
-		if err == service.ErrActionNotFound {
+		if err == device.ErrActionNotFound {
 			return nil, gerror.NewCode(gcode.CodeNotFound, err.Error())
 		}
 		return nil, err

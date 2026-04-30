@@ -8,7 +8,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"hello/internal/service"
+	voice "hello/internal/services/voice"
 
 	"github.com/gogf/gf/v2/net/ghttp"
 	"github.com/gogf/gf/v2/os/glog"
@@ -64,14 +64,14 @@ func parseStartMessage(msg []byte) (wsStartMessage, error) {
 	return start, nil
 }
 
-func processVoiceBuffer(ctx context.Context, deviceNo string, meta service.AudioMeta, audioRaw []byte) ([]byte, service.AudioMeta, string, string, bool, bool, error) {
+func processVoiceBuffer(ctx context.Context, deviceNo string, meta voice.AudioMeta, audioRaw []byte) ([]byte, voice.AudioMeta, string, string, bool, bool, error) {
 	if len(audioRaw) == 0 {
 		return nil, meta, "", "", false, false, fmt.Errorf("empty audio")
 	}
 	glog.Infof(ctx, "[语音WS][关键节点] 收到整段音频，进入语音链路处理。deviceNo=%s audioBytes=%d", deviceNo, len(audioRaw))
 	meta.Length = len(audioRaw)
 	audioBase64 := base64.StdEncoding.EncodeToString(audioRaw)
-	audio, outMeta, ask, answer, exit, finishTalk, handleErr := service.Voice().HandleWithDialogue(ctx, deviceNo, meta, audioBase64)
+	audio, outMeta, ask, answer, exit, finishTalk, handleErr := voice.Voice().HandleWithDialogue(ctx, deviceNo, meta, audioBase64)
 	if handleErr != nil {
 		return nil, meta, "", "", false, false, handleErr
 	}
@@ -79,12 +79,12 @@ func processVoiceBuffer(ctx context.Context, deviceNo string, meta service.Audio
 	return audio, outMeta, ask, answer, exit, finishTalk, nil
 }
 
-func processVoiceTranscript(ctx context.Context, deviceNo string, meta service.AudioMeta, transcript string) ([]byte, service.AudioMeta, string, string, bool, bool, error) {
+func processVoiceTranscript(ctx context.Context, deviceNo string, meta voice.AudioMeta, transcript string) ([]byte, voice.AudioMeta, string, string, bool, bool, error) {
 	if strings.TrimSpace(transcript) == "" {
 		return nil, meta, "", "", false, false, fmt.Errorf("empty transcript")
 	}
 	glog.Infof(ctx, "[语音WS][关键节点] 转写完成，进入DeepSeek阶段。deviceNo=%s transcriptLen=%d", deviceNo, utf8.RuneCountInString(strings.TrimSpace(transcript)))
-	audio, outMeta, ask, answer, exit, finishTalk, handleErr := service.Voice().HandleWithTranscript(ctx, deviceNo, meta, transcript)
+	audio, outMeta, ask, answer, exit, finishTalk, handleErr := voice.Voice().HandleWithTranscript(ctx, deviceNo, meta, transcript)
 	if handleErr != nil {
 		return nil, meta, "", "", false, false, handleErr
 	}
@@ -105,7 +105,7 @@ func writeWSError(writeFn func(messageType int, data []byte) error, stage, detai
 	_ = writeFn(1, payload)
 }
 
-func writeWSAudioChunks(ws *ghttp.WebSocket, audio []byte, meta service.AudioMeta, finishTalk bool) error {
+func writeWSAudioChunks(ws *ghttp.WebSocket, audio []byte, meta voice.AudioMeta, finishTalk bool) error {
 	if ws == nil {
 		return fmt.Errorf("websocket is nil")
 	}

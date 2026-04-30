@@ -1,0 +1,84 @@
+package contracts
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"hello/internal/model/entity"
+	sharedtypes "hello/internal/shared/types"
+)
+
+// AudioMeta 描述一路 PCM 音频的基本参数（HTTP/WS 边界与语音服务共用）。
+type AudioMeta struct {
+	SampleRate int
+	Bits       int
+	Channels   int
+	Length     int
+}
+
+// StageError 表示语音链路某一阶段失败。
+type StageError struct {
+	Stage  string `json:"stage"`
+	Detail string `json:"detail"`
+}
+
+func (e StageError) Error() string {
+	return fmt.Sprintf("%s: %s", e.Stage, e.Detail)
+}
+
+type StreamASRSession interface {
+	WriteAudio(chunk []byte) error
+	Commit(ctx context.Context) (string, error)
+	Close() error
+}
+
+type StreamTTSSession interface {
+	WriteText(text string) error
+	Finish(ctx context.Context) error
+	Close() error
+}
+
+type VoiceContract interface {
+	HandleWithDialogue(ctx context.Context, deviceNo string, meta AudioMeta, audioBase64 string) ([]byte, AudioMeta, string, string, bool, bool, error)
+	HandleWithTranscript(ctx context.Context, deviceNo string, meta AudioMeta, transcript string) ([]byte, AudioMeta, string, string, bool, bool, error)
+	HandleTranscriptChatOnly(ctx context.Context, deviceNo, transcript string) (ask string, answer string, exit bool, finishTalk bool, err error)
+	HandleTranscriptForStreaming(ctx context.Context, deviceNo, transcript string) (ask string, answer string, mode string, needCasualStream bool, exit bool, finishTalk bool, err error)
+	DetectChatMode(deviceNo, transcript string) string
+	CreateStreamTTSSession(ctx context.Context, meta AudioMeta, onAudioChunk func(audio []byte, meta AudioMeta) error) (StreamTTSSession, error)
+	StreamCasualReplyWithBaiduTTS(ctx context.Context, deviceNo string, meta AudioMeta, transcript string, onTextDelta func(text string) error, onAudioChunk func(audio []byte, meta AudioMeta, seq int) error) (string, error)
+	StreamReplyWithBaiduTTS(ctx context.Context, meta AudioMeta, reply string, onAudioChunk func(audio []byte, meta AudioMeta, seq int) error) (chunks int, err error)
+	CreateStreamASRSession(ctx context.Context, meta AudioMeta, onPartial func(text string), onFinal func(text string)) (StreamASRSession, error)
+	StreamRealtimeOptions() (time.Duration, int)
+	TextChat(ctx context.Context, deviceNo, transcript string) (string, error)
+}
+
+type DeviceAdminContract interface {
+	VerifyPassword(password string) bool
+	Register(ctx context.Context, deviceNo string) (string, error)
+	EnsureRegistered(ctx context.Context, deviceNo string) error
+	UpdateLastTalk(ctx context.Context, deviceNo, ask, answer string) error
+	List(ctx context.Context) ([]entity.User, error)
+	AddEvent(ctx context.Context, name string, needQuantity int, extraNames string) error
+	ListEvents(ctx context.Context) ([]entity.Event, error)
+	UpdateEvent(ctx context.Context, id int64, name string, needQuantity int, extraNames string) error
+	DeleteEvent(ctx context.Context, id int64) error
+	ListQA(ctx context.Context) ([]entity.Qa, error)
+	ListActionsForAdmin(ctx context.Context) ([]sharedtypes.AdminActionItem, error)
+	UpdateAction(ctx context.Context, id int64, name, targetType string) error
+	DeleteAction(ctx context.Context, id int64) error
+}
+
+type DeviceHistoryContract interface {
+	ListHistory(ctx context.Context, deviceNo string) ([]entity.History, error)
+	GetLatestHistory(ctx context.Context, deviceNo string) (entity.History, error)
+	EndLatestHistoryIfMatch(ctx context.Context, deviceNo string, eventID int64, endTime string) (bool, error)
+	ListSuggest(ctx context.Context, deviceNo string) ([]entity.Suggest, error)
+	DeleteSuggest(ctx context.Context, id int64, deviceNo string) error
+	ListEventOptions(ctx context.Context) ([]entity.Event, error)
+	GetBirthday(ctx context.Context, deviceNo string) (string, int, error)
+	SaveBirthday(ctx context.Context, deviceNo, birthday string, sex int) error
+	AddHistory(ctx context.Context, item entity.History) (int64, error)
+	UpdateHistory(ctx context.Context, item entity.History) error
+	DeleteHistory(ctx context.Context, id int64, deviceNo string) error
+}

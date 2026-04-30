@@ -127,3 +127,27 @@ type DeviceHistoryEventDeleteReq struct {
 
 // DeviceHistoryEventDeleteRes 删除结果。
 type DeviceHistoryEventDeleteRes struct{}
+
+// DeviceHistoryLatestReq 查询最近一条历史记录。
+type DeviceHistoryLatestReq struct {
+	g.Meta   `path:"/device/history/api/event/latest" method:"get" tags:"device" summary:"查询最近一条历史记录"`
+	DeviceNo string `json:"deviceNo" p:"deviceNo" dc:"设备号"`
+}
+
+// DeviceHistoryLatestRes 最近一条历史记录响应。
+type DeviceHistoryLatestRes struct {
+	Item entity.History `json:"item"`
+}
+
+// DeviceHistoryEndLatestReq 条件结束最近一条历史事件。
+type DeviceHistoryEndLatestReq struct {
+	g.Meta   `path:"/device/history/api/event/end-latest" method:"post" tags:"device" summary:"条件结束最近一条历史事件"`
+	DeviceNo string `json:"deviceNo" dc:"设备号"`
+	EventId  int64  `json:"eventId" dc:"事件ID"`
+	EndTime  string `json:"endTime" dc:"结束时间"`
+}
+
+// DeviceHistoryEndLatestRes 条件结束结果。
+type DeviceHistoryEndLatestRes struct {
+	Updated bool `json:"updated"`
+}

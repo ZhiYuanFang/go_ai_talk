@@ -1,14 +1,13 @@
 package controller
 
 import (
-	"hello/internal/service"
-
 	"github.com/gogf/gf/v2/net/ghttp"
 	"github.com/gogf/gf/v2/os/gfile"
 )
 
 // RegisterHTTP 注册静态页、设备管理/历史 API、语音 WebSocket 以及 GoFrame 路由组。
 func RegisterHTTP(s *ghttp.Server) {
+	// 网关仍承载静态资源与入口页，保证前端访问路径稳定。
 	s.SetFileServerEnabled(true)
 	s.SetIndexFolder(true)
 	s.BindHandler("/", func(r *ghttp.Request) {
@@ -23,28 +22,14 @@ func RegisterHTTP(s *ghttp.Server) {
 		r.Response.ServeFile("resource/public/history.html")
 	})
 
-	// 历史 API 代理中间件。控制流量流向，支持本地新版、代理旧版、金丝雀发布。
-	installHistoryProxyMiddleware(s)
-	registerVoiceChatWS(s)
+	// 领域服务代理中间件统一安装入口（history/voice/device）。
+	installDomainProxyMiddlewares(s)
+	// voice WS 入口统一走边缘透传，领域执行下沉到 voice-service。
+	installVoiceWSProxyMiddleware(s)
+	// 安装全局横切能力（如请求 ID 透传），确保委派前先补齐上下文。
+	installGatewayCrosscuttingMiddlewares(s)
 
 	s.Use(ghttp.MiddlewareHandlerResponse)
-	deps := service.NewHTTPDeps()
-	s.Group("/", func(group *ghttp.RouterGroup) {
-		registerHistoryRoutes(group, deps)
-		registerAdminRoutes(group, deps)
-		registerVoiceTextRoutes(group, deps)
-	})
+	// 以主包路径作为资源根目录，兼容本地与容器运行环境。
 	s.SetServerRoot(gfile.MainPkgPath())
-}
-
-func registerHistoryRoutes(group *ghttp.RouterGroup, deps service.HTTPDeps) {
-	group.Bind(NewHistoryCtrl(deps.History, deps.Voice))
-}
-
-func registerAdminRoutes(group *ghttp.RouterGroup, deps service.HTTPDeps) {
-	group.Bind(NewAdminCtrl(deps.Admin))
-}
-
-func registerVoiceTextRoutes(group *ghttp.RouterGroup, deps service.HTTPDeps) {
-	group.Bind(NewVoiceTextCtrl(deps.Voice, deps.Admin), Voice)
 }

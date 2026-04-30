@@ -30,6 +30,22 @@ spec:
           annotations:
             summary: worker 不可用
             description: worker 实例在 2 分钟内持续不可达
+        - alert: VoiceServiceDown
+          expr: up{job="voice-service"} == 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: voice-service 不可用
+            description: voice-service 实例在 2 分钟内持续不可达
+        - alert: DeviceServiceDown
+          expr: up{job="device-service"} == 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: device-service 不可用
+            description: device-service 实例在 2 分钟内持续不可达
         - alert: GatewayHighErrorRate
           expr: rate(http_server_requests_seconds_count{job="gateway",code=~"5.."}[5m]) / clamp_min(rate(http_server_requests_seconds_count{job="gateway"}[5m]), 1) > 0.05
           for: 10m

@@ -5,6 +5,10 @@ resources:
 - gateway-service.yaml
 - history-deployment.yaml
 - history-service.yaml
+- voice-deployment.yaml
+- voice-service.yaml
+- device-deployment.yaml
+- device-service.yaml
 - worker-deployment.yaml
 - worker-service.yaml
 - ingress.yaml

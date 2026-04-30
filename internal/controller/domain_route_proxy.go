@@ -1,0 +1,107 @@
+package controller
+
+import (
+	"hash/fnv"
+	"net/http/httputil"
+	"net/url"
+	"os"
+	"strconv"
+	"strings"
+
+	"github.com/gogf/gf/v2/net/ghttp"
+)
+
+const (
+	domainRouteModeLocal  = "local"
+	domainRouteModeProxy  = "proxy"
+	domainRouteModeCanary = "canary"
+)
+
+type domainRouteProxyConfig struct {
+	mode          string
+	targetURL     string
+	canaryPercent int
+}
+
+func installDomainProxyMiddlewares(s *ghttp.Server) {
+	// 统一安装领域代理中间件；具体代理实现仍按 history/voice/device 分文件维护。
+	installHistoryProxyMiddleware(s)
+	installVoiceProxyMiddleware(s)
+	installDeviceProxyMiddleware(s)
+}
+
+func routeKeyForDomainRequest(r *ghttp.Request) string {
+	if deviceNo := strings.TrimSpace(r.Get("deviceNo").String()); deviceNo != "" {
+		return deviceNo
+	}
+	if header := strings.TrimSpace(r.GetHeader("X-Device-No")); header != "" {
+		return header
+	}
+	return strings.TrimSpace(r.RemoteAddr + "|" + r.URL.Path)
+}
+
+func readDomainProxyConfig(modeEnv, targetEnv, canaryPercentEnv string) domainRouteProxyConfig {
+	mode := strings.ToLower(strings.TrimSpace(os.Getenv(modeEnv)))
+	switch mode {
+	case domainRouteModeProxy, domainRouteModeCanary:
+	default:
+		mode = domainRouteModeLocal
+	}
+	target := strings.TrimSpace(os.Getenv(targetEnv))
+	canary := 0
+	if canaryPercentEnv != "" {
+		canary = parseCanaryPercent(os.Getenv(canaryPercentEnv))
+	}
+	return domainRouteProxyConfig{
+		mode:          mode,
+		targetURL:     target,
+		canaryPercent: canary,
+	}
+}
+
+func parseCanaryPercent(v string) int {
+	n, err := strconv.Atoi(strings.TrimSpace(v))
+	if err != nil {
+		return 0
+	}
+	if n < 0 {
+		return 0
+	}
+	if n > 100 {
+		return 100
+	}
+	return n
+}
+
+func shouldProxyDomainRequest(cfg domainRouteProxyConfig, key string) bool {
+	if strings.TrimSpace(cfg.targetURL) == "" {
+		return false
+	}
+	switch cfg.mode {
+	case domainRouteModeProxy:
+		return true
+	case domainRouteModeCanary:
+		if cfg.canaryPercent <= 0 {
+			return false
+		}
+		if cfg.canaryPercent >= 100 {
+			return true
+		}
+		h := fnv.New32a()
+		_, _ = h.Write([]byte(strings.TrimSpace(key)))
+		return int(h.Sum32()%100) < cfg.canaryPercent
+	default:
+		return false
+	}
+}
+
+func buildReverseProxy(target string) *httputil.ReverseProxy {
+	if strings.TrimSpace(target) == "" {
+		return nil
+	}
+	u, err := url.Parse(target)
+	if err != nil {
+		return nil
+	}
+	return httputil.NewSingleHostReverseProxy(u)
+}

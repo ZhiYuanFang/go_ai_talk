@@ -9,7 +9,23 @@ spec:
       containers:
         - name: gateway
           env:
-            - name: HISTORY_SERVICE_MODE
+            - name: HISTORY_API_ROUTE_MODE
               value: proxy
-            - name: HISTORY_SERVICE_URL
+            - name: HISTORY_API_PROXY_URL
               value: http://history-service:9801
+            - name: VOICE_API_ROUTE_MODE
+              value: proxy
+            - name: VOICE_API_PROXY_URL
+              value: http://voice-service:9802
+            - name: VOICE_API_PROXY_CANARY_PERCENT
+              value: "0"
+            - name: VOICE_WS_ROUTE_MODE
+              value: proxy
+            - name: VOICE_WS_PROXY_URL
+              value: http://voice-service:9802
+            - name: DEVICE_API_ROUTE_MODE
+              value: proxy
+            - name: DEVICE_API_PROXY_URL
+              value: http://device-service:9803
+            - name: DEVICE_API_PROXY_CANARY_PERCENT
+              value: "0"

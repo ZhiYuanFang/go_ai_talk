@@ -9,11 +9,22 @@ services:
     container_name: go-ai-talk-gateway
     environment:
       GF_GCFG_FILE: manifest/config/config.yaml
-      HISTORY_SERVICE_MODE: proxy
-      HISTORY_SERVICE_URL: http://history-service:9801
-      VOICE_SESSION_BACKEND: redis
-      MQ_CONSUMER_ENABLED: "true"
-      OUTBOX_RELAY_ENABLED: "true"
+      HISTORY_API_ROUTE_MODE: proxy
+      HISTORY_API_PROXY_URL: http://history-service:9801
+      VOICE_API_ROUTE_MODE: proxy
+      VOICE_API_PROXY_URL: http://voice-service:9802
+      VOICE_API_PROXY_CANARY_PERCENT: "0"
+      VOICE_WS_ROUTE_MODE: proxy
+      VOICE_WS_PROXY_URL: http://voice-service:9802
+      DEVICE_API_ROUTE_MODE: proxy
+      DEVICE_API_PROXY_URL: http://device-service:9803
+      DEVICE_API_PROXY_CANARY_PERCENT: "0"
+      # 角色约束：gateway 不承载业务后台任务。
+      MQ_CONSUMER_ENABLED: "false"
+      OUTBOX_RELAY_ENABLED: "false"
+      MQ_HTTP_API_BASE: "http://rabbitmq:15672/api"
+      MQ_USER: "guest"
+      MQ_PASSWORD: "guest"
     ports:
       - "9701:9701"
     healthcheck:
@@ -23,6 +34,10 @@ services:
       retries: 6
     depends_on:
       history-service:
+        condition: service_healthy
+      voice-service:
+        condition: service_healthy
+      device-service:
         condition: service_healthy
 
   history-service:
@@ -42,6 +57,50 @@ services:
       timeout: 3s
       retries: 6
 
+  voice-service:
+    build:
+      context: ../..
+      dockerfile: manifest/docker/Dockerfile.voice-service
+    image: go-ai-talk/voice-service:local
+    container_name: go-ai-talk-voice-service
+    environment:
+      GF_GCFG_FILE: manifest/config/config.voice-service.yaml
+      VOICE_SERVICE_ADDR: ":9802"
+      HISTORY_SERVICE_MODE: "remote"
+      HISTORY_SERVICE_URL: "http://history-service:9801"
+      HISTORY_SERVICE_CANARY_PERCENT: "0"
+      HISTORY_SERVICE_REMOTE_FAILOVER_LOCAL: "true"
+      DEVICE_PROFILE_SERVICE_MODE: "remote"
+      DEVICE_SERVICE_URL: "http://device-service:9803"
+      DEVICE_PROFILE_SERVICE_CANARY_PERCENT: "0"
+      DEVICE_PROFILE_SERVICE_REMOTE_FAILOVER_LOCAL: "true"
+      OUTBOX_RELAY_ENABLED: "false"
+    ports:
+      - "9802:9802"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:9802/api.json > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+
+  device-service:
+    build:
+      context: ../..
+      dockerfile: manifest/docker/Dockerfile.device-service
+    image: go-ai-talk/device-service:local
+    container_name: go-ai-talk-device-service
+    environment:
+      GF_GCFG_FILE: manifest/config/config.device-service.yaml
+      DEVICE_SERVICE_ADDR: ":9803"
+      OUTBOX_RELAY_ENABLED: "false"
+    ports:
+      - "9803:9803"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:9803/api.json > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+
   worker:
     build:
       context: ../..
@@ -49,8 +108,9 @@ services:
     image: go-ai-talk/worker:local
     container_name: go-ai-talk-worker
     environment:
-      GF_GCFG_FILE: manifest/config/config.yaml
+      GF_GCFG_FILE: manifest/config/config.worker-service.yaml
       WORKER_HEALTH_ADDR: ":9901"
+      # 角色约束：worker 独占异步消费与 outbox relay。
       MQ_CONSUMER_ENABLED: "true"
       OUTBOX_RELAY_ENABLED: "true"
       MQ_HTTP_API_BASE: "http://rabbitmq:15672/api"

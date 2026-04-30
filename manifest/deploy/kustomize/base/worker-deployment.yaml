@@ -32,9 +32,10 @@ spec:
               name: http
           env:
             - name: GF_GCFG_FILE
-              value: manifest/config/config.yaml
+              value: manifest/config/config.worker-service.yaml
             - name: WORKER_HEALTH_ADDR
               value: ":9901"
+            # 角色约束：worker 独占异步消费与 outbox relay。
             - name: MQ_CONSUMER_ENABLED
               value: "true"
             - name: OUTBOX_RELAY_ENABLED

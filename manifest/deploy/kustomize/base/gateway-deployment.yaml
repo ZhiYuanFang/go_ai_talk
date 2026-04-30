@@ -33,10 +33,27 @@ spec:
           env:
             - name: GF_GCFG_FILE
               value: manifest/config/config.yaml
-            - name: HISTORY_SERVICE_MODE
+            - name: HISTORY_API_ROUTE_MODE
               value: proxy
-            - name: HISTORY_SERVICE_URL
+            - name: HISTORY_API_PROXY_URL
               value: http://history-service:9801
+            - name: VOICE_API_ROUTE_MODE
+              value: proxy
+            - name: VOICE_API_PROXY_URL
+              value: http://voice-service:9802
+            - name: VOICE_API_PROXY_CANARY_PERCENT
+              value: "0"
+            - name: VOICE_WS_ROUTE_MODE
+              value: proxy
+            - name: VOICE_WS_PROXY_URL
+              value: http://voice-service:9802
+            - name: DEVICE_API_ROUTE_MODE
+              value: proxy
+            - name: DEVICE_API_PROXY_URL
+              value: http://device-service:9803
+            - name: DEVICE_API_PROXY_CANARY_PERCENT
+              value: "0"
+            # 角色约束：gateway 不承载业务后台任务。
             - name: MQ_CONSUMER_ENABLED
               value: "false"
             - name: OUTBOX_RELAY_ENABLED

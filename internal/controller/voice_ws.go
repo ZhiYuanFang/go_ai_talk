@@ -11,7 +11,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"hello/internal/service"
+	device "hello/internal/services/device"
+	voice "hello/internal/services/voice"
 
 	"github.com/gogf/gf/v2/net/ghttp"
 	"github.com/gogf/gf/v2/os/glog"
@@ -28,6 +29,7 @@ const (
 )
 
 func registerVoiceChatWS(s *ghttp.Server) {
+	// WebSocket 入口单独注册，避免与 HTTP 文本接口混用。
 	s.BindHandler("/voice/chat/ws", voiceChatWS)
 }
 
@@ -50,15 +52,15 @@ func voiceChatWS(r *ghttp.Request) {
 
 	deviceNo := ""
 	started := false
-	meta := service.AudioMeta{}
-	var streamASR service.StreamASRSession
+	meta := voice.AudioMeta{}
+	var streamASR voice.StreamASRSession
 	var audioBuffer bytes.Buffer
 	defer func() {
 		if streamASR != nil {
 			_ = streamASR.Close()
 		}
 		if deviceNo != "" {
-			service.VoiceWSManager().Unregister(deviceNo, ws)
+			voice.VoiceWSManager().Unregister(deviceNo, ws)
 		}
 	}()
 	streamStartAt := time.Time{}
@@ -75,7 +77,7 @@ func voiceChatWS(r *ghttp.Request) {
 	asrCallbackCount := 0
 	lastASRAt := time.Time{}
 	lastNoASRWarnChunk := 0
-	realtimeDebounce, realtimeMinRunes := service.Voice().StreamRealtimeOptions()
+	realtimeDebounce, realtimeMinRunes := voice.Voice().StreamRealtimeOptions()
 	preferLongerTranscript := func(current, candidate string) string {
 		current = strings.TrimSpace(current)
 		candidate = strings.TrimSpace(candidate)
@@ -92,6 +94,7 @@ func voiceChatWS(r *ghttp.Request) {
 	}
 	wsWriteMu := sync.Mutex{}
 	safeWriteMessage := func(messageType int, data []byte) error {
+		// 同一连接可能被多个回调并发写，串行化避免帧交错。
 		wsWriteMu.Lock()
 		defer wsWriteMu.Unlock()
 		return ws.WriteMessage(messageType, data)
@@ -111,6 +114,7 @@ func voiceChatWS(r *ghttp.Request) {
 		droppedAudioChunks = 0
 	}
 	runStreamCommit := func(trigger string) {
+		// commit 统一收口：ASR 提交 -> 对话处理 -> TTS 下发 -> 状态重置。
 		// processStartAt := time.Now()
 		transcript := ""
 		if streamASR != nil && !streamASRBroken {
@@ -174,10 +178,10 @@ func voiceChatWS(r *ghttp.Request) {
 			finishTalk bool
 			pErr       error
 		)
-		ask, answer, mode, casualFlow, exit, finishTalk, pErr = service.Voice().HandleTranscriptForStreaming(ctx, deviceNo, transcript)
+		ask, answer, mode, casualFlow, exit, finishTalk, pErr = voice.Voice().HandleTranscriptForStreaming(ctx, deviceNo, transcript)
 		if casualFlow {
 			seq := 0
-			answer, pErr = service.Voice().StreamCasualReplyWithBaiduTTS(
+			answer, pErr = voice.Voice().StreamCasualReplyWithBaiduTTS(
 				ctx,
 				deviceNo,
 				meta,
@@ -190,7 +194,7 @@ func voiceChatWS(r *ghttp.Request) {
 					})
 					return safeWriteMessage(1, payload)
 				},
-				func(chunk []byte, chunkMeta service.AudioMeta, chunkSeq int) error {
+				func(chunk []byte, chunkMeta voice.AudioMeta, chunkSeq int) error {
 					seq = chunkSeq
 					glog.Infof(ctx, "[TTS下发] 发送音频分片。deviceNo=%s mode=casual seq=%d audioBytes=%d sampleRate=%d", deviceNo, chunkSeq, len(chunk), chunkMeta.SampleRate)
 					payload, _ := json.Marshal(map[string]interface{}{
@@ -218,7 +222,7 @@ func voiceChatWS(r *ghttp.Request) {
 			}
 		} else if pErr == nil && !exit {
 				seq := 0
-				_, pErr = service.Voice().StreamReplyWithBaiduTTS(ctx, meta, answer, func(chunk []byte, chunkMeta service.AudioMeta, chunkSeq int) error {
+				_, pErr = voice.Voice().StreamReplyWithBaiduTTS(ctx, meta, answer, func(chunk []byte, chunkMeta voice.AudioMeta, chunkSeq int) error {
 					seq = chunkSeq
 					glog.Infof(ctx, "[TTS下发] 发送音频分片。deviceNo=%s mode=%s seq=%d audioBytes=%d sampleRate=%d", deviceNo, mode, chunkSeq, len(chunk), chunkMeta.SampleRate)
 					payload, _ := json.Marshal(map[string]interface{}{
@@ -269,7 +273,7 @@ func voiceChatWS(r *ghttp.Request) {
 			return
 		}
 
-		if talkErr := service.DeviceAdmin().UpdateLastTalk(ctx, deviceNo, ask, answer); talkErr != nil {
+		if talkErr := device.DeviceAdmin().UpdateLastTalk(ctx, deviceNo, ask, answer); talkErr != nil {
 			// glog.Warningf(ctx, "[语音WS] 对话记录落库失败。deviceNo=%s error=%v", deviceNo, talkErr)
 			safeWriteWSError("service", talkErr.Error())
 			resetStreamBuffers()
@@ -279,6 +283,7 @@ func voiceChatWS(r *ghttp.Request) {
 		}
 		// glog.Infof(ctx, "[语音WS][关键节点] commit处理完成并已下发音频。deviceNo=%s askLen=%d answerLen=%d ttsBytes=%d cost=%s", deviceNo, utf8.RuneCountInString(strings.TrimSpace(ask)), utf8.RuneCountInString(strings.TrimSpace(answer)), len(audio), time.Since(processStartAt))
 		waitEndAfterCommit = true
+		// 本轮已结束，后续音频需等待前端 end/start 开启下一轮。
 		// glog.Infof(ctx, "[语音WS][关键节点] 已进入等待end状态。deviceNo=%s reason=commit_finished", deviceNo)
 		resetStreamBuffers()
 		resetStreamASRUntilNextValid()
@@ -310,13 +315,13 @@ func voiceChatWS(r *ghttp.Request) {
 			streamASR = nil
 		}
 		streamASRBroken = false
-		sess, sErr := service.Voice().CreateStreamASRSession(ctx, meta,
+		sess, sErr := voice.Voice().CreateStreamASRSession(ctx, meta,
 			func(text string) {
 				text = strings.TrimSpace(text)
 				if text == "" || text == lastPartialText {
 					return
 				}
-				asrCallbackCount++
+				asrCallbackCount++ // 记录回调活跃度，用于“无回调自动 commit”兜底判断。
 				lastASRAt = time.Now()
 				// glog.Infof(ctx, "[语音WS] 收到ASR中间结果回调。deviceNo=%s text=%q textLen=%d callbackCount=%d", deviceNo, text, utf8.RuneCountInString(text), asrCallbackCount)
 				lastPartialText = text
@@ -334,7 +339,7 @@ func voiceChatWS(r *ghttp.Request) {
 				if text == "" {
 					return
 				}
-				asrCallbackCount++
+				asrCallbackCount++ // final 回调同样记为有效活跃信号。
 				lastASRAt = time.Now()
 				glog.Infof(ctx, "[语音WS] 收到ASR最终结果回调。deviceNo=%s text=%q textLen=%d callbackCount=%d", deviceNo, text, utf8.RuneCountInString(text), asrCallbackCount)
 				latestTranscript = preferLongerTranscript(latestTranscript, text)
@@ -369,6 +374,7 @@ func voiceChatWS(r *ghttp.Request) {
 		lastNoASRWarnChunk = 0
 	}
 	tryAutoCommitWhenNoASRCallback := func() {
+		// 长时间无回调时主动 commit，防止连接卡在“只收音频不出字”状态。
 		if !streamMode || streamASR == nil || streamASRBroken {
 			return
 		}
@@ -449,10 +455,10 @@ func voiceChatWS(r *ghttp.Request) {
 				}
 
 				if deviceNo != "" && deviceNo != startMsg.DeviceNo {
-					service.VoiceWSManager().Unregister(deviceNo, ws)
+					voice.VoiceWSManager().Unregister(deviceNo, ws)
 				}
 				deviceNo = startMsg.DeviceNo
-				meta = service.AudioMeta{
+				meta = voice.AudioMeta{
 					SampleRate: startMsg.SampleRate,
 					Bits:       startMsg.Bits,
 					Channels:   startMsg.Channels,
@@ -491,7 +497,8 @@ func voiceChatWS(r *ghttp.Request) {
 					meta.Length,
 				)
 
-				replaced := service.VoiceWSManager().Register(deviceNo, ws)
+				replaced := voice.VoiceWSManager().Register(deviceNo, ws)
+				// 同设备仅保留最后一个连接，避免双连接并发写状态。
 				if replaced != nil && replaced != ws {
 					_ = replaced.Close()
 				}
@@ -642,12 +649,14 @@ func voiceChatWS(r *ghttp.Request) {
 			sttTimeout := hasFirstSTT && sttSilence >= wsInterruptCommitGap
 
 			if noFirstSTTTimeout {
+				// 首次回调长期缺失，主动打断并 commit 当前片段。
 				// glog.Warningf(ctx, "[语音WS] 触发主动commit中断。deviceNo=%s reason=no_stt_callback_since_start sinceStart=%s threshold=%s chunks=%d recvBytes=%d", deviceNo, now.Sub(streamStartAt), wsInitialNoASRGap, chunkCount, audioBuffer.Len())
 				runStreamCommit("interrupt")
 				continue
 			}
 
 			if sttTimeout {
+				// 已有回调后再次长静默，视为一句结束，主动 commit。
 				// glog.Warningf(ctx, "[语音WS] 触发主动commit中断。deviceNo=%s reason=stt_callback_timeout sttSilence=%s threshold=%s chunks=%d recvBytes=%d", deviceNo, sttSilence, wsInterruptCommitGap, chunkCount, audioBuffer.Len())
 				runStreamCommit("interrupt")
 				continue
@@ -675,6 +684,7 @@ func voiceChatWS(r *ghttp.Request) {
 				_ = streamASR.Close()
 				streamASR = nil
 			} else {
+				// 每次成功写入后尝试兜底判定，避免“无文本回调”长期悬挂。
 				tryAutoCommitWhenNoASRCallback()
 			}
 		}

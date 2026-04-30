@@ -1,36 +1,22 @@
 package controller
 
 import (
-	"hash/fnv"
 	"net/http/httputil"
-	"net/url"
-	"os"
-	"strconv"
-	"strings"
 	"sync"
 
 	"github.com/gogf/gf/v2/net/ghttp"
 )
 
 const (
-	historyRouteModeEnv         = "HISTORY_API_ROUTE_MODE" // local | proxy | canary
+	historyRouteModeEnv         = "HISTORY_API_ROUTE_MODE" // 本地执行 | 全量代理 | 金丝雀代理
 	historyProxyURLEnv          = "HISTORY_API_PROXY_URL"
 	historyProxyCanaryPercentEnv = "HISTORY_API_PROXY_CANARY_PERCENT"
 
-	historyRouteModeLocal  = "local"
-	historyRouteModeProxy  = "proxy"
-	historyRouteModeCanary = "canary"
 )
-
-type historyRouteProxyConfig struct {
-	mode          string
-	targetURL     string
-	canaryPercent int
-}
 
 var (
 	historyProxyOnce sync.Once
-	historyProxyCfg  historyRouteProxyConfig
+	historyProxyCfg  domainRouteProxyConfig
 	historyProxy     *httputil.ReverseProxy
 )
 
@@ -40,80 +26,32 @@ func installHistoryProxyMiddleware(s *ghttp.Server) {
 		return
 	}
 	s.BindMiddleware("/device/history/api/*", func(r *ghttp.Request) {
+		// 通过稳定路由键做一致性分流，确保同一设备命中同一发布策略。
 		if !shouldProxyHistoryRequest(cfg, routeKeyForHistoryRequest(r)) {
 			r.Middleware.Next()
 			return
 		}
+		// 命中代理后直接短路，避免本地 handler 与下游重复处理。
 		proxy.ServeHTTP(r.Response.Writer, r.Request)
 		r.ExitAll()
 	})
 }
 
-func routeKeyForHistoryRequest(r *ghttp.Request) string {
-	deviceNo := strings.TrimSpace(r.Get("deviceNo").String())
-	if deviceNo != "" {
-		return deviceNo
-	}
-	if header := strings.TrimSpace(r.GetHeader("X-Device-No")); header != "" {
-		return header
-	}
-	return strings.TrimSpace(r.RemoteAddr + "|" + r.URL.Path)
-}
-
-func historyProxyFromEnv() (historyRouteProxyConfig, *httputil.ReverseProxy) {
+func historyProxyFromEnv() (domainRouteProxyConfig, *httputil.ReverseProxy) {
 	historyProxyOnce.Do(func() {
-		mode := strings.ToLower(strings.TrimSpace(os.Getenv(historyRouteModeEnv)))
-		switch mode {
-		case historyRouteModeProxy, historyRouteModeCanary:
-		default:
-			mode = historyRouteModeLocal
-		}
-		target := strings.TrimSpace(os.Getenv(historyProxyURLEnv))
-		canary, err := strconv.Atoi(strings.TrimSpace(os.Getenv(historyProxyCanaryPercentEnv)))
-		if err != nil {
-			canary = 0
-		}
-		if canary < 0 {
-			canary = 0
-		}
-		if canary > 100 {
-			canary = 100
-		}
-		historyProxyCfg = historyRouteProxyConfig{
-			mode:          mode,
-			targetURL:     target,
-			canaryPercent: canary,
-		}
-		if target == "" {
-			return
-		}
-		u, err := url.Parse(target)
-		if err != nil {
-			return
-		}
-		historyProxy = httputil.NewSingleHostReverseProxy(u)
+		// 历史路由配置仅初始化一次，保证同一进程内行为稳定。
+		historyProxyCfg = readDomainProxyConfig(historyRouteModeEnv, historyProxyURLEnv, historyProxyCanaryPercentEnv)
+		historyProxy = buildReverseProxy(historyProxyCfg.targetURL)
 	})
 	return historyProxyCfg, historyProxy
 }
 
-func shouldProxyHistoryRequest(cfg historyRouteProxyConfig, key string) bool {
-	if strings.TrimSpace(cfg.targetURL) == "" {
-		return false
-	}
-	switch cfg.mode {
-	case historyRouteModeProxy:
-		return true
-	case historyRouteModeCanary:
-		if cfg.canaryPercent <= 0 {
-			return false
-		}
-		if cfg.canaryPercent >= 100 {
-			return true
-		}
-		h := fnv.New32a()
-		_, _ = h.Write([]byte(strings.TrimSpace(key)))
-		return int(h.Sum32()%100) < cfg.canaryPercent
-	default:
-		return false
-	}
+func routeKeyForHistoryRequest(r *ghttp.Request) string {
+	// history 分流键与 voice/device 保持同一策略，减少跨域治理差异。
+	return routeKeyForDomainRequest(r)
+}
+
+func shouldProxyHistoryRequest(cfg domainRouteProxyConfig, key string) bool {
+	// history 转发判定复用统一规则，避免三套逻辑发生语义漂移。
+	return shouldProxyDomainRequest(cfg, key)
 }

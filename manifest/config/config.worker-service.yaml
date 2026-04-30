@@ -1,0 +1,14 @@
+server:
+  address: ":9901"
+  openapiPath: "/api.json"
+  swaggerPath: "/swagger"
+
+logger:
+  level: "all"
+  stdout: true
+
+database:
+  default:
+    # 运行时请通过环境变量或挂载配置覆盖该占位值
+    link: "mysql:root:Fang930927@tcp(120.55.50.105:3306)/ai_voice_history"
+    debug: false

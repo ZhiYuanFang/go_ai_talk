@@ -5,19 +5,44 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
-	"hello/internal/service"
+	"hello/internal/platform/runtimecheck"
+	async "hello/internal/services/async"
 
 	"github.com/gogf/gf/v2/os/gctx"
 	"github.com/gogf/gf/v2/os/glog"
 )
 
 func main() {
+	prepareWorkerServiceRuntime()
 	ctx := gctx.New()
-	service.StartBackgroundWorkers(ctx)
+	// worker 同样依赖 Redis/MQ，启动前即校验，避免任务处理中途大面积失败。
+	if err := runtimecheck.CheckDependencies(ctx); err != nil {
+		glog.Fatalf(ctx, "dependency check failed: %v", err)
+		return
+	}
+	startBackgroundWorkers(ctx)
+	// 对外暴露最小健康探针，便于容器编排系统判断进程存活。
 	startWorkerHealthServer(ctx)
 	select {}
+}
+
+func prepareWorkerServiceRuntime() {
+	// 默认使用 worker-service 专属配置，避免误读 gateway 主配置。
+	if strings.TrimSpace(os.Getenv("GF_GCFG_FILE")) == "" {
+		_ = os.Setenv("GF_GCFG_FILE", "manifest/config/config.worker-service.yaml")
+	}
+}
+
+var workerOnce sync.Once
+
+func startBackgroundWorkers(ctx context.Context) {
+	workerOnce.Do(func() {
+		async.StartVoiceTaskConsumer(ctx)
+		async.StartDomainOutboxRelay(ctx)
+	})
 }
 
 func startWorkerHealthServer(ctx context.Context) {

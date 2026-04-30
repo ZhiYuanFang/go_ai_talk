@@ -1,0 +1,414 @@
+package history
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"strings"
+	"time"
+
+	"hello/internal/dao"
+	"hello/internal/model/entity"
+	"hello/internal/platform/eventkit"
+
+	"github.com/gogf/gf/v2/database/gdb"
+	"github.com/gogf/gf/v2/frame/g"
+)
+
+type localService struct{}
+
+var historyCache = newCacheRepo()
+
+func (s *localService) ListHistory(ctx context.Context, deviceNo string) ([]entity.History, error) {
+	return ListDeviceHistory(ctx, deviceNo)
+}
+
+func (s *localService) GetLatestHistory(ctx context.Context, deviceNo string) (entity.History, error) {
+	return GetLatestDeviceHistory(ctx, deviceNo)
+}
+
+func (s *localService) EndLatestHistoryIfMatch(ctx context.Context, deviceNo string, eventID int64, endTime string) (bool, error) {
+	return EndLatestDeviceHistoryIfMatch(ctx, deviceNo, eventID, endTime)
+}
+
+func (s *localService) ListSuggest(ctx context.Context, deviceNo string) ([]entity.Suggest, error) {
+	return ListDeviceSuggest(ctx, deviceNo)
+}
+
+func (s *localService) DeleteSuggest(ctx context.Context, id int64, deviceNo string) error {
+	return DeleteDeviceSuggest(ctx, id, deviceNo)
+}
+
+func (s *localService) ListEventOptions(ctx context.Context) ([]entity.Event, error) {
+	return ListEventOptions(ctx)
+}
+
+func (s *localService) GetBirthday(ctx context.Context, deviceNo string) (string, int, error) {
+	return GetDeviceBirthday(ctx, deviceNo)
+}
+
+func (s *localService) SaveBirthday(ctx context.Context, deviceNo, birthday string, sex int) error {
+	return SaveBirthday(ctx, deviceNo, birthday, sex)
+}
+
+func (s *localService) AddHistory(ctx context.Context, item entity.History) (int64, error) {
+	return AddDeviceHistory(ctx, item)
+}
+
+func (s *localService) UpdateHistory(ctx context.Context, item entity.History) error {
+	return UpdateDeviceHistory(ctx, item)
+}
+
+func (s *localService) DeleteHistory(ctx context.Context, id int64, deviceNo string) error {
+	return DeleteDeviceHistory(ctx, id, deviceNo)
+}
+
+func ListDeviceHistory(ctx context.Context, deviceNo string) ([]entity.History, error) {
+	deviceNo = strings.TrimSpace(deviceNo)
+	if deviceNo == "" {
+		return []entity.History{}, nil
+	}
+	if cached, ok, err := historyCache.getHistoryList(ctx, deviceNo); err == nil && ok {
+		return cached, nil
+	}
+	rows, err := dao.History.Ctx(ctx).
+		Fields(
+			dao.History.Columns().Id,
+			dao.History.Columns().DeviceNo,
+			dao.History.Columns().EventId,
+			dao.History.Columns().EventName,
+			dao.History.Columns().EventNumber,
+			dao.History.Columns().StartTime,
+			dao.History.Columns().EndTime,
+			dao.History.Columns().Remark,
+		).
+		Where(dao.History.Columns().DeviceNo, deviceNo).
+		OrderDesc(dao.History.Columns().Id).
+		All()
+	if err != nil {
+		return nil, err
+	}
+	items := make([]entity.History, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, entity.History{
+			Id:          row[dao.History.Columns().Id].Int64(),
+			DeviceNo:    row[dao.History.Columns().DeviceNo].String(),
+			EventId:     row[dao.History.Columns().EventId].Int64(),
+			EventName:   row[dao.History.Columns().EventName].String(),
+			EventNumber: row[dao.History.Columns().EventNumber].Int64(),
+			StartTime:   row[dao.History.Columns().StartTime].String(),
+			EndTime:     row[dao.History.Columns().EndTime].String(),
+			Remark:      row[dao.History.Columns().Remark].String(),
+		})
+	}
+	_ = historyCache.setHistoryList(ctx, deviceNo, items)
+	return items, nil
+}
+
+func GetLatestDeviceHistory(ctx context.Context, deviceNo string) (entity.History, error) {
+	deviceNo = strings.TrimSpace(deviceNo)
+	if deviceNo == "" {
+		return entity.History{}, nil
+	}
+	if item, ok, err := historyCache.getLatestHistory(ctx, deviceNo); err == nil && ok {
+		return item, nil
+	}
+	var item entity.History
+	err := dao.History.Ctx(ctx).
+		Where(dao.History.Columns().DeviceNo, deviceNo).
+		OrderDesc(dao.History.Columns().Id).
+		Limit(1).
+		Scan(&item)
+	if err != nil {
+		return entity.History{}, err
+	}
+	if item.Id > 0 {
+		_ = historyCache.setLatestHistory(ctx, deviceNo, item)
+	}
+	return item, nil
+}
+
+func EndLatestDeviceHistoryIfMatch(ctx context.Context, deviceNo string, eventID int64, endTime string) (bool, error) {
+	deviceNo = strings.TrimSpace(deviceNo)
+	endTime = strings.TrimSpace(endTime)
+	if deviceNo == "" || eventID <= 0 {
+		return false, nil
+	}
+	if endTime == "" {
+		endTime = time.Now().Format("2006-01-02 15:04:05")
+	}
+	last, err := GetLatestDeviceHistory(ctx, deviceNo)
+	if err != nil {
+		return false, err
+	}
+	if last.Id <= 0 || last.EventId != eventID {
+		return false, nil
+	}
+	_, err = dao.History.Ctx(ctx).
+		Where(dao.History.Columns().Id, last.Id).
+		Where(dao.History.Columns().DeviceNo, deviceNo).
+		Data(g.Map{dao.History.Columns().EndTime: endTime}).
+		Update()
+	if err != nil {
+		return false, err
+	}
+	last.EndTime = endTime
+	historyCache.patchHistoryOnUpdate(ctx, last)
+	return true, nil
+}
+
+func ListDeviceSuggest(ctx context.Context, deviceNo string) ([]entity.Suggest, error) {
+	deviceNo = strings.TrimSpace(deviceNo)
+	if deviceNo == "" {
+		return []entity.Suggest{}, nil
+	}
+	rows := make([]entity.Suggest, 0)
+	err := dao.Suggest.Ctx(ctx).
+		Fields(dao.Suggest.Columns().Id, dao.Suggest.Columns().DeviceNo, dao.Suggest.Columns().Suggest, dao.Suggest.Columns().Time).
+		Where(dao.Suggest.Columns().DeviceNo, deviceNo).
+		OrderDesc(dao.Suggest.Columns().Id).
+		Scan(&rows)
+	return rows, err
+}
+
+func DeleteDeviceSuggest(ctx context.Context, id int64, deviceNo string) error {
+	deviceNo = strings.TrimSpace(deviceNo)
+	if id <= 0 || deviceNo == "" {
+		return fmt.Errorf("参数无效")
+	}
+	_, err := dao.Suggest.Ctx(ctx).
+		Where(dao.Suggest.Columns().Id, id).
+		Where(dao.Suggest.Columns().DeviceNo, deviceNo).
+		Delete()
+	return err
+}
+
+func ListEventOptions(ctx context.Context) ([]entity.Event, error) {
+	if cached, ok, err := historyCache.getEventOptions(ctx); err == nil && ok {
+		return cached, nil
+	}
+	rows := make([]entity.Event, 0)
+	err := dao.Event.Ctx(ctx).
+		Fields(dao.Event.Columns().Id, dao.Event.Columns().Name, dao.Event.Columns().NeedQuantity).
+		OrderAsc(dao.Event.Columns().Id).
+		Scan(&rows)
+	if err == nil {
+		_ = historyCache.setEventOptions(ctx, rows)
+	}
+	return rows, err
+}
+
+func SaveBirthday(ctx context.Context, deviceNo, birthday string, sex int) error {
+	deviceNo = strings.TrimSpace(deviceNo)
+	birthday = strings.TrimSpace(birthday)
+	if deviceNo == "" {
+		return nil
+	}
+	if sex > 0 {
+		sex = 1
+	}
+	_, err := dao.User.Ctx(ctx).Where(dao.User.Columns().DeviceNo, deviceNo).Data(g.Map{
+		dao.User.Columns().Birthday: birthday,
+		dao.User.Columns().Sex:      sex,
+	}).Update()
+	if err == nil {
+		if isOutboxRelayEnabled() {
+			_ = g.DB(dao.User.Group()).Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
+				return insertOutboxEventTx(tx, eventkit.RoutingDeviceUserProfileUpdated, map[string]interface{}{
+					"event_id":    fmt.Sprintf("device-user-profile-updated-%d", time.Now().UnixNano()),
+					"version":     time.Now().UnixNano(),
+					"device_no":   deviceNo,
+					"birthday":    birthday,
+					"sex":         sex,
+					"occurred_at": time.Now().Format(time.RFC3339Nano),
+				})
+			})
+		}
+		_ = historyCache.setBirthday(ctx, deviceNo, birthday, sex)
+	}
+	return err
+}
+
+func GetDeviceBirthday(ctx context.Context, deviceNo string) (string, int, error) {
+	deviceNo = strings.TrimSpace(deviceNo)
+	if deviceNo == "" {
+		return "", 0, nil
+	}
+	if birthday, sex, ok, err := historyCache.getBirthday(ctx, deviceNo); err == nil && ok {
+		return birthday, sex, nil
+	}
+	row, err := dao.User.Ctx(ctx).
+		Fields(dao.User.Columns().Birthday, dao.User.Columns().Sex).
+		Where(dao.User.Columns().DeviceNo, deviceNo).
+		Limit(1).
+		One()
+	if err != nil {
+		return "", 0, err
+	}
+	if row == nil || row.IsEmpty() {
+		return "", 0, nil
+	}
+	sex := row[dao.User.Columns().Sex].Int()
+	if sex > 0 {
+		sex = 1
+	}
+	birthday := strings.TrimSpace(row[dao.User.Columns().Birthday].String())
+	_ = historyCache.setBirthday(ctx, deviceNo, birthday, sex)
+	return birthday, sex, nil
+}
+
+func AddDeviceHistory(ctx context.Context, item entity.History) (int64, error) {
+	item.DeviceNo = strings.TrimSpace(item.DeviceNo)
+	item.EventName = strings.TrimSpace(item.EventName)
+	item.StartTime = strings.TrimSpace(item.StartTime)
+	item.EndTime = strings.TrimSpace(item.EndTime)
+	item.Remark = strings.TrimSpace(item.Remark)
+	if item.DeviceNo == "" {
+		return 0, fmt.Errorf("deviceNo 不能为空")
+	}
+	var id int64
+	err := g.DB(dao.History.Group()).Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
+		version := time.Now().UnixNano()
+		res, err := tx.Model(dao.History.Table()).Data(g.Map{
+			dao.History.Columns().DeviceNo:    item.DeviceNo,
+			dao.History.Columns().EventId:     item.EventId,
+			dao.History.Columns().EventName:   item.EventName,
+			dao.History.Columns().EventNumber: item.EventNumber,
+			dao.History.Columns().StartTime:   item.StartTime,
+			dao.History.Columns().EndTime:     item.EndTime,
+			dao.History.Columns().Remark:      item.Remark,
+		}).Insert()
+		if err != nil {
+			return err
+		}
+		id, _ = res.LastInsertId()
+		if !isOutboxRelayEnabled() {
+			return nil
+		}
+		return insertOutboxEventTx(tx, eventkit.RoutingHistoryRecordCreated, map[string]interface{}{
+			"event_id":    fmt.Sprintf("history-created-%d", time.Now().UnixNano()),
+			"version":     version,
+			"history_id":  id,
+			"device_no":   item.DeviceNo,
+			"event_id_ref": item.EventId,
+			"event_name":  item.EventName,
+			"event_number": item.EventNumber,
+			"start_time":   item.StartTime,
+			"end_time":     item.EndTime,
+			"remark":       item.Remark,
+			"occurred_at": time.Now().Format(time.RFC3339Nano),
+		})
+	})
+	if err == nil && id > 0 {
+		item.Id = id
+		historyCache.patchHistoryOnAdd(ctx, item)
+	}
+	return id, err
+}
+
+func UpdateDeviceHistory(ctx context.Context, item entity.History) error {
+	if item.Id <= 0 {
+		return fmt.Errorf("id 无效")
+	}
+	item.DeviceNo = strings.TrimSpace(item.DeviceNo)
+	item.EventName = strings.TrimSpace(item.EventName)
+	item.StartTime = strings.TrimSpace(item.StartTime)
+	item.EndTime = strings.TrimSpace(item.EndTime)
+	item.Remark = strings.TrimSpace(item.Remark)
+	if item.DeviceNo == "" {
+		return fmt.Errorf("deviceNo 不能为空")
+	}
+	err := g.DB(dao.History.Group()).Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
+		version := time.Now().UnixNano()
+		_, err := tx.Model(dao.History.Table()).
+			Where(dao.History.Columns().Id, item.Id).
+			Where(dao.History.Columns().DeviceNo, item.DeviceNo).
+			Data(g.Map{
+				dao.History.Columns().EventId:     item.EventId,
+				dao.History.Columns().EventName:   item.EventName,
+				dao.History.Columns().EventNumber: item.EventNumber,
+				dao.History.Columns().StartTime:   item.StartTime,
+				dao.History.Columns().EndTime:     item.EndTime,
+				dao.History.Columns().Remark:      item.Remark,
+			}).Update()
+		if err != nil {
+			return err
+		}
+		if !isOutboxRelayEnabled() {
+			return nil
+		}
+		return insertOutboxEventTx(tx, eventkit.RoutingHistoryRecordUpdated, map[string]interface{}{
+			"event_id":    fmt.Sprintf("history-updated-%d", time.Now().UnixNano()),
+			"version":     version,
+			"history_id":  item.Id,
+			"device_no":   item.DeviceNo,
+			"event_id_ref": item.EventId,
+			"event_name":  item.EventName,
+			"event_number": item.EventNumber,
+			"start_time":   item.StartTime,
+			"end_time":     item.EndTime,
+			"remark":       item.Remark,
+			"occurred_at": time.Now().Format(time.RFC3339Nano),
+		})
+	})
+	if err == nil {
+		historyCache.patchHistoryOnUpdate(ctx, item)
+	}
+	return err
+}
+
+func DeleteDeviceHistory(ctx context.Context, id int64, deviceNo string) error {
+	deviceNo = strings.TrimSpace(deviceNo)
+	if id <= 0 || deviceNo == "" {
+		return fmt.Errorf("参数无效")
+	}
+	err := g.DB(dao.History.Group()).Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
+		version := time.Now().UnixNano()
+		_, err := tx.Model(dao.History.Table()).
+			Where(dao.History.Columns().Id, id).
+			Where(dao.History.Columns().DeviceNo, deviceNo).
+			Delete()
+		if err != nil {
+			return err
+		}
+		if !isOutboxRelayEnabled() {
+			return nil
+		}
+		return insertOutboxEventTx(tx, eventkit.RoutingHistoryRecordDeleted, map[string]interface{}{
+			"event_id":    fmt.Sprintf("history-deleted-%d", time.Now().UnixNano()),
+			"version":     version,
+			"history_id":  id,
+			"device_no":   deviceNo,
+			"occurred_at": time.Now().Format(time.RFC3339Nano),
+		})
+	})
+	if err == nil {
+		historyCache.patchHistoryOnDelete(ctx, deviceNo, id)
+	}
+	return err
+}
+
+func isOutboxRelayEnabled() bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv("OUTBOX_RELAY_ENABLED")))
+	return v == "1" || v == "true" || v == "yes" || v == "on"
+}
+
+func insertOutboxEventTx(tx gdb.TX, routingKey eventkit.RouteKey, payload map[string]interface{}) error {
+	if !routingKey.IsValid() {
+		return fmt.Errorf("invalid routing key: %s", routingKey.String())
+	}
+	eventID := fmt.Sprintf("outbox-%d", time.Now().UnixNano())
+	body, _ := json.Marshal(payload)
+	_, err := tx.Model("domain_outbox").Data(g.Map{
+		"event_id":    eventID,
+		"event_type":  routingKey.String(),
+		"routing_key": routingKey.String(),
+		"payload":     string(body),
+		"status":      "pending",
+		"attempts":    0,
+		"last_error":  "",
+	}).Insert()
+	return err
+}
+

@@ -6,7 +6,7 @@ import (
 
 	v1 "hello/api/v1"
 	"hello/internal/model/entity"
-	"hello/internal/service"
+	contracts "hello/internal/services/contracts"
 
 	"github.com/gogf/gf/v2/errors/gcode"
 	"github.com/gogf/gf/v2/errors/gerror"
@@ -14,8 +14,8 @@ import (
 
 // HistoryCtrl 设备历史 / 建议 / 生日 API。
 type HistoryCtrl struct {
-	Svc   service.DeviceHistoryContract
-	Voice service.VoiceContract
+	Svc   contracts.DeviceHistoryContract
+	Voice contracts.VoiceContract
 }
 
 func (c *HistoryCtrl) eventRuleByID(ctx context.Context, eventID int64) (needQuantity bool, ok bool) {
@@ -35,7 +35,7 @@ func (c *HistoryCtrl) eventRuleByID(ctx context.Context, eventID int64) (needQua
 }
 
 // NewHistoryCtrl 构造 HistoryCtrl。
-func NewHistoryCtrl(s service.DeviceHistoryContract, voice service.VoiceContract) *HistoryCtrl {
+func NewHistoryCtrl(s contracts.DeviceHistoryContract, voice contracts.VoiceContract) *HistoryCtrl {
 	return &HistoryCtrl{Svc: s, Voice: voice}
 }
 
@@ -200,4 +200,33 @@ func (c *HistoryCtrl) EventDelete(ctx context.Context, req *v1.DeviceHistoryEven
 		return nil, err
 	}
 	return &v1.DeviceHistoryEventDeleteRes{}, nil
+}
+
+// EventLatest 查询最近一条历史事件（内部契约）。
+func (c *HistoryCtrl) EventLatest(ctx context.Context, req *v1.DeviceHistoryLatestReq) (res *v1.DeviceHistoryLatestRes, err error) {
+	deviceNo := strings.TrimSpace(req.DeviceNo)
+	if deviceNo == "" {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "deviceNo 不能为空")
+	}
+	item, err := c.Svc.GetLatestHistory(ctx, deviceNo)
+	if err != nil {
+		return nil, err
+	}
+	return &v1.DeviceHistoryLatestRes{Item: item}, nil
+}
+
+// EventEndLatest 条件结束最近一条历史事件（内部契约）。
+func (c *HistoryCtrl) EventEndLatest(ctx context.Context, req *v1.DeviceHistoryEndLatestReq) (res *v1.DeviceHistoryEndLatestRes, err error) {
+	deviceNo := strings.TrimSpace(req.DeviceNo)
+	if deviceNo == "" {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "deviceNo 不能为空")
+	}
+	if req.EventId <= 0 {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "eventId 无效")
+	}
+	updated, err := c.Svc.EndLatestHistoryIfMatch(ctx, deviceNo, req.EventId, strings.TrimSpace(req.EndTime))
+	if err != nil {
+		return nil, err
+	}
+	return &v1.DeviceHistoryEndLatestRes{Updated: updated}, nil
 }

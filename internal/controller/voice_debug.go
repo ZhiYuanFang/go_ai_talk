@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	v1 "hello/api/v1"
-	"hello/internal/service"
+	contracts "hello/internal/services/contracts"
 
 	"github.com/gogf/gf/v2/errors/gcode"
 	"github.com/gogf/gf/v2/errors/gerror"
@@ -13,12 +13,12 @@ import (
 
 // VoiceTextCtrl 文本对话 API（Header: X-Admin-Password）。
 type VoiceTextCtrl struct {
-	Voice service.VoiceContract
-	Admin service.DeviceAdminContract
+	Voice contracts.VoiceContract
+	Admin contracts.DeviceAdminContract
 }
 
 // NewVoiceTextCtrl 构造 VoiceTextCtrl。
-func NewVoiceTextCtrl(voice service.VoiceContract, admin service.DeviceAdminContract) *VoiceTextCtrl {
+func NewVoiceTextCtrl(voice contracts.VoiceContract, admin contracts.DeviceAdminContract) *VoiceTextCtrl {
 	return &VoiceTextCtrl{Voice: voice, Admin: admin}
 }
 

@@ -23,3 +23,7 @@ images:
   newTag: develop
 - name: go-ai-talk/worker
   newTag: develop
+- name: go-ai-talk/voice-service
+  newTag: develop
+- name: go-ai-talk/device-service
+  newTag: develop

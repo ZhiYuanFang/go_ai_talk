@@ -1,0 +1,51 @@
+package main
+
+import (
+	"fmt"
+	"os"
+	"strings"
+
+	"hello/internal/controller"
+	"hello/internal/platform/runtimecheck"
+
+	"github.com/gogf/gf/v2/frame/g"
+	"github.com/gogf/gf/v2/os/gctx"
+	"github.com/gogf/gf/v2/os/glog"
+)
+
+func main() {
+	prepareDeviceServiceRuntime()
+	ctx := gctx.New()
+	// device-service 与其他领域服务保持一致的 fail-fast 启动语义。
+	if err := runtimecheck.CheckDependencies(ctx); err != nil {
+		glog.Fatalf(ctx, "dependency check failed: %v", err)
+		return
+	}
+	s := g.Server("device-service")
+	applyDeviceServiceAddress(s)
+	controller.RegisterDeviceServiceHTTP(s)
+	s.Run()
+}
+
+func prepareDeviceServiceRuntime() {
+	// 默认使用 device-service 专属配置，确保服务边界清晰。
+	if strings.TrimSpace(os.Getenv("GF_GCFG_FILE")) == "" {
+		_ = os.Setenv("GF_GCFG_FILE", "manifest/config/config.device-service.yaml")
+	}
+	// 仅覆盖本服务默认数据库连接，防止误改其他服务 DB 配置。
+	if link := strings.TrimSpace(os.Getenv("DEVICE_DB_LINK")); link != "" {
+		_ = os.Setenv("GF_DATABASE_DEFAULT_LINK", link)
+	}
+}
+
+func applyDeviceServiceAddress(s interface{ SetAddr(address string) }) {
+	addr := strings.TrimSpace(os.Getenv("DEVICE_SERVICE_ADDR"))
+	if addr == "" {
+		addr = ":9803"
+	}
+	if !strings.Contains(addr, ":") {
+		addr = fmt.Sprintf(":%s", addr)
+	}
+	s.SetAddr(addr)
+}
+

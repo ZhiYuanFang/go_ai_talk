@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: voice-service
+  labels:
+    app: voice-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: voice-service
+  template:
+    metadata:
+      labels:
+        app: voice-service
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9802"
+        prometheus.io/path: /api.json
+    spec:
+      containers:
+        - name: voice-service
+          image: go-ai-talk/voice-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 9802
+              name: http
+          env:
+            - name: GF_GCFG_FILE
+              value: manifest/config/config.voice-service.yaml
+            - name: VOICE_SERVICE_ADDR
+              value: ":9802"
+            - name: HISTORY_SERVICE_MODE
+              value: remote
+            - name: HISTORY_SERVICE_URL
+              value: http://history-service:9801
+            - name: HISTORY_SERVICE_CANARY_PERCENT
+              value: "0"
+            - name: HISTORY_SERVICE_REMOTE_FAILOVER_LOCAL
+              value: "true"
+            - name: DEVICE_PROFILE_SERVICE_MODE
+              value: remote
+            - name: DEVICE_SERVICE_URL
+              value: http://device-service:9803
+            - name: DEVICE_PROFILE_SERVICE_CANARY_PERCENT
+              value: "0"
+            - name: DEVICE_PROFILE_SERVICE_REMOTE_FAILOVER_LOCAL
+              value: "true"
+            - name: MQ_CONSUMER_ENABLED
+              value: "false"
+            - name: OUTBOX_RELAY_ENABLED
+              value: "false"
+          livenessProbe:
+            httpGet:
+              path: /api.json
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /api.json
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+
