@@ -12,3 +12,9 @@ database:
     # 运行时请通过环境变量或挂载配置覆盖该占位值
     link: "mysql:root:Fang930927@tcp(120.55.50.105:3306)/ai_voice_history"
     debug: false
+
+redis:
+  default:
+    # 运行时请通过环境变量或挂载配置覆盖该占位值
+    address: "redis-node-1:7001"
+    db: 0

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"runtime/debug"
 	"strings"
 
 	"hello/internal/platform/cachekit"
@@ -20,7 +21,7 @@ const (
 // 任一依赖失败都返回错误，调用方应直接终止启动（fail-fast）。
 func CheckDependencies(ctx context.Context) error {
 	cache := cachekit.WithObserver(cachekit.NewRedisCache(), cachekit.LoggingObserver{})
-	if err := cache.Ping(ctx); err != nil {
+	if err := pingRedisSafe(ctx, cache); err != nil {
 		return fmt.Errorf("redis dependency check failed: %w", err)
 	}
 
@@ -38,5 +39,15 @@ func CheckDependencies(ctx context.Context) error {
 		return fmt.Errorf("rabbitmq dependency check failed: %w", err)
 	}
 	return nil
+}
+
+func pingRedisSafe(ctx context.Context, cache cachekit.Cache) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("redis config missing or invalid: %v", r)
+			_ = debug.Stack()
+		}
+	}()
+	return cache.Ping(ctx)
 }
 

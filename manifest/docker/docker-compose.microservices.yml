@@ -39,6 +39,7 @@ services:
         condition: service_healthy
       device-service:
         condition: service_healthy
+    networks: [go-ai-talk-net]
 
   history-service:
     build:
@@ -56,6 +57,7 @@ services:
       interval: 10s
       timeout: 3s
       retries: 6
+    networks: [go-ai-talk-net]
 
   voice-service:
     build:
@@ -82,6 +84,7 @@ services:
       interval: 10s
       timeout: 3s
       retries: 6
+    networks: [go-ai-talk-net]
 
   device-service:
     build:
@@ -100,6 +103,7 @@ services:
       interval: 10s
       timeout: 3s
       retries: 6
+    networks: [go-ai-talk-net]
 
   worker:
     build:
@@ -123,3 +127,9 @@ services:
       interval: 10s
       timeout: 3s
       retries: 6
+    networks: [go-ai-talk-net]
+
+networks:
+  go-ai-talk-net:
+    external: true
+    name: go-ai-talk-net

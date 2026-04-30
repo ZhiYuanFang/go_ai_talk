@@ -113,4 +113,5 @@ volumes:
 
 networks:
   redis-cluster-net:
-    driver: bridge
+    external: true
+    name: go-ai-talk-net
