@@ -163,13 +163,9 @@ func ListDeviceSuggest(ctx context.Context, deviceNo string) ([]entity.Suggest, 
 	if deviceNo == "" {
 		return []entity.Suggest{}, nil
 	}
-	rows := make([]entity.Suggest, 0)
-	err := dao.Suggest.Ctx(ctx).
-		Fields(dao.Suggest.Columns().Id, dao.Suggest.Columns().DeviceNo, dao.Suggest.Columns().Suggest, dao.Suggest.Columns().Time).
-		Where(dao.Suggest.Columns().DeviceNo, deviceNo).
-		OrderDesc(dao.Suggest.Columns().Id).
-		Scan(&rows)
-	return rows, err
+	items, err := delegateListSuggest(ctx, deviceNo)
+	logDelegateFailure(ctx, "list_suggest", err)
+	return items, err
 }
 
 func DeleteDeviceSuggest(ctx context.Context, id int64, deviceNo string) error {
@@ -177,10 +173,8 @@ func DeleteDeviceSuggest(ctx context.Context, id int64, deviceNo string) error {
 	if id <= 0 || deviceNo == "" {
 		return fmt.Errorf("参数无效")
 	}
-	_, err := dao.Suggest.Ctx(ctx).
-		Where(dao.Suggest.Columns().Id, id).
-		Where(dao.Suggest.Columns().DeviceNo, deviceNo).
-		Delete()
+	err := delegateDeleteSuggest(ctx, id, deviceNo)
+	logDelegateFailure(ctx, "delete_suggest", err)
 	return err
 }
 
@@ -188,15 +182,12 @@ func ListEventOptions(ctx context.Context) ([]entity.Event, error) {
 	if cached, ok, err := historyCache.getEventOptions(ctx); err == nil && ok {
 		return cached, nil
 	}
-	rows := make([]entity.Event, 0)
-	err := dao.Event.Ctx(ctx).
-		Fields(dao.Event.Columns().Id, dao.Event.Columns().Name, dao.Event.Columns().NeedQuantity).
-		OrderAsc(dao.Event.Columns().Id).
-		Scan(&rows)
-	if err == nil {
-		_ = historyCache.setEventOptions(ctx, rows)
+	rows, err := delegateListEventOptions(ctx)
+	if err != nil {
+		return nil, err
 	}
-	return rows, err
+	_ = historyCache.setEventOptions(ctx, rows)
+	return rows, nil
 }
 
 func SaveBirthday(ctx context.Context, deviceNo, birthday string, sex int) error {
@@ -208,26 +199,13 @@ func SaveBirthday(ctx context.Context, deviceNo, birthday string, sex int) error
 	if sex > 0 {
 		sex = 1
 	}
-	_, err := dao.User.Ctx(ctx).Where(dao.User.Columns().DeviceNo, deviceNo).Data(g.Map{
-		dao.User.Columns().Birthday: birthday,
-		dao.User.Columns().Sex:      sex,
-	}).Update()
-	if err == nil {
-		if isOutboxRelayEnabled() {
-			_ = g.DB(dao.User.Group()).Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
-				return insertOutboxEventTx(tx, eventkit.RoutingDeviceUserProfileUpdated, map[string]interface{}{
-					"event_id":    fmt.Sprintf("device-user-profile-updated-%d", time.Now().UnixNano()),
-					"version":     time.Now().UnixNano(),
-					"device_no":   deviceNo,
-					"birthday":    birthday,
-					"sex":         sex,
-					"occurred_at": time.Now().Format(time.RFC3339Nano),
-				})
-			})
-		}
-		_ = historyCache.setBirthday(ctx, deviceNo, birthday, sex)
+	err := delegateSaveProfile(ctx, deviceNo, birthday, sex)
+	if err != nil {
+		logDelegateFailure(ctx, "save_profile", err)
+		return err
 	}
-	return err
+	_ = historyCache.setBirthday(ctx, deviceNo, birthday, sex)
+	return nil
 }
 
 func GetDeviceBirthday(ctx context.Context, deviceNo string) (string, int, error) {
@@ -238,22 +216,15 @@ func GetDeviceBirthday(ctx context.Context, deviceNo string) (string, int, error
 	if birthday, sex, ok, err := historyCache.getBirthday(ctx, deviceNo); err == nil && ok {
 		return birthday, sex, nil
 	}
-	row, err := dao.User.Ctx(ctx).
-		Fields(dao.User.Columns().Birthday, dao.User.Columns().Sex).
-		Where(dao.User.Columns().DeviceNo, deviceNo).
-		Limit(1).
-		One()
+	birthday, sex, err := delegateGetProfile(ctx, deviceNo)
 	if err != nil {
+		logDelegateFailure(ctx, "get_profile", err)
 		return "", 0, err
 	}
-	if row == nil || row.IsEmpty() {
-		return "", 0, nil
-	}
-	sex := row[dao.User.Columns().Sex].Int()
 	if sex > 0 {
 		sex = 1
 	}
-	birthday := strings.TrimSpace(row[dao.User.Columns().Birthday].String())
+	birthday = strings.TrimSpace(birthday)
 	_ = historyCache.setBirthday(ctx, deviceNo, birthday, sex)
 	return birthday, sex, nil
 }

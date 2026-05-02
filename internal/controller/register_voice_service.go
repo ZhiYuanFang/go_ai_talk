@@ -1,7 +1,6 @@
 package controller
 
 import (
-	device "hello/internal/services/device"
 	voice "hello/internal/services/voice"
 
 	"github.com/gogf/gf/v2/net/ghttp"
@@ -15,6 +14,7 @@ func RegisterVoiceServiceHTTP(s *ghttp.Server) {
 	registerVoiceChatWS(s)
 	s.Group("/", func(group *ghttp.RouterGroup) {
 		// voice-service 仅绑定语音文本域能力，避免引入非语音职责。
-		group.Bind(NewVoiceTextCtrl(voice.Voice(), device.DeviceAdmin()), Voice)
+		group.Bind(NewVoiceTextCtrl(voice.Voice(), voice.DeviceAdmin()), Voice)
+		group.Bind(NewVoiceSuggestInternalCtrl())
 	})
 }

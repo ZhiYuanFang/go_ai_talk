@@ -40,6 +40,7 @@ spec:
               value: "true"
             - name: DEVICE_PROFILE_SERVICE_MODE
               value: remote
+            # voice 进程内 DeviceAdmin 全走 HTTP（见 internal/services/device/admin_http_client.go）
             - name: DEVICE_SERVICE_URL
               value: http://device-service:9803
             - name: DEVICE_PROFILE_SERVICE_CANARY_PERCENT

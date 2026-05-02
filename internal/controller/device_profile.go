@@ -36,3 +36,20 @@ func (c *DeviceProfileCtrl) Get(ctx context.Context, req *v1.DeviceProfileGetReq
 		Sex:      profile.Sex,
 	}, nil
 }
+
+// Save 保存设备画像（生日/性别），由 device 库权威落库。
+func (c *DeviceProfileCtrl) Save(ctx context.Context, req *v1.DeviceProfileSaveReq) (res *v1.DeviceProfileSaveRes, err error) {
+	_ = c
+	deviceNo := strings.TrimSpace(req.DeviceNo)
+	if deviceNo == "" {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "deviceNo 不能为空")
+	}
+	sex := 0
+	if req.Sex > 0 {
+		sex = 1
+	}
+	if err := device.DeviceAdmin().SaveUserProfile(ctx, deviceNo, strings.TrimSpace(req.Birthday), sex); err != nil {
+		return nil, err
+	}
+	return &v1.DeviceProfileSaveRes{}, nil
+}

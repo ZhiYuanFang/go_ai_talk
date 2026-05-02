@@ -12,15 +12,19 @@
 
 关键原则：
 
-- 每服务一个数据库，配置仅维护 `database.default`
-- 跨服务资料获取走 API，不跨库直查
+- 每服务一个数据库，配置以 `database.default` 为主；`device-service` 若需向 **history 库** 的 `domain_outbox` 投递事件，可额外配置 `database.history_relay`（与 history 同实例时），未配置时进程会跳过 outbox 写入并打 Debug 日志。
+- 跨服务资料获取走 API，不跨库直查；`history-service` 内对 suggest/画像/事件字典的本地实现通过 `VOICE_SERVICE_URL` / `DEVICE_SERVICE_URL` 委派到对应服务（默认值见 `internal/services/contracts/http_targets.go`，部署时需保证两下游可达）。
+- `voice-service` 对 device 域（事件/动作/画像/注册校验/最近对话等）**仅经 HTTP**（`DEVICE_SERVICE_URL` → `internal/services/device/admin_http_client.go`），不得依赖 voice 进程 default 库直连 `user`/`event`/`action`；部署时建议 `DEVICE_PROFILE_SERVICE_MODE=remote`（与 `manifest/deploy/.../voice-deployment.yaml` 一致）。
 
 ### 2. 本地 Compose 启动
 
 1) 启动依赖：
 - 创建共享网络：
 > docker network create go-ai-talk-net
+> <b>列出docker中的网络配置</b>
 > docker network ls
+> <b>列出所有容器所在的docker网络</b>
+> docker ps -a --format '{{.Names}}' | xargs -I {} docker inspect {} --format '{{.Name}} => {{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}'
 - Redis 集群：`docker compose -f manifest/docker/docker-compose.redis-cluster.yml up -d` --force-recreate
 - RabbitMQ：`docker compose -f manifest/docker/docker-compose.rabbitmq.yml up -d` --force-recreate
 

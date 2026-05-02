@@ -44,20 +44,22 @@ const (
 )
 
 type historyRemoteClient struct {
-	baseURL string
-	client  *http.Client
+	historyBase string
+	targets     contracts.HTTPTargets
+	client      *http.Client
 }
 
 func newHistoryRemoteClient() Contract {
-	baseURL := strings.TrimSpace(os.Getenv(historyRemoteURLEnv))
+	historyBase := strings.TrimSpace(os.Getenv(historyRemoteURLEnv))
 	return &historyRemoteClient{
-		baseURL: strings.TrimRight(baseURL, "/"),
-		client:  &http.Client{Timeout: 5 * time.Second},
+		historyBase: strings.TrimRight(historyBase, "/"),
+		targets:     contracts.ResolveHTTPTargets(),
+		client:      &http.Client{Timeout: 5 * time.Second},
 	}
 }
 
 func (r *historyRemoteClient) notReady() error {
-	if r.baseURL == "" {
+	if r.historyBase == "" {
 		return fmt.Errorf("history remote adapter not configured: missing %s", historyRemoteURLEnv)
 	}
 	return nil
@@ -70,7 +72,8 @@ func (r *historyRemoteClient) ListHistory(ctx context.Context, deviceNo string) 
 	var resp struct {
 		List []entity.History `json:"list"`
 	}
-	err := r.doJSON(ctx, http.MethodGet, contracts.ResolveHTTPTargets().HistoryListPath(), map[string]string{"deviceNo": strings.TrimSpace(deviceNo)}, nil, &resp)
+	t := r.targets
+	err := r.doJSON(ctx, http.MethodGet, r.historyBase, t.HistoryListPath(), map[string]string{"deviceNo": strings.TrimSpace(deviceNo)}, nil, &resp)
 	return resp.List, err
 }
 
@@ -81,7 +84,8 @@ func (r *historyRemoteClient) GetLatestHistory(ctx context.Context, deviceNo str
 	var resp struct {
 		Item entity.History `json:"item"`
 	}
-	err := r.doJSON(ctx, http.MethodGet, contracts.ResolveHTTPTargets().HistoryEventLatestPath(), map[string]string{"deviceNo": strings.TrimSpace(deviceNo)}, nil, &resp)
+	t := r.targets
+	err := r.doJSON(ctx, http.MethodGet, r.historyBase, t.HistoryEventLatestPath(), map[string]string{"deviceNo": strings.TrimSpace(deviceNo)}, nil, &resp)
 	return resp.Item, err
 }
 
@@ -92,7 +96,8 @@ func (r *historyRemoteClient) EndLatestHistoryIfMatch(ctx context.Context, devic
 	var resp struct {
 		Updated bool `json:"updated"`
 	}
-	err := r.doJSON(ctx, http.MethodPost, contracts.ResolveHTTPTargets().HistoryEventEndLatestPath(), nil, map[string]interface{}{
+	t := r.targets
+	err := r.doJSON(ctx, http.MethodPost, r.historyBase, t.HistoryEventEndLatestPath(), nil, map[string]interface{}{
 		"deviceNo": strings.TrimSpace(deviceNo),
 		"eventId":  eventID,
 		"endTime":  strings.TrimSpace(endTime),
@@ -107,7 +112,8 @@ func (r *historyRemoteClient) ListSuggest(ctx context.Context, deviceNo string) 
 	var resp struct {
 		List []entity.Suggest `json:"list"`
 	}
-	err := r.doJSON(ctx, http.MethodGet, "/device/history/api/suggest", map[string]string{"deviceNo": strings.TrimSpace(deviceNo)}, nil, &resp)
+	t := r.targets
+	err := r.doJSON(ctx, http.MethodGet, t.VoiceBaseURL, t.VoiceSuggestListPath(), map[string]string{"deviceNo": strings.TrimSpace(deviceNo)}, nil, &resp)
 	return resp.List, err
 }
 
@@ -115,7 +121,8 @@ func (r *historyRemoteClient) DeleteSuggest(ctx context.Context, id int64, devic
 	if err := r.notReady(); err != nil {
 		return err
 	}
-	return r.doJSON(ctx, http.MethodPost, "/device/history/api/suggest/delete", nil, map[string]interface{}{"id": id, "deviceNo": strings.TrimSpace(deviceNo)}, nil)
+	t := r.targets
+	return r.doJSON(ctx, http.MethodPost, t.VoiceBaseURL, t.VoiceSuggestDeletePath(), nil, map[string]interface{}{"id": id, "deviceNo": strings.TrimSpace(deviceNo)}, nil)
 }
 
 func (r *historyRemoteClient) ListEventOptions(ctx context.Context) ([]entity.Event, error) {
@@ -125,7 +132,8 @@ func (r *historyRemoteClient) ListEventOptions(ctx context.Context) ([]entity.Ev
 	var resp struct {
 		List []entity.Event `json:"list"`
 	}
-	err := r.doJSON(ctx, http.MethodGet, "/device/history/api/event/options", nil, nil, &resp)
+	t := r.targets
+	err := r.doJSON(ctx, http.MethodGet, t.DeviceBaseURL, t.DeviceInternalEventOptionsPath(), nil, nil, &resp)
 	return resp.List, err
 }
 
@@ -137,7 +145,8 @@ func (r *historyRemoteClient) GetBirthday(ctx context.Context, deviceNo string) 
 		Birthday string `json:"birthday"`
 		Sex      int    `json:"sex"`
 	}
-	err := r.doJSON(ctx, http.MethodGet, "/device/history/api/birthday", map[string]string{"deviceNo": strings.TrimSpace(deviceNo)}, nil, &resp)
+	t := r.targets
+	err := r.doJSON(ctx, http.MethodGet, t.DeviceBaseURL, t.DeviceProfileGetPath(), map[string]string{"deviceNo": strings.TrimSpace(deviceNo)}, nil, &resp)
 	return strings.TrimSpace(resp.Birthday), resp.Sex, err
 }
 
@@ -145,7 +154,8 @@ func (r *historyRemoteClient) SaveBirthday(ctx context.Context, deviceNo, birthd
 	if err := r.notReady(); err != nil {
 		return err
 	}
-	return r.doJSON(ctx, http.MethodPost, "/device/history/api/birthday/save", nil, map[string]interface{}{
+	t := r.targets
+	return r.doJSON(ctx, http.MethodPost, t.DeviceBaseURL, t.DeviceProfileSavePath(), nil, map[string]interface{}{
 		"deviceNo": strings.TrimSpace(deviceNo),
 		"birthday": strings.TrimSpace(birthday),
 		"sex":      sex,
@@ -159,7 +169,8 @@ func (r *historyRemoteClient) AddHistory(ctx context.Context, item entity.Histor
 	var resp struct {
 		Id int64 `json:"id"`
 	}
-	err := r.doJSON(ctx, http.MethodPost, "/device/history/api/event/add", nil, map[string]interface{}{
+	t := r.targets
+	err := r.doJSON(ctx, http.MethodPost, r.historyBase, t.HistoryEventAddPath(), nil, map[string]interface{}{
 		"deviceNo":    strings.TrimSpace(item.DeviceNo),
 		"eventId":     item.EventId,
 		"eventName":   strings.TrimSpace(item.EventName),
@@ -175,7 +186,8 @@ func (r *historyRemoteClient) UpdateHistory(ctx context.Context, item entity.His
 	if err := r.notReady(); err != nil {
 		return err
 	}
-	return r.doJSON(ctx, http.MethodPost, "/device/history/api/event/update", nil, map[string]interface{}{
+	t := r.targets
+	return r.doJSON(ctx, http.MethodPost, r.historyBase, t.HistoryEventUpdatePath(), nil, map[string]interface{}{
 		"id":          item.Id,
 		"deviceNo":    strings.TrimSpace(item.DeviceNo),
 		"eventId":     item.EventId,
@@ -191,7 +203,8 @@ func (r *historyRemoteClient) DeleteHistory(ctx context.Context, id int64, devic
 	if err := r.notReady(); err != nil {
 		return err
 	}
-	return r.doJSON(ctx, http.MethodPost, "/device/history/api/event/delete", nil, map[string]interface{}{"id": id, "deviceNo": strings.TrimSpace(deviceNo)}, nil)
+	t := r.targets
+	return r.doJSON(ctx, http.MethodPost, r.historyBase, t.HistoryEventDeletePath(), nil, map[string]interface{}{"id": id, "deviceNo": strings.TrimSpace(deviceNo)}, nil)
 }
 
 type responseEnvelope struct {
@@ -200,8 +213,11 @@ type responseEnvelope struct {
 	Data    json.RawMessage `json:"data"`
 }
 
-func (r *historyRemoteClient) doJSON(ctx context.Context, method, path string, query map[string]string, body interface{}, out interface{}) error {
-	reqURL, err := url.Parse(r.baseURL + path)
+func (r *historyRemoteClient) doJSON(ctx context.Context, method, baseURL, path string, query map[string]string, body interface{}, out interface{}) error {
+	if strings.TrimSpace(baseURL) == "" {
+		return fmt.Errorf("remote http base url is empty")
+	}
+	reqURL, err := url.Parse(strings.TrimRight(baseURL, "/") + path)
 	if err != nil {
 		return err
 	}

@@ -13,10 +13,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"hello/internal/dao"
 	"hello/internal/model/entity"
 
-	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/glog"
 )
 
@@ -196,7 +194,7 @@ func (s *VoiceService) chatWithResult(ctx context.Context, deviceNo, transcript 
 	}
 	events := []entity.Event{}
 	events, _ = DeviceAdmin().ListEvents(ctx)
-	// 取数据库中的预设关键词的集合（dao.Action）
+	// 取设备域动作词典（经 DeviceAdmin HTTP → device-service）
 	actions := []entity.Action{}
 	adminActions, _ := DeviceAdmin().ListActionsForAdmin(ctx)
 	for _, action := range adminActions {
@@ -487,16 +485,13 @@ func (s *VoiceService) resolveEventFromUnifiedIntent(ctx context.Context, normal
 	if needle == "" {
 		return entity.Event{}, "", false
 	}
-	created := entity.Event{Name: needle}
-	if intent.NeedQuantity {
-		created.NeedQuantity = 1
-	}
 	if target == "" {
 		target = needle
 	}
-	_, _ = dao.Event.Ctx(ctx).Insert(&created)
-	var inserted entity.Event
-	_ = dao.Event.Ctx(ctx).Where("name", needle).OrderDesc(dao.Event.Columns().Id).Limit(1).Scan(&inserted)
+	inserted, insErr := DeviceAdmin().InsertOrGetEventByNeedle(ctx, needle, intent.NeedQuantity)
+	if insErr != nil {
+		return entity.Event{}, "", false
+	}
 	if inserted.Id > 0 {
 		return inserted, target, true
 	}
@@ -721,7 +716,9 @@ func (s *VoiceService) callDeepSeekActionExtract(ctx context.Context, deviceNo, 
 				}
 			}
 		}
-		dao.Action.Ctx(ctx).Insert(parsed)
+		if insErr := DeviceAdmin().InsertVoiceActionRecord(ctx, parsed.Name, parsed.TargetType); insErr != nil {
+			return entity.Action{}, insErr
+		}
 		return parsed, nil
 	}
 }
@@ -963,48 +960,8 @@ func (s *VoiceService) callDeepSeekEntityExtract(ctx context.Context, deviceNo, 
 
 	out.Name = name
 	out.ExtraNames = parsed.ExtraNames
-	// 获取原来的事件的额外名称
-	oldEvent := entity.Event{}
-	if eventList, eErr := DeviceAdmin().ListEvents(ctx); eErr == nil {
-		for _, e := range eventList {
-			if strings.EqualFold(strings.TrimSpace(e.Name), name) {
-				oldEvent = e
-				break
-			}
-		}
-	}
-
-	targetName := out.ExtraNames
-	if oldEvent.Id > 0 {
-		out.NeedQuantity = oldEvent.NeedQuantity
-		if out.ExtraNames == "" {
-			// 遇到重复的事件名
-			return out, out.Name, errors.New("事件名称已存在")
-		} else {
-			// 将新的额外名称添加到原来的额外名称中	,且避免重复
-			extraNames := strings.Split(oldEvent.ExtraNames, ",")
-			for _, extraName := range extraNames {
-				if extraName == out.ExtraNames {
-					return out, extraName, errors.New("事件名称已存在")
-				}
-			}
-
-			if len(oldEvent.ExtraNames) > 0 {
-				out.ExtraNames = strings.Join(extraNames, ",") + "," + out.ExtraNames
-			}
-
-			// 更新原来的事件表中的额外名称
-			dao.Event.Ctx(ctx).Where("name", name).
-				Update(g.Map{"extra_names": out.ExtraNames})
-		}
-	} else {
-		targetName = out.Name
-		out.NeedQuantity = parsed.NeedQuantity
-		// 将抽取到的事件新增到事件表中。
-		dao.Event.Ctx(ctx).Insert(&out)
-	}
-
-	return out, targetName, nil
+	out.NeedQuantity = parsed.NeedQuantity
+	return DeviceAdmin().ApplyDeepSeekEventExtractPersistence(ctx, out)
 }
 
 // matchEventByName 使用宽松规则将模型输出事件名映射到库内事件。

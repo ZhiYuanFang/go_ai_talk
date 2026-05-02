@@ -84,6 +84,26 @@ func (t HTTPTargets) DeviceProfileGetPath() string {
 	return "/device/profile/api/get"
 }
 
+// DeviceProfileSavePath 保存设备画像（生日/性别），由 device-service 权威落库。
+func (t HTTPTargets) DeviceProfileSavePath() string {
+	return "/device/profile/api/save"
+}
+
+// DeviceInternalEventOptionsPath 内部查询事件字典（无需管理口令，依赖网络隔离）。
+func (t HTTPTargets) DeviceInternalEventOptionsPath() string {
+	return "/device/internal/api/event/options"
+}
+
+// VoiceSuggestListPath 语音域成长建议列表。
+func (t HTTPTargets) VoiceSuggestListPath() string {
+	return "/voice/internal/api/suggest/list"
+}
+
+// VoiceSuggestDeletePath 语音域删除成长建议。
+func (t HTTPTargets) VoiceSuggestDeletePath() string {
+	return "/voice/internal/api/suggest/delete"
+}
+
 func (t HTTPTargets) VoiceTextChatURL() string {
 	// URL 统一通过 base + path 组合，避免调用方自行拼接导致路径不一致。
 	return t.VoiceBaseURL + t.VoiceTextChatPath()
@@ -99,6 +119,22 @@ func (t HTTPTargets) HistoryListURL() string {
 
 func (t HTTPTargets) DeviceProfileGetURL() string {
 	return t.DeviceBaseURL + t.DeviceProfileGetPath()
+}
+
+func (t HTTPTargets) DeviceProfileSaveURL() string {
+	return t.DeviceBaseURL + t.DeviceProfileSavePath()
+}
+
+func (t HTTPTargets) DeviceInternalEventOptionsURL() string {
+	return t.DeviceBaseURL + t.DeviceInternalEventOptionsPath()
+}
+
+func (t HTTPTargets) VoiceSuggestListURL() string {
+	return t.VoiceBaseURL + t.VoiceSuggestListPath()
+}
+
+func (t HTTPTargets) VoiceSuggestDeleteURL() string {
+	return t.VoiceBaseURL + t.VoiceSuggestDeletePath()
 }
 
 func normalizeBaseURL(raw string) string {

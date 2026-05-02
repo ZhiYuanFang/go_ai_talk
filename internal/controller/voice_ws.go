@@ -11,7 +11,6 @@ import (
 	"time"
 	"unicode/utf8"
 
-	device "hello/internal/services/device"
 	voice "hello/internal/services/voice"
 
 	"github.com/gogf/gf/v2/net/ghttp"
@@ -273,7 +272,7 @@ func voiceChatWS(r *ghttp.Request) {
 			return
 		}
 
-		if talkErr := device.DeviceAdmin().UpdateLastTalk(ctx, deviceNo, ask, answer); talkErr != nil {
+		if talkErr := voice.DeviceAdmin().UpdateLastTalk(ctx, deviceNo, ask, answer); talkErr != nil {
 			// glog.Warningf(ctx, "[语音WS] 对话记录落库失败。deviceNo=%s error=%v", deviceNo, talkErr)
 			safeWriteWSError("service", talkErr.Error())
 			resetStreamBuffers()

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
 	"strings"
 	"time"
 
@@ -14,7 +15,9 @@ import (
 	"hello/internal/platform/eventkit"
 	sharedtypes "hello/internal/shared/types"
 
+	"github.com/gogf/gf/v2/database/gdb"
 	"github.com/gogf/gf/v2/frame/g"
+	"github.com/gogf/gf/v2/os/glog"
 )
 
 const fixedDeviceAdminPassword = "a521521521"
@@ -73,6 +76,158 @@ func (s *service) EnsureRegistered(ctx context.Context, deviceNo string) error {
 		return ErrDeviceNotRegistered
 	}
 	return nil
+}
+
+// SaveUserProfile 更新 user 表画像字段；若开启 outbox 中继且配置了 history_relay 库，则写入 domain_outbox。
+func (s *service) SaveUserProfile(ctx context.Context, deviceNo, birthday string, sex int) error {
+	deviceNo = strings.TrimSpace(deviceNo)
+	birthday = strings.TrimSpace(birthday)
+	if deviceNo == "" {
+		return nil
+	}
+	if sex > 0 {
+		sex = 1
+	}
+	_, err := dao.User.Ctx(ctx).Where(dao.User.Columns().DeviceNo, deviceNo).Data(g.Map{
+		dao.User.Columns().Birthday: birthday,
+		dao.User.Columns().Sex:      sex,
+	}).Update()
+	if err != nil {
+		return err
+	}
+	if isDeviceOutboxRelayEnabled() {
+		_ = enqueueUserProfileOutbox(ctx, deviceNo, birthday, sex)
+	}
+	_ = deviceCache.setUserProfile(ctx, cachedUserProfile{
+		DeviceNo: deviceNo,
+		Birthday: birthday,
+		Sex:      sex,
+	})
+	return nil
+}
+
+// InsertVoiceActionRecord 语音链路写入动作表，名称已存在时返回错误。
+func (s *service) InsertVoiceActionRecord(ctx context.Context, name, targetType string) error {
+	name = strings.TrimSpace(name)
+	targetType = strings.TrimSpace(targetType)
+	if name == "" {
+		return errors.New("动作名称不能为空")
+	}
+	actions, err := s.ListActionsForAdmin(ctx)
+	if err != nil {
+		return err
+	}
+	for _, action := range actions {
+		if strings.EqualFold(strings.TrimSpace(action.Name), name) {
+			return errors.New("动作名称已存在")
+		}
+	}
+	_, err = dao.Action.Ctx(ctx).Insert(&entity.Action{Name: name, TargetType: targetType})
+	if err != nil {
+		return err
+	}
+	_ = enqueueDeviceProjectionEvent(ctx, eventkit.RoutingDeviceActionChanged, map[string]interface{}{
+		"event_id":    fmt.Sprintf("device-action-changed-%d", time.Now().UnixNano()),
+		"version":     time.Now().UnixNano(),
+		"occurred_at": time.Now().Format(time.RFC3339Nano),
+	})
+	if rows, listErr := s.ListActions(ctx); listErr == nil {
+		_ = deviceCache.setActionOptions(ctx, rows)
+	}
+	return nil
+}
+
+// InsertOrGetEventByNeedle 统一意图路径下按名称插入事件并回读。
+func (s *service) InsertOrGetEventByNeedle(ctx context.Context, needle string, needQuantity bool) (entity.Event, error) {
+	needle = strings.TrimSpace(needle)
+	if needle == "" {
+		return entity.Event{}, errors.New("事件名为空")
+	}
+	created := entity.Event{Name: needle}
+	if needQuantity {
+		created.NeedQuantity = 1
+	}
+	if _, insErr := dao.Event.Ctx(ctx).Insert(&created); insErr != nil {
+		// 并发或重复名称可能导致唯一约束失败，后续回读仍可拿到已有行。
+		_ = insErr
+	}
+	_ = enqueueDeviceProjectionEvent(ctx, eventkit.RoutingDeviceEventChanged, map[string]interface{}{
+		"event_id":    fmt.Sprintf("device-event-changed-%d", time.Now().UnixNano()),
+		"version":     time.Now().UnixNano(),
+		"occurred_at": time.Now().Format(time.RFC3339Nano),
+	})
+	if rows, listErr := s.ListEvents(ctx); listErr == nil {
+		_ = deviceCache.setEventOptions(ctx, rows)
+	}
+	var inserted entity.Event
+	err := dao.Event.Ctx(ctx).Where(dao.Event.Columns().Name, needle).OrderDesc(dao.Event.Columns().Id).Limit(1).Scan(&inserted)
+	return inserted, err
+}
+
+// ApplyDeepSeekEventExtractPersistence DeepSeek 抽取结果落库：合并 extra_names 或插入新事件。
+func (s *service) ApplyDeepSeekEventExtractPersistence(ctx context.Context, out entity.Event) (entity.Event, string, error) {
+	name := strings.TrimSpace(out.Name)
+	if name == "" {
+		return entity.Event{}, "", errors.New("未抽取到事件名称")
+	}
+	out.Name = name
+	eventList, listErr := s.ListEvents(ctx)
+	if listErr != nil {
+		return entity.Event{}, "", listErr
+	}
+	oldEvent := entity.Event{}
+	for _, e := range eventList {
+		if strings.EqualFold(strings.TrimSpace(e.Name), name) {
+			oldEvent = e
+			break
+		}
+	}
+	targetName := strings.TrimSpace(out.ExtraNames)
+	if oldEvent.Id > 0 {
+		out.NeedQuantity = oldEvent.NeedQuantity
+		if strings.TrimSpace(out.ExtraNames) == "" {
+			return out, out.Name, errors.New("事件名称已存在")
+		}
+		extraNames := strings.Split(oldEvent.ExtraNames, ",")
+		for _, extraName := range extraNames {
+			if strings.TrimSpace(extraName) == strings.TrimSpace(out.ExtraNames) {
+				return out, strings.TrimSpace(out.ExtraNames), errors.New("事件名称已存在")
+			}
+		}
+		merged := strings.TrimSpace(out.ExtraNames)
+		if strings.TrimSpace(oldEvent.ExtraNames) != "" {
+			merged = strings.Join(extraNames, ",") + "," + merged
+		}
+		out.ExtraNames = merged
+		_, err := dao.Event.Ctx(ctx).Where(dao.Event.Columns().Name, name).Data(g.Map{
+			dao.Event.Columns().ExtraNames: merged,
+		}).Update()
+		if err != nil {
+			return entity.Event{}, "", err
+		}
+		_ = enqueueDeviceProjectionEvent(ctx, eventkit.RoutingDeviceEventChanged, map[string]interface{}{
+			"event_id":    fmt.Sprintf("device-event-changed-%d", time.Now().UnixNano()),
+			"version":     time.Now().UnixNano(),
+			"occurred_at": time.Now().Format(time.RFC3339Nano),
+		})
+		if rows, listErr := s.ListEvents(ctx); listErr == nil {
+			_ = deviceCache.setEventOptions(ctx, rows)
+		}
+		return out, targetName, nil
+	}
+	targetName = out.Name
+	if _, err := dao.Event.Ctx(ctx).Insert(&out); err != nil {
+		return entity.Event{}, "", err
+	}
+	_ = enqueueDeviceProjectionEvent(ctx, eventkit.RoutingDeviceEventChanged, map[string]interface{}{
+		"event_id":    fmt.Sprintf("device-event-changed-%d", time.Now().UnixNano()),
+		"version":     time.Now().UnixNano(),
+		"occurred_at": time.Now().Format(time.RFC3339Nano),
+	})
+	if rows, listErr := s.ListEvents(ctx); listErr == nil {
+		_ = deviceCache.setEventOptions(ctx, rows)
+	}
+	return out, targetName, nil
 }
 
 func (s *service) UpdateLastTalk(ctx context.Context, deviceNo, ask, answer string) error {
@@ -406,13 +561,39 @@ func actionTargetTypeChinese(t string) string {
 func nowText() string { return time.Now().Format("2006-01-02 15:04:05") }
 
 func enqueueDeviceProjectionEvent(ctx context.Context, routingKey eventkit.RouteKey, payload map[string]interface{}) error {
-	_ = ctx
+	return enqueueDomainOutboxToHistoryRelay(ctx, routingKey, payload)
+}
+
+func isDeviceOutboxRelayEnabled() bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv("OUTBOX_RELAY_ENABLED")))
+	return v == "1" || v == "true" || v == "yes" || v == "on"
+}
+
+func enqueueUserProfileOutbox(ctx context.Context, deviceNo, birthday string, sex int) error {
+	return enqueueDomainOutboxToHistoryRelay(ctx, eventkit.RoutingDeviceUserProfileUpdated, map[string]interface{}{
+		"event_id":    fmt.Sprintf("device-user-profile-updated-%d", time.Now().UnixNano()),
+		"version":     time.Now().UnixNano(),
+		"device_no":   deviceNo,
+		"birthday":    birthday,
+		"sex":         sex,
+		"occurred_at": time.Now().Format(time.RFC3339Nano),
+	})
+}
+
+// enqueueDomainOutboxToHistoryRelay 将领域事件写入 history 库的 domain_outbox；依赖 manifest 中 database.history_relay 分组。
+func enqueueDomainOutboxToHistoryRelay(ctx context.Context, routingKey eventkit.RouteKey, payload map[string]interface{}) error {
 	if !routingKey.IsValid() {
 		return errors.New("invalid routing key")
 	}
+	db, err := gdb.Instance("history_relay")
+	if err != nil {
+		glog.Debugf(ctx, "[device] history_relay 未配置，跳过 domain_outbox: key=%s err=%v", routingKey.String(), err)
+		return nil
+	}
 	body, _ := json.Marshal(payload)
-	_, err := g.DB(dao.User.Group()).Model("domain_outbox").Data(g.Map{
-		"event_id":    fmt.Sprintf("outbox-%d", time.Now().UnixNano()),
+	eventID := fmt.Sprintf("outbox-%d", time.Now().UnixNano())
+	_, err = db.Model("domain_outbox").Data(g.Map{
+		"event_id":    eventID,
 		"event_type":  routingKey.String(),
 		"routing_key": routingKey.String(),
 		"payload":     string(body),

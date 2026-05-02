@@ -67,6 +67,14 @@ type DeviceAdminContract interface {
 	ListActionsForAdmin(ctx context.Context) ([]sharedtypes.AdminActionItem, error)
 	UpdateAction(ctx context.Context, id int64, name, targetType string) error
 	DeleteAction(ctx context.Context, id int64) error
+	// SaveUserProfile 持久化用户画像（生日/性别），仅由 device 库承载。
+	SaveUserProfile(ctx context.Context, deviceNo, birthday string, sex int) error
+	// InsertVoiceActionRecord 语音 DeepSeek 新增动作词典，名称冲突时返回错误。
+	InsertVoiceActionRecord(ctx context.Context, name, targetType string) error
+	// InsertOrGetEventByNeedle 统一意图路径创建事件并回读最新行。
+	InsertOrGetEventByNeedle(ctx context.Context, needle string, needQuantity bool) (entity.Event, error)
+	// ApplyDeepSeekEventExtractPersistence DeepSeek 实体抽取管线写事件字典（新增或合并 extra_names）。
+	ApplyDeepSeekEventExtractPersistence(ctx context.Context, out entity.Event) (entity.Event, string, error)
 }
 
 type DeviceHistoryContract interface {

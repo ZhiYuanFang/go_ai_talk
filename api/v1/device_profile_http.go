@@ -14,3 +14,14 @@ type DeviceProfileGetRes struct {
 	Birthday string `json:"birthday"`
 	Sex      int    `json:"sex"`
 }
+
+// DeviceProfileSaveReq 保存设备画像（内部/网关可调）。
+type DeviceProfileSaveReq struct {
+	g.Meta   `path:"/device/profile/api/save" method:"post" tags:"device" summary:"保存设备画像"`
+	DeviceNo string `json:"deviceNo" dc:"设备号"`
+	Birthday string `json:"birthday" dc:"生日"`
+	Sex      int    `json:"sex" dc:"性别"`
+}
+
+// DeviceProfileSaveRes 保存成功。
+type DeviceProfileSaveRes struct{}

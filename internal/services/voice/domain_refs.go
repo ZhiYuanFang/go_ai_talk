@@ -6,9 +6,9 @@ import (
 	history "hello/internal/services/history"
 )
 
-// DeviceAdmin 返回设备管理契约实现，供语音领域编排复用。
+// DeviceAdmin 返回设备管理契约实现；voice-service 仅经 HTTP 访问 device 域，禁止进程内直连他域 DAO。
 func DeviceAdmin() contracts.DeviceAdminContract {
-	return device.DeviceAdmin()
+	return device.HTTPDeviceAdmin()
 }
 
 // DeviceProfile 返回设备画像契约实现，供语音推理补充画像信息。

@@ -12,6 +12,10 @@ database:
     # 运行时请通过环境变量或挂载配置覆盖该占位值
     link: "mysql:root:Fang930927@tcp(120.55.50.105:3306)/ai_voice_device"
     debug: false
+  # 与 history 库同实例时配置，用于 device 进程向 domain_outbox 投递领域事件；分库且未配置时跳过 outbox 写入（见日志）。
+  history_relay:
+    link: "mysql:root:Fang930927@tcp(120.55.50.105:3306)/ai_voice_history"
+    debug: false
 
 redis:
   default:
