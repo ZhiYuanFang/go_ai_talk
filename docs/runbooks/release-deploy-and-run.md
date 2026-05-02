@@ -21,8 +21,8 @@
 - 创建共享网络：
 > docker network create go-ai-talk-net
 > docker network ls
-- Redis 集群：`docker compose -f manifest/docker/docker-compose.redis-cluster.yml up -d`
-- RabbitMQ：`docker compose -f manifest/docker/docker-compose.rabbitmq.yml up -d`
+- Redis 集群：`docker compose -f manifest/docker/docker-compose.redis-cluster.yml up -d` --force-recreate
+- RabbitMQ：`docker compose -f manifest/docker/docker-compose.rabbitmq.yml up -d` --force-recreate
 
 2) 启动业务：
 

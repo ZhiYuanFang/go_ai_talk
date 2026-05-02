@@ -50,6 +50,10 @@ services:
     environment:
       GF_GCFG_FILE: manifest/config/config.history-service.yaml
       OUTBOX_RELAY_ENABLED: "true"
+      # 与 runtimecheck 探活一致：启动前校验 RabbitMQ 管理 API 可达。
+      MQ_HTTP_API_BASE: "http://rabbitmq:15672/api"
+      MQ_USER: "guest"
+      MQ_PASSWORD: "guest"
     ports:
       - "9801:9801"
     healthcheck:
@@ -77,6 +81,9 @@ services:
       DEVICE_PROFILE_SERVICE_CANARY_PERCENT: "0"
       DEVICE_PROFILE_SERVICE_REMOTE_FAILOVER_LOCAL: "true"
       OUTBOX_RELAY_ENABLED: "false"
+      MQ_HTTP_API_BASE: "http://rabbitmq:15672/api"
+      MQ_USER: "guest"
+      MQ_PASSWORD: "guest"
     ports:
       - "9802:9802"
     healthcheck:
@@ -96,6 +103,9 @@ services:
       GF_GCFG_FILE: manifest/config/config.device-service.yaml
       DEVICE_SERVICE_ADDR: ":9803"
       OUTBOX_RELAY_ENABLED: "false"
+      MQ_HTTP_API_BASE: "http://rabbitmq:15672/api"
+      MQ_USER: "guest"
+      MQ_PASSWORD: "guest"
     ports:
       - "9803:9803"
     healthcheck:
