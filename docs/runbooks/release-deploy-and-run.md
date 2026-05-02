@@ -28,11 +28,17 @@
 - Redis 集群：`docker compose -f manifest/docker/docker-compose.redis-cluster.yml up -d` --force-recreate
 - RabbitMQ：`docker compose -f manifest/docker/docker-compose.rabbitmq.yml up -d` --force-recreate
 
-2) 启动业务：
+2) 准备业务库连接（**强烈建议**）：
 
-- `docker compose -f manifest/docker/docker-compose.microservices.yml up -d --build`
+- 复制 `manifest/docker/.env.example` 为 `manifest/docker/.env`，按其中注释填写 `HISTORY_DB_LINK`、`DEVICE_DB_LINK`、`VOICE_DB_LINK`、`WORKER_DB_LINK`（Gf DSN 格式）。**MySQL 跑在 Docker 宿主机上**时主机名用 `host.docker.internal`；**MySQL 在其它机器**时改为容器内可达的 RDS/内网地址。未设置时仍使用各 `config.*.yaml` 内占位 link，易出现容器访问宿主机公网 IP 失败。
+- `manifest/docker/docker-compose.microservices.yml` 已为 `history-service`、`voice-service`、`device-service`、`worker` 配置 `extra_hosts: host.docker.internal:host-gateway`（Docker 20.10+），便于同机连库。
 
-3) 健康检查（自宿主机探测各服务端口映射；**history 对 voice/device 的 HTTP 委派在容器内走服务名**，见上文环境变量）：
+3) 启动业务：
+
+- `docker compose --env-file manifest/docker/.env -f manifest/docker/docker-compose.microservices.yml up -d --build`  
+  （若未创建 `.env`，可省略 `--env-file` 行，但不推荐用于连宿主机 MySQL 的场景。）
+
+4) 健康检查（自宿主机探测各服务端口映射；**history 对 voice/device 的 HTTP 委派在容器内走服务名**，见上文环境变量）：
 
 - gateway: `http://127.0.0.1:9701/api.json`
 - history-service: `http://127.0.0.1:9801/api.json`
@@ -44,6 +50,7 @@
 
 - 使用 `manifest/deploy/kustomize/overlays/develop`
 - `history-service` Deployment 须包含 `VOICE_SERVICE_URL`、`DEVICE_SERVICE_URL`（与 `base/history-deployment.yaml` 一致或 overlay 覆盖为集群内可达基址）
+- 各业务服务数据库连接可通过与各 `cmd/*-service/main.go` 一致的 `*_DB_LINK` 环境变量覆盖；`worker-service` 使用 `WORKER_DB_LINK`（与 Compose / `.env.example` 对齐）
 - 确认 worker deployment 的 `GF_GCFG_FILE` 指向 `manifest/config/config.worker-service.yaml`
 - 确认 gateway deployment 的主配置不包含数据库字段
 

@@ -35,6 +35,10 @@ func prepareWorkerServiceRuntime() {
 	if strings.TrimSpace(os.Getenv("GF_GCFG_FILE")) == "" {
 		_ = os.Setenv("GF_GCFG_FILE", "manifest/config/config.worker-service.yaml")
 	}
+	// Compose / K8s 可通过 WORKER_DB_LINK 覆盖默认库，避免向进程注入空的 GF_DATABASE_DEFAULT_LINK。
+	if link := strings.TrimSpace(os.Getenv("WORKER_DB_LINK")); link != "" {
+		_ = os.Setenv("GF_DATABASE_DEFAULT_LINK", link)
+	}
 }
 
 var workerOnce sync.Once
