@@ -33,6 +33,11 @@ spec:
           env:
             - name: GF_GCFG_FILE
               value: manifest/config/config.history-service.yaml
+            # Pod 内访问他服务须用 ClusterIP DNS，勿依赖 http_targets 默认的 127.0.0.1。
+            - name: VOICE_SERVICE_URL
+              value: http://voice-service:9802
+            - name: DEVICE_SERVICE_URL
+              value: http://device-service:9803
             - name: OTEL_SERVICE_NAME
               value: history-service
             - name: OTEL_EXPORTER_OTLP_ENDPOINT

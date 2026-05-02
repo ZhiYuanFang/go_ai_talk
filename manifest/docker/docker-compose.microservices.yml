@@ -49,6 +49,9 @@ services:
     container_name: go-ai-talk-history-service
     environment:
       GF_GCFG_FILE: manifest/config/config.history-service.yaml
+      # history 容器内不得用 127.0.0.1 访问他域服务，须走 compose 服务名。
+      VOICE_SERVICE_URL: "http://voice-service:9802"
+      DEVICE_SERVICE_URL: "http://device-service:9803"
       OUTBOX_RELAY_ENABLED: "true"
       # 与 runtimecheck 探活一致：启动前校验 RabbitMQ 管理 API 可达。
       MQ_HTTP_API_BASE: "http://rabbitmq:15672/api"

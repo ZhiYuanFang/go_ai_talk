@@ -1,3 +1,6 @@
+# history 在 Docker/Kubernetes 等「一进程一网络命名空间」部署时，必须在环境中设置
+# VOICE_SERVICE_URL、DEVICE_SERVICE_URL，指向可达的 voice-service、device-service 基址；
+# 未设置时 Go 侧默认回退 http://127.0.0.1:9802/9803，仅适用于本机同命名空间多进程联调。
 server:
   address: ":9801"
   openapiPath: "/api.json"
