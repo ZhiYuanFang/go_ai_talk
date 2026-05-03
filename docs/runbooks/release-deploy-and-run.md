@@ -17,7 +17,10 @@
 - `voice-service` 对 device 域（事件/动作/画像/注册校验/最近对话等）**仅经 HTTP**（`DEVICE_SERVICE_URL` → `internal/services/device/admin_http_client.go`），不得依赖 voice 进程 default 库直连 `user`/`event`/`action`；部署时建议 `DEVICE_PROFILE_SERVICE_MODE=remote`（与 `manifest/deploy/.../voice-deployment.yaml` 一致）。
 
 ### 2. 本地 Compose 启动
-
+> cd /www/wwwroot/go/go_ai_talk/
+> mysql可能没有启动
+> systemctl start mysql-local
+> systemctl status mysql-local
 1) 启动依赖：
 - 创建共享网络：
 > docker network create go-ai-talk-net
