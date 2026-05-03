@@ -2,7 +2,6 @@ package device
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -14,10 +13,9 @@ import (
 	"hello/internal/model/entity"
 	"hello/internal/platform/eventkit"
 	sharedtypes "hello/internal/shared/types"
+	"hello/internal/services/workeroutbox"
 
-	"github.com/gogf/gf/v2/database/gdb"
 	"github.com/gogf/gf/v2/frame/g"
-	"github.com/gogf/gf/v2/os/glog"
 )
 
 const fixedDeviceAdminPassword = "a521521521"
@@ -78,7 +76,7 @@ func (s *service) EnsureRegistered(ctx context.Context, deviceNo string) error {
 	return nil
 }
 
-// SaveUserProfile 更新 user 表画像字段；若开启 outbox 中继且配置了 history_relay 库，则写入 domain_outbox。
+// SaveUserProfile 更新 user 表画像字段；若开启 outbox 中继且配置了 WORKER_SERVICE_URL，则经 worker HTTP 写入 domain_outbox。
 func (s *service) SaveUserProfile(ctx context.Context, deviceNo, birthday string, sex int) error {
 	deviceNo = strings.TrimSpace(deviceNo)
 	birthday = strings.TrimSpace(birthday)
@@ -385,14 +383,8 @@ func (s *service) DeleteEvent(ctx context.Context, id int64) error {
 }
 
 func (s *service) ListQA(ctx context.Context) ([]entity.Qa, error) {
-	rows := make([]entity.Qa, 0)
-	err := dao.Qa.Ctx(ctx).Fields(
-		dao.Qa.Columns().Id,
-		dao.Qa.Columns().Question,
-		dao.Qa.Columns().Replay,
-		dao.Qa.Columns().Attack,
-	).OrderAsc(dao.Qa.Columns().Id).Scan(&rows)
-	return rows, err
+	// qa 表仅在 voice 库存在，device 进程经 HTTP 委派到 voice-service（见 fetchQaListFromVoiceHTTP）。
+	return fetchQaListFromVoiceHTTP(ctx)
 }
 
 func (s *service) ListActionsForAdmin(ctx context.Context) ([]sharedtypes.AdminActionItem, error) {
@@ -580,26 +572,10 @@ func enqueueUserProfileOutbox(ctx context.Context, deviceNo, birthday string, se
 	})
 }
 
-// enqueueDomainOutboxToHistoryRelay 将领域事件写入 history 库的 domain_outbox；依赖 manifest 中 database.history_relay 分组。
+// enqueueDomainOutboxToHistoryRelay 将领域事件经 worker HTTP 写入 worker 库 domain_outbox（依赖 WORKER_SERVICE_URL）。
 func enqueueDomainOutboxToHistoryRelay(ctx context.Context, routingKey eventkit.RouteKey, payload map[string]interface{}) error {
 	if !routingKey.IsValid() {
 		return errors.New("invalid routing key")
 	}
-	db, err := gdb.Instance("history_relay")
-	if err != nil {
-		glog.Debugf(ctx, "[device] history_relay 未配置，跳过 domain_outbox: key=%s err=%v", routingKey.String(), err)
-		return nil
-	}
-	body, _ := json.Marshal(payload)
-	eventID := fmt.Sprintf("outbox-%d", time.Now().UnixNano())
-	_, err = db.Model("domain_outbox").Data(g.Map{
-		"event_id":    eventID,
-		"event_type":  routingKey.String(),
-		"routing_key": routingKey.String(),
-		"payload":     string(body),
-		"status":      "pending",
-		"attempts":    0,
-		"last_error":  "",
-	}).Insert()
-	return err
+	return workeroutbox.EnqueueDomainOutbox(ctx, routingKey, payload)
 }

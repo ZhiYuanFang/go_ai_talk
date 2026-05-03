@@ -9,12 +9,11 @@ import (
 	"sync"
 	"time"
 
-	"hello/internal/dao"
 	"hello/internal/platform/cachekit"
 	"hello/internal/platform/eventkit"
 	"hello/internal/services/contracts"
-	"hello/internal/services/device"
 	"hello/internal/services/history"
+	"hello/internal/services/workeroutbox"
 
 	"github.com/gogf/gf/v2/database/gdb"
 	"github.com/gogf/gf/v2/frame/g"
@@ -97,13 +96,18 @@ func runOutboxRelayWorker(ctx context.Context, workerID int, pollInterval time.D
 	}
 }
 
+const outboxDBGroupName = "outbox"
+
 func relayOneOutboxEvent(ctx context.Context) error {
-	group := dao.History.Group()
+	db, err := gdb.Instance(outboxDBGroupName)
+	if err != nil {
+		return fmt.Errorf("outbox relay: database group %q not configured: %w", outboxDBGroupName, err)
+	}
 	maxAttempts := envIntOrDefault(outboxMaxAttemptsEnv, 10)
 	if maxAttempts <= 0 {
 		maxAttempts = 10
 	}
-	return g.DB(group).Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
+	return db.Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
 		row, err := tx.Model(outboxTableName).
 			WhereIn("status", []string{outboxStatusPending, outboxStatusFailed}).
 			Where("attempts<?", maxAttempts).
@@ -179,7 +183,7 @@ func applyCacheProjectionIfNeeded(ctx context.Context, item domainOutboxRow) err
 			return err
 		}
 	case routingKey.HasPrefix(eventkit.RoutingPrefixDevice):
-		if err := device.ApplyProjection(ctx, route, item.Payload); err != nil {
+		if err := workeroutbox.ApplyDeviceProjectionHTTP(ctx, route, item.Payload); err != nil {
 			_ = scheduleProjectionRepair(ctx, route, item.Payload)
 			return err
 		}
@@ -226,39 +230,7 @@ func startProjectionRepairWorker(ctx context.Context) {
 }
 
 func runProjectionReconcileOnce(ctx context.Context, limit int) error {
-	rows, err := g.DB(dao.History.Group()).Model(dao.History.Table()).
-		Fields(dao.History.Columns().DeviceNo).
-		Where(dao.History.Columns().DeviceNo+" <> ''").
-		OrderDesc(dao.History.Columns().Id).
-		Limit(limit).
-		All()
-	if err != nil {
-		return err
-	}
-	seen := make(map[string]struct{}, len(rows))
-	for _, row := range rows {
-		deviceNo := strings.TrimSpace(row[dao.History.Columns().DeviceNo].String())
-		if deviceNo == "" {
-			continue
-		}
-		if _, ok := seen[deviceNo]; ok {
-			continue
-		}
-		seen[deviceNo] = struct{}{}
-		if err = history.RebuildHistoryCacheByDevice(ctx, deviceNo); err != nil {
-			glog.Warningf(ctx, "history cache rebuild failed: deviceNo=%s err=%v", deviceNo, err)
-		}
-		if err = history.RebuildBirthdayCacheByDevice(ctx, deviceNo); err != nil {
-			glog.Warningf(ctx, "birthday cache rebuild failed: deviceNo=%s err=%v", deviceNo, err)
-		}
-		if err = device.RebuildUserProfileCacheByDevice(ctx, deviceNo); err != nil {
-			glog.Warningf(ctx, "profile cache rebuild failed: deviceNo=%s err=%v", deviceNo, err)
-		}
-	}
-	_ = history.RebuildHistoryMetaCache(ctx)
-	_ = device.RebuildEventCache(ctx)
-	_ = device.RebuildActionCache(ctx)
-	return nil
+	return workeroutbox.RunProjectionReconcileDelegating(ctx, limit)
 }
 
 func scheduleProjectionRepair(ctx context.Context, routingKey, payload string) error {
@@ -295,20 +267,3 @@ func truncateError(s string, max int) string {
 	return s[:max]
 }
 
-func InsertOutboxEventTx(tx gdb.TX, routingKey eventkit.RouteKey, payload map[string]interface{}) error {
-	if !routingKey.IsValid() {
-		return fmt.Errorf("invalid routing key: %s", routingKey.String())
-	}
-	eventID := fmt.Sprintf("outbox-%d", time.Now().UnixNano())
-	body, _ := json.Marshal(payload)
-	_, err := tx.Model(outboxTableName).Data(g.Map{
-		"event_id":    eventID,
-		"event_type":  routingKey.String(),
-		"routing_key": routingKey.String(),
-		"payload":     string(body),
-		"status":      outboxStatusPendingEnum,
-		"attempts":    0,
-		"last_error":  "",
-	}).Insert()
-	return err
-}

@@ -11,6 +11,7 @@ import (
 	"hello/internal/platform/runtimecheck"
 	_ "hello/internal/shared/runtime"
 	async "hello/internal/services/async"
+	"hello/internal/services/workeroutbox"
 
 	"github.com/gogf/gf/v2/os/gctx"
 	"github.com/gogf/gf/v2/os/glog"
@@ -35,9 +36,9 @@ func prepareWorkerServiceRuntime() {
 	if strings.TrimSpace(os.Getenv("GF_GCFG_FILE")) == "" {
 		_ = os.Setenv("GF_GCFG_FILE", "manifest/config/config.worker-service.yaml")
 	}
-	// Compose / K8s 可通过 WORKER_DB_LINK 覆盖默认库，避免向进程注入空的 GF_DATABASE_DEFAULT_LINK。
-	if link := strings.TrimSpace(os.Getenv("WORKER_DB_LINK")); link != "" {
-		_ = os.Setenv("GF_DATABASE_DEFAULT_LINK", link)
+	// domain_outbox 在 worker 专用库 ai_voice_worker，通过 database.outbox 分组（见 config.worker-service.yaml）。
+	if link := strings.TrimSpace(os.Getenv("WORKER_OUTBOX_DB_LINK")); link != "" {
+		_ = os.Setenv("GF_DATABASE_OUTBOX_LINK", link)
 	}
 }
 
@@ -56,6 +57,7 @@ func startWorkerHealthServer(ctx context.Context) {
 		addr = ":9901"
 	}
 	mux := http.NewServeMux()
+	workeroutbox.RegisterOutboxEnqueueHandler(mux)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))

@@ -15,6 +15,7 @@ func RegisterDeviceServiceHTTP(s *ghttp.Server) {
 		group.Bind(NewAdminCtrl(device.DeviceAdmin()))
 		group.Bind(NewDeviceProfileCtrl())
 		group.Bind(NewDeviceInternalCtrl())
+		group.Bind(NewDeviceInternalProjectionCtrl())
 	})
 }
 

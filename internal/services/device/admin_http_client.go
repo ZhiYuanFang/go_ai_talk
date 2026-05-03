@@ -173,11 +173,9 @@ func (c *httpDeviceAdminClient) DeleteEvent(ctx context.Context, id int64) error
 }
 
 func (c *httpDeviceAdminClient) ListQA(ctx context.Context) ([]entity.Qa, error) {
-	var out struct {
-		List []entity.Qa `json:"list"`
-	}
-	err := c.doJSON(ctx, http.MethodGet, "/device/internal/api/qa/list", nil, nil, &out)
-	return out.List, err
+	// qa 权威在 voice 库；若再请求 device 会形成 device↔voice 循环，故直连 voice 内部接口。
+	t := contracts.ResolveHTTPTargets()
+	return fetchQaListFromVoiceWithClient(ctx, c.client, t.VoiceInternalQaListURL())
 }
 
 func (c *httpDeviceAdminClient) ListActionsForAdmin(ctx context.Context) ([]sharedtypes.AdminActionItem, error) {

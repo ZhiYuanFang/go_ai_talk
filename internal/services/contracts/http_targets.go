@@ -10,12 +10,15 @@ const (
 	envHistoryServiceURL = "HISTORY_SERVICE_URL"
 	envVoiceServiceURL   = "VOICE_SERVICE_URL"
 	envDeviceServiceURL  = "DEVICE_SERVICE_URL"
+	envWorkerServiceURL  = "WORKER_SERVICE_URL"
 )
 
 type HTTPTargets struct {
 	HistoryBaseURL string
 	VoiceBaseURL   string
 	DeviceBaseURL  string
+	// WorkerBaseURL worker-service HTTP 基址（含 outbox 入队与健康检查，默认同端口 9901）。
+	WorkerBaseURL string
 }
 
 // ResolveHTTPTargets 从环境变量解析内部服务目标地址。
@@ -25,6 +28,7 @@ func ResolveHTTPTargets() HTTPTargets {
 		HistoryBaseURL: normalizeBaseURL(defaultString(os.Getenv(envHistoryServiceURL), "http://127.0.0.1:9801")),
 		VoiceBaseURL:   normalizeBaseURL(defaultString(os.Getenv(envVoiceServiceURL), "http://127.0.0.1:9802")),
 		DeviceBaseURL:  normalizeBaseURL(defaultString(os.Getenv(envDeviceServiceURL), "http://127.0.0.1:9803")),
+		WorkerBaseURL:  normalizeBaseURL(defaultString(os.Getenv(envWorkerServiceURL), "http://127.0.0.1:9901")),
 	}
 }
 
@@ -104,6 +108,31 @@ func (t HTTPTargets) VoiceSuggestDeletePath() string {
 	return "/voice/internal/api/suggest/delete"
 }
 
+// VoiceInternalQaListPath 语音域内部问答库列表（qa 表权威在 voice 库）。
+func (t HTTPTargets) VoiceInternalQaListPath() string {
+	return "/voice/internal/api/qa/list"
+}
+
+// WorkerOutboxEnqueuePath worker 内部 domain_outbox 入队（依赖网络隔离）。
+func (t HTTPTargets) WorkerOutboxEnqueuePath() string {
+	return "/worker/internal/api/outbox/enqueue"
+}
+
+// HistoryInternalProjectionReconcilePath history 内部触发投影缓存修复（供 worker 调用）。
+func (t HTTPTargets) HistoryInternalProjectionReconcilePath() string {
+	return "/history/internal/api/projection/reconcile"
+}
+
+// DeviceInternalProjectionReconcilePath device 内部触发投影相关缓存修复（供 worker 调用）。
+func (t HTTPTargets) DeviceInternalProjectionReconcilePath() string {
+	return "/device/internal/api/projection/reconcile"
+}
+
+// DeviceInternalProjectionApplyPath device 内部应用单条投影事件（供 worker outbox 中继调用）。
+func (t HTTPTargets) DeviceInternalProjectionApplyPath() string {
+	return "/device/internal/api/projection/apply"
+}
+
 func (t HTTPTargets) VoiceTextChatURL() string {
 	// URL 统一通过 base + path 组合，避免调用方自行拼接导致路径不一致。
 	return t.VoiceBaseURL + t.VoiceTextChatPath()
@@ -135,6 +164,11 @@ func (t HTTPTargets) VoiceSuggestListURL() string {
 
 func (t HTTPTargets) VoiceSuggestDeleteURL() string {
 	return t.VoiceBaseURL + t.VoiceSuggestDeletePath()
+}
+
+// VoiceInternalQaListURL 语音域内部问答库列表完整 URL。
+func (t HTTPTargets) VoiceInternalQaListURL() string {
+	return t.VoiceBaseURL + t.VoiceInternalQaListPath()
 }
 
 func normalizeBaseURL(raw string) string {

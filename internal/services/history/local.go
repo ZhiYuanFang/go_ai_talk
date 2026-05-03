@@ -2,7 +2,6 @@ package history
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -11,9 +10,11 @@ import (
 	"hello/internal/dao"
 	"hello/internal/model/entity"
 	"hello/internal/platform/eventkit"
+	"hello/internal/services/workeroutbox"
 
 	"github.com/gogf/gf/v2/database/gdb"
 	"github.com/gogf/gf/v2/frame/g"
+	"github.com/gogf/gf/v2/os/glog"
 )
 
 type localService struct{}
@@ -240,7 +241,6 @@ func AddDeviceHistory(ctx context.Context, item entity.History) (int64, error) {
 	}
 	var id int64
 	err := g.DB(dao.History.Group()).Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
-		version := time.Now().UnixNano()
 		res, err := tx.Model(dao.History.Table()).Data(g.Map{
 			dao.History.Columns().DeviceNo:    item.DeviceNo,
 			dao.History.Columns().EventId:     item.EventId,
@@ -254,26 +254,29 @@ func AddDeviceHistory(ctx context.Context, item entity.History) (int64, error) {
 			return err
 		}
 		id, _ = res.LastInsertId()
-		if !isOutboxRelayEnabled() {
-			return nil
-		}
-		return insertOutboxEventTx(tx, eventkit.RoutingHistoryRecordCreated, map[string]interface{}{
-			"event_id":    fmt.Sprintf("history-created-%d", time.Now().UnixNano()),
-			"version":     version,
-			"history_id":  id,
-			"device_no":   item.DeviceNo,
-			"event_id_ref": item.EventId,
-			"event_name":  item.EventName,
-			"event_number": item.EventNumber,
-			"start_time":   item.StartTime,
-			"end_time":     item.EndTime,
-			"remark":       item.Remark,
-			"occurred_at": time.Now().Format(time.RFC3339Nano),
-		})
+		return nil
 	})
 	if err == nil && id > 0 {
 		item.Id = id
 		historyCache.patchHistoryOnAdd(ctx, item)
+	}
+	if err == nil && id > 0 && isOutboxRelayEnabled() {
+		version := time.Now().UnixNano()
+		if e2 := workeroutbox.EnqueueDomainOutbox(ctx, eventkit.RoutingHistoryRecordCreated, map[string]interface{}{
+			"event_id":     fmt.Sprintf("history-created-%d", time.Now().UnixNano()),
+			"version":      version,
+			"history_id":   id,
+			"device_no":    item.DeviceNo,
+			"event_id_ref": item.EventId,
+			"event_name":   item.EventName,
+			"event_number": item.EventNumber,
+			"start_time":   item.StartTime,
+			"end_time":     item.EndTime,
+			"remark":       item.Remark,
+			"occurred_at":  time.Now().Format(time.RFC3339Nano),
+		}); e2 != nil {
+			glog.Warningf(ctx, "[history] worker outbox enqueue failed after insert history_id=%d err=%v", id, e2)
+		}
 	}
 	return id, err
 }
@@ -291,7 +294,6 @@ func UpdateDeviceHistory(ctx context.Context, item entity.History) error {
 		return fmt.Errorf("deviceNo 不能为空")
 	}
 	err := g.DB(dao.History.Group()).Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
-		version := time.Now().UnixNano()
 		_, err := tx.Model(dao.History.Table()).
 			Where(dao.History.Columns().Id, item.Id).
 			Where(dao.History.Columns().DeviceNo, item.DeviceNo).
@@ -303,28 +305,28 @@ func UpdateDeviceHistory(ctx context.Context, item entity.History) error {
 				dao.History.Columns().EndTime:     item.EndTime,
 				dao.History.Columns().Remark:      item.Remark,
 			}).Update()
-		if err != nil {
-			return err
-		}
-		if !isOutboxRelayEnabled() {
-			return nil
-		}
-		return insertOutboxEventTx(tx, eventkit.RoutingHistoryRecordUpdated, map[string]interface{}{
-			"event_id":    fmt.Sprintf("history-updated-%d", time.Now().UnixNano()),
-			"version":     version,
-			"history_id":  item.Id,
-			"device_no":   item.DeviceNo,
+		return err
+	})
+	if err == nil {
+		historyCache.patchHistoryOnUpdate(ctx, item)
+	}
+	if err == nil && isOutboxRelayEnabled() {
+		version := time.Now().UnixNano()
+		if e2 := workeroutbox.EnqueueDomainOutbox(ctx, eventkit.RoutingHistoryRecordUpdated, map[string]interface{}{
+			"event_id":     fmt.Sprintf("history-updated-%d", time.Now().UnixNano()),
+			"version":      version,
+			"history_id":   item.Id,
+			"device_no":    item.DeviceNo,
 			"event_id_ref": item.EventId,
-			"event_name":  item.EventName,
+			"event_name":   item.EventName,
 			"event_number": item.EventNumber,
 			"start_time":   item.StartTime,
 			"end_time":     item.EndTime,
 			"remark":       item.Remark,
-			"occurred_at": time.Now().Format(time.RFC3339Nano),
-		})
-	})
-	if err == nil {
-		historyCache.patchHistoryOnUpdate(ctx, item)
+			"occurred_at":  time.Now().Format(time.RFC3339Nano),
+		}); e2 != nil {
+			glog.Warningf(ctx, "[history] worker outbox enqueue failed after update history_id=%d err=%v", item.Id, e2)
+		}
 	}
 	return err
 }
@@ -335,27 +337,26 @@ func DeleteDeviceHistory(ctx context.Context, id int64, deviceNo string) error {
 		return fmt.Errorf("参数无效")
 	}
 	err := g.DB(dao.History.Group()).Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
-		version := time.Now().UnixNano()
 		_, err := tx.Model(dao.History.Table()).
 			Where(dao.History.Columns().Id, id).
 			Where(dao.History.Columns().DeviceNo, deviceNo).
 			Delete()
-		if err != nil {
-			return err
-		}
-		if !isOutboxRelayEnabled() {
-			return nil
-		}
-		return insertOutboxEventTx(tx, eventkit.RoutingHistoryRecordDeleted, map[string]interface{}{
+		return err
+	})
+	if err == nil {
+		historyCache.patchHistoryOnDelete(ctx, deviceNo, id)
+	}
+	if err == nil && isOutboxRelayEnabled() {
+		version := time.Now().UnixNano()
+		if e2 := workeroutbox.EnqueueDomainOutbox(ctx, eventkit.RoutingHistoryRecordDeleted, map[string]interface{}{
 			"event_id":    fmt.Sprintf("history-deleted-%d", time.Now().UnixNano()),
 			"version":     version,
 			"history_id":  id,
 			"device_no":   deviceNo,
 			"occurred_at": time.Now().Format(time.RFC3339Nano),
-		})
-	})
-	if err == nil {
-		historyCache.patchHistoryOnDelete(ctx, deviceNo, id)
+		}); e2 != nil {
+			glog.Warningf(ctx, "[history] worker outbox enqueue failed after delete history_id=%d err=%v", id, e2)
+		}
 	}
 	return err
 }
@@ -364,22 +365,3 @@ func isOutboxRelayEnabled() bool {
 	v := strings.ToLower(strings.TrimSpace(os.Getenv("OUTBOX_RELAY_ENABLED")))
 	return v == "1" || v == "true" || v == "yes" || v == "on"
 }
-
-func insertOutboxEventTx(tx gdb.TX, routingKey eventkit.RouteKey, payload map[string]interface{}) error {
-	if !routingKey.IsValid() {
-		return fmt.Errorf("invalid routing key: %s", routingKey.String())
-	}
-	eventID := fmt.Sprintf("outbox-%d", time.Now().UnixNano())
-	body, _ := json.Marshal(payload)
-	_, err := tx.Model("domain_outbox").Data(g.Map{
-		"event_id":    eventID,
-		"event_type":  routingKey.String(),
-		"routing_key": routingKey.String(),
-		"payload":     string(body),
-		"status":      "pending",
-		"attempts":    0,
-		"last_error":  "",
-	}).Insert()
-	return err
-}
-

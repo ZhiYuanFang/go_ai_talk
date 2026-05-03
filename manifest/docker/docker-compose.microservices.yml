@@ -57,6 +57,7 @@ services:
       # history 容器内不得用 127.0.0.1 访问他域服务，须走 compose 服务名。
       VOICE_SERVICE_URL: "http://voice-service:9802"
       DEVICE_SERVICE_URL: "http://device-service:9803"
+      WORKER_SERVICE_URL: "http://worker:9901"
       OUTBOX_RELAY_ENABLED: "true"
       # 与 runtimecheck 探活一致：启动前校验 RabbitMQ 管理 API 可达。
       MQ_HTTP_API_BASE: "http://rabbitmq:15672/api"
@@ -83,6 +84,7 @@ services:
       GF_GCFG_FILE: manifest/config/config.voice-service.yaml
       VOICE_DB_LINK: "${VOICE_DB_LINK:-}"
       VOICE_SERVICE_ADDR: ":9802"
+      VOICE_SERVICE_URL: "http://voice-service:9802"
       HISTORY_SERVICE_MODE: "remote"
       HISTORY_SERVICE_URL: "http://history-service:9801"
       HISTORY_SERVICE_CANARY_PERCENT: "0"
@@ -116,6 +118,8 @@ services:
       GF_GCFG_FILE: manifest/config/config.device-service.yaml
       DEVICE_DB_LINK: "${DEVICE_DB_LINK:-}"
       DEVICE_SERVICE_ADDR: ":9803"
+      VOICE_SERVICE_URL: "http://voice-service:9802"
+      WORKER_SERVICE_URL: "http://worker:9901"
       OUTBOX_RELAY_ENABLED: "false"
       MQ_HTTP_API_BASE: "http://rabbitmq:15672/api"
       MQ_USER: "guest"
@@ -139,9 +143,11 @@ services:
       - "host.docker.internal:host-gateway"
     environment:
       GF_GCFG_FILE: manifest/config/config.worker-service.yaml
-      # 非空时由 cmd/worker-service 写入 GF_DATABASE_DEFAULT_LINK；与 .env.example 中 WORKER_DB_LINK 对应。
-      WORKER_DB_LINK: "${WORKER_DB_LINK:-}"
+      # 非空时由 cmd/worker-service 写入 GF_DATABASE_OUTBOX_LINK，指向仅含 domain_outbox 的库。
+      WORKER_OUTBOX_DB_LINK: "${WORKER_OUTBOX_DB_LINK:-}"
       WORKER_HEALTH_ADDR: ":9901"
+      HISTORY_SERVICE_URL: "http://history-service:9801"
+      DEVICE_SERVICE_URL: "http://device-service:9803"
       # 角色约束：worker 独占异步消费与 outbox relay。
       MQ_CONSUMER_ENABLED: "true"
       OUTBOX_RELAY_ENABLED: "true"

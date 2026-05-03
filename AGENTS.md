@@ -13,7 +13,7 @@
 - 跨服务数据访问必须走服务接口契约（HTTP/RPC/事件），禁止在服务实现中直接访问他域 DAO 或数据库表。
 - 迁移期若使用 `local|remote|canary` 双路径，必须保留显式配置与 failover 语义，并输出可观测日志。
 - 代码评审时需显式检查：是否出现跨库直查、是否补齐契约路径与错误语义。
-- `internal/services/history` 不得 import 或调用 `dao.User`、`dao.Event`、`dao.Suggest` 等他域表；`device-service` 写 `domain_outbox` 须使用 `database.history_relay`（或经评审的等价投递），禁止用 `dao.User` 默认连接组误连。
+- `internal/services/history` 不得 import 或调用 `dao.User`、`dao.Event`、`dao.Suggest` 等他域表；`domain_outbox` 权威在 **worker-service** 专用 MySQL 库（约定库名 **`ai_voice_worker`**），`history-service`/`device-service` 投递 MUST 经 `WORKER_SERVICE_URL` HTTP 入队（见 `internal/services/workeroutbox`），禁止用本进程 `default` 连接组误连他域库表。
 - `internal/services/voice` 不得 import `hello/internal/dao` 中 **user/event/action** 等他域表 DAO；设备域访问 MUST 经 `voice.DeviceAdmin()`（HTTP 实现）或经批准的契约，禁止在 voice 进程内直连 device 库表。评审可检索：`grep -r \"internal/dao\" internal/services/voice`（应仅出现 suggest/qa 等本域表）。
 - 服务默认配置必须按进程独立（`gateway`/`voice-service`/`device-service`/`history-service`），禁止回退到共享主配置承载他域业务项。
 - `manifest/config/config.yaml` 仅允许保留网关与全局公共配置；评审时必须检查是否有 voice/device/history 专属字段回流。

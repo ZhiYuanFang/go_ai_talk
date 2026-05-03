@@ -30,6 +30,9 @@ spec:
               value: manifest/config/config.voice-service.yaml
             - name: VOICE_SERVICE_ADDR
               value: ":9802"
+            # DeviceAdmin HTTP 客户端拉取 QA 列表时走本服务内部接口；与 device-service 同网段时可用服务 DNS。
+            - name: VOICE_SERVICE_URL
+              value: http://voice-service:9802
             - name: HISTORY_SERVICE_MODE
               value: remote
             - name: HISTORY_SERVICE_URL

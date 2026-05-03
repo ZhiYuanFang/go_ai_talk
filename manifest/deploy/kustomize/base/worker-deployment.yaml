@@ -40,6 +40,10 @@ spec:
               value: "true"
             - name: OUTBOX_RELAY_ENABLED
               value: "true"
+            - name: HISTORY_SERVICE_URL
+              value: http://history-service:9801
+            - name: DEVICE_SERVICE_URL
+              value: http://device-service:9803
             - name: MQ_HTTP_API_BASE
               value: http://rabbitmq:15672/api
             - name: MQ_USER

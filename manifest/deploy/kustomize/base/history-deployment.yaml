@@ -38,6 +38,8 @@ spec:
               value: http://voice-service:9802
             - name: DEVICE_SERVICE_URL
               value: http://device-service:9803
+            - name: WORKER_SERVICE_URL
+              value: http://worker:9901
             - name: OTEL_SERVICE_NAME
               value: history-service
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
