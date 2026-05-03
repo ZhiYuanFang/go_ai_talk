@@ -25,8 +25,20 @@
 > docker network ls
 > <b>列出所有容器所在的docker网络</b>
 > docker ps -a --format '{{.Names}}' | xargs -I {} docker inspect {} --format '{{.Name}} => {{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}'
-- Redis 集群：`docker compose -f manifest/docker/docker-compose.redis-cluster.yml up -d` --force-recreate（各节点加入 `go-ai-talk-net` 后，业务配置里的主机名一般为 **`redis-node-1`** 等服务名；`docker ps` 显示的 `docker-redis-node-1-1` 为容器名，与 DNS 解析名不必相同。集群需先完成 `redis-cli --cluster create` 等初始化，否则会出现 `CLUSTERDOWN` / `Hash slot not served`。）
-- RabbitMQ：`docker compose -f manifest/docker/docker-compose.rabbitmq.yml up -d` --force-recreate
+- Redis 集群：
+> `docker compose -f manifest/docker/docker-compose.redis-cluster.yml up -d --force-recreate`
+（各节点加入 `go-ai-talk-net` 后，业务配置里的主机名一般为 **`redis-node-1`** 等服务名；`docker ps` 显示的 `docker-redis-node-1-1` 为容器名，与 DNS 解析名不必相同。集群需先完成 `redis-cli --cluster create` 等初始化，否则会出现 `CLUSTERDOWN` / `Hash slot not served`。）
+- 初始化redis: 
+> `docker compose -f manifest/docker/docker-compose.redis-cluster.yml exec -T redis-node-1 \
+>  redis-cli --cluster create \
+>  redis-node-1:7001 redis-node-2:7002 redis-node-3:7003 \
+>  redis-node-4:7004 redis-node-5:7005 redis-node-6:7006 \
+>  --cluster-replicas 1 --cluster-yes`
+- 判断redis是否初始化成功：
+> `docker compose -f manifest/docker/docker-compose.redis-cluster.yml exec -T redis-node-1 redis-cli -p 7001 CLUSTER INFO`
+> 里应有 cluster_state:ok。
+- RabbitMQ：
+> `docker compose -f manifest/docker/docker-compose.rabbitmq.yml up -d` --force-recreate
 
 2) 准备业务库连接（**强烈建议**）：
 
@@ -39,7 +51,12 @@
 
 - `docker compose --env-file manifest/docker/.env.example -f manifest/docker/docker-compose.microservices.yml up -d --build`  
   或使用已 gitignore 的 `manifest/docker/.env`：`--env-file manifest/docker/.env`
-
+> 只改docker-compose环境配置
+>  `docker compose --env-file manifest/docker/.env.example -f manifest/docker/docker-compose.microservices.yml up -d --force-recreate`  
+> 针对特定服务build
+> `docker compose --env-file manifest/docker/.env.example -f manifest/docker/docker-compose.microservices.yml up -d --build device-service`  
+> `docker compose --env-file manifest/docker/.env.example -f manifest/docker/docker-compose.microservices.yml up -d --build voice-service`  
+> `docker compose --env-file manifest/docker/.env.example -f manifest/docker/docker-compose.microservices.yml up -d --build history-service`  
 4) 健康检查（自宿主机探测各服务端口映射；**history 对 voice/device 的 HTTP 委派在容器内走服务名**，见上文环境变量）：
 
 - gateway: `http://127.0.0.1:9701/api.json`

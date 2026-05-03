@@ -24,7 +24,7 @@
 - `127.0.0.1:7005`
 - `127.0.0.1:7006`
 
-应用侧可配置多地址作为 cluster seed 列表（至少 2-3 个）。
+应用侧（`manifest/config/config*.yaml` 的 `redis.default.address`）已默认写 **三主种子**：`redis-node-1:7001,redis-node-2:7002,redis-node-3:7003`（与 compose 服务名一致）；本机直连调试仍可用下表各 `127.0.0.1` 端口。
 
 ### 停止与清理
 

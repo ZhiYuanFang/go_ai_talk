@@ -19,6 +19,6 @@ database:
 
 redis:
   default:
-    # 运行时请通过环境变量或挂载配置覆盖该占位值
-    address: "redis-node-1:7001"
+    # Redis Cluster：三主种子逗号分隔（与 docker-compose.redis-cluster 拓扑一致）。
+    address: "redis-node-1:7001,redis-node-2:7002,redis-node-3:7003"
     db: 0
