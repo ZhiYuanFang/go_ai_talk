@@ -25,8 +25,10 @@ import (
 	"hello/internal/model/entity"
 	"hello/internal/platform/cachekit"
 
+	"github.com/gogf/gf/v2/encoding/gjson"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/gctx"
+	"github.com/gogf/gf/v2/os/gfile"
 	"github.com/gogf/gf/v2/os/glog"
 )
 
@@ -281,12 +283,33 @@ func applyConfigDefaults(cfg *VoiceChatConfig) {
 	}
 }
 
-// loadVoiceConfig 从配置中心加载 voiceChat 配置并应用默认值。
+// defaultVoiceChatSharedRel 为仓库内 voiceChat 唯一数据源的相对路径（经 gfile.Search 解析）。
+const defaultVoiceChatSharedRel = "manifest/config/voice-chat.shared.yaml"
+
+// loadVoiceConfig 加载 voiceChat：优先共享 YAML（voice / history 共用），若 DeepSeek 等仍为空则回读 GF_GCFG 中的 voiceChat（便于单文件迁移或测试覆盖）。
 func loadVoiceConfig(ctx context.Context) VoiceChatConfig {
 	var cfg VoiceChatConfig
-	value := g.Cfg().MustGet(ctx, "voiceChat")
-	if !value.IsNil() {
-		_ = value.Scan(&cfg)
+	rel := strings.TrimSpace(os.Getenv("GF_VOICE_CHAT_FILE"))
+	if rel == "" {
+		rel = defaultVoiceChatSharedRel
+	}
+	if path, err := gfile.Search(rel); err == nil && path != "" {
+		if j, errLoad := gjson.Load(path); errLoad == nil {
+			vc := j.Get("voiceChat")
+			if vc != nil && !vc.IsNil() {
+				_ = vc.Scan(&cfg)
+			}
+		} else {
+			glog.Warningf(ctx, "[voiceChat] 共享配置解析失败 path=%s err=%v", path, errLoad)
+		}
+	} else if err != nil {
+		glog.Warningf(ctx, "[voiceChat] 未找到共享配置文件 rel=%q err=%v，将仅依赖 GF_GCFG 中的 voiceChat", rel, err)
+	}
+	if strings.TrimSpace(cfg.DeepSeek.Endpoint) == "" {
+		value, err := g.Cfg().Get(ctx, "voiceChat")
+		if err == nil && value != nil && !value.IsNil() {
+			_ = value.Scan(&cfg)
+		}
 	}
 	applyConfigDefaults(&cfg)
 	return cfg

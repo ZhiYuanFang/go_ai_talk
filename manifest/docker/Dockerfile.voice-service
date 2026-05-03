@@ -17,6 +17,7 @@ WORKDIR ${WORKDIR}
 COPY --from=builder /out/voice-service ${WORKDIR}/voice-service
 COPY resource ${WORKDIR}/resource
 COPY manifest/config/config.voice-service.yaml ${WORKDIR}/manifest/config/config.voice-service.yaml
+COPY manifest/config/voice-chat.shared.yaml ${WORKDIR}/manifest/config/voice-chat.shared.yaml
 
 EXPOSE 9802
 HEALTHCHECK --interval=10s --timeout=3s --retries=6 CMD wget -q -O - http://127.0.0.1:9802/api.json > /dev/null || exit 1

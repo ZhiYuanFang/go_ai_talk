@@ -1,0 +1,59 @@
+# voice-service 与 history-service 共用的「对话链路」参数（ASR / DeepSeek / TTS / 会话），唯一数据源。
+# 进程通过 internal/services/voice.loadVoiceConfig 加载；路径默认 manifest/config/voice-chat.shared.yaml，
+# 可通过环境变量 GF_VOICE_CHAT_FILE 覆盖（仍支持 gfile.Search 的相对路径解析）。
+voiceChat:
+  debugLog: true
+  audio:
+    sampleRate: 16000
+    bits: 16
+    channels: 1
+    maxDurationSec: 30
+  session:
+    maxRounds: 10
+    ttlSeconds: 1800
+    maxDeviceSessions: 1000
+    cleanupIntervalSeconds: 60
+  stt:
+    provider: "baidu"
+    endpoint: "https://vop.baidu.com/server_api"
+    streamEnabled: true
+    streamEndpoint: "wss://vop.baidu.com/realtime_asr"
+    realtimeDebounceMs: 1200
+    realtimeMinRunes: 4
+    sn: ""
+    tokenEndpoint: "https://aip.baidubce.com/oauth/2.0/token"
+    apiKey: "iZZApLGcYBhyR5Djqtp7Kc1m"
+    apiSecret: "F8uXBqwGwUkpy3tYp6eMEBqX2s1R5wsm"
+    model: ""
+    cuid: "gofirst-device"
+    devPid: 1537
+    format: "pcm"
+    timeoutSeconds: 20
+    maxConcurrency: 50
+  deepseek:
+    endpoint: "https://api.deepseek.com/v1/chat/completions"
+    apiKey: "sk-e5685321acda4a3f8cb15abc5345c130"
+    model: "deepseek-chat"
+    systemPrompt: ""
+    stream: true
+    minTextLength: 2
+    timeoutSeconds: 20
+    maxConcurrency: 100
+  tts:
+    provider: "baidu"
+    streamEnabled: true
+    streamEndpoint: "wss://aip.baidubce.com/ws/2.0/speech/publiccloudspeech/v1/tts"
+    tokenEndpoint: "https://aip.baidubce.com/oauth/2.0/token"
+    apiKey: "iZZApLGcYBhyR5Djqtp7Kc1m"
+    apiSecret: "F8uXBqwGwUkpy3tYp6eMEBqX2s1R5wsm"
+    model: ""
+    voice: "0"
+    language: "zh"
+    speed: "5"
+    pitch: "5"
+    volume: "9"
+    aue: "6"
+    cuid: "gofirst-device"
+    timeoutSeconds: 100
+    streamIdleTimeoutSeconds: 15
+    streamFinishTimeoutSeconds: 8

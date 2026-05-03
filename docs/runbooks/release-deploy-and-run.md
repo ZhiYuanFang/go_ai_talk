@@ -9,6 +9,7 @@
 - `device-service`：`manifest/config/config.device-service.yaml`
 - `history-service`：`manifest/config/config.history-service.yaml`
 - `worker-service`：`manifest/config/config.worker-service.yaml`
+- **对话链路（`voiceChat`）**：`manifest/config/voice-chat.shared.yaml`（`voice-service` 与 `history-service` 共用，避免在两份服务 YAML 中重复维护）；可选环境变量 `GF_VOICE_CHAT_FILE` 指向其它路径（仍按 `gfile.Search` 规则解析）。若共享文件缺失且 `GF_GCFG` 中未声明 `voiceChat`，文本对话会报「DeepSeek endpoint 未配置」。
 
 关键原则：
 
@@ -42,6 +43,8 @@
 > 里应有 cluster_state:ok。
 - RabbitMQ：
 > `docker compose -f manifest/docker/docker-compose.rabbitmq.yml up -d` --force-recreate
+> 开始的时候需要初始化交换机:
+> `chmod +x hack/rabbitmq-init.sh && ./hack/rabbitmq-init.sh`
 
 2) 准备业务库连接（**强烈建议**）：
 

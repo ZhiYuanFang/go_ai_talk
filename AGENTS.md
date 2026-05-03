@@ -17,6 +17,7 @@
 - `internal/services/voice` 不得 import `hello/internal/dao` 中 **user/event/action** 等他域表 DAO；设备域访问 MUST 经 `voice.DeviceAdmin()`（HTTP 实现）或经批准的契约，禁止在 voice 进程内直连 device 库表。评审可检索：`grep -r \"internal/dao\" internal/services/voice`（应仅出现 suggest/qa 等本域表）。
 - 服务默认配置必须按进程独立（`gateway`/`voice-service`/`device-service`/`history-service`），禁止回退到共享主配置承载他域业务项。
 - `manifest/config/config.yaml` 仅允许保留网关与全局公共配置；评审时必须检查是否有 voice/device/history 专属字段回流。
+- `voiceChat`（ASR/LLM/TTS/会话）必须维护在 `manifest/config/voice-chat.shared.yaml`，供 `voice-service` 与 `history-service` 共用；禁止在 `config.voice-service.yaml` 与 `config.history-service.yaml` 中重复整段 `voiceChat`（迁移期可仅依赖 `GF_GCFG` 中的 `voiceChat` 作兜底，不作为长期双源）。
 - 代码目录边界与包边界必须一致：业务实现统一位于 `internal/services/**`，禁止新增实现文件到 `internal/service`。
 - 评审时必须检查 import 路径，确保 `cmd`/`controller` 不再依赖 `hello/internal/service` 旧路径。
 

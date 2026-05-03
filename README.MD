@@ -142,7 +142,7 @@
 
 ## 三、主要配置
 
-运行配置见 [manifest/config/config.yaml](manifest/config/config.yaml)：
+运行配置见 [manifest/config/config.yaml](manifest/config/config.yaml)（网关）；微服务下 `voice-service` / `history-service` 的对话参数统一在 [manifest/config/voice-chat.shared.yaml](manifest/config/voice-chat.shared.yaml)：
 
 - `server.address`：服务监听地址（默认示例 `:9701`）
 - `voiceChat.audio`：音频参数与最大时长
