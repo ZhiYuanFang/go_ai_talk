@@ -31,7 +31,9 @@ func installDomainProxyMiddlewares(s *ghttp.Server) {
 }
 
 func routeKeyForDomainRequest(r *ghttp.Request) string {
-	if deviceNo := strings.TrimSpace(r.Get("deviceNo").String()); deviceNo != "" {
+	// 金丝雀/分流键仅用 query 与可信头，避免调用 r.Get("deviceNo") 触发对 POST JSON 的 parseForm/parseBody，
+	// 降低与反向代理转发链路的耦合；deviceNo 若仅出现在 body 中则回退到 addr+path 键。
+	if deviceNo := strings.TrimSpace(r.GetQuery("deviceNo").String()); deviceNo != "" {
 		return deviceNo
 	}
 	if header := strings.TrimSpace(r.GetHeader("X-Device-No")); header != "" {

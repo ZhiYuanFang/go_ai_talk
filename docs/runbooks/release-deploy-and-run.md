@@ -54,7 +54,12 @@
 - `manifest/docker/docker-compose.microservices.yml` 已为 `history-service`、`voice-service`、`device-service`、`worker` 配置 `extra_hosts: host.docker.internal:host-gateway`（Docker 20.10+），便于同机连库。
 
 3) 启动业务（`--env-file` 指向你实际填写了四个 LINK 的文件即可）：
-
+> 停止并删除 compose 项目
+> docker compose -f manifest/docker/docker-compose.microservices.yml down
+> 清理 Docker 系统
+> docker system prune -a -f
+> 清理构建缓存
+> docker builder prune -f
 - `docker compose --env-file manifest/docker/.env.example -f manifest/docker/docker-compose.microservices.yml up -d --build`  
   或使用已 gitignore 的 `manifest/docker/.env`：`--env-file manifest/docker/.env`
 > 只改docker-compose环境配置
