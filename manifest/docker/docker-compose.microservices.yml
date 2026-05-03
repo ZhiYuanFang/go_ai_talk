@@ -52,8 +52,8 @@ services:
       - "host.docker.internal:host-gateway"
     environment:
       GF_GCFG_FILE: manifest/config/config.history-service.yaml
-      # 非空时覆盖默认库（cmd/history-service 读取 HISTORY_DB_LINK）；Compose 插值见 --env-file。
-      HISTORY_DB_LINK: ${HISTORY_DB_LINK:-}
+      # 非空时覆盖默认库（cmd/history-service 读取 HISTORY_DB_LINK）。DSN 含多个「:」，必须整段加引号，否则 YAML 易截断，容器内变空仍走 yaml 占位 IP。
+      HISTORY_DB_LINK: "${HISTORY_DB_LINK:-}"
       # history 容器内不得用 127.0.0.1 访问他域服务，须走 compose 服务名。
       VOICE_SERVICE_URL: "http://voice-service:9802"
       DEVICE_SERVICE_URL: "http://device-service:9803"
@@ -81,7 +81,7 @@ services:
       - "host.docker.internal:host-gateway"
     environment:
       GF_GCFG_FILE: manifest/config/config.voice-service.yaml
-      VOICE_DB_LINK: ${VOICE_DB_LINK:-}
+      VOICE_DB_LINK: "${VOICE_DB_LINK:-}"
       VOICE_SERVICE_ADDR: ":9802"
       HISTORY_SERVICE_MODE: "remote"
       HISTORY_SERVICE_URL: "http://history-service:9801"
@@ -114,7 +114,7 @@ services:
       - "host.docker.internal:host-gateway"
     environment:
       GF_GCFG_FILE: manifest/config/config.device-service.yaml
-      DEVICE_DB_LINK: ${DEVICE_DB_LINK:-}
+      DEVICE_DB_LINK: "${DEVICE_DB_LINK:-}"
       DEVICE_SERVICE_ADDR: ":9803"
       OUTBOX_RELAY_ENABLED: "false"
       MQ_HTTP_API_BASE: "http://rabbitmq:15672/api"
@@ -140,7 +140,7 @@ services:
     environment:
       GF_GCFG_FILE: manifest/config/config.worker-service.yaml
       # 非空时由 cmd/worker-service 写入 GF_DATABASE_DEFAULT_LINK；与 .env.example 中 WORKER_DB_LINK 对应。
-      WORKER_DB_LINK: ${WORKER_DB_LINK:-}
+      WORKER_DB_LINK: "${WORKER_DB_LINK:-}"
       WORKER_HEALTH_ADDR: ":9901"
       # 角色约束：worker 独占异步消费与 outbox relay。
       MQ_CONSUMER_ENABLED: "true"

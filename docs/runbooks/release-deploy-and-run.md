@@ -25,18 +25,20 @@
 > docker network ls
 > <b>列出所有容器所在的docker网络</b>
 > docker ps -a --format '{{.Names}}' | xargs -I {} docker inspect {} --format '{{.Name}} => {{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}'
-- Redis 集群：`docker compose -f manifest/docker/docker-compose.redis-cluster.yml up -d` --force-recreate
+- Redis 集群：`docker compose -f manifest/docker/docker-compose.redis-cluster.yml up -d` --force-recreate（各节点加入 `go-ai-talk-net` 后，业务配置里的主机名一般为 **`redis-node-1`** 等服务名；`docker ps` 显示的 `docker-redis-node-1-1` 为容器名，与 DNS 解析名不必相同。集群需先完成 `redis-cli --cluster create` 等初始化，否则会出现 `CLUSTERDOWN` / `Hash slot not served`。）
 - RabbitMQ：`docker compose -f manifest/docker/docker-compose.rabbitmq.yml up -d` --force-recreate
 
 2) 准备业务库连接（**强烈建议**）：
 
-- 复制 `manifest/docker/.env.example` 为 `manifest/docker/.env`，按其中注释填写 `HISTORY_DB_LINK`、`DEVICE_DB_LINK`、`VOICE_DB_LINK`、`WORKER_DB_LINK`（Gf DSN 格式）。**MySQL 跑在 Docker 宿主机上**时主机名用 `host.docker.internal`；**MySQL 在其它机器**时改为容器内可达的 RDS/内网地址。未设置时仍使用各 `config.*.yaml` 内占位 link，易出现容器访问宿主机公网 IP 失败。
+- 在 **`manifest/docker/.env.example`** 或复制后的 **`manifest/docker/.env`** 中填写非空的 `HISTORY_DB_LINK`、`DEVICE_DB_LINK`、`VOICE_DB_LINK`、`WORKER_DB_LINK`（Gf DSN）。**MySQL 跑在 Docker 宿主机上**时主机名用 `host.docker.internal`；**MySQL 在其它机器**时改为容器内可达的 RDS/内网地址。  
+- 四个变量**留空**时不会覆盖 yaml，进程仍使用 `config.*.yaml` 里的占位地址（如公网 `120.55.50.105:3306`）。  
+- 若你已在 `.env.example` 里写好 link 却仍连旧 IP：① 确认 compose 中 DSN 插值已用**引号**（本仓库已改为 `"${DEVICE_DB_LINK:-}"` 等形式，避免 YAML 把 `mysql:...:3306` 截断）；② 对业务服务 **`docker compose ... up -d --force-recreate`**；③ 容器内 **`printenv DEVICE_DB_LINK`** 核对。  
 - `manifest/docker/docker-compose.microservices.yml` 已为 `history-service`、`voice-service`、`device-service`、`worker` 配置 `extra_hosts: host.docker.internal:host-gateway`（Docker 20.10+），便于同机连库。
 
-3) 启动业务：
+3) 启动业务（`--env-file` 指向你实际填写了四个 LINK 的文件即可）：
 
-- `docker compose --env-file manifest/docker/.env -f manifest/docker/docker-compose.microservices.yml up -d --build`  
-  （若未创建 `.env`，可省略 `--env-file` 行，但不推荐用于连宿主机 MySQL 的场景。）
+- `docker compose --env-file manifest/docker/.env.example -f manifest/docker/docker-compose.microservices.yml up -d --build`  
+  或使用已 gitignore 的 `manifest/docker/.env`：`--env-file manifest/docker/.env`
 
 4) 健康检查（自宿主机探测各服务端口映射；**history 对 voice/device 的 HTTP 委派在容器内走服务名**，见上文环境变量）：
 
