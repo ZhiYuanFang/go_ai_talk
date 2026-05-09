@@ -45,11 +45,22 @@ func (c *HistoryCtrl) List(ctx context.Context, req *v1.DeviceHistoryListReq) (r
 	if deviceNo == "" {
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "deviceNo 不能为空")
 	}
-	items, err := c.Svc.ListHistory(ctx, deviceNo)
+	page := req.Page
+	if page <= 0 {
+		page = 1
+	}
+	pageSize := req.PageSize
+	if pageSize <= 0 {
+		pageSize = 20
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+	result, err := c.Svc.ListHistoryPage(ctx, deviceNo, page, pageSize)
 	if err != nil {
 		return nil, err
 	}
-	return &v1.DeviceHistoryListRes{List: items}, nil
+	return &v1.DeviceHistoryListRes{List: result.List, Total: result.Total, Page: result.Page, PageSize: result.PageSize}, nil
 }
 
 // Suggest 设备建议列表。

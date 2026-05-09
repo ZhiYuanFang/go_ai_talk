@@ -1,20 +1,26 @@
 package v1
 
-import "github.com/gogf/gf/v2/frame/g"
 import (
 	"hello/internal/model/entity"
+
+	"github.com/gogf/gf/v2/frame/g"
 )
 
 // DeviceHistoryListReq 查询设备历史记录。
-// 参数通过 query 传递：deviceNo。
+// 参数通过 query 传递：deviceNo/page/pageSize。
 type DeviceHistoryListReq struct {
-	g.Meta   `path:"/device/history/api/list" method:"get" tags:"device" summary:"设备历史列表"`
+	g.Meta   `path:"/device/history/api/list" method:"get" tags:"device" summary:"设备历史列表（分页）"`
 	DeviceNo string `json:"deviceNo" p:"deviceNo" dc:"设备号"`
+	Page     int    `json:"page" p:"page" dc:"页码，从 1 开始"`
+	PageSize int    `json:"pageSize" p:"pageSize" dc:"每页条数"`
 }
 
 // DeviceHistoryListRes 设备历史列表响应。
 type DeviceHistoryListRes struct {
-	List []entity.History `json:"list"`
+	List     []entity.History `json:"list"`
+	Total    int              `json:"total"`
+	Page     int              `json:"page"`
+	PageSize int              `json:"pageSize"`
 }
 
 // DeviceHistorySuggestReq 查询设备建议。

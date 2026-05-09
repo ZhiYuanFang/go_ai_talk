@@ -21,6 +21,7 @@ import (
 
 type Contract interface {
 	ListHistory(ctx context.Context, deviceNo string) ([]entity.History, error)
+	ListHistoryPage(ctx context.Context, deviceNo string, page int, pageSize int) (contracts.HistoryPageResult, error)
 	GetLatestHistory(ctx context.Context, deviceNo string) (entity.History, error)
 	EndLatestHistoryIfMatch(ctx context.Context, deviceNo string, eventID int64, endTime string) (bool, error)
 	ListSuggest(ctx context.Context, deviceNo string) ([]entity.Suggest, error)
@@ -75,6 +76,28 @@ func (r *historyRemoteClient) ListHistory(ctx context.Context, deviceNo string) 
 	t := r.targets
 	err := r.doJSON(ctx, http.MethodGet, r.historyBase, t.HistoryListPath(), map[string]string{"deviceNo": strings.TrimSpace(deviceNo)}, nil, &resp)
 	return resp.List, err
+}
+
+func (r *historyRemoteClient) ListHistoryPage(ctx context.Context, deviceNo string, page int, pageSize int) (contracts.HistoryPageResult, error) {
+	if err := r.notReady(); err != nil {
+		return contracts.HistoryPageResult{}, err
+	}
+	var resp struct {
+		List     []entity.History `json:"list"`
+		Total    int              `json:"total"`
+		Page     int              `json:"page"`
+		PageSize int              `json:"pageSize"`
+	}
+	t := r.targets
+	err := r.doJSON(ctx, http.MethodGet, r.historyBase, t.HistoryListPath(), map[string]string{
+		"deviceNo": strings.TrimSpace(deviceNo),
+		"page":     strconv.Itoa(page),
+		"pageSize": strconv.Itoa(pageSize),
+	}, nil, &resp)
+	if err != nil {
+		return contracts.HistoryPageResult{}, err
+	}
+	return contracts.HistoryPageResult{List: resp.List, Total: resp.Total, Page: resp.Page, PageSize: resp.PageSize}, nil
 }
 
 func (r *historyRemoteClient) GetLatestHistory(ctx context.Context, deviceNo string) (entity.History, error) {
@@ -358,6 +381,19 @@ func (a *switchAdapter) ListHistory(ctx context.Context, deviceNo string) ([]ent
 		glog.Debugf(ctx, "history cache refill type=list source=remote deviceNo=%s count=%d", deviceNo, len(items))
 	}
 	return items, err
+}
+
+func (a *switchAdapter) ListHistoryPage(ctx context.Context, deviceNo string, page int, pageSize int) (contracts.HistoryPageResult, error) {
+	deviceNo = strings.TrimSpace(deviceNo)
+	if !a.shouldUseRemote(deviceNo) {
+		return a.local.ListHistoryPage(ctx, deviceNo, page, pageSize)
+	}
+	result, err := a.remote.ListHistoryPage(ctx, deviceNo, page, pageSize)
+	if err != nil && a.cfg.failoverToLocal {
+		glog.Warningf(ctx, "history page degrade source=remote->local deviceNo=%s page=%d pageSize=%d err=%v", deviceNo, page, pageSize, err)
+		return a.local.ListHistoryPage(ctx, deviceNo, page, pageSize)
+	}
+	return result, err
 }
 
 func (a *switchAdapter) GetLatestHistory(ctx context.Context, deviceNo string) (entity.History, error) {

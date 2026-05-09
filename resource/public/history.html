@@ -78,6 +78,9 @@
         .form-grid input,.form-grid select{padding:8px;border:1px solid var(--accent-soft);border-radius:8px}
         .required::after{content:' *';color:#c1121f}
         .field-error{font-size:12px;color:#c1121f;display:none}
+        .pagination-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:10px}
+        .pagination-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+        .pagination-actions select{padding:6px 8px;border:1px solid var(--accent-soft);border-radius:8px;background:#fff}
     </style>
 </head>
 <body>
@@ -142,6 +145,22 @@
                 <tbody id="historyBody"></tbody>
             </table>
         </div>
+        <div class="pagination-bar muted">
+            <div id="historyPaginationStatus">共 0 条</div>
+            <div class="pagination-actions">
+                <label>每页
+                    <select id="historyPageSizeSelect">
+                        <option value="10">10</option>
+                        <option value="20" selected>20</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                    </select>
+                    条
+                </label>
+                <button id="historyPrevBtn" class="btn-secondary" type="button">上一页</button>
+                <button id="historyNextBtn" class="btn-secondary" type="button">下一页</button>
+            </div>
+        </div>
     </div>
 
     <div class="card">
@@ -195,6 +214,10 @@
         const chatReplyWrap = document.getElementById('chatReplyWrap');
         const addHistoryBtn = document.getElementById('addHistoryBtn');
         const refreshHistoryBtn = document.getElementById('refreshHistoryBtn');
+        const historyPaginationStatus = document.getElementById('historyPaginationStatus');
+        const historyPageSizeSelect = document.getElementById('historyPageSizeSelect');
+        const historyPrevBtn = document.getElementById('historyPrevBtn');
+        const historyNextBtn = document.getElementById('historyNextBtn');
         const historyModal = document.getElementById('historyModal');
         const historyModalTitle = document.getElementById('historyModalTitle');
         const historyModalSubmitBtn = document.getElementById('historyModalSubmitBtn');
@@ -213,6 +236,9 @@
         let historyModalMode = 'add';
         let editingHistoryId = 0;
         let currentRows = [];
+        let historyPage = 1;
+        let historyPageSize = 20;
+        let historyTotal = 0;
         let eventOptions = [];
         let currentSex = 1;
         let voiceWS = null;
@@ -449,6 +475,36 @@
             return [];
         }
 
+        function asPagedListPayload(d){
+            if(Array.isArray(d)){
+                return {
+                    list: d,
+                    total: d.length,
+                    page: 1,
+                    pageSize: d.length || historyPageSize
+                };
+            }
+            if(d && Array.isArray(d.list)){
+                return {
+                    list: d.list,
+                    total: Number(d.total || d.list.length || 0),
+                    page: Math.max(1, Number(d.page || historyPage || 1)),
+                    pageSize: Math.max(1, Number(d.pageSize || historyPageSize || 20))
+                };
+            }
+            return {list: [], total: 0, page: 1, pageSize: historyPageSize};
+        }
+
+        function renderHistoryPagination(){
+            const totalPages = historyTotal > 0 ? Math.ceil(historyTotal / historyPageSize) : 0;
+            historyPaginationStatus.textContent = totalPages > 0
+                ? '共 ' + historyTotal + ' 条，第 ' + historyPage + ' / ' + totalPages + ' 页'
+                : '共 0 条';
+            historyPrevBtn.disabled = historyPage <= 1;
+            historyNextBtn.disabled = totalPages === 0 || historyPage >= totalPages;
+            historyPageSizeSelect.value = String(historyPageSize);
+        }
+
         async function api(path){
             const res = await fetch(path);
             const data = await res.json().catch(() => ({}));
@@ -488,8 +544,23 @@
         }
 
         async function loadHistory(){
-            const rows = asListPayload(await api('/device/history/api/list?deviceNo=' + encodeURIComponent(deviceNo)));
+            const query = new URLSearchParams({
+                deviceNo,
+                page: String(historyPage),
+                pageSize: String(historyPageSize)
+            });
+            const payload = asPagedListPayload(await api('/device/history/api/list?' + query.toString()));
+            const rows = payload.list || [];
+            historyTotal = Number(payload.total || 0);
+            historyPage = Math.max(1, Number(payload.page || historyPage));
+            historyPageSize = Math.max(1, Number(payload.pageSize || historyPageSize));
+            const totalPages = historyTotal > 0 ? Math.ceil(historyTotal / historyPageSize) : 0;
+            if(rows.length === 0 && historyTotal > 0 && totalPages > 0 && historyPage > totalPages){
+                historyPage = totalPages;
+                return loadHistory();
+            }
             currentRows = rows || [];
+            renderHistoryPagination();
             historyBody.innerHTML = '';
             if(!rows || rows.length === 0){
                 historyBody.innerHTML = '<tr><td colspan="7">暂无历史数据</td></tr>';
@@ -539,6 +610,9 @@
                     if(!confirm('确认删除该历史事件吗？')){ return; }
                     try{
                         await apiPost('/device/history/api/event/delete', {id, deviceNo});
+                        if(currentRows.length === 1 && historyPage > 1){
+                            historyPage -= 1;
+                        }
                         await loadHistory();
                     }catch(e){
                         meta.textContent = '删除历史事件失败：' + (e.message || '未知错误');
@@ -676,6 +750,7 @@
                     await apiPost('/device/history/api/event/update', Object.assign({id: editingHistoryId}, payload));
                 }else{
                     await apiPost('/device/history/api/event/add', payload);
+                    historyPage = 1;
                 }
                 closeHistoryModal();
                 await loadHistory();
@@ -729,6 +804,40 @@
                 meta.textContent = '历史事件已刷新';
             }catch(e){
                 meta.textContent = '刷新历史事件失败：' + (e.message || '未知错误');
+            }
+        });
+        historyPageSizeSelect.addEventListener('change', async () => {
+            historyPageSize = Math.max(1, Number(historyPageSizeSelect.value || 20));
+            historyPage = 1;
+            try{
+                await loadHistory();
+            }catch(e){
+                meta.textContent = '切换分页失败：' + (e.message || '未知错误');
+            }
+        });
+        historyPrevBtn.addEventListener('click', async () => {
+            if(historyPage <= 1){
+                return;
+            }
+            historyPage -= 1;
+            try{
+                await loadHistory();
+            }catch(e){
+                historyPage += 1;
+                meta.textContent = '上一页加载失败：' + (e.message || '未知错误');
+            }
+        });
+        historyNextBtn.addEventListener('click', async () => {
+            const totalPages = historyTotal > 0 ? Math.ceil(historyTotal / historyPageSize) : 0;
+            if(totalPages === 0 || historyPage >= totalPages){
+                return;
+            }
+            historyPage += 1;
+            try{
+                await loadHistory();
+            }catch(e){
+                historyPage -= 1;
+                meta.textContent = '下一页加载失败：' + (e.message || '未知错误');
             }
         });
         historyModalCancelBtn.addEventListener('click', closeHistoryModal);

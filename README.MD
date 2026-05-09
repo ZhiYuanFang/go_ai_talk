@@ -122,11 +122,12 @@
 
 - **Method**: `GET`
 - **Path**: `/device/history/api/list`
-- **Query**: `deviceNo`
+- **Query**: `deviceNo`, `page`, `pageSize`
+- **Response**: `list`, `total`, `page`, `pageSize`
 
 示例：
 
-`/device/history/api/list?deviceNo=device-001`
+`/device/history/api/list?deviceNo=device-001&page=1&pageSize=20`
 
 #### 3. 获取设备成长建议历史
 

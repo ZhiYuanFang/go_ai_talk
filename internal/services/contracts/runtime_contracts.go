@@ -77,8 +77,18 @@ type DeviceAdminContract interface {
 	ApplyDeepSeekEventExtractPersistence(ctx context.Context, out entity.Event) (entity.Event, string, error)
 }
 
+// HistoryPageResult 表示历史记录分页结果。
+// 该结构只服务于外部历史列表接口，避免影响内部全量读取场景。
+type HistoryPageResult struct {
+	List     []entity.History
+	Total    int
+	Page     int
+	PageSize int
+}
+
 type DeviceHistoryContract interface {
 	ListHistory(ctx context.Context, deviceNo string) ([]entity.History, error)
+	ListHistoryPage(ctx context.Context, deviceNo string, page int, pageSize int) (HistoryPageResult, error)
 	GetLatestHistory(ctx context.Context, deviceNo string) (entity.History, error)
 	EndLatestHistoryIfMatch(ctx context.Context, deviceNo string, eventID int64, endTime string) (bool, error)
 	ListSuggest(ctx context.Context, deviceNo string) ([]entity.Suggest, error)

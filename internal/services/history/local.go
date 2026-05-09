@@ -10,6 +10,7 @@ import (
 	"hello/internal/dao"
 	"hello/internal/model/entity"
 	"hello/internal/platform/eventkit"
+	contracts "hello/internal/services/contracts"
 	"hello/internal/services/workeroutbox"
 
 	"github.com/gogf/gf/v2/database/gdb"
@@ -23,6 +24,10 @@ var historyCache = newCacheRepo()
 
 func (s *localService) ListHistory(ctx context.Context, deviceNo string) ([]entity.History, error) {
 	return ListDeviceHistory(ctx, deviceNo)
+}
+
+func (s *localService) ListHistoryPage(ctx context.Context, deviceNo string, page int, pageSize int) (contracts.HistoryPageResult, error) {
+	return ListDeviceHistoryPage(ctx, deviceNo, page, pageSize)
 }
 
 func (s *localService) GetLatestHistory(ctx context.Context, deviceNo string) (entity.History, error) {
@@ -105,6 +110,65 @@ func ListDeviceHistory(ctx context.Context, deviceNo string) ([]entity.History, 
 	}
 	_ = historyCache.setHistoryList(ctx, deviceNo, items)
 	return items, nil
+}
+
+// ListDeviceHistoryPage 分页查询设备历史记录。
+// 外部列表页只需要当前页数据与总数，避免复用全量缓存返回过多数据。
+func ListDeviceHistoryPage(ctx context.Context, deviceNo string, page int, pageSize int) (contracts.HistoryPageResult, error) {
+	deviceNo = strings.TrimSpace(deviceNo)
+	if page <= 0 {
+		page = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 20
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+	if deviceNo == "" {
+		return contracts.HistoryPageResult{List: []entity.History{}, Total: 0, Page: page, PageSize: pageSize}, nil
+	}
+	total, err := dao.History.Ctx(ctx).
+		Where(dao.History.Columns().DeviceNo, deviceNo).
+		Count()
+	if err != nil {
+		return contracts.HistoryPageResult{}, err
+	}
+	if total == 0 {
+		return contracts.HistoryPageResult{List: []entity.History{}, Total: 0, Page: page, PageSize: pageSize}, nil
+	}
+	rows, err := dao.History.Ctx(ctx).
+		Fields(
+			dao.History.Columns().Id,
+			dao.History.Columns().DeviceNo,
+			dao.History.Columns().EventId,
+			dao.History.Columns().EventName,
+			dao.History.Columns().EventNumber,
+			dao.History.Columns().StartTime,
+			dao.History.Columns().EndTime,
+			dao.History.Columns().Remark,
+		).
+		Where(dao.History.Columns().DeviceNo, deviceNo).
+		OrderDesc(dao.History.Columns().Id).
+		Page(page, pageSize).
+		All()
+	if err != nil {
+		return contracts.HistoryPageResult{}, err
+	}
+	items := make([]entity.History, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, entity.History{
+			Id:          row[dao.History.Columns().Id].Int64(),
+			DeviceNo:    row[dao.History.Columns().DeviceNo].String(),
+			EventId:     row[dao.History.Columns().EventId].Int64(),
+			EventName:   row[dao.History.Columns().EventName].String(),
+			EventNumber: row[dao.History.Columns().EventNumber].Int64(),
+			StartTime:   row[dao.History.Columns().StartTime].String(),
+			EndTime:     row[dao.History.Columns().EndTime].String(),
+			Remark:      row[dao.History.Columns().Remark].String(),
+		})
+	}
+	return contracts.HistoryPageResult{List: items, Total: total, Page: page, PageSize: pageSize}, nil
 }
 
 func GetLatestDeviceHistory(ctx context.Context, deviceNo string) (entity.History, error) {
