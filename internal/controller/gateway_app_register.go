@@ -30,7 +30,9 @@ func RegisterGatewayAppHTTP(s *ghttp.Server) {
 
 	s.BindHandler("/device/app/ws/history", gatewayAppHistoryWS)
 
-	s.Group("/device/app/api", func(group *ghttp.RouterGroup) {
+	// 必须使用前缀为 "/" 的 Group：`g.Meta` 的 path 已是绝对路径（如 /device/app/api/login），
+	// 若再套 Group("/device/app/api") 会拼接成 /device/app/api/device/app/api/login 导致 404。
+	s.Group("/", func(group *ghttp.RouterGroup) {
 		group.Middleware(ghttp.MiddlewareHandlerResponse)
 		group.Bind(NewGatewayAppCtrl())
 	})
