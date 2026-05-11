@@ -25,12 +25,12 @@
 
 ### Requirement: 登录与令牌仅由 gateway-app 签发
 
-系统 SHALL 在 gateway-app-server 上暴露 `POST /device/app/api/login`，其通过 HTTP 调用 device-service 的 `POST /device/wx/api/login` 获取业务字段后签发 access_token 与 refresh_token；其中 **access_token SHALL 为纯 JWT**，其载荷 **MUST** 包含标准 claim **`sub`** 且其值等于 wx 表主键 id（与 device 返回的 wxId 一致），**MUST** 包含 **`iat`** 与 **`exp`**；**refresh_token SHALL NOT** 为 JWT，SHALL 为高熵不透明串并与 Redis 会话绑定以便刷新与吊销。
+系统 SHALL 在 gateway-app-server 上暴露 `POST /device/app/api/login`，其通过 HTTP 调用 device-service 的 `POST /device/app/api/user/login` 获取业务字段后签发 access_token 与 refresh_token；其中 **access_token SHALL 为纯 JWT**，其载荷 **MUST** 包含标准 claim **`sub`** 且其值等于 wx 表主键 id（与 device 返回的 wxId 一致），**MUST** 包含 **`iat`** 与 **`exp`**；**refresh_token SHALL NOT** 为 JWT，SHALL 为高熵不透明串并与 Redis 会话绑定以便刷新与吊销。
 
 #### Scenario: 登录成功
 
 - **WHEN** App 调用 gateway-app 的登录接口且 device 返回有效业务结果
-- **THEN** 响应 SHALL 包含 access_token 与 refresh_token（及 device 返回的业务字段），且 access_token SHALL 可被验证为结构正确的 JWT，且 device-service SHALL NOT 在 `POST /device/wx/api/login` 响应中返回 JWT 形式的 access_token
+- **THEN** 响应 SHALL 包含 access_token 与 refresh_token（及 device 返回的业务字段），且 access_token SHALL 可被验证为结构正确的 JWT，且 device-service SHALL NOT 在 `POST /device/app/api/user/login` 响应中返回 JWT 形式的 access_token
 
 ### Requirement: 刷新令牌接口
 
@@ -75,7 +75,7 @@
 
 ### Requirement: 鉴权白名单
 
-系统 SHALL 对 `POST /device/wx/api/login`（若经网关暴露）、gateway-app 的登录与刷新接口、版本检查（若产品要求公开）、WebSocket 握手路径等无需 Bearer 的路径配置中间件白名单，使其不触发 Bearer 解析失败。
+系统 SHALL 对 `POST /device/app/api/user/login`（经 device-service 暴露；与网关聚合 `POST /device/app/api/login` 区分）、gateway-app 的登录与刷新接口、版本检查（若产品要求公开）、WebSocket 握手路径等无需 Bearer 的路径配置中间件白名单，使其不触发 Bearer 解析失败。
 
 #### Scenario: 无令牌访问登录
 

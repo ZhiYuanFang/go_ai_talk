@@ -5,8 +5,8 @@
 ## What Changes
 
 - 新增 **`gateway-app-server`** 可执行入口与独立配置（含 **`ai_voice_app`** 库、`version` 表），默认行为与现有 gateway 对齐：静态资源、history/voice/device 的条件反向代理、横切中间件；在此基础上增加 **Bearer 鉴权**（**access_token 为纯 JWT**，载荷 `sub` 对应 `wx.id`）、解析后调用 device 获取 `wxCode` 并为下游请求附加 **`X-Internal-Wx-Code`**；鉴权白名单覆盖登录、刷新、device 微信登录等无令牌路径。
-- **gateway-app** 暴露 **`POST /device/app/api/login`**：内部调用 device 的 **`POST /device/wx/api/login`**（仅业务字段），再在网关签发 **access_token（纯 JWT）/ refresh_token（不透明 + Redis）**（刷新逻辑与 Redis 会话仅存于 gateway-app）。
-- **device-service**：`wx` 表相关接口——绑定、自动保存画像并返回设备号、按 wxCode 查设备号、按 id 查 wxCode（供网关解析）；**`POST /device/wx/api/login`** 仅返回业务结果（如 wxId、wxCode、device_no、是否新用户等），不签发 JWT。
+- **gateway-app** 暴露 **`POST /device/app/api/login`**：内部调用 device 的 **`POST /device/app/api/user/login`**（仅业务字段），再在网关签发 **access_token（纯 JWT）/ refresh_token（不透明 + Redis）**（刷新逻辑与 Redis 会话仅存于 gateway-app）。
+- **device-service**：App 用户域接口路径统一在 **`/device/app/api/user/*`**（如 get/save/bindwx/auto_save、login、detail、internal/by-id 等）；**`POST /device/app/api/user/login`** 仅返回业务结果（如 wxId、wxCode、device_no、是否新用户等），不签发 JWT。
 - **history-service**：新增 **`GET /device/history/api/piece`**（按 eventId、时间区间、deviceNo 返回记录）；在历史 **增删改** 成功后 **Redis PUBLISH** 通知网关侧 WS 下发（payload 含操作类型与消息体字段）。
 - **gateway-app** 新增 **历史 WebSocket**：握手后首条文本帧 JSON 使用 snake_case 的 `access_token`（值为 **JWT**）；校验 **JWT 与 device_no 绑定关系** 后订阅；后台订阅 Redis 频道并向对应 `device_no` 连接广播。
 - **Redis**：id→wxCode、版本检查、`piece` 查询结果、refresh 旋转等按设计使用 **`internal/platform/cachekit`** 或同风格封装；Pub/Sub 订阅可使用 `g.Redis()` 独立连接（与 KV 同集群配置）。

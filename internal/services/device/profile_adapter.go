@@ -78,7 +78,7 @@ func (r *remoteDeviceProfileAdapter) GetProfile(ctx context.Context, deviceNo st
 	if r.baseURL == "" {
 		return DeviceProfileInfo{}, fmt.Errorf("device profile remote adapter not configured: missing %s", deviceProfileRemoteURLEnv)
 	}
-	u, err := url.Parse(r.baseURL + "/device/profile/api/get")
+	u, err := url.Parse(r.baseURL + "/device/app/api/user/get")
 	if err != nil {
 		return DeviceProfileInfo{}, err
 	}

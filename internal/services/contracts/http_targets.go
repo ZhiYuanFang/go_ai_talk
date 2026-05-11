@@ -85,12 +85,12 @@ func (t HTTPTargets) HistoryEventEndLatestPath() string {
 }
 
 func (t HTTPTargets) DeviceProfileGetPath() string {
-	return "/device/profile/api/get"
+	return "/device/app/api/user/get"
 }
 
 // DeviceProfileSavePath 保存设备画像（生日/性别），由 device-service 权威落库。
 func (t HTTPTargets) DeviceProfileSavePath() string {
-	return "/device/profile/api/save"
+	return "/device/app/api/user/save"
 }
 
 // DeviceInternalEventOptionsPath 内部查询事件字典（无需管理口令，依赖网络隔离）。

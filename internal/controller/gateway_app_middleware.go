@@ -70,13 +70,14 @@ func installGatewayAppBearerMiddleware(s *ghttp.Server) {
 }
 
 func gatewayAppPathNeedsBearer(path string) bool {
-	if path == "/device/wx/api/detail" {
-		return true
-	}
 	if strings.HasPrefix(path, "/device/history/api/") {
 		return true
 	}
-	if strings.HasPrefix(path, "/device/profile/api/") {
+	// App 用户域：除设备 wx 业务登录与内部 id→wxCode 外，经网关访问时均需 Bearer（路径与聚合登录 /device/app/api/login 区分）
+	if strings.HasPrefix(path, "/device/app/api/user/") {
+		if path == "/device/app/api/user/login" || strings.HasPrefix(path, "/device/app/api/user/internal/") {
+			return false
+		}
 		return true
 	}
 	if strings.HasPrefix(path, "/device/admin/api/") {

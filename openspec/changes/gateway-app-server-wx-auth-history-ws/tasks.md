@@ -7,12 +7,13 @@
 ## 2. device-service：wx 与契约
 
 - [x] 2.1 为 wx 表补充 dao/entity（若尚未生成）及中文注释
-- [x] 2.2 实现 `POST /device/wx/api/login`（仅业务返回，无 JWT）
-- [x] 2.3 实现 `POST /device/profile/api/bindwx`（Header `X-Internal-Wx-Code`，Body `deviceNo`）
-- [x] 2.4 实现 `POST /device/profile/api/auto_save`（Header wxCode，Body birthday/sex，出参 device_no；未绑定时生成 6 位大写 A–Z 随机 device_no，**全局不得与已有 device_no 冲突**，依赖 UNIQUE + 冲突重试或先查后插，创建设备并绑定 wx）
-- [x] 2.5 实现 `GET /device/wx/api/detail`（Header wxCode，出参 device_no）
-- [x] 2.6 实现内部只读 `id → wxCode` 接口供网关调用，并限制为内网/共享密钥策略
+- [x] 2.2 实现 `POST /device/app/api/user/login`（仅业务返回，无 JWT；与网关 `POST /device/app/api/login` 区分）
+- [x] 2.3 实现 `POST /device/app/api/user/bindwx`（Header `X-Internal-Wx-Code`，Body `deviceNo`）
+- [x] 2.4 实现 `POST /device/app/api/user/auto_save`（Header wxCode，Body birthday/sex，出参 device_no；未绑定时生成 6 位大写 A–Z 随机 device_no，**全局不得与已有 device_no 冲突**，依赖 UNIQUE + 冲突重试或先查后插，创建设备并绑定 wx）
+- [x] 2.5 实现 `GET /device/app/api/user/detail`（Header wxCode，出参 device_no）
+- [x] 2.6 实现内部只读 `GET /device/app/api/user/internal/by-id`（`id → wxCode`）供网关调用，并限制为内网/共享密钥策略
 - [x] 2.7 为上述读路径接入 Redis 缓存与写路径失效（`cachekit`）
+- [x] 2.8 将 device 侧 App 用户域 API 与 OpenAPI 定义合并为 `api/v1/device_app_user_http.go`、`internal/controller/device_app_user.go`（路径扁平在 **`/device/app/api/user/*`**）；gateway-app 设备域反向代理使用同一前缀透传，避免与网关本机 `/device/app/api/login` 等冲突
 
 ## 3. history-service：piece 与发布
 

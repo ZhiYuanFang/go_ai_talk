@@ -2,7 +2,7 @@
 
 ### Requirement: 微信登录仅返回业务字段
 
-device-service SHALL 提供 `POST /device/wx/api/login`，接受 `wxCode` 与 `platform`；若 wx 记录不存在则创建；响应 SHALL 包含至少 wx 表主键 id（wxId）、wxCode、是否新用户等业务字段，以及当已绑定设备时的 device_no；响应 SHALL NOT 包含由 gateway-app 签发的 access_token 或 refresh_token。
+device-service SHALL 提供 `POST /device/app/api/user/login`（设备 wx 业务登录，与网关聚合 `POST /device/app/api/login` 区分），接受 `wxCode` 与 `platform`；若 wx 记录不存在则创建；响应 SHALL 包含至少 wx 表主键 id（wxId）、wxCode、是否新用户等业务字段，以及当已绑定设备时的 device_no；响应 SHALL NOT 包含由 gateway-app 签发的 access_token 或 refresh_token。
 
 #### Scenario: 新用户注册业务结果
 
@@ -16,7 +16,7 @@ device-service SHALL 提供 `POST /device/wx/api/login`，接受 `wxCode` 与 `p
 
 ### Requirement: 绑定设备与 wx
 
-device-service SHALL 提供 `POST /device/profile/api/bindwx`，从请求头读取 `X-Internal-Wx-Code` 作为 wxCode，从 JSON body 读取 `deviceNo`，并将二者写入 ai_voice_device 库中的 wx 表（或等价绑定语义）。
+device-service SHALL 提供 `POST /device/app/api/user/bindwx`，从请求头读取 `X-Internal-Wx-Code` 作为 wxCode，从 JSON body 读取 `deviceNo`，并将二者写入 ai_voice_device 库中的 wx 表（或等价绑定语义）。
 
 #### Scenario: 绑定成功
 
@@ -25,7 +25,7 @@ device-service SHALL 提供 `POST /device/profile/api/bindwx`，从请求头读�
 
 ### Requirement: 自动保存画像
 
-device-service SHALL 提供 `POST /device/profile/api/auto_save`，从请求头读取 `X-Internal-Wx-Code`，从 body 读取 `birthday` 与 `sex`，并 SHALL 返回 `device_no`。设备域中 `device_no` SHALL 在**全表范围内唯一**（与现有 `user`/设备表唯一约束一致）。当该 wx 尚未绑定设备时，系统 SHALL 在设备域注册表中 **新建一条设备记录**，其 `device_no` 为 **6 个字符**，且每个字符均为 **大写英文字母 A–Z** 的随机取值，且该值 SHALL **不与任何已存在的** `device_no` 重复；将该 `device_no` 与当前 wx 绑定后再写入画像（生日、性别），语义与现有用户画像保存能力对齐。当该 wx **已绑定** `device_no` 时，系统 SHALL **仅更新**画像并返回**已有**的 `device_no`，且 SHALL NOT 更换设备号。
+device-service SHALL 提供 `POST /device/app/api/user/auto_save`，从请求头读取 `X-Internal-Wx-Code`，从 body 读取 `birthday` 与 `sex`，并 SHALL 返回 `device_no`。设备域中 `device_no` SHALL 在**全表范围内唯一**（与现有 `user`/设备表唯一约束一致）。当该 wx 尚未绑定设备时，系统 SHALL 在设备域注册表中 **新建一条设备记录**，其 `device_no` 为 **6 个字符**，且每个字符均为 **大写英文字母 A–Z** 的随机取值，且该值 SHALL **不与任何已存在的** `device_no` 重复；将该 `device_no` 与当前 wx 绑定后再写入画像（生日、性别），语义与现有用户画像保存能力对齐。当该 wx **已绑定** `device_no` 时，系统 SHALL **仅更新**画像并返回**已有**的 `device_no`，且 SHALL NOT 更换设备号。
 
 #### Scenario: 无设备号时创建并绑定
 
@@ -44,7 +44,7 @@ device-service SHALL 提供 `POST /device/profile/api/auto_save`，从请求头�
 
 ### Requirement: 按 wxCode 查询设备号
 
-device-service SHALL 提供 `GET /device/wx/api/detail`，从请求头读取 `X-Internal-Wx-Code`，并 SHALL 返回绑定的 `device_no`（若未绑定则返回约定空或错误语义）。
+device-service SHALL 提供 `GET /device/app/api/user/detail`，从请求头读取 `X-Internal-Wx-Code`，并 SHALL 返回绑定的 `device_no`（若未绑定则返回约定空或错误语义）。
 
 #### Scenario: 已绑定返回设备号
 
@@ -53,7 +53,7 @@ device-service SHALL 提供 `GET /device/wx/api/detail`，从请求头读取 `X-
 
 ### Requirement: 按主键 id 解析 wxCode（内部）
 
-device-service SHALL 提供仅供内网或网关调用的只读接口，根据 wx 表主键 id 返回对应 wxCode，以便 gateway-app 在仅持有 access 内 id 时解析 wxCode；该接口 SHALL 不对外网匿名开放（依赖部署网络或额外共享密钥策略）。
+device-service SHALL 提供仅供内网或网关调用的只读接口（例如 `GET /device/app/api/user/internal/by-id`），根据 wx 表主键 id 返回对应 wxCode，以便 gateway-app 在仅持有 access 内 id 时解析 wxCode；该接口 SHALL 不对外网匿名开放（依赖部署网络或额外共享密钥策略）。
 
 #### Scenario: 有效 id
 

@@ -32,7 +32,7 @@ gatewayApp:
   jwtSecret: "gateway-app-change-me-in-production"
   accessTtlSeconds: 1800
   refreshTtlSeconds: 604800
-  # 调用 device /device/wx/api/internal/by-id 时携带，须与 device 环境 DEVICE_GATEWAY_INTERNAL_SECRET 一致
+  # 调用 device GET /device/app/api/user/internal/by-id 时携带，须与 device 环境 DEVICE_GATEWAY_INTERNAL_SECRET 一致
   deviceInternalSecret: "gateway-internal-change-me"
   # 可选：缓存 id→wxCode 秒数
   wxIdCodeCacheSeconds: 120

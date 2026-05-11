@@ -56,7 +56,7 @@
 			<h2>2. 绑定设备 & 关联宝宝</h2>
 			<label>deviceNo（须已在 device 注册）</label>
 			<input id="deviceNo" type="text" placeholder="ABCDEF" />
-			<button type="button" id="btnBind">POST /device/profile/api/bindwx</button>
+			<button type="button" id="btnBind">POST /device/app/api/user/bindwx</button>
 			<div class="row2">
 				<div>
 					<label>生日 birthday（字符串，与画像接口一致）</label>
@@ -67,7 +67,7 @@
 					<select id="sex"><option value="0">0 女</option><option value="1">1 男</option></select>
 				</div>
 			</div>
-			<button type="button" id="btnAutoSave">POST /device/profile/api/auto_save</button>
+			<button type="button" id="btnAutoSave">POST /device/app/api/user/auto_save</button>
 			<p class="hint">未绑设备时 auto_save 会生成 6 位大写 device_no；已绑则只更新画像。</p>
 			<div id="msgProfile" class="log"></div>
 		</div>
@@ -178,7 +178,7 @@
 
 	$('btnBind').onclick = async () => {
 		try{
-			await apiJson('/device/profile/api/bindwx', {
+			await apiJson('/device/app/api/user/bindwx', {
 				method:'POST',
 				body: JSON.stringify({ deviceNo: $('deviceNo').value.trim() })
 			});
@@ -187,7 +187,7 @@
 	};
 	$('btnAutoSave').onclick = async () => {
 		try{
-			const d = await apiJson('/device/profile/api/auto_save', {
+			const d = await apiJson('/device/app/api/user/auto_save', {
 				method:'POST',
 				body: JSON.stringify({ birthday: $('birthday').value.trim(), sex: Number($('sex').value) })
 			});

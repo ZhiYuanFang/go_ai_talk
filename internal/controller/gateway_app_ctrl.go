@@ -29,7 +29,7 @@ func (c *GatewayAppCtrl) Login(ctx context.Context, req *v1.GatewayAppLoginReq) 
 	if base == "" {
 		return nil, gerror.NewCode(gcode.CodeInvalidConfiguration, "DEVICE_SERVICE_URL 未配置")
 	}
-	url := strings.TrimRight(base, "/") + "/device/wx/api/login"
+	url := strings.TrimRight(base, "/") + "/device/app/api/user/login"
 	resp, err := gclient.New().ContentJson().Post(ctx, url, g.Map{
 		"wxCode":   strings.TrimSpace(req.WxCode),
 		"platform": strings.TrimSpace(req.Platform),

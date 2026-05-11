@@ -34,7 +34,7 @@ func FetchWxCodeByID(ctx context.Context, wxID int64) (string, error) {
 	if secret == "" {
 		secret = strings.TrimSpace(g.Cfg().MustGet(ctx, "gatewayApp.deviceInternalSecret").String())
 	}
-	url := fmt.Sprintf("%s/device/wx/api/internal/by-id?id=%d", base, wxID)
+	url := fmt.Sprintf("%s/device/app/api/user/internal/by-id?id=%d", base, wxID)
 	resp, err := gclient.New().SetHeader("X-Gateway-Internal-Secret", secret).Get(ctx, url)
 	if err != nil {
 		return "", err
@@ -52,7 +52,7 @@ func FetchWxDeviceNo(ctx context.Context, wxCode string) (string, error) {
 	if base == "" {
 		return "", fmt.Errorf("DEVICE_SERVICE_URL 未配置")
 	}
-	url := fmt.Sprintf("%s/device/wx/api/detail", base)
+	url := fmt.Sprintf("%s/device/app/api/user/detail", base)
 	resp, err := gclient.New().SetHeader("X-Internal-Wx-Code", wxCode).Get(ctx, url)
 	if err != nil {
 		return "", err

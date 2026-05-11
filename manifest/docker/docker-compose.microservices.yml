@@ -167,7 +167,7 @@ services:
       MQ_HTTP_API_BASE: "http://rabbitmq:15672/api"
       MQ_USER: "guest"
       MQ_PASSWORD: "guest"
-      # 与 gateway-app 配置 gatewayApp.deviceInternalSecret 保持一致，供 /device/wx/api/internal/by-id 校验
+      # 与 gateway-app 配置 gatewayApp.deviceInternalSecret 保持一致，供 GET /device/app/api/user/internal/by-id 校验
       DEVICE_GATEWAY_INTERNAL_SECRET: "${DEVICE_GATEWAY_INTERNAL_SECRET:-gateway-internal-change-me}"
     ports:
       - "9803:9803"

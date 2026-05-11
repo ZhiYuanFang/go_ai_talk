@@ -10,7 +10,7 @@
 
 - gateway-app-server 与现 gateway **能力对齐**（静态页、领域代理模式、跨切中间件），并增加 **Bearer → wx.id → wxCode → `X-Internal-Wx-Code`** 的代理链增强。
 - **access_token 为纯 JWT**（RFC 7519 JWS 紧凑序列化），载荷经签名校验后可得到 **`wx` 表主键 id**（见 D9）；网关通过 **device 只读契约** 解析 `wxCode`，并对缓存做短 TTL 与写路径失效。
-- **access / refresh 的生成、校验、刷新接口仅在 gateway-app**；device **`/device/wx/api/login`** 只处理 wx 行与业务返回字段。
+- **access / refresh 的生成、校验、刷新接口仅在 gateway-app**；device **`POST /device/app/api/user/login`** 只处理 wx 行与业务返回字段（与网关聚合 **`POST /device/app/api/login`** 路径区分）。
 - **history CUD** 后 **PUBLISH**；gateway-app **SUBSCRIBE** 并向已认证 **device_no** 的 WS 客户端推送含 **create/update/delete** 的消息体。
 - **Redis**：KV 场景优先 `cachekit`；Pub/Sub 使用与现网相同的 Redis 配置族，订阅逻辑在 gateway-app 进程生命周期内管理（启动订阅、退出取消）。
 
@@ -29,7 +29,7 @@
 
 ### D2：登录与令牌拆分
 
-- **决策**：**device** `POST /device/wx/api/login` 返回 **wxId、wxCode、device_no（可空）、is_new_user** 等；**gateway-app** `POST /device/app/api/login` 调用 device 后签发 **access_token**（**纯 JWT**，见 D9）与 **refresh_token**（高熵随机串 + Redis 存储，**非 JWT**）；刷新接口例如 `POST /device/app/api/token/refresh`（路径在 tasks 中最终确定，前缀固定为 `/device/app/api/`）。
+- **决策**：**device** `POST /device/app/api/user/login` 返回 **wxId、wxCode、device_no（可空）、is_new_user** 等；**gateway-app** `POST /device/app/api/login` 调用 device 后签发 **access_token**（**纯 JWT**，见 D9）与 **refresh_token**（高熵随机串 + Redis 存储，**非 JWT**）；刷新接口例如 `POST /device/app/api/token/refresh`（路径在 tasks 中最终确定，前缀固定为 `/device/app/api/`）。
 - **备选**：由 device 直接返回 JWT（已拒绝，与「签发仅在 gateway-app」冲突）。
 
 ### D3：下游注入 wxCode
@@ -39,7 +39,7 @@
 
 ### D4：device 提供 id → wxCode
 
-- **决策**：新增 **仅内网** 可调用的只读接口（例如 `GET /device/wx/api/internal/by-id` 或等价命名），入参 **id**，出参 **wxCode**；网关调用时携带可选 **`X-Internal-Gateway`** 或依赖网络策略；失败时中间件返回 401/403 与明确错误码。
+- **决策**：新增 **仅内网** 可调用的只读接口 **`GET /device/app/api/user/internal/by-id`**，入参 **id**，出参 **wxCode**；网关调用时携带可选 **`X-Internal-Gateway`** 或依赖网络策略；失败时中间件返回 401/403 与明确错误码。
 - **缓存**：`cachekit.SetEX`，TTL 建议 60–300s；**bindwx / 更新 wx 行** 后对该 id（及 wxCode）做 **Del** 或版本键失效。
 
 ### D5：历史 WS 与授权
@@ -58,7 +58,7 @@
 
 ### D8：`auto_save` 无设备号时的创建设备
 
-- **决策**：`POST /device/profile/api/auto_save` 在处理请求时，若当前 wx（由 Header `X-Internal-Wx-Code` 识别）**尚未绑定** `device_no`，则 SHALL **生成一个新的设备号**：长度为 **6** 的字符串，字符集为 **大写英文字母 A–Z**，在 `user`（或项目既有的设备注册表）中 **插入新设备行**；将该 `device_no` 与 wx 行**绑定**；再写入画像（`birthday`、`sex`，语义与现有 `SaveUserProfile` 对齐）。若 wx **已绑定** `device_no`，则 SHALL **不重新生成**设备号，仅更新画像并返回已有 `device_no`。
+- **决策**：`POST /device/app/api/user/auto_save` 在处理请求时，若当前 wx（由 Header `X-Internal-Wx-Code` 识别）**尚未绑定** `device_no`，则 SHALL **生成一个新的设备号**：长度为 **6** 的字符串，字符集为 **大写英文字母 A–Z**，在 `user`（或项目既有的设备注册表）中 **插入新设备行**；将该 `device_no` 与 wx 行**绑定**；再写入画像（`birthday`、`sex`，语义与现有 `SaveUserProfile` 对齐）。若 wx **已绑定** `device_no`，则 SHALL **不重新生成**设备号，仅更新画像并返回已有 `device_no`。
 - **全局唯一**：`device_no` 在设备注册表中 **MUST 全局唯一**；随机生成的候选值 **MUST NOT** 与库中**任意已有** `device_no` 冲突。实现 SHALL 依赖数据库 **UNIQUE 约束**作为最终权威，并在冲突时 **重新生成候选**（或插入前 `SELECT`/存在性检查后再插入，二者至少满足其一且与唯一约束一致）；重试直至成功或达到实现约定的最大次数后返回可观测错误。
 - **理由**：与「登录时尚无 device_no」的 App 流程衔接，设备创建权威仍在 device 域，且不跨库访问 history。
 
