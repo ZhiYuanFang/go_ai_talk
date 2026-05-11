@@ -1,3 +1,6 @@
+# 主网关 gateway-service（:9701）：无业务库；勿在此文件添加 database 段。
+# App 专用网关为独立进程 gateway-app-server，主配置见 config.gateway-app-server.yaml；
+# 该进程读 ai_voice_app，新建实例须在 yaml 的 database.app.link 或环境变量 APP_DB_LINK 中配置库连接（见 docs/runbooks/release-deploy-and-run.md）。
 server:
   address:     ":9701"
   openapiPath: "/api.json"

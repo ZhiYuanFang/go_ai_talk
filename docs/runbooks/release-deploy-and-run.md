@@ -1,10 +1,11 @@
 ## 部署与运行指南（当前微服务形态）
 
-适用范围：gateway / voice-service / device-service / history-service / worker-service。
+适用范围：gateway / **gateway-app** / voice-service / device-service / history-service / worker-service。
 
 ### 1. 配置基线
 
 - `gateway-service`：`manifest/config/config.yaml`（仅网关与公共项，不含数据库）
+- **`gateway-app-server`**：`manifest/config/config.gateway-app-server.yaml`（**含** `database.app`，用于版本检查读 `ai_voice_app`；**新建实例**须在 yaml 中把 `database.app.link` 配为真实 DSN，或通过环境变量 **`APP_DB_LINK`** 覆盖——与 `HISTORY_DB_LINK` 等同理，Compose 已传 `${APP_DB_LINK:-}`，勿漏配导致版本接口连库失败）
 - `voice-service`：`manifest/config/config.voice-service.yaml`
 - `device-service`：`manifest/config/config.device-service.yaml`
 - `history-service`：`manifest/config/config.history-service.yaml`
@@ -48,12 +49,12 @@
 
 2) 准备业务库连接（**强烈建议**）：
 
-- 在 **`manifest/docker/.env.example`** 或复制后的 **`manifest/docker/.env`** 中填写非空的 `HISTORY_DB_LINK`、`DEVICE_DB_LINK`、`VOICE_DB_LINK`、`WORKER_DB_LINK`（Gf DSN）。**MySQL 跑在 Docker 宿主机上**时主机名用 `host.docker.internal`；**MySQL 在其它机器**时改为容器内可达的 RDS/内网地址。  
-- 四个变量**留空**时不会覆盖 yaml，进程仍使用 `config.*.yaml` 里的占位地址（如公网 `120.55.50.105:3306`）。  
+- 在 **`manifest/docker/.env.example`** 或复制后的 **`manifest/docker/.env`** 中填写非空的 `HISTORY_DB_LINK`、`DEVICE_DB_LINK`、`VOICE_DB_LINK`、`WORKER_OUTBOX_DB_LINK`、**`APP_DB_LINK`**（Gf DSN；**含 gateway-app** 连 `ai_voice_app`，与其它服务一样避免新实例沿用 yaml 占位地址）。**MySQL 跑在 Docker 宿主机上**时主机名用 `host.docker.internal`；**MySQL 在其它机器**时改为容器内可达的 RDS/内网地址。  
+- 上述变量**留空**时不会覆盖 yaml，进程仍使用 `config.*.yaml` 里的占位地址（如公网 `120.55.50.105:3306`）；**gateway-app** 另看 `database.app.link`，未设 `APP_DB_LINK` 时同样易踩占位库。  
 - 若你已在 `.env.example` 里写好 link 却仍连旧 IP：① 确认 compose 中 DSN 插值已用**引号**（本仓库已改为 `"${DEVICE_DB_LINK:-}"` 等形式，避免 YAML 把 `mysql:...:3306` 截断）；② 对业务服务 **`docker compose ... up -d --force-recreate`**；③ 容器内 **`printenv DEVICE_DB_LINK`** 核对。  
 - `manifest/docker/docker-compose.microservices.yml` 已为 `history-service`、`voice-service`、`device-service`、`worker` 配置 `extra_hosts: host.docker.internal:host-gateway`（Docker 20.10+），便于同机连库。
 
-3) 启动业务（`--env-file` 指向你实际填写了四个 LINK 的文件即可）：
+3) 启动业务（`--env-file` 指向你实际填写了各 `*_DB_LINK` / `APP_DB_LINK` 的文件即可）：
 > 停止并删除 compose 项目
 > docker compose -f manifest/docker/docker-compose.microservices.yml down
 > 清理 Docker 系统
@@ -68,9 +69,11 @@
 > `docker compose --env-file manifest/docker/.env.example -f manifest/docker/docker-compose.microservices.yml up -d --build device-service`  
 > `docker compose --env-file manifest/docker/.env.example -f manifest/docker/docker-compose.microservices.yml up -d --build voice-service`  
 > `docker compose --env-file manifest/docker/.env.example -f manifest/docker/docker-compose.microservices.yml up -d --build history-service`  
+> `docker compose --env-file manifest/docker/.env.example -f manifest/docker/docker-compose.microservices.yml up -d --build gateway-app`  
 4) 健康检查（自宿主机探测各服务端口映射；**history 对 voice/device 的 HTTP 委派在容器内走服务名**，见上文环境变量）：
 
 - gateway: `http://127.0.0.1:9701/api.json`
+- gateway-app: `http://127.0.0.1:9702/api.json`
 - history-service: `http://127.0.0.1:9801/api.json`
 - voice-service: `http://127.0.0.1:9802/api.json`
 - device-service: `http://127.0.0.1:9803/api.json`
@@ -80,15 +83,15 @@
 
 - 使用 `manifest/deploy/kustomize/overlays/develop`
 - `history-service` Deployment 须包含 `VOICE_SERVICE_URL`、`DEVICE_SERVICE_URL`（与 `base/history-deployment.yaml` 一致或 overlay 覆盖为集群内可达基址）
-- 各业务服务数据库连接可通过与各 `cmd/*-service/main.go` 一致的 `*_DB_LINK` 环境变量覆盖；`worker-service` 使用 `WORKER_DB_LINK`（与 Compose / `.env.example` 对齐）
+- 各业务服务数据库连接可通过与各 `cmd/*-service/main.go` 一致的 `*_DB_LINK` 环境变量覆盖；`worker-service` 使用 `WORKER_OUTBOX_DB_LINK`（与 Compose / `.env.example` 对齐）；**`gateway-app`** 使用 **`APP_DB_LINK`** → `GF_DATABASE_APP_LINK`（覆盖 `database.app`，新建 Pod/实例时勿漏）
 - 确认 worker deployment 的 `GF_GCFG_FILE` 指向 `manifest/config/config.worker-service.yaml`
-- 确认 gateway deployment 的主配置不包含数据库字段
+- 确认 **主网关** `gateway` deployment 的主配置不包含数据库字段；**`gateway-app`** 则必须在 yaml 或 `APP_DB_LINK` 中配置 `ai_voice_app`
 
 ### 4. 发布前检查
 
 - `go test ./cmd/... ./internal/...`
 - 检查各服务 `GF_GCFG_FILE` 是否指向对应专属配置
-- 检查 gateway 是否无 DB 访问路径
+- 检查主网关 `gateway` 是否无 DB 访问路径；检查 **`gateway-app`** 是否已配置 **`APP_DB_LINK`** 或可连通的 `database.app.link`
 - 检查 worker outbox relay 的 `database.default` 是否指向目标库
 
 ### 5. 回滚步骤（按服务维度）

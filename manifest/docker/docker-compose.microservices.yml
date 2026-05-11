@@ -1,4 +1,6 @@
 version: "3.9"
+# 业务库连接：history/device/voice/worker 见各服务 *_DB_LINK；gateway-app 另需 APP_DB_LINK（ai_voice_app），
+# 与 manifest/docker/.env.example、docs/runbooks/release-deploy-and-run.md 一致，避免新栈漏配版本库。
 
 services:
   gateway:
@@ -49,6 +51,8 @@ services:
     container_name: go-ai-talk-gateway-app
     environment:
       GF_GCFG_FILE: manifest/config/config.gateway-app-server.yaml
+      # 非空时覆盖 ai_voice_app 连接（对应 GF_DATABASE_APP_LINK），与 HISTORY_DB_LINK 同理便于 compose 注入
+      APP_DB_LINK: "${APP_DB_LINK:-}"
       DEVICE_SERVICE_URL: "http://device-service:9803"
       HISTORY_API_ROUTE_MODE: proxy
       HISTORY_API_PROXY_URL: http://history-service:9801

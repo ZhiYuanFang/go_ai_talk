@@ -23,13 +23,18 @@
 - gateway-service 逐步收敛为流量与策略层，不承载领域业务实现。
 - voice、device、history 以领域边界划分服务职责。
 - 业务实现代码统一放置于 `internal/services/**`，禁止新增实现文件回流到 `internal/service`。
-- 配置边界必须与服务边界一致：`voice-service`、`device-service`、`history-service`、`gateway-service` 使用各自默认配置文件。
-- 配置边界必须与服务边界一致：`voice-service`、`device-service`、`history-service`、`worker-service`、`gateway-service` 使用各自默认配置文件。
-- 主配置 `manifest/config/config.yaml` 仅承载网关与全局公共项，禁止承载 voice/device/history 领域专属配置。
-- 微服务架构遵循“一服务一数据库”原则；每个服务配置文件仅允许维护本服务的 `database.default`。
+- 配置边界必须与服务边界一致：`voice-service`、`device-service`、`history-service`、`worker-service`、`gateway-service`、`gateway-app-server` 使用各自默认配置文件（见 `manifest/config/config.*.yaml`）。
+- 主配置 `manifest/config/config.yaml` 仅承载主网关与全局公共项，禁止承载 voice/device/history 领域专属配置，**禁止**出现 `database` 段。
+- 微服务架构遵循“一服务一数据库”原则；各业务服务配置文件仅维护本域库，一般以 `database.default` 为主。**例外**：`gateway-app-server` 仅允许配置 **`database.app`**（`ai_voice_app`，用于版本等只读场景），**不得**用其 `default` 直连他域库。
 - 当服务需要他域数据时，必须通过跨服务 API 获取，禁止跨库直查。
 - 跨服务数据访问必须走服务契约（HTTP/RPC/事件），禁止在服务内直接访问他域 DAO/数据表。
 - 若迁移期保留 `local|remote|canary` 双路径，必须显式配置 failover 语义并记录命中日志，避免隐式跨库回流。
+
+### 数据库连接与部署实例约定（强制）
+- 任意需求变更若**新增、调整或迁移**某进程对 MySQL 的访问，OpenSpec **proposal / design / tasks** 中必须写清：**进程名**、**库与表域**、GoFrame **配置组**（如 `default`、`app`）、以及推荐覆盖方式（yaml 内 `*.link` 或 **`HISTORY_DB_LINK` / `DEVICE_DB_LINK` / `VOICE_DB_LINK` / `WORKER_OUTBOX_DB_LINK` / `APP_DB_LINK`** 等与 `cmd/*-service/main.go` 一致的环境变量名）。
+- **`gateway-app-server`** 连 `ai_voice_app` 时**仅**通过 **`APP_DB_LINK`**（写入 `GF_DATABASE_APP_LINK`）或 `config.gateway-app-server.yaml` 的 **`database.app.link`**；不得与主网关 `gateway-service`（无 DB）混淆。
+- **新建或扩容部署实例**（新 Compose 栈、新集群、新环境）时，同一变更必须同步检查并更新 **`manifest/docker/.env.example`**、**`manifest/docker/docker-compose.microservices.yml`**（各服务 `environment` 中的 `${*_DB_LINK:-}` / `${APP_DB_LINK:-}` 等注入是否齐全）与 **`docs/runbooks/release-deploy-and-run.md`**，避免仅改代码或仅改 yaml 占位 DSN，导致实例上**未设置 `*_DB_LINK` / `APP_DB_LINK`** 仍连占位地址或漏配库；K8s 路径须在 overlay 或 Secret 挂载中同等落实。
+- **tasks 验收**：若本变更引入或可影响库连接，须勾选或描述「`.env.example` / runbook / 服务主配置顶部注释是否已反映新连接约定」；归档前评审须核对此项。
 
 ### 代码注释约定（强制）
 - 后续生成或修改代码时，必须尽可能补充中文注释，重点覆盖：复杂流程、跨服务调用、重试/降级/错误语义、关键配置项。
@@ -55,7 +60,7 @@
 - 评审检查项必须包含“是否存在跨服务直查数据库”与“契约路径是否完整可观测”两项硬性检查。
 - 评审检查项必须包含“主配置是否回流服务专属字段”与“服务默认配置是否仍指向共享主配置”两项硬性检查。
 - 评审检查项必须包含“是否存在 `hello/internal/service` 旧导入路径”与“`internal/service` 是否新增实现文件”两项硬性检查。
-- 评审检查项必须包含“运行文档是否同步更新”检查：凡涉及运行/发布/DAO 边界变更，必须同时更新 `docs/runbooks/dao-sync-by-domain.md` 与 `docs/runbooks/release-deploy-and-run.md`。
+- 评审检查项必须包含“运行文档是否同步更新”检查：凡涉及运行/发布/DAO 边界变更，必须同时更新 `docs/runbooks/dao-sync-by-domain.md` 与 `docs/runbooks/release-deploy-and-run.md`；若涉及**新进程或新库连接**，还须核对 **`manifest/docker/.env.example`** 与相关 **`manifest/config/config.*.yaml`** 顶部说明是否已包含对应 **`*_DB_LINK` / `APP_DB_LINK`** 约定（见上文「数据库连接与部署实例约定」）。
 - 评审检查项必须包含“是否引用并遵循历史 `openspec/specs` 基线”检查：涉及行为变更时必须可追溯到对应 Requirement/Scenario。
 - 在没有特别要求的情况下，不用生成关于当前变更需求的md文件。当有要求生成文档时，文档必须在`docs/`文件夹内生成md文件，不要生成到`docs/runbooks/`
 
