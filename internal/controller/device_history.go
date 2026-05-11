@@ -7,6 +7,7 @@ import (
 	v1 "hello/api/v1"
 	"hello/internal/model/entity"
 	contracts "hello/internal/services/contracts"
+	histsvc "hello/internal/services/history"
 
 	"github.com/gogf/gf/v2/errors/gcode"
 	"github.com/gogf/gf/v2/errors/gerror"
@@ -211,6 +212,22 @@ func (c *HistoryCtrl) EventDelete(ctx context.Context, req *v1.DeviceHistoryEven
 		return nil, err
 	}
 	return &v1.DeviceHistoryEventDeleteRes{}, nil
+}
+
+// Piece 区段内事件历史（GET /device/history/api/piece）。
+func (c *HistoryCtrl) Piece(ctx context.Context, req *v1.DeviceHistoryPieceReq) (res *v1.DeviceHistoryPieceRes, err error) {
+	deviceNo := strings.TrimSpace(req.DeviceNo)
+	if deviceNo == "" {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "deviceNo 不能为空")
+	}
+	if req.EventId <= 0 {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "eventId 无效")
+	}
+	list, err := histsvc.ListHistoryPiece(ctx, deviceNo, req.EventId, strings.TrimSpace(req.StartTime), strings.TrimSpace(req.EndTime))
+	if err != nil {
+		return nil, err
+	}
+	return &v1.DeviceHistoryPieceRes{List: list}, nil
 }
 
 // EventLatest 查询最近一条历史事件（内部契约）。

@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway-app
+  labels:
+    app: gateway-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gateway-app
+  template:
+    metadata:
+      labels:
+        app: gateway-app
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9702"
+        prometheus.io/path: /api.json
+    spec:
+      containers:
+        - name: gateway-app
+          image: go-ai-talk/gateway-app:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 9702
+              name: http
+          env:
+            - name: GF_GCFG_FILE
+              value: manifest/config/config.gateway-app-server.yaml
+            - name: HISTORY_API_ROUTE_MODE
+              value: proxy
+            - name: HISTORY_API_PROXY_URL
+              value: http://history-service:9801
+            - name: VOICE_API_ROUTE_MODE
+              value: proxy
+            - name: VOICE_API_PROXY_URL
+              value: http://voice-service:9802
+            - name: VOICE_WS_ROUTE_MODE
+              value: proxy
+            - name: VOICE_WS_PROXY_URL
+              value: http://voice-service:9802
+            - name: DEVICE_API_ROUTE_MODE
+              value: proxy
+            - name: DEVICE_API_PROXY_URL
+              value: http://device-service:9803
+            - name: DEVICE_SERVICE_URL
+              value: http://device-service:9803
+            - name: DEVICE_GATEWAY_INTERNAL_SECRET
+              value: "gateway-internal-change-me"
+            - name: MQ_CONSUMER_ENABLED
+              value: "false"
+            - name: OUTBOX_RELAY_ENABLED
+              value: "false"
+          livenessProbe:
+            httpGet:
+              path: /api.json
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /api.json
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5

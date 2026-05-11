@@ -14,6 +14,7 @@ func RegisterDeviceServiceHTTP(s *ghttp.Server) {
 		// 设备域服务仅承载设备管理接口，避免职责回流到 gateway。
 		group.Bind(NewAdminCtrl(device.DeviceAdmin()))
 		group.Bind(NewDeviceProfileCtrl())
+		group.Bind(NewDeviceWxCtrl())
 		group.Bind(NewDeviceInternalCtrl())
 		group.Bind(NewDeviceInternalProjectionCtrl())
 	})

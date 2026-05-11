@@ -1,0 +1,31 @@
+# gateway-app-server：App 专用入口（JWT、登录/刷新、版本库、历史 WS、下游代理）。
+# 部署时 MUST 设置 DEVICE_SERVICE_URL、HISTORY_SERVICE_URL 指向可达下游；JWT 与内部密钥禁止提交默认值到生产。
+
+server:
+  address: ":9702"
+  openapiPath: "/api.json"
+  swaggerPath: "/swagger"
+
+logger:
+  level: "all"
+  stdout: true
+
+redis:
+  default:
+    address: "redis-node-1:7001,redis-node-2:7002,redis-node-3:7003"
+    db: 0
+
+database:
+  app:
+    link: "mysql:root:Fang930927@tcp(120.55.50.105:3306)/ai_voice_app"
+    debug: false
+
+gatewayApp:
+  # HS256 签名密钥（生产务必覆盖）
+  jwtSecret: "gateway-app-change-me-in-production"
+  accessTtlSeconds: 1800
+  refreshTtlSeconds: 604800
+  # 调用 device /device/wx/api/internal/by-id 时携带，须与 device 环境 DEVICE_GATEWAY_INTERNAL_SECRET 一致
+  deviceInternalSecret: "gateway-internal-change-me"
+  # 可选：缓存 id→wxCode 秒数
+  wxIdCodeCacheSeconds: 120

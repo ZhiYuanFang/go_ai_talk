@@ -41,6 +41,45 @@ services:
         condition: service_healthy
     networks: [go-ai-talk-net]
 
+  gateway-app:
+    build:
+      context: ../..
+      dockerfile: manifest/docker/Dockerfile.gateway-app-service
+    image: go-ai-talk/gateway-app:local
+    container_name: go-ai-talk-gateway-app
+    environment:
+      GF_GCFG_FILE: manifest/config/config.gateway-app-server.yaml
+      DEVICE_SERVICE_URL: "http://device-service:9803"
+      HISTORY_API_ROUTE_MODE: proxy
+      HISTORY_API_PROXY_URL: http://history-service:9801
+      VOICE_API_ROUTE_MODE: proxy
+      VOICE_API_PROXY_URL: http://voice-service:9802
+      VOICE_WS_ROUTE_MODE: proxy
+      VOICE_WS_PROXY_URL: http://voice-service:9802
+      DEVICE_API_ROUTE_MODE: proxy
+      DEVICE_API_PROXY_URL: http://device-service:9803
+      MQ_CONSUMER_ENABLED: "false"
+      OUTBOX_RELAY_ENABLED: "false"
+      MQ_HTTP_API_BASE: "http://rabbitmq:15672/api"
+      MQ_USER: "guest"
+      MQ_PASSWORD: "guest"
+      DEVICE_GATEWAY_INTERNAL_SECRET: "${DEVICE_GATEWAY_INTERNAL_SECRET:-gateway-internal-change-me}"
+    ports:
+      - "9702:9702"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:9702/api.json > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+    depends_on:
+      history-service:
+        condition: service_healthy
+      voice-service:
+        condition: service_healthy
+      device-service:
+        condition: service_healthy
+    networks: [go-ai-talk-net]
+
   history-service:
     build:
       context: ../..
@@ -124,6 +163,8 @@ services:
       MQ_HTTP_API_BASE: "http://rabbitmq:15672/api"
       MQ_USER: "guest"
       MQ_PASSWORD: "guest"
+      # 与 gateway-app 配置 gatewayApp.deviceInternalSecret 保持一致，供 /device/wx/api/internal/by-id 校验
+      DEVICE_GATEWAY_INTERNAL_SECRET: "${DEVICE_GATEWAY_INTERNAL_SECRET:-gateway-internal-change-me}"
     ports:
       - "9803:9803"
     healthcheck:

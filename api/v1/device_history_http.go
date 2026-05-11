@@ -157,3 +157,17 @@ type DeviceHistoryEndLatestReq struct {
 type DeviceHistoryEndLatestRes struct {
 	Updated bool `json:"updated"`
 }
+
+// DeviceHistoryPieceReq 区段内某类事件的历史记录（用于趋势图）。
+type DeviceHistoryPieceReq struct {
+	g.Meta    `path:"/device/history/api/piece" method:"get" tags:"device" summary:"历史区段查询"`
+	EventId   int64  `json:"eventId"   p:"eventId"   dc:"事件 ID"`
+	StartTime string `json:"startTime" p:"startTime" dc:"区间开始（与库内 start_time 可比）"`
+	EndTime   string `json:"endTime"   p:"endTime"   dc:"区间结束"`
+	DeviceNo  string `json:"deviceNo"  p:"deviceNo"  dc:"设备号"`
+}
+
+// DeviceHistoryPieceRes 区段历史列表。
+type DeviceHistoryPieceRes struct {
+	List []entity.History `json:"list"`
+}

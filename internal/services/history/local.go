@@ -323,6 +323,8 @@ func AddDeviceHistory(ctx context.Context, item entity.History) (int64, error) {
 	if err == nil && id > 0 {
 		item.Id = id
 		historyCache.patchHistoryOnAdd(ctx, item)
+		bumpPieceCacheEpoch(ctx, item.DeviceNo)
+		publishHistoryChange(ctx, item.DeviceNo, "create", historyToPayload(item))
 	}
 	if err == nil && id > 0 && isOutboxRelayEnabled() {
 		version := time.Now().UnixNano()
@@ -373,6 +375,8 @@ func UpdateDeviceHistory(ctx context.Context, item entity.History) error {
 	})
 	if err == nil {
 		historyCache.patchHistoryOnUpdate(ctx, item)
+		bumpPieceCacheEpoch(ctx, item.DeviceNo)
+		publishHistoryChange(ctx, item.DeviceNo, "update", historyToPayload(item))
 	}
 	if err == nil && isOutboxRelayEnabled() {
 		version := time.Now().UnixNano()
@@ -409,6 +413,11 @@ func DeleteDeviceHistory(ctx context.Context, id int64, deviceNo string) error {
 	})
 	if err == nil {
 		historyCache.patchHistoryOnDelete(ctx, deviceNo, id)
+		bumpPieceCacheEpoch(ctx, deviceNo)
+		publishHistoryChange(ctx, deviceNo, "delete", map[string]interface{}{
+			"id":       id,
+			"deviceNo": deviceNo,
+		})
 	}
 	if err == nil && isOutboxRelayEnabled() {
 		version := time.Now().UnixNano()

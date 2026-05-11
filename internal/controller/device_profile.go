@@ -9,6 +9,7 @@ import (
 
 	"github.com/gogf/gf/v2/errors/gcode"
 	"github.com/gogf/gf/v2/errors/gerror"
+	"github.com/gogf/gf/v2/net/ghttp"
 )
 
 // DeviceProfileCtrl 设备画像内部查询接口（供 voice 等服务调用）。
@@ -52,4 +53,31 @@ func (c *DeviceProfileCtrl) Save(ctx context.Context, req *v1.DeviceProfileSaveR
 		return nil, err
 	}
 	return &v1.DeviceProfileSaveRes{}, nil
+}
+
+// BindWx POST /device/profile/api/bindwx（wxCode 来自 Header X-Internal-Wx-Code）。
+func (c *DeviceProfileCtrl) BindWx(ctx context.Context, req *v1.DeviceProfileBindWxReq) (res *v1.DeviceProfileBindWxRes, err error) {
+	r := ghttp.RequestFromCtx(ctx)
+	wxCode := strings.TrimSpace(r.GetHeader(headerInternalWxCode))
+	if wxCode == "" {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "缺少 X-Internal-Wx-Code")
+	}
+	if err := device.WxBindDevice(ctx, wxCode, req.DeviceNo); err != nil {
+		return nil, err
+	}
+	return &v1.DeviceProfileBindWxRes{}, nil
+}
+
+// AutoSave POST /device/profile/api/auto_save
+func (c *DeviceProfileCtrl) AutoSave(ctx context.Context, req *v1.DeviceProfileAutoSaveReq) (res *v1.DeviceProfileAutoSaveRes, err error) {
+	r := ghttp.RequestFromCtx(ctx)
+	wxCode := strings.TrimSpace(r.GetHeader(headerInternalWxCode))
+	if wxCode == "" {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "缺少 X-Internal-Wx-Code")
+	}
+	dn, err := device.WxAutoSaveProfile(ctx, wxCode, strings.TrimSpace(req.Birthday), req.Sex)
+	if err != nil {
+		return nil, err
+	}
+	return &v1.DeviceProfileAutoSaveRes{DeviceNo: dn}, nil
 }

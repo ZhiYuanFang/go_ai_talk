@@ -3,6 +3,8 @@ kind: Kustomization
 resources:
 - gateway-deployment.yaml
 - gateway-service.yaml
+- gateway-app-deployment.yaml
+- gateway-app-service.yaml
 - history-deployment.yaml
 - history-service.yaml
 - voice-deployment.yaml

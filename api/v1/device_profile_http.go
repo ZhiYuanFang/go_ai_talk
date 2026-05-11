@@ -25,3 +25,24 @@ type DeviceProfileSaveReq struct {
 
 // DeviceProfileSaveRes 保存成功。
 type DeviceProfileSaveRes struct{}
+
+// DeviceProfileBindWxReq 绑定设备到当前 wx（wxCode 来自 Header X-Internal-Wx-Code）。
+type DeviceProfileBindWxReq struct {
+	g.Meta   `path:"/device/profile/api/bindwx" method:"post" tags:"device" summary:"wx 绑定设备"`
+	DeviceNo string `json:"deviceNo" dc:"设备号"`
+}
+
+// DeviceProfileBindWxRes 绑定成功。
+type DeviceProfileBindWxRes struct{}
+
+// DeviceProfileAutoSaveReq 自动保存画像（wxCode 来自 Header）。
+type DeviceProfileAutoSaveReq struct {
+	g.Meta   `path:"/device/profile/api/auto_save" method:"post" tags:"device" summary:"自动保存画像并返回设备号"`
+	Birthday string `json:"birthday" dc:"生日"`
+	Sex      int    `json:"sex"      dc:"性别"`
+}
+
+// DeviceProfileAutoSaveRes 返回设备号。
+type DeviceProfileAutoSaveRes struct {
+	DeviceNo string `json:"deviceNo"`
+}
