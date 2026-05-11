@@ -8,10 +8,9 @@ import (
 )
 
 const (
-	historyRouteModeEnv         = "HISTORY_API_ROUTE_MODE" // 本地执行 | 全量代理 | 金丝雀代理
-	historyProxyURLEnv          = "HISTORY_API_PROXY_URL"
+	historyRouteModeEnv          = "HISTORY_API_ROUTE_MODE" // 本地执行 | 全量代理 | 金丝雀代理
+	historyProxyURLEnv           = "HISTORY_API_PROXY_URL"
 	historyProxyCanaryPercentEnv = "HISTORY_API_PROXY_CANARY_PERCENT"
-
 )
 
 var (
