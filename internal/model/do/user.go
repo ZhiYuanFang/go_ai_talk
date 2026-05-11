@@ -16,7 +16,7 @@ type User struct {
 	Sex            interface{} // 性别（0女1男）
 	LastTalkAsk    interface{} // 最后对话的问题
 	LastTalkAnswer interface{} // 最后对话的答案
-	ActiveTime     interface{} // 激活时间UTF8
-	LastTalkTime   interface{} // 最后对话时间UTF8
+	ActiveTime     interface{} // 激活时间戳
+	LastTalkTime   interface{} // 最后对话时间戳
 	Birthday       interface{} // 生日时间戳
 }

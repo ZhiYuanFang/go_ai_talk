@@ -37,26 +37,26 @@ func DeviceAdmin() *service { return insAdmin }
 
 func (s *service) VerifyPassword(password string) bool { return strings.TrimSpace(password) == fixedDeviceAdminPassword }
 
-func (s *service) Register(ctx context.Context, deviceNo string) (string, error) {
+func (s *service) Register(ctx context.Context, deviceNo string) (int64, error) {
 	deviceNo = strings.TrimSpace(deviceNo)
 	if deviceNo == "" {
-		return "", errors.New("deviceNo 不能为空")
+		return 0, errors.New("deviceNo 不能为空")
 	}
 	count, err := dao.User.Ctx(ctx).Where(dao.User.Columns().DeviceNo, deviceNo).Count()
 	if err != nil {
-		return "", err
+		return 0, err
 	}
 	if count > 0 {
-		return "", ErrDeviceExists
+		return 0, ErrDeviceExists
 	}
-	activeTime := nowText()
+	activeTime := time.Now().Unix()
 	_, err = dao.User.Ctx(ctx).Data(g.Map{dao.User.Columns().DeviceNo: deviceNo, dao.User.Columns().ActiveTime: activeTime}).Insert()
 	if err != nil {
 		msg := strings.ToLower(err.Error())
 		if strings.Contains(msg, "duplicate") || strings.Contains(msg, "unique") {
-			return "", ErrDeviceExists
+			return 0, ErrDeviceExists
 		}
-		return "", err
+		return 0, err
 	}
 	return activeTime, nil
 }
@@ -77,9 +77,8 @@ func (s *service) EnsureRegistered(ctx context.Context, deviceNo string) error {
 }
 
 // SaveUserProfile 更新 user 表画像字段；若开启 outbox 中继且配置了 WORKER_SERVICE_URL，则经 worker HTTP 写入 domain_outbox。
-func (s *service) SaveUserProfile(ctx context.Context, deviceNo, birthday string, sex int) error {
+func (s *service) SaveUserProfile(ctx context.Context, deviceNo string, birthdayUnixSec int64, sex int) error {
 	deviceNo = strings.TrimSpace(deviceNo)
-	birthday = strings.TrimSpace(birthday)
 	if deviceNo == "" {
 		return nil
 	}
@@ -87,18 +86,18 @@ func (s *service) SaveUserProfile(ctx context.Context, deviceNo, birthday string
 		sex = 1
 	}
 	_, err := dao.User.Ctx(ctx).Where(dao.User.Columns().DeviceNo, deviceNo).Data(g.Map{
-		dao.User.Columns().Birthday: birthday,
+		dao.User.Columns().Birthday: birthdayUnixSec,
 		dao.User.Columns().Sex:      sex,
 	}).Update()
 	if err != nil {
 		return err
 	}
 	if isDeviceOutboxRelayEnabled() {
-		_ = enqueueUserProfileOutbox(ctx, deviceNo, birthday, sex)
+		_ = enqueueUserProfileOutbox(ctx, deviceNo, birthdayUnixSec, sex)
 	}
 	_ = deviceCache.setUserProfile(ctx, cachedUserProfile{
 		DeviceNo: deviceNo,
-		Birthday: birthday,
+		Birthday: birthdayUnixSec,
 		Sex:      sex,
 	})
 	return nil
@@ -237,7 +236,7 @@ func (s *service) UpdateLastTalk(ctx context.Context, deviceNo, ask, answer stri
 		return err
 	}
 	_, err := dao.User.Ctx(ctx).Where(dao.User.Columns().DeviceNo, deviceNo).Data(g.Map{
-		dao.User.Columns().LastTalkTime:   nowText(),
+		dao.User.Columns().LastTalkTime:   time.Now().Unix(),
 		dao.User.Columns().LastTalkAsk:    strings.TrimSpace(ask),
 		dao.User.Columns().LastTalkAnswer: strings.TrimSpace(answer),
 	}).Update()
@@ -550,8 +549,6 @@ func actionTargetTypeChinese(t string) string {
 	}
 }
 
-func nowText() string { return time.Now().Format("2006-01-02 15:04:05") }
-
 func enqueueDeviceProjectionEvent(ctx context.Context, routingKey eventkit.RouteKey, payload map[string]interface{}) error {
 	return enqueueDomainOutboxToHistoryRelay(ctx, routingKey, payload)
 }
@@ -561,12 +558,12 @@ func isDeviceOutboxRelayEnabled() bool {
 	return v == "1" || v == "true" || v == "yes" || v == "on"
 }
 
-func enqueueUserProfileOutbox(ctx context.Context, deviceNo, birthday string, sex int) error {
+func enqueueUserProfileOutbox(ctx context.Context, deviceNo string, birthdayUnixSec int64, sex int) error {
 	return enqueueDomainOutboxToHistoryRelay(ctx, eventkit.RoutingDeviceUserProfileUpdated, map[string]interface{}{
 		"event_id":    fmt.Sprintf("device-user-profile-updated-%d", time.Now().UnixNano()),
 		"version":     time.Now().UnixNano(),
 		"device_no":   deviceNo,
-		"birthday":    birthday,
+		"birthday":    birthdayUnixSec,
 		"sex":         sex,
 		"occurred_at": time.Now().Format(time.RFC3339Nano),
 	})

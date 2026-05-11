@@ -106,7 +106,7 @@ func (r *deviceCacheRepo) setActionOptions(ctx context.Context, items []entity.A
 
 type cachedUserProfile struct {
 	DeviceNo string `json:"deviceNo"`
-	Birthday string `json:"birthday"`
+	Birthday int64  `json:"birthday"`
 	Sex      int    `json:"sex"`
 }
 
@@ -124,7 +124,6 @@ func (r *deviceCacheRepo) getUserProfile(ctx context.Context, deviceNo string) (
 		return cachedUserProfile{}, false, uErr
 	}
 	out.DeviceNo = strings.TrimSpace(out.DeviceNo)
-	out.Birthday = strings.TrimSpace(out.Birthday)
 	return out, true, nil
 }
 
@@ -144,7 +143,7 @@ type deviceProjectionEvent struct {
 	EventID  string `json:"event_id"`
 	Version  int64  `json:"version"`
 	DeviceNo string `json:"device_no"`
-	Birthday string `json:"birthday"`
+	Birthday int64  `json:"birthday"`
 	Sex      int    `json:"sex"`
 }
 
@@ -205,7 +204,7 @@ func ApplyProjection(ctx context.Context, routingKey, payload string) error {
 		}
 		if err := deviceCache.setUserProfile(ctx, cachedUserProfile{
 			DeviceNo: evt.DeviceNo,
-			Birthday: strings.TrimSpace(evt.Birthday),
+			Birthday: evt.Birthday,
 			Sex:      evt.Sex,
 		}); err != nil {
 			return err

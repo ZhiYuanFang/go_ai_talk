@@ -270,6 +270,12 @@ function asListPayload(d){
 	return [];
 }
 
+function formatUnixLocal(sec){
+	const n = Number(sec);
+	if(!n) return '';
+	try{ return new Date(n * 1000).toLocaleString(); }catch(_){ return String(sec); }
+}
+
 async function loadList(){
 	const data = asListPayload(await api('/device/admin/api/list'));
 	const tbody = document.getElementById('tbody');
@@ -277,8 +283,8 @@ async function loadList(){
 	(data || []).forEach(it => {
 		const tr = document.createElement('tr');
 		tr.innerHTML = '<td>'+ escapeHtml(it.deviceNo||'') +'</td>' +
-			'<td>'+ escapeHtml(it.activeTime||'') +'</td>' +
-			'<td>'+ escapeHtml(it.lastTalkTime||'') +'</td>' +
+			'<td>'+ escapeHtml(formatUnixLocal(it.activeTime)) +'</td>' +
+			'<td>'+ escapeHtml(formatUnixLocal(it.lastTalkTime)) +'</td>' +
 			'<td class="wrapcell">'+ escapeHtml(it.lastTalkAsk||'') +'</td>' +
 			'<td class="wrapcell">'+ escapeHtml(it.lastTalkAnswer||'') +'</td>';
 		tbody.appendChild(tr);

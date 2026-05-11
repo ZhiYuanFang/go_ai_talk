@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"hello/internal/dao"
+	"hello/internal/model/entity"
 )
 
 const (
@@ -25,7 +26,7 @@ const (
 
 type DeviceProfileInfo struct {
 	DeviceNo string `json:"deviceNo"`
-	Birthday string `json:"birthday"`
+	Birthday int64  `json:"birthday"`
 	Sex      int    `json:"sex"`
 }
 
@@ -45,15 +46,17 @@ func (localDeviceProfileAdapter) GetProfile(ctx context.Context, deviceNo string
 			Sex:      cached.Sex,
 		}, nil
 	}
+	var row entity.User
 	err := dao.User.Ctx(ctx).
 		Fields(dao.User.Columns().Birthday, dao.User.Columns().Sex).
 		Where(dao.User.Columns().DeviceNo, profile.DeviceNo).
 		Limit(1).
-		Scan(&profile)
+		Scan(&row)
 	if err != nil {
 		return DeviceProfileInfo{}, err
 	}
-	profile.Birthday = strings.TrimSpace(profile.Birthday)
+	profile.Birthday = row.Birthday
+	profile.Sex = row.Sex
 	_ = deviceCache.setUserProfile(ctx, cachedUserProfile{
 		DeviceNo: profile.DeviceNo,
 		Birthday: profile.Birthday,
@@ -115,7 +118,6 @@ func (r *remoteDeviceProfileAdapter) GetProfile(ctx context.Context, deviceNo st
 		}
 	}
 	profile.DeviceNo = strings.TrimSpace(profile.DeviceNo)
-	profile.Birthday = strings.TrimSpace(profile.Birthday)
 	return profile, nil
 }
 

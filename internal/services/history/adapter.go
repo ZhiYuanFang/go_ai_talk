@@ -19,21 +19,6 @@ import (
 	"github.com/gogf/gf/v2/os/glog"
 )
 
-type Contract interface {
-	ListHistory(ctx context.Context, deviceNo string) ([]entity.History, error)
-	ListHistoryPage(ctx context.Context, deviceNo string, page int, pageSize int) (contracts.HistoryPageResult, error)
-	GetLatestHistory(ctx context.Context, deviceNo string) (entity.History, error)
-	EndLatestHistoryIfMatch(ctx context.Context, deviceNo string, eventID int64, endTime string) (bool, error)
-	ListSuggest(ctx context.Context, deviceNo string) ([]entity.Suggest, error)
-	DeleteSuggest(ctx context.Context, id int64, deviceNo string) error
-	ListEventOptions(ctx context.Context) ([]entity.Event, error)
-	GetBirthday(ctx context.Context, deviceNo string) (string, int, error)
-	SaveBirthday(ctx context.Context, deviceNo, birthday string, sex int) error
-	AddHistory(ctx context.Context, item entity.History) (int64, error)
-	UpdateHistory(ctx context.Context, item entity.History) error
-	DeleteHistory(ctx context.Context, id int64, deviceNo string) error
-}
-
 const (
 	historyServiceModeEnv         = "HISTORY_SERVICE_MODE"
 	historyRemoteURLEnv           = "HISTORY_SERVICE_URL"
@@ -50,7 +35,7 @@ type historyRemoteClient struct {
 	client      *http.Client
 }
 
-func newHistoryRemoteClient() Contract {
+func newHistoryRemoteClient() contracts.DeviceHistoryContract {
 	historyBase := strings.TrimSpace(os.Getenv(historyRemoteURLEnv))
 	return &historyRemoteClient{
 		historyBase: strings.TrimRight(historyBase, "/"),
@@ -112,7 +97,7 @@ func (r *historyRemoteClient) GetLatestHistory(ctx context.Context, deviceNo str
 	return resp.Item, err
 }
 
-func (r *historyRemoteClient) EndLatestHistoryIfMatch(ctx context.Context, deviceNo string, eventID int64, endTime string) (bool, error) {
+func (r *historyRemoteClient) EndLatestHistoryIfMatch(ctx context.Context, deviceNo string, eventID int64, endTimeUnixSec int64) (bool, error) {
 	if err := r.notReady(); err != nil {
 		return false, err
 	}
@@ -123,7 +108,7 @@ func (r *historyRemoteClient) EndLatestHistoryIfMatch(ctx context.Context, devic
 	err := r.doJSON(ctx, http.MethodPost, r.historyBase, t.HistoryEventEndLatestPath(), nil, map[string]interface{}{
 		"deviceNo": strings.TrimSpace(deviceNo),
 		"eventId":  eventID,
-		"endTime":  strings.TrimSpace(endTime),
+		"endTime":  endTimeUnixSec,
 	}, &resp)
 	return resp.Updated, err
 }
@@ -160,27 +145,27 @@ func (r *historyRemoteClient) ListEventOptions(ctx context.Context) ([]entity.Ev
 	return resp.List, err
 }
 
-func (r *historyRemoteClient) GetBirthday(ctx context.Context, deviceNo string) (string, int, error) {
+func (r *historyRemoteClient) GetBirthday(ctx context.Context, deviceNo string) (int64, int, error) {
 	if err := r.notReady(); err != nil {
-		return "", 0, err
+		return 0, 0, err
 	}
 	var resp struct {
-		Birthday string `json:"birthday"`
-		Sex      int    `json:"sex"`
+		Birthday int64 `json:"birthday"`
+		Sex      int   `json:"sex"`
 	}
 	t := r.targets
 	err := r.doJSON(ctx, http.MethodGet, t.DeviceBaseURL, t.DeviceProfileGetPath(), map[string]string{"deviceNo": strings.TrimSpace(deviceNo)}, nil, &resp)
-	return strings.TrimSpace(resp.Birthday), resp.Sex, err
+	return resp.Birthday, resp.Sex, err
 }
 
-func (r *historyRemoteClient) SaveBirthday(ctx context.Context, deviceNo, birthday string, sex int) error {
+func (r *historyRemoteClient) SaveBirthday(ctx context.Context, deviceNo string, birthdayUnixSec int64, sex int) error {
 	if err := r.notReady(); err != nil {
 		return err
 	}
 	t := r.targets
 	return r.doJSON(ctx, http.MethodPost, t.DeviceBaseURL, t.DeviceProfileSavePath(), nil, map[string]interface{}{
 		"deviceNo": strings.TrimSpace(deviceNo),
-		"birthday": strings.TrimSpace(birthday),
+		"birthday": birthdayUnixSec,
 		"sex":      sex,
 	}, nil)
 }
@@ -198,8 +183,8 @@ func (r *historyRemoteClient) AddHistory(ctx context.Context, item entity.Histor
 		"eventId":     item.EventId,
 		"eventName":   strings.TrimSpace(item.EventName),
 		"eventNumber": item.EventNumber,
-		"startTime":   strings.TrimSpace(item.StartTime),
-		"endTime":     strings.TrimSpace(item.EndTime),
+		"startTime":   item.StartTime,
+		"endTime":     item.EndTime,
 		"remark":      strings.TrimSpace(item.Remark),
 	}, &resp)
 	return resp.Id, err
@@ -216,8 +201,8 @@ func (r *historyRemoteClient) UpdateHistory(ctx context.Context, item entity.His
 		"eventId":     item.EventId,
 		"eventName":   strings.TrimSpace(item.EventName),
 		"eventNumber": item.EventNumber,
-		"startTime":   strings.TrimSpace(item.StartTime),
-		"endTime":     strings.TrimSpace(item.EndTime),
+		"startTime":   item.StartTime,
+		"endTime":     item.EndTime,
 		"remark":      strings.TrimSpace(item.Remark),
 	}, nil)
 }
@@ -299,8 +284,8 @@ type switchConfig struct {
 }
 
 type switchAdapter struct {
-	local  Contract
-	remote Contract
+	local  contracts.DeviceHistoryContract
+	remote contracts.DeviceHistoryContract
 	cfg    switchConfig
 }
 
@@ -423,18 +408,18 @@ func (a *switchAdapter) GetLatestHistory(ctx context.Context, deviceNo string) (
 	return item, err
 }
 
-func (a *switchAdapter) EndLatestHistoryIfMatch(ctx context.Context, deviceNo string, eventID int64, endTime string) (bool, error) {
+func (a *switchAdapter) EndLatestHistoryIfMatch(ctx context.Context, deviceNo string, eventID int64, endTimeUnixSec int64) (bool, error) {
 	if !a.shouldUseRemote(deviceNo) {
-		return a.local.EndLatestHistoryIfMatch(ctx, deviceNo, eventID, endTime)
+		return a.local.EndLatestHistoryIfMatch(ctx, deviceNo, eventID, endTimeUnixSec)
 	}
-	updated, err := a.remote.EndLatestHistoryIfMatch(ctx, deviceNo, eventID, endTime)
+	updated, err := a.remote.EndLatestHistoryIfMatch(ctx, deviceNo, eventID, endTimeUnixSec)
 	if err != nil && a.cfg.failoverToLocal {
-		return a.local.EndLatestHistoryIfMatch(ctx, deviceNo, eventID, endTime)
+		return a.local.EndLatestHistoryIfMatch(ctx, deviceNo, eventID, endTimeUnixSec)
 	}
 	if err == nil && updated {
 		item, lErr := a.GetLatestHistory(ctx, deviceNo)
 		if lErr == nil && item.Id > 0 {
-			item.EndTime = strings.TrimSpace(endTime)
+			item.EndTime = endTimeUnixSec
 			historyCache.patchHistoryOnUpdate(ctx, item)
 		}
 	}
@@ -480,7 +465,7 @@ func (a *switchAdapter) ListEventOptions(ctx context.Context) ([]entity.Event, e
 	return items, err
 }
 
-func (a *switchAdapter) GetBirthday(ctx context.Context, deviceNo string) (string, int, error) {
+func (a *switchAdapter) GetBirthday(ctx context.Context, deviceNo string) (int64, int, error) {
 	if birthday, sex, ok, err := historyCache.getBirthday(ctx, deviceNo); err == nil && ok {
 		return birthday, sex, nil
 	}
@@ -501,12 +486,12 @@ func (a *switchAdapter) GetBirthday(ctx context.Context, deviceNo string) (strin
 	return b, sex, err
 }
 
-func (a *switchAdapter) SaveBirthday(ctx context.Context, deviceNo, birthday string, sex int) error {
-	err := a.run(a.shouldUseRemote(deviceNo), func() error { return a.remote.SaveBirthday(ctx, deviceNo, birthday, sex) }, func() error {
-		return a.local.SaveBirthday(ctx, deviceNo, birthday, sex)
+func (a *switchAdapter) SaveBirthday(ctx context.Context, deviceNo string, birthdayUnixSec int64, sex int) error {
+	err := a.run(a.shouldUseRemote(deviceNo), func() error { return a.remote.SaveBirthday(ctx, deviceNo, birthdayUnixSec, sex) }, func() error {
+		return a.local.SaveBirthday(ctx, deviceNo, birthdayUnixSec, sex)
 	})
 	if err == nil {
-		_ = historyCache.setBirthday(ctx, deviceNo, birthday, sex)
+		_ = historyCache.setBirthday(ctx, deviceNo, birthdayUnixSec, sex)
 	}
 	return err
 }
@@ -549,11 +534,11 @@ func (a *switchAdapter) DeleteHistory(ctx context.Context, id int64, deviceNo st
 
 var (
 	once sync.Once
-	ins  Contract
+	ins  contracts.DeviceHistoryContract
 )
 
 // DeviceHistory 返回可切换的历史服务适配器。
-func DeviceHistory() Contract {
+func DeviceHistory() contracts.DeviceHistoryContract {
 	once.Do(func() {
 		ins = &switchAdapter{
 			local:  &localService{},

@@ -67,7 +67,7 @@ func historyToPayload(h entity.History) map[string]interface{} {
 	}
 }
 
-func pieceCacheKey(deviceNo string, eventID int64, startTime, endTime string, ver int64) string {
-	sum := sha256.Sum256([]byte(fmt.Sprintf("%s|%d|%s|%s|%d", deviceNo, eventID, startTime, endTime, ver)))
+func pieceCacheKey(deviceNo string, eventID int64, startTimeUnixSec, endTimeUnixSec, ver int64) string {
+	sum := sha256.Sum256([]byte(fmt.Sprintf("%s|%d|%d|%d|%d", deviceNo, eventID, startTimeUnixSec, endTimeUnixSec, ver)))
 	return redisKeyPieceDataPrefix + hex.EncodeToString(sum[:16])
 }

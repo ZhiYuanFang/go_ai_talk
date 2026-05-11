@@ -52,8 +52,8 @@ func BuildHistoryEntityFromProjection(evt historyProjectionEvent) entity.History
 		EventId:     evt.EventIDRef,
 		EventName:   strings.TrimSpace(evt.EventName),
 		EventNumber: evt.EventNum,
-		StartTime:   strings.TrimSpace(evt.StartTime),
-		EndTime:     strings.TrimSpace(evt.EndTime),
+		StartTime:   evt.StartTime,
+		EndTime:     evt.EndTime,
 		Remark:      strings.TrimSpace(evt.Remark),
 	}
 }

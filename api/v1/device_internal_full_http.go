@@ -27,7 +27,7 @@ type DeviceInternalRegisterReq struct {
 
 type DeviceInternalRegisterRes struct {
 	DeviceNo   string `json:"deviceNo"`
-	ActiveTime string `json:"activeTime"`
+	ActiveTime int64 `json:"activeTime" dc:"激活时间，Unix 秒"`
 }
 
 // --- 用户 / 会话 ---

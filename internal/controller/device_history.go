@@ -118,7 +118,6 @@ func (c *HistoryCtrl) Birthday(ctx context.Context, req *v1.DeviceHistoryBirthda
 // BirthdaySave 保存设备生日。
 func (c *HistoryCtrl) BirthdaySave(ctx context.Context, req *v1.DeviceHistoryBirthdaySaveReq) (res *v1.DeviceHistoryBirthdaySaveRes, err error) {
 	deviceNo := strings.TrimSpace(req.DeviceNo)
-	birthday := strings.TrimSpace(req.Birthday)
 	if deviceNo == "" {
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "deviceNo 不能为空")
 	}
@@ -126,7 +125,7 @@ func (c *HistoryCtrl) BirthdaySave(ctx context.Context, req *v1.DeviceHistoryBir
 	if req.Sex > 0 {
 		sex = 1
 	}
-	if err := c.Svc.SaveBirthday(ctx, deviceNo, birthday, sex); err != nil {
+	if err := c.Svc.SaveBirthday(ctx, deviceNo, req.Birthday, sex); err != nil {
 		return nil, err
 	}
 	return &v1.DeviceHistoryBirthdaySaveRes{}, nil
@@ -155,15 +154,13 @@ func (c *HistoryCtrl) EventAdd(ctx context.Context, req *v1.DeviceHistoryEventAd
 	if deviceNo == "" {
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "deviceNo 不能为空")
 	}
-	startTime := strings.TrimSpace(req.StartTime)
-	endTime := strings.TrimSpace(req.EndTime)
 	id, err := c.Svc.AddHistory(ctx, entity.History{
 		DeviceNo:    deviceNo,
 		EventId:     req.EventId,
 		EventName:   strings.TrimSpace(req.EventName),
 		EventNumber: int64(req.EventNumber),
-		StartTime:   startTime,
-		EndTime:     endTime,
+		StartTime:   req.StartTime,
+		EndTime:     req.EndTime,
 		Remark:      strings.TrimSpace(req.Remark),
 	})
 	if err != nil {
@@ -181,16 +178,14 @@ func (c *HistoryCtrl) EventUpdate(ctx context.Context, req *v1.DeviceHistoryEven
 	if deviceNo == "" {
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "deviceNo 不能为空")
 	}
-	startTime := strings.TrimSpace(req.StartTime)
-	endTime := strings.TrimSpace(req.EndTime)
 	err = c.Svc.UpdateHistory(ctx, entity.History{
 		Id:          req.Id,
 		DeviceNo:    deviceNo,
 		EventId:     req.EventId,
 		EventName:   strings.TrimSpace(req.EventName),
 		EventNumber: int64(req.EventNumber),
-		StartTime:   startTime,
-		EndTime:     endTime,
+		StartTime:   req.StartTime,
+		EndTime:     req.EndTime,
 		Remark:      strings.TrimSpace(req.Remark),
 	})
 	if err != nil {
@@ -223,7 +218,7 @@ func (c *HistoryCtrl) Piece(ctx context.Context, req *v1.DeviceHistoryPieceReq) 
 	if req.EventId <= 0 {
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "eventId 无效")
 	}
-	list, err := histsvc.ListHistoryPiece(ctx, deviceNo, req.EventId, strings.TrimSpace(req.StartTime), strings.TrimSpace(req.EndTime))
+	list, err := histsvc.ListHistoryPiece(ctx, deviceNo, req.EventId, req.StartTime, req.EndTime)
 	if err != nil {
 		return nil, err
 	}
@@ -252,7 +247,7 @@ func (c *HistoryCtrl) EventEndLatest(ctx context.Context, req *v1.DeviceHistoryE
 	if req.EventId <= 0 {
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "eventId 无效")
 	}
-	updated, err := c.Svc.EndLatestHistoryIfMatch(ctx, deviceNo, req.EventId, strings.TrimSpace(req.EndTime))
+	updated, err := c.Svc.EndLatestHistoryIfMatch(ctx, deviceNo, req.EventId, req.EndTime)
 	if err != nil {
 		return nil, err
 	}

@@ -62,15 +62,15 @@ type DeviceHistoryBirthdayGetReq struct {
 
 // DeviceHistoryBirthdayGetRes 生日查询响应。
 type DeviceHistoryBirthdayGetRes struct {
-	Birthday string `json:"birthday"`
-	Sex      int    `json:"sex"`
+	Birthday int64 `json:"birthday" dc:"生日，Unix 秒时间戳；0 表示未设置"`
+	Sex      int   `json:"sex"`
 }
 
 // DeviceHistoryBirthdaySaveReq 保存设备生日（JSON body）。
 type DeviceHistoryBirthdaySaveReq struct {
 	g.Meta   `path:"/device/history/api/birthday/save" method:"post" tags:"device" summary:"保存设备生日"`
 	DeviceNo string `json:"deviceNo" dc:"设备号"`
-	Birthday string `json:"birthday" dc:"生日"`
+	Birthday int64  `json:"birthday" dc:"生日，Unix 秒时间戳"`
 	Sex      int    `json:"sex" dc:"性别（0女1男）"`
 }
 
@@ -97,8 +97,8 @@ type DeviceHistoryEventAddReq struct {
 	EventName   string `json:"eventName" dc:"事件名"`
 	EventUnit   string `json:"eventUnit" dc:"事件单位"`
 	EventNumber int    `json:"eventNumber" dc:"数量"`
-	StartTime   string `json:"startTime" dc:"开始时间"`
-	EndTime     string `json:"endTime" dc:"结束时间"`
+	StartTime   int64 `json:"startTime" dc:"开始时间，Unix 秒"`
+	EndTime     int64 `json:"endTime" dc:"结束时间，Unix 秒"`
 	Remark      string `json:"remark" dc:"备注"`
 }
 
@@ -116,8 +116,8 @@ type DeviceHistoryEventUpdateReq struct {
 	EventName   string `json:"eventName" dc:"事件名"`
 	EventUnit   string `json:"eventUnit" dc:"事件单位"`
 	EventNumber int    `json:"eventNumber" dc:"数量"`
-	StartTime   string `json:"startTime" dc:"开始时间"`
-	EndTime     string `json:"endTime" dc:"结束时间"`
+	StartTime   int64 `json:"startTime" dc:"开始时间，Unix 秒"`
+	EndTime     int64 `json:"endTime" dc:"结束时间，Unix 秒"`
 	Remark      string `json:"remark" dc:"备注"`
 }
 
@@ -150,7 +150,7 @@ type DeviceHistoryEndLatestReq struct {
 	g.Meta   `path:"/device/history/api/event/end-latest" method:"post" tags:"device" summary:"条件结束最近一条历史事件"`
 	DeviceNo string `json:"deviceNo" dc:"设备号"`
 	EventId  int64  `json:"eventId" dc:"事件ID"`
-	EndTime  string `json:"endTime" dc:"结束时间"`
+	EndTime  int64 `json:"endTime" dc:"结束时间，Unix 秒"`
 }
 
 // DeviceHistoryEndLatestRes 条件结束结果。
@@ -162,8 +162,8 @@ type DeviceHistoryEndLatestRes struct {
 type DeviceHistoryPieceReq struct {
 	g.Meta    `path:"/device/history/api/piece" method:"get" tags:"device" summary:"历史区段查询"`
 	EventId   int64  `json:"eventId"   p:"eventId"   dc:"事件 ID"`
-	StartTime string `json:"startTime" p:"startTime" dc:"区间开始（与库内 start_time 可比）"`
-	EndTime   string `json:"endTime"   p:"endTime"   dc:"区间结束"`
+	StartTime int64 `json:"startTime" p:"startTime" dc:"区间开始，Unix 秒"`
+	EndTime   int64 `json:"endTime"   p:"endTime"   dc:"区间结束，Unix 秒"`
 	DeviceNo  string `json:"deviceNo"  p:"deviceNo"  dc:"设备号"`
 }
 

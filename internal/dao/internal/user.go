@@ -25,8 +25,8 @@ type UserColumns struct {
 	Sex            string // 性别（0女1男）
 	LastTalkAsk    string // 最后对话的问题
 	LastTalkAnswer string // 最后对话的答案
-	ActiveTime     string // 激活时间UTF8
-	LastTalkTime   string // 最后对话时间UTF8
+	ActiveTime     string // 激活时间戳
+	LastTalkTime   string // 最后对话时间戳
 	Birthday       string // 生日时间戳
 }
 

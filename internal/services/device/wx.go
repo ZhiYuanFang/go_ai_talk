@@ -104,7 +104,7 @@ func WxBindDevice(ctx context.Context, wxCode, deviceNo string) error {
 }
 
 // WxAutoSaveProfile 未绑定设备时生成 6 位大写随机 device_no 并注册设备，再写画像；已绑定则只更新画像。
-func WxAutoSaveProfile(ctx context.Context, wxCode, birthday string, sex int) (string, error) {
+func WxAutoSaveProfile(ctx context.Context, wxCode string, birthdayUnixSec int64, sex int) (string, error) {
 	wxCode = strings.TrimSpace(wxCode)
 	if wxCode == "" {
 		return "", errors.New("wxCode 不能为空")
@@ -119,7 +119,7 @@ func WxAutoSaveProfile(ctx context.Context, wxCode, birthday string, sex int) (s
 	svc := DeviceAdmin()
 	deviceNo := strings.TrimSpace(row.DeviceNo)
 	if deviceNo != "" {
-		if err := svc.SaveUserProfile(ctx, deviceNo, birthday, sex); err != nil {
+		if err := svc.SaveUserProfile(ctx, deviceNo, birthdayUnixSec, sex); err != nil {
 			return "", err
 		}
 		_ = invalidateWxCaches(ctx, row.Id, wxCode)
@@ -138,7 +138,7 @@ func WxAutoSaveProfile(ctx context.Context, wxCode, birthday string, sex int) (s
 	}).Update(); err != nil {
 		return "", err
 	}
-	if err := svc.SaveUserProfile(ctx, dn, birthday, sex); err != nil {
+	if err := svc.SaveUserProfile(ctx, dn, birthdayUnixSec, sex); err != nil {
 		return "", err
 	}
 	_ = invalidateWxCaches(ctx, row.Id, wxCode)

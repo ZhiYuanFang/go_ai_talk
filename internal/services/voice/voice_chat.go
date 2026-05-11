@@ -852,11 +852,15 @@ func (s *VoiceService) insertQa(ctx context.Context, question, answer string) er
 
 // getOrCreateDailySuggestion 每设备每天只生成一次建议，其余请求直接复用当日记录。
 func (s *VoiceService) getOrCreateDailySuggestion(ctx context.Context, deviceNo string) (string, error) {
-	todayPrefix := time.Now().Format("2006-01-02")
+	loc := time.Local
+	now := time.Now().In(loc)
+	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc).Unix()
+	endOfDay := startOfDay + 86400
 	var existing entity.Suggest
 	err := dao.Suggest.Ctx(ctx).
 		Where(dao.Suggest.Columns().DeviceNo, deviceNo).
-		WhereLike(dao.Suggest.Columns().Time, todayPrefix+"%").
+		WhereGTE(dao.Suggest.Columns().Time, startOfDay).
+		WhereLT(dao.Suggest.Columns().Time, endOfDay).
 		OrderDesc(dao.Suggest.Columns().Id).
 		Limit(1).
 		Scan(&existing)
@@ -876,7 +880,7 @@ func (s *VoiceService) getOrCreateDailySuggestion(ctx context.Context, deviceNo 
 	_, insertErr := dao.Suggest.Ctx(ctx).Data(g.Map{
 		dao.Suggest.Columns().DeviceNo: deviceNo,
 		dao.Suggest.Columns().Suggest:  suggestion,
-		dao.Suggest.Columns().Time:     nowText(),
+		dao.Suggest.Columns().Time:     nowUnixSec(),
 	}).Insert()
 	if insertErr != nil {
 		glog.Warningf(ctx, "insert suggest failed: %v", insertErr)
@@ -889,9 +893,9 @@ func (s *VoiceService) loadDeviceProfile(ctx context.Context, deviceNo string) (
 	if err != nil {
 		glog.Warningf(ctx, "load device profile failed: deviceNo=%s err=%v", deviceNo, err)
 	}
-	birthday := strings.TrimSpace(profile.Birthday)
-	if birthday == "" {
-		birthday = "未设置"
+	birthday := "未设置"
+	if profile.Birthday > 0 {
+		birthday = time.Unix(profile.Birthday, 0).In(time.Local).Format("2006-01-02")
 	}
 	sexText := "女"
 	if profile.Sex > 0 {

@@ -197,36 +197,36 @@ func (r *cacheRepo) setEventOptions(ctx context.Context, items []entity.Event) e
 }
 
 type birthdayCache struct {
-	Birthday string `json:"birthday"`
-	Sex      int    `json:"sex"`
+	Birthday int64 `json:"birthday"`
+	Sex      int   `json:"sex"`
 }
 
-func (r *cacheRepo) getBirthday(ctx context.Context, deviceNo string) (string, int, bool, error) {
+func (r *cacheRepo) getBirthday(ctx context.Context, deviceNo string) (int64, int, bool, error) {
 	key, err := cachekit.UserProfileKey(deviceNo)
 	if err != nil {
-		return "", 0, false, err
+		return 0, 0, false, err
 	}
 	raw, ok, err := r.cache.Get(ctx, key)
 	if err != nil || !ok {
 		if err != nil {
 			glog.Warningf(ctx, "history cache read failed type=birthday deviceNo=%s err=%v", deviceNo, err)
 		}
-		return "", 0, false, err
+		return 0, 0, false, err
 	}
 	var out birthdayCache
 	if uErr := json.Unmarshal([]byte(raw), &out); uErr != nil {
-		return "", 0, false, uErr
+		return 0, 0, false, uErr
 	}
-	return strings.TrimSpace(out.Birthday), out.Sex, true, nil
+	return out.Birthday, out.Sex, true, nil
 }
 
-func (r *cacheRepo) setBirthday(ctx context.Context, deviceNo, birthday string, sex int) error {
+func (r *cacheRepo) setBirthday(ctx context.Context, deviceNo string, birthdayUnixSec int64, sex int) error {
 	key, err := cachekit.UserProfileKey(deviceNo)
 	if err != nil {
 		return err
 	}
 	body, err := json.Marshal(birthdayCache{
-		Birthday: strings.TrimSpace(birthday),
+		Birthday: birthdayUnixSec,
 		Sex:      sex,
 	})
 	if err != nil {
@@ -243,8 +243,8 @@ type historyProjectionEvent struct {
 	EventIDRef int64  `json:"event_id_ref"`
 	EventName  string `json:"event_name"`
 	EventNum   int64  `json:"event_number"`
-	StartTime  string `json:"start_time"`
-	EndTime    string `json:"end_time"`
+	StartTime  int64  `json:"start_time"`
+	EndTime    int64  `json:"end_time"`
 	Remark     string `json:"remark"`
 }
 
@@ -279,8 +279,8 @@ func ApplyProjection(ctx context.Context, routingKey string, payload string) err
 			EventId:     evt.EventIDRef,
 			EventName:   evt.EventName,
 			EventNumber: evt.EventNum,
-			StartTime:   strings.TrimSpace(evt.StartTime),
-			EndTime:     strings.TrimSpace(evt.EndTime),
+			StartTime:   evt.StartTime,
+			EndTime:     evt.EndTime,
 			Remark:      strings.TrimSpace(evt.Remark),
 		})
 	case eventkit.RoutingHistoryRecordUpdated:
@@ -290,8 +290,8 @@ func ApplyProjection(ctx context.Context, routingKey string, payload string) err
 			EventId:     evt.EventIDRef,
 			EventName:   evt.EventName,
 			EventNumber: evt.EventNum,
-			StartTime:   strings.TrimSpace(evt.StartTime),
-			EndTime:     strings.TrimSpace(evt.EndTime),
+			StartTime:   evt.StartTime,
+			EndTime:     evt.EndTime,
 			Remark:      strings.TrimSpace(evt.Remark),
 		})
 	case eventkit.RoutingHistoryRecordDeleted:

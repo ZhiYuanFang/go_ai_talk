@@ -11,7 +11,7 @@ type User struct {
 	Sex            int    `json:"sex"            ` // 性别（0女1男）
 	LastTalkAsk    string `json:"lastTalkAsk"    ` // 最后对话的问题
 	LastTalkAnswer string `json:"lastTalkAnswer" ` // 最后对话的答案
-	ActiveTime     string `json:"activeTime"     ` // 激活时间UTF8
-	LastTalkTime   string `json:"lastTalkTime"   ` // 最后对话时间UTF8
-	Birthday       string `json:"birthday"       ` // 生日时间戳
+	ActiveTime     int64  `json:"activeTime"     ` // 激活时间戳
+	LastTalkTime   int64  `json:"lastTalkTime"   ` // 最后对话时间戳
+	Birthday       int64  `json:"birthday"       ` // 生日时间戳
 }

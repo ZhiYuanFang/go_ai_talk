@@ -59,8 +59,8 @@
 			<button type="button" id="btnBind">POST /device/app/api/user/bindwx</button>
 			<div class="row2">
 				<div>
-					<label>生日 birthday（字符串，与画像接口一致）</label>
-					<input id="birthday" type="text" placeholder="例如时间戳或业务约定格式" />
+					<label>生日 birthday（Unix 秒，或 YYYY-MM-DD）</label>
+					<input id="birthday" type="text" placeholder="例如 946684800 或 2000-01-01" />
 				</div>
 				<div>
 					<label>性别 sex（0 女 1 男）</label>
@@ -96,10 +96,10 @@
 			<button type="button" class="secondary" id="btnLoadEvents">GET /device/history/api/event/options</button>
 			<label>事件 eventId</label>
 			<select id="eventId"><option value="">先加载事件列表</option></select>
-			<label>startTime（与库内 start_time 可比字符串）</label>
-			<input id="startTime" type="text" placeholder="例如 0 或时间戳字符串" />
-			<label>endTime</label>
-			<input id="endTime" type="text" placeholder="例如较大时间戳" />
+			<label>startTime（Unix 秒）</label>
+			<input id="startTime" type="text" placeholder="例如 1700000000" />
+			<label>endTime（Unix 秒）</label>
+			<input id="endTime" type="text" placeholder="例如 1700086400" />
 			<button type="button" id="btnPiece">GET /device/history/api/piece</button>
 			<canvas id="chart" width="600" height="220"></canvas>
 			<pre id="pieceRaw" class="log" style="max-height:120px"></pre>
@@ -136,6 +136,15 @@
 		return b.replace(/^http/,'ws') + '/device/app/ws/history';
 	}
 	let sock = null;
+
+	function birthdayPayloadFromInput(raw){
+		const s = String(raw || '').trim();
+		if(!s){ return 0; }
+		if(/^\d+$/.test(s)){ return parseInt(s, 10); }
+		const d = new Date(s + 'T00:00:00');
+		if(Number.isNaN(d.getTime())){ return 0; }
+		return Math.floor(d.getTime() / 1000);
+	}
 
 	$('baseUrl').value = window.location.origin;
 
@@ -189,7 +198,7 @@
 		try{
 			const d = await apiJson('/device/app/api/user/auto_save', {
 				method:'POST',
-				body: JSON.stringify({ birthday: $('birthday').value.trim(), sex: Number($('sex').value) })
+				body: JSON.stringify({ birthday: birthdayPayloadFromInput($('birthday').value), sex: Number($('sex').value) })
 			});
 			if(d && d.deviceNo) $('deviceNo').value = d.deviceNo;
 			log($('msgProfile'), d, true);
@@ -275,10 +284,14 @@
 		try{
 			const dn = $('deviceNo').value.trim();
 			const eid = $('eventId').value.trim();
-			const st = $('startTime').value.trim();
-			const et = $('endTime').value.trim();
+			const st = parseInt(String($('startTime').value || '').trim(), 10);
+			const et = parseInt(String($('endTime').value || '').trim(), 10);
 			if(!dn || !eid){ log($('msgPiece'), '填写 deviceNo 并选择 eventId'); return; }
-			const q = '?deviceNo='+encodeURIComponent(dn)+'&eventId='+encodeURIComponent(eid)+'&startTime='+encodeURIComponent(st)+'&endTime='+encodeURIComponent(et);
+			if(!Number.isFinite(st) || !Number.isFinite(et) || st <= 0 || et <= 0){
+				log($('msgPiece'), 'startTime/endTime 须为 Unix 秒正整数');
+				return;
+			}
+			const q = '?deviceNo='+encodeURIComponent(dn)+'&eventId='+encodeURIComponent(eid)+'&startTime='+encodeURIComponent(String(st))+'&endTime='+encodeURIComponent(String(et));
 			const d = await apiJson('/device/history/api/piece' + q, { method:'GET' });
 			const list = (d && d.list) ? d.list : [];
 			$('pieceRaw').textContent = JSON.stringify(list, null, 2);

@@ -1,4 +1,3 @@
-
 # CLI tool, only in development environment.
 # https://goframe.org/pages/viewpage.action?pageId=3673173
 gfcli:
@@ -6,7 +5,7 @@ gfcli:
     dao:
     # device 域：user/event/action
     - link:     "mysql:root:Fang930927@tcp(120.55.50.105:3306)/ai_voice_device"
-      tables:   "user,event,action"
+      tables:   "user,event,action,wx"
       jsonCase: "CamelLower"
     # voice 域：qa/suggest
     - link:     "mysql:root:Fang930927@tcp(120.55.50.105:3306)/ai_voice_voice"
@@ -15,6 +14,14 @@ gfcli:
     # history 域：history
     - link:     "mysql:root:Fang930927@tcp(120.55.50.105:3306)/ai_voice_history"
       tables:   "history"
+      jsonCase: "CamelLower"
+    # app 域：gateway-app 读 ai_voice_app.version 等
+    - link:     "mysql:root:Fang930927@tcp(120.55.50.105:3306)/ai_voice_app"
+      tables:   "version"
+      jsonCase: "CamelLower"
+    # worker 域：domain_outbox（worker 专用库 ai_voice_worker）
+    - link:     "mysql:root:Fang930927@tcp(120.55.50.105:3306)/ai_voice_worker"
+      tables:   "domain_outbox"
       jsonCase: "CamelLower"
   docker:
     build: "-a amd64 -s linux -p temp -ew"

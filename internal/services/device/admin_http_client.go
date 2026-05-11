@@ -109,9 +109,9 @@ func (c *httpDeviceAdminClient) VerifyPassword(password string) bool {
 	return err == nil && out.OK
 }
 
-func (c *httpDeviceAdminClient) Register(ctx context.Context, deviceNo string) (string, error) {
+func (c *httpDeviceAdminClient) Register(ctx context.Context, deviceNo string) (int64, error) {
 	var out struct {
-		ActiveTime string `json:"activeTime"`
+		ActiveTime int64 `json:"activeTime"`
 	}
 	err := c.doJSON(ctx, http.MethodPost, "/device/internal/api/register", nil, map[string]interface{}{
 		"deviceNo": strings.TrimSpace(deviceNo),
@@ -200,10 +200,10 @@ func (c *httpDeviceAdminClient) DeleteAction(ctx context.Context, id int64) erro
 	}, nil)
 }
 
-func (c *httpDeviceAdminClient) SaveUserProfile(ctx context.Context, deviceNo, birthday string, sex int) error {
+func (c *httpDeviceAdminClient) SaveUserProfile(ctx context.Context, deviceNo string, birthdayUnixSec int64, sex int) error {
 	return c.doJSON(ctx, http.MethodPost, "/device/app/api/user/save", nil, map[string]interface{}{
 		"deviceNo": strings.TrimSpace(deviceNo),
-		"birthday": strings.TrimSpace(birthday),
+		"birthday": birthdayUnixSec,
 		"sex":      sex,
 	}, nil)
 }

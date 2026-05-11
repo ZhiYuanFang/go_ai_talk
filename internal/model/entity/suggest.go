@@ -9,5 +9,5 @@ type Suggest struct {
 	Id       int64  `json:"id"       ` //
 	DeviceNo string `json:"deviceNo" ` //
 	Suggest  string `json:"suggest"  ` //
-	Time     string `json:"time"     ` //
+	Time     int64  `json:"time"     ` //
 }

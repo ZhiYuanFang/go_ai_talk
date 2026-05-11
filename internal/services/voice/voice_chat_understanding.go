@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
 	"regexp"
 	"sort"
 	"strconv"
@@ -371,7 +370,7 @@ func (s *VoiceService) callDeepSeekUnifiedIntent(ctx context.Context, deviceNo, 
 
 func (s *VoiceService) handleUnifiedIntentAction(ctx context.Context, deviceNo, normalizedTranscript string, action entity.Action, events []entity.Event, intent deepSeekUnifiedIntent) (finalReply string, exit bool, finishTalk bool, err error) {
 	// 统一意图动作执行器：对 suggest/search/exit 直接返回，其余动作落到事件写库流程。
-	nowTime := time.Now().Format("2006-01-02 15:04:05")
+	nowTime := time.Now().Unix()
 	switch action.TargetType {
 	case ActionTargetTypeSuggest.String():
 		reply := strings.TrimSpace(intent.Reply)
@@ -427,7 +426,7 @@ func (s *VoiceService) handleUnifiedIntentAction(ctx context.Context, deviceNo, 
 		if err != nil {
 			return "记录事件失败,请重试", false, true, err
 		}
-		if lastEvent.EndTime == "" && lastEvent.EventId > 0 {
+		if lastEvent.EndTime == 0 && lastEvent.EventId > 0 {
 			_, _ = DeviceHistory().EndLatestHistoryIfMatch(ctx, deviceNo, lastEvent.EventId, nowTime)
 			return fmt.Sprintf("好的，已记录%s结束，%s自动结束", targetName, lastEvent.EventName), false, true, nil
 		}
@@ -501,7 +500,7 @@ func (s *VoiceService) resolveEventFromUnifiedIntent(ctx context.Context, normal
 // 根据动作，判断后续逻辑
 func (s *VoiceService) handleActionRecord(ctx context.Context, deviceNo string, normalizedTranscript string, action entity.Action, events []entity.Event) (finalReply string, exit bool, finishTalk bool, err error) {
 	// 根据不同的action做出不同的处理
-	nowTime := time.Now().Format("2006-01-02 15:04:05")
+	nowTime := time.Now().Unix()
 	switch action.TargetType {
 	case "start": //开始记录计时动作
 		event, targetName, ok := s.extractEventFromText(ctx, normalizedTranscript, events)
@@ -568,7 +567,7 @@ func (s *VoiceService) handleActionRecord(ctx context.Context, deviceNo string, 
 				return "记录事件失败,请重试", false, true, err
 			}
 			// 上一件事如果没有结束时间,则告知用户上一件事自动结束
-			if lastEvent.EndTime == "" {
+			if lastEvent.EndTime == 0 {
 				_, updateErr := DeviceHistory().EndLatestHistoryIfMatch(ctx, deviceNo, lastEvent.EventId, nowTime)
 				if updateErr != nil {
 					return fmt.Sprintf("好的，已记录%s结束，%s结束失败,请手动结束", targetName, lastEvent.EventName), false, true, updateErr
@@ -1023,33 +1022,6 @@ func appendRemark(existing, extra string) string {
 		return existing
 	}
 	return existing + "；" + extra
-}
-
-func autoTimedQuantityFromRange(startTime, endTime string) int {
-	// 将起止时间差转成秒级数量，用于“计时类事件”自动补数量场景。
-	startAt, okStart := parseDBTime(startTime)
-	endAt, okEnd := parseDBTime(endTime)
-	if !okStart || !okEnd || endAt.Before(startAt) {
-		return 0
-	}
-	seconds := int(math.Round(endAt.Sub(startAt).Seconds()))
-	if seconds < 0 {
-		return 0
-	}
-	return seconds
-}
-
-func parseDBTime(value string) (time.Time, bool) {
-	// 数据库存储时间按本地时区解析，解析失败返回 false 交由上层兜底。
-	v := strings.TrimSpace(value)
-	if v == "" {
-		return time.Time{}, false
-	}
-	t, err := time.ParseInLocation("2006-01-02 15:04:05", v, time.Local)
-	if err != nil {
-		return time.Time{}, false
-	}
-	return t, true
 }
 
 // isGrowthSuggestionIntent 判断用户是否在询问成长建议。

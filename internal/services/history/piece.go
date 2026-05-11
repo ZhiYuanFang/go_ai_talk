@@ -17,16 +17,14 @@ import (
 
 const pieceListCacheTTL = 60 * time.Second
 
-// ListHistoryPiece 按设备、事件与时间区间查询历史记录（startTime/endTime 与库内存储格式一致，按字符串比较过滤）。
-func ListHistoryPiece(ctx context.Context, deviceNo string, eventID int64, startTime, endTime string) ([]entity.History, error) {
+// ListHistoryPiece 按设备、事件与时间区间查询历史记录（startTime/endTime 为 Unix 秒，与库内 BIGINT 一致）。
+func ListHistoryPiece(ctx context.Context, deviceNo string, eventID int64, startTimeUnixSec, endTimeUnixSec int64) ([]entity.History, error) {
 	deviceNo = strings.TrimSpace(deviceNo)
-	startTime = strings.TrimSpace(startTime)
-	endTime = strings.TrimSpace(endTime)
-	if deviceNo == "" || eventID <= 0 || startTime == "" || endTime == "" {
-		return nil, fmt.Errorf("deviceNo、eventId、startTime、endTime 均不能为空")
+	if deviceNo == "" || eventID <= 0 || startTimeUnixSec <= 0 || endTimeUnixSec <= 0 {
+		return nil, fmt.Errorf("deviceNo、eventId、startTime、endTime 均不能为空且须为有效 Unix 秒")
 	}
 	ver := pieceCacheEpoch(ctx, deviceNo)
-	cacheKey := pieceCacheKey(deviceNo, eventID, startTime, endTime, ver)
+	cacheKey := pieceCacheKey(deviceNo, eventID, startTimeUnixSec, endTimeUnixSec, ver)
 	if raw, err := g.Redis().Do(ctx, "GET", cacheKey); err == nil && raw != nil {
 		s := strings.TrimSpace(raw.String())
 		if s != "" {
@@ -50,7 +48,7 @@ func ListHistoryPiece(ctx context.Context, deviceNo string, eventID int64, start
 		).
 		Where(dao.History.Columns().DeviceNo, deviceNo).
 		Where(dao.History.Columns().EventId, eventID).
-		Where(stCol+" >= ? AND "+stCol+" <= ?", startTime, endTime).
+		Where(stCol+" >= ? AND "+stCol+" <= ?", startTimeUnixSec, endTimeUnixSec).
 		OrderAsc(dao.History.Columns().Id).
 		All()
 	if err != nil {
@@ -64,8 +62,8 @@ func ListHistoryPiece(ctx context.Context, deviceNo string, eventID int64, start
 			EventId:     row[dao.History.Columns().EventId].Int64(),
 			EventName:   row[dao.History.Columns().EventName].String(),
 			EventNumber: row[dao.History.Columns().EventNumber].Int64(),
-			StartTime:   row[dao.History.Columns().StartTime].String(),
-			EndTime:     row[dao.History.Columns().EndTime].String(),
+			StartTime:   row[dao.History.Columns().StartTime].Int64(),
+			EndTime:     row[dao.History.Columns().EndTime].Int64(),
 			Remark:      row[dao.History.Columns().Remark].String(),
 		})
 	}

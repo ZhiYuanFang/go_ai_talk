@@ -17,6 +17,6 @@ func DeviceProfile() device.DeviceProfileContract {
 }
 
 // DeviceHistory 返回历史契约实现，供语音意图写入/查询历史。
-func DeviceHistory() history.Contract {
+func DeviceHistory() contracts.DeviceHistoryContract {
 	return history.DeviceHistory()
 }

@@ -34,8 +34,8 @@ func (s *localService) GetLatestHistory(ctx context.Context, deviceNo string) (e
 	return GetLatestDeviceHistory(ctx, deviceNo)
 }
 
-func (s *localService) EndLatestHistoryIfMatch(ctx context.Context, deviceNo string, eventID int64, endTime string) (bool, error) {
-	return EndLatestDeviceHistoryIfMatch(ctx, deviceNo, eventID, endTime)
+func (s *localService) EndLatestHistoryIfMatch(ctx context.Context, deviceNo string, eventID int64, endTimeUnixSec int64) (bool, error) {
+	return EndLatestDeviceHistoryIfMatch(ctx, deviceNo, eventID, endTimeUnixSec)
 }
 
 func (s *localService) ListSuggest(ctx context.Context, deviceNo string) ([]entity.Suggest, error) {
@@ -50,12 +50,12 @@ func (s *localService) ListEventOptions(ctx context.Context) ([]entity.Event, er
 	return ListEventOptions(ctx)
 }
 
-func (s *localService) GetBirthday(ctx context.Context, deviceNo string) (string, int, error) {
+func (s *localService) GetBirthday(ctx context.Context, deviceNo string) (int64, int, error) {
 	return GetDeviceBirthday(ctx, deviceNo)
 }
 
-func (s *localService) SaveBirthday(ctx context.Context, deviceNo, birthday string, sex int) error {
-	return SaveBirthday(ctx, deviceNo, birthday, sex)
+func (s *localService) SaveBirthday(ctx context.Context, deviceNo string, birthdayUnixSec int64, sex int) error {
+	return SaveBirthday(ctx, deviceNo, birthdayUnixSec, sex)
 }
 
 func (s *localService) AddHistory(ctx context.Context, item entity.History) (int64, error) {
@@ -103,8 +103,8 @@ func ListDeviceHistory(ctx context.Context, deviceNo string) ([]entity.History, 
 			EventId:     row[dao.History.Columns().EventId].Int64(),
 			EventName:   row[dao.History.Columns().EventName].String(),
 			EventNumber: row[dao.History.Columns().EventNumber].Int64(),
-			StartTime:   row[dao.History.Columns().StartTime].String(),
-			EndTime:     row[dao.History.Columns().EndTime].String(),
+			StartTime:   row[dao.History.Columns().StartTime].Int64(),
+			EndTime:     row[dao.History.Columns().EndTime].Int64(),
 			Remark:      row[dao.History.Columns().Remark].String(),
 		})
 	}
@@ -163,8 +163,8 @@ func ListDeviceHistoryPage(ctx context.Context, deviceNo string, page int, pageS
 			EventId:     row[dao.History.Columns().EventId].Int64(),
 			EventName:   row[dao.History.Columns().EventName].String(),
 			EventNumber: row[dao.History.Columns().EventNumber].Int64(),
-			StartTime:   row[dao.History.Columns().StartTime].String(),
-			EndTime:     row[dao.History.Columns().EndTime].String(),
+			StartTime:   row[dao.History.Columns().StartTime].Int64(),
+			EndTime:     row[dao.History.Columns().EndTime].Int64(),
 			Remark:      row[dao.History.Columns().Remark].String(),
 		})
 	}
@@ -194,14 +194,14 @@ func GetLatestDeviceHistory(ctx context.Context, deviceNo string) (entity.Histor
 	return item, nil
 }
 
-func EndLatestDeviceHistoryIfMatch(ctx context.Context, deviceNo string, eventID int64, endTime string) (bool, error) {
+func EndLatestDeviceHistoryIfMatch(ctx context.Context, deviceNo string, eventID int64, endTimeUnixSec int64) (bool, error) {
 	deviceNo = strings.TrimSpace(deviceNo)
-	endTime = strings.TrimSpace(endTime)
 	if deviceNo == "" || eventID <= 0 {
 		return false, nil
 	}
-	if endTime == "" {
-		endTime = time.Now().Format("2006-01-02 15:04:05")
+	// 0 表示调用方未显式传结束时间，落库为当前 Unix 秒。
+	if endTimeUnixSec == 0 {
+		endTimeUnixSec = time.Now().Unix()
 	}
 	last, err := GetLatestDeviceHistory(ctx, deviceNo)
 	if err != nil {
@@ -213,12 +213,12 @@ func EndLatestDeviceHistoryIfMatch(ctx context.Context, deviceNo string, eventID
 	_, err = dao.History.Ctx(ctx).
 		Where(dao.History.Columns().Id, last.Id).
 		Where(dao.History.Columns().DeviceNo, deviceNo).
-		Data(g.Map{dao.History.Columns().EndTime: endTime}).
+		Data(g.Map{dao.History.Columns().EndTime: endTimeUnixSec}).
 		Update()
 	if err != nil {
 		return false, err
 	}
-	last.EndTime = endTime
+	last.EndTime = endTimeUnixSec
 	historyCache.patchHistoryOnUpdate(ctx, last)
 	return true, nil
 }
@@ -255,28 +255,27 @@ func ListEventOptions(ctx context.Context) ([]entity.Event, error) {
 	return rows, nil
 }
 
-func SaveBirthday(ctx context.Context, deviceNo, birthday string, sex int) error {
+func SaveBirthday(ctx context.Context, deviceNo string, birthdayUnixSec int64, sex int) error {
 	deviceNo = strings.TrimSpace(deviceNo)
-	birthday = strings.TrimSpace(birthday)
 	if deviceNo == "" {
 		return nil
 	}
 	if sex > 0 {
 		sex = 1
 	}
-	err := delegateSaveProfile(ctx, deviceNo, birthday, sex)
+	err := delegateSaveProfile(ctx, deviceNo, birthdayUnixSec, sex)
 	if err != nil {
 		logDelegateFailure(ctx, "save_profile", err)
 		return err
 	}
-	_ = historyCache.setBirthday(ctx, deviceNo, birthday, sex)
+	_ = historyCache.setBirthday(ctx, deviceNo, birthdayUnixSec, sex)
 	return nil
 }
 
-func GetDeviceBirthday(ctx context.Context, deviceNo string) (string, int, error) {
+func GetDeviceBirthday(ctx context.Context, deviceNo string) (int64, int, error) {
 	deviceNo = strings.TrimSpace(deviceNo)
 	if deviceNo == "" {
-		return "", 0, nil
+		return 0, 0, nil
 	}
 	if birthday, sex, ok, err := historyCache.getBirthday(ctx, deviceNo); err == nil && ok {
 		return birthday, sex, nil
@@ -284,12 +283,11 @@ func GetDeviceBirthday(ctx context.Context, deviceNo string) (string, int, error
 	birthday, sex, err := delegateGetProfile(ctx, deviceNo)
 	if err != nil {
 		logDelegateFailure(ctx, "get_profile", err)
-		return "", 0, err
+		return 0, 0, err
 	}
 	if sex > 0 {
 		sex = 1
 	}
-	birthday = strings.TrimSpace(birthday)
 	_ = historyCache.setBirthday(ctx, deviceNo, birthday, sex)
 	return birthday, sex, nil
 }
@@ -297,8 +295,6 @@ func GetDeviceBirthday(ctx context.Context, deviceNo string) (string, int, error
 func AddDeviceHistory(ctx context.Context, item entity.History) (int64, error) {
 	item.DeviceNo = strings.TrimSpace(item.DeviceNo)
 	item.EventName = strings.TrimSpace(item.EventName)
-	item.StartTime = strings.TrimSpace(item.StartTime)
-	item.EndTime = strings.TrimSpace(item.EndTime)
 	item.Remark = strings.TrimSpace(item.Remark)
 	if item.DeviceNo == "" {
 		return 0, fmt.Errorf("deviceNo 不能为空")
@@ -353,8 +349,6 @@ func UpdateDeviceHistory(ctx context.Context, item entity.History) error {
 	}
 	item.DeviceNo = strings.TrimSpace(item.DeviceNo)
 	item.EventName = strings.TrimSpace(item.EventName)
-	item.StartTime = strings.TrimSpace(item.StartTime)
-	item.EndTime = strings.TrimSpace(item.EndTime)
 	item.Remark = strings.TrimSpace(item.Remark)
 	if item.DeviceNo == "" {
 		return fmt.Errorf("deviceNo 不能为空")

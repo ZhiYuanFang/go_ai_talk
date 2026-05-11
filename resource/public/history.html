@@ -263,8 +263,16 @@
         }
 
         function parseDateTime(v){
+            if(v === null || v === undefined){ return null; }
+            if(typeof v === 'number' && Number.isFinite(v) && v > 0){
+                return new Date(v * 1000);
+            }
             const s = String(v || '').trim();
             if(!s){ return null; }
+            if(/^\d+$/.test(s)){
+                const sec = parseInt(s, 10);
+                if(sec > 0){ return new Date(sec * 1000); }
+            }
             const dt = new Date(s.replace(' ', 'T'));
             if(Number.isNaN(dt.getTime())){ return null; }
             return dt;
@@ -297,15 +305,23 @@
         }
 
         function toDateTimeLocal(v){
-            const s = String(v || '').trim();
-            if(!s) return '';
-            return s.replace(' ', 'T').slice(0, 16);
+            const dt = parseDateTime(v);
+            if(!dt){ return ''; }
+            const y = dt.getFullYear();
+            const m = pad2(dt.getMonth() + 1);
+            const d = pad2(dt.getDate());
+            const h = pad2(dt.getHours());
+            const mi = pad2(dt.getMinutes());
+            return y + '-' + m + '-' + d + 'T' + h + ':' + mi;
         }
 
         function fromDateTimeLocal(v){
             const s = String(v || '').trim();
-            if(!s) return '';
-            return s.replace('T', ' ') + ':00';
+            if(!s){ return 0; }
+            const iso = s.length > 16 ? s : (s + ':00');
+            const dt = new Date(iso);
+            if(Number.isNaN(dt.getTime())){ return 0; }
+            return Math.floor(dt.getTime() / 1000);
         }
 
         function pad2(v){
@@ -317,8 +333,10 @@
         }
 
         function formatHistoryDateTime(v){
+            if(v === null || v === undefined){ return '正在进行中'; }
+            if(typeof v === 'number' && v === 0){ return '正在进行中'; }
             const raw = String(v || '').trim();
-            if(raw === ''){
+            if(raw === '' || raw === '0'){
                 return '正在进行中';
             }
             const dt = parseDateTime(v);
@@ -570,7 +588,7 @@
                 const needQty = rowEventNeedQuantity(it.eventId);
                 const start = parseDateTime(it.startTime);
                 const end = parseDateTime(it.endTime);
-                const hasEnd = String(it.endTime || '').trim() !== '';
+                const hasEnd = Number(it.endTime || 0) !== 0;
                 let numberText;
                 if(needQty){
                     numberText = String(it.eventNumber ?? '').trim() || '-';
@@ -631,23 +649,36 @@
             rows.forEach(it => {
                 const div = document.createElement('div');
                 div.className = 'suggest-item';
-                div.innerHTML = '<div class="suggest-time">'+escapeHtml(it.time)+'</div><div>'+escapeHtml(it.suggest)+'</div>';
+                const st = (it.time != null && Number(it.time) > 0) ? new Date(Number(it.time) * 1000).toLocaleString() : '';
+                div.innerHTML = '<div class="suggest-time">'+escapeHtml(st)+'</div><div>'+escapeHtml(it.suggest)+'</div>';
                 suggestWrap.appendChild(div);
             });
         }
 
         async function loadBirthday(){
             const data = await api('/device/history/api/birthday?deviceNo=' + encodeURIComponent(deviceNo));
-            const birthday = (data && data.birthday) ? String(data.birthday).trim() : '';
+            const sec = (data && data.birthday != null) ? Number(data.birthday) : 0;
             currentSex = Number((data && data.sex) || 0) > 0 ? 1 : 0;
-            birthdayInput.value = birthday;
+            if(sec > 0){
+                const d = new Date(sec * 1000);
+                birthdayInput.value = d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+            }else{
+                birthdayInput.value = '';
+            }
             sexInput.value = String(currentSex);
             applyThemeBySex(currentSex);
-            meta.textContent = birthday ? '已加载' : '未设置';
+            meta.textContent = sec > 0 ? '已加载' : '未设置';
         }
 
         async function saveBirthday(){
-            const birthday = String(birthdayInput.value || '').trim();
+            const raw = String(birthdayInput.value || '').trim();
+            let birthday = 0;
+            if(raw){
+                const dt = new Date(raw + 'T00:00:00');
+                if(!Number.isNaN(dt.getTime())){
+                    birthday = Math.floor(dt.getTime() / 1000);
+                }
+            }
             const sex = Number(sexInput.value || 0) > 0 ? 1 : 0;
             await apiPost('/device/history/api/birthday/save', {deviceNo, birthday, sex});
             currentSex = sex;
@@ -708,14 +739,15 @@
         async function submitHistoryModal(){
             const selected = fEventSelect.options[fEventSelect.selectedIndex];
             const needQuantity = Number((selected && selected.getAttribute('data-need-quantity')) || 0) > 0;
-            const endTimeStr = fromDateTimeLocal(fEndTime.value);
+            const endTimeSec = fromDateTimeLocal(fEndTime.value);
+            const startTimeSec = needQuantity ? endTimeSec : fromDateTimeLocal(fStartTime.value);
             const payload = {
                 deviceNo,
                 eventId: Number(fEventSelect.value || 0),
                 eventName: String((fEventSelect.options[fEventSelect.selectedIndex] || {}).getAttribute('data-name') || '').trim(),
                 eventNumber: needQuantity ? Number(fEventNumber.value || 0) : 0,
-                startTime: needQuantity ? endTimeStr : fromDateTimeLocal(fStartTime.value),
-                endTime: endTimeStr,
+                startTime: startTimeSec,
+                endTime: endTimeSec,
                 remark: String(fRemark.value || '').trim()
             };
             if(!payload.eventId || !payload.eventName){
@@ -723,12 +755,12 @@
                 historyFormError.textContent = '请选择历史事件';
                 return;
             }
-            if(needQuantity && payload.endTime === ''){
+            if(needQuantity && payload.endTime === 0){
                 historyFormError.style.display = 'block';
                 historyFormError.textContent = '计数事件请填写结束时间';
                 return;
             }
-            if(!needQuantity && payload.startTime === ''){
+            if(!needQuantity && payload.startTime === 0){
                 historyFormError.style.display = 'block';
                 historyFormError.textContent = '请完整填写必填项：历史事件、开始时间';
                 return;
@@ -738,7 +770,7 @@
                 historyFormError.textContent = '需要计数的事件必须填写数量';
                 return;
             }
-            if(payload.endTime !== '' && payload.endTime < payload.startTime){
+            if(payload.endTime !== 0 && payload.endTime < payload.startTime){
                 historyFormError.style.display = 'block';
                 historyFormError.textContent = '结束时间不能早于开始时间';
                 return;

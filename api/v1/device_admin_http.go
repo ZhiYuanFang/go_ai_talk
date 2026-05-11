@@ -17,7 +17,7 @@ type DeviceAdminRegisterReq struct {
 // DeviceAdminRegisterRes 注册成功返回。
 type DeviceAdminRegisterRes struct {
 	DeviceNo   string `json:"deviceNo"`
-	ActiveTime string `json:"activeTime"`
+	ActiveTime int64 `json:"activeTime" dc:"激活时间，Unix 秒"`
 }
 
 // DeviceAdminListReq 设备列表（仅需 Header 口令）。

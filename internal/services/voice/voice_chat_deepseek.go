@@ -56,17 +56,19 @@ func birthdayForSuggestAPI(birthday string) string {
 	return b
 }
 
-func suggestDurationMinutes(startStr, endStr string) int {
-	startAt, ok1 := parseDBTime(strings.TrimSpace(startStr))
-	endAt, ok2 := parseDBTime(strings.TrimSpace(endStr))
-	if !ok1 || !ok2 || endAt.Before(startAt) {
+func suggestDurationMinutes(startSec, endSec int64) int {
+	if startSec <= 0 || endSec <= 0 || endSec < startSec {
 		return 0
 	}
-	sec := endAt.Sub(startAt).Seconds()
-	if sec < 0 {
-		return 0
+	return int(math.Round(float64(endSec-startSec) / 60))
+}
+
+// formatLocalDatetimeFromUnix 将 Unix 秒转为本地「YYYY-MM-DD HH:MM:SS」，供大模型上下文可读性。
+func formatLocalDatetimeFromUnix(sec int64) string {
+	if sec <= 0 {
+		return ""
 	}
-	return int(math.Round(sec / 60))
+	return time.Unix(sec, 0).In(time.Local).Format("2006-01-02 15:04:05")
 }
 
 // loadEventNameAndUnitByID 事件表 id -> 名称、单位（成长建议 history.type 用名称；amount 需带单位）。
@@ -82,9 +84,9 @@ func loadEventNameAndUnitByID(ctx context.Context) (names map[int64]string) {
 	return names
 }
 
-// growthSuggestHistoryCutoff 成长建议只取最近 48 小时内的记录（滚动「两天」）。
-func growthSuggestHistoryCutoff() string {
-	return time.Now().Add(-48 * time.Hour).Format("2006-01-02 15:04:05")
+// growthSuggestHistoryCutoff 成长建议只取最近 48 小时内的记录（滚动「两天」），Unix 秒下界。
+func growthSuggestHistoryCutoff() int64 {
+	return time.Now().Add(-48 * time.Hour).Unix()
 }
 
 func (s *VoiceService) buildGrowthSuggestHistory(ctx context.Context, deviceNo string) ([]map[string]interface{}, error) {
@@ -96,9 +98,7 @@ func (s *VoiceService) buildGrowthSuggestHistory(ctx context.Context, deviceNo s
 	eventNames := loadEventNameAndUnitByID(ctx)
 	out := make([]map[string]interface{}, 0, len(rows))
 	for _, h := range rows {
-		start := strings.TrimSpace(h.StartTime)
-		end := strings.TrimSpace(h.EndTime)
-		if start < cutoff && end < cutoff {
+		if h.StartTime < cutoff && h.EndTime < cutoff {
 			continue
 		}
 		typeName := eventNames[h.EventId]
@@ -113,6 +113,8 @@ func (s *VoiceService) buildGrowthSuggestHistory(ctx context.Context, deviceNo s
 		if amt < 0 {
 			amt = 0
 		}
+		start := formatLocalDatetimeFromUnix(h.StartTime)
+		end := formatLocalDatetimeFromUnix(h.EndTime)
 		item := map[string]interface{}{
 			"type":         typeName,
 			"start_time":   start,
@@ -120,7 +122,7 @@ func (s *VoiceService) buildGrowthSuggestHistory(ctx context.Context, deviceNo s
 			"amount_value": amt,
 			"note":         note,
 		}
-		if dm := suggestDurationMinutes(start, end); dm > 0 {
+		if dm := suggestDurationMinutes(h.StartTime, h.EndTime); dm > 0 {
 			item["duration_minutes"] = dm
 		}
 		out = append(out, item)
@@ -132,7 +134,7 @@ func (s *VoiceService) buildRecentHistory(ctx context.Context, deviceNo string, 
 	if hours <= 0 {
 		hours = 12
 	}
-	cutoff := time.Now().Add(-time.Duration(hours) * time.Hour).Format("2006-01-02 15:04:05")
+	cutoff := time.Now().Add(-time.Duration(hours) * time.Hour).Unix()
 	rows, err := DeviceHistory().ListHistory(ctx, deviceNo)
 	if err != nil {
 		glog.Warningf(ctx, "[上下文装配] 历史读取失败，触发降级。deviceNo=%s hours=%d err=%v", deviceNo, hours, err)
@@ -140,14 +142,14 @@ func (s *VoiceService) buildRecentHistory(ctx context.Context, deviceNo string, 
 	}
 	out := make([]map[string]interface{}, 0, len(rows))
 	skipped := 0
-	cutoffAt, _ := time.ParseInLocation("2006-01-02 15:04:05", cutoff, time.Local)
+	cutoffAt := time.Unix(cutoff, 0).In(time.Local)
 	for _, h := range rows {
-		start := strings.TrimSpace(h.StartTime)
-		end := strings.TrimSpace(h.EndTime)
-		if start < cutoff && end < cutoff {
+		if h.StartTime < cutoff && h.EndTime < cutoff {
 			skipped++
 			continue
 		}
+		start := formatLocalDatetimeFromUnix(h.StartTime)
+		end := formatLocalDatetimeFromUnix(h.EndTime)
 		out = append(out, map[string]interface{}{
 			"event_name":   strings.TrimSpace(h.EventName),
 			"start_time":   start,
@@ -157,7 +159,7 @@ func (s *VoiceService) buildRecentHistory(ctx context.Context, deviceNo string, 
 		})
 	}
 	// 记录上下文读取命中/回源后的窗口统计，便于定位历史窗口偏差问题。
-	glog.Debugf(ctx, "[上下文装配] 历史窗口统计。deviceNo=%s hours=%d total=%d kept=%d skipped=%d cutoff=%s", deviceNo, hours, len(rows), len(out), skipped, cutoff)
+	glog.Debugf(ctx, "[上下文装配] 历史窗口统计。deviceNo=%s hours=%d total=%d kept=%d skipped=%d cutoff_unix=%d", deviceNo, hours, len(rows), len(out), skipped, cutoff)
 	for _, item := range out {
 		start := strings.TrimSpace(g.NewVar(item["start_time"]).String())
 		end := strings.TrimSpace(g.NewVar(item["end_time"]).String())
@@ -167,7 +169,7 @@ func (s *VoiceService) buildRecentHistory(ctx context.Context, deviceNo string, 
 			continue
 		}
 		if startAt.Before(cutoffAt) && endAt.Before(cutoffAt) {
-			glog.Warningf(ctx, "[上下文装配] 历史窗口校验异常。deviceNo=%s cutoff=%s start=%s end=%s", deviceNo, cutoff, start, end)
+			glog.Warningf(ctx, "[上下文装配] 历史窗口校验异常。deviceNo=%s cutoff_unix=%d start=%s end=%s", deviceNo, cutoff, start, end)
 		}
 	}
 	return out, nil
@@ -267,7 +269,7 @@ func (s *VoiceService) callDeepSeekGrowthSuggestion(ctx context.Context, deviceN
 	_, insertErr := dao.Suggest.Ctx(ctx).Data(g.Map{
 		dao.Suggest.Columns().DeviceNo: deviceNo,
 		dao.Suggest.Columns().Suggest:  reply,
-		dao.Suggest.Columns().Time:     nowText(),
+		dao.Suggest.Columns().Time:     nowUnixSec(),
 	}).Insert()
 	if insertErr != nil {
 		glog.Warningf(ctx, "insert suggest failed: %v", insertErr)
