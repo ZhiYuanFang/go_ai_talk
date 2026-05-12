@@ -52,7 +52,7 @@ func (c *GatewayAppCtrl) Login(ctx context.Context, req *v1.GatewayAppLoginReq) 
 	if err != nil {
 		return nil, err
 	}
-	refresh, err := gatewayapp.IssueRefreshToken(ctx, wxID)
+	refresh, err := gatewayapp.IssueRefreshToken(ctx, wxID, "")
 	if err != nil {
 		return nil, err
 	}
@@ -86,14 +86,17 @@ func (c *GatewayAppCtrl) DeviceLogin(ctx context.Context, req *v1.GatewayAppDevi
 	wxID := data.Get("wxId").Int64()
 	deviceNo := strings.TrimSpace(data.Get("deviceNo").String())
 	isNew := data.Get("isNewUser").Bool()
-	if wxID <= 0 {
-		return nil, gerror.NewCode(gcode.CodeInternalError, "device 返回缺少 wxId")
+	if wxID < 0 {
+		return nil, gerror.NewCode(gcode.CodeInternalError, "device 返回 wxId 无效")
+	}
+	if deviceNo == "" {
+		return nil, gerror.NewCode(gcode.CodeInternalError, "device 返回缺少 deviceNo")
 	}
 	access, err := gatewayapp.SignAccess(ctx, wxID, deviceNo)
 	if err != nil {
 		return nil, err
 	}
-	refresh, err := gatewayapp.IssueRefreshToken(ctx, wxID)
+	refresh, err := gatewayapp.IssueRefreshToken(ctx, wxID, deviceNo)
 	if err != nil {
 		return nil, err
 	}
@@ -108,19 +111,21 @@ func (c *GatewayAppCtrl) DeviceLogin(ctx context.Context, req *v1.GatewayAppDevi
 
 // TokenRefresh POST /device/app/api/token/refresh（单次旋转 refresh）。
 func (c *GatewayAppCtrl) TokenRefresh(ctx context.Context, req *v1.GatewayAppTokenRefreshReq) (res *v1.GatewayAppTokenRefreshRes, err error) {
-	wxID, err := gatewayapp.ConsumeRefreshToken(ctx, req.RefreshToken, true)
+	wxID, rtDeviceNo, err := gatewayapp.ConsumeRefreshToken(ctx, req.RefreshToken, true)
 	if err != nil {
 		return nil, gerror.NewCode(gcode.CodeNotAuthorized, err.Error())
 	}
-	deviceNo := ""
-	if dn, e2 := gatewayapp.FetchDeviceNoByWxID(ctx, wxID); e2 == nil {
-		deviceNo = strings.TrimSpace(dn)
+	deviceNo := strings.TrimSpace(rtDeviceNo)
+	if deviceNo == "" && wxID > 0 {
+		if dn, e2 := gatewayapp.FetchDeviceNoByWxID(ctx, wxID); e2 == nil {
+			deviceNo = strings.TrimSpace(dn)
+		}
 	}
 	access, err := gatewayapp.SignAccess(ctx, wxID, deviceNo)
 	if err != nil {
 		return nil, err
 	}
-	refresh, err := gatewayapp.IssueRefreshToken(ctx, wxID)
+	refresh, err := gatewayapp.IssueRefreshToken(ctx, wxID, deviceNo)
 	if err != nil {
 		return nil, err
 	}

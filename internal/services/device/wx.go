@@ -37,14 +37,14 @@ type WxLoginResult struct {
 	IsNewUser bool   `json:"isNewUser"`
 }
 
-// ErrWxDeviceLoginRejected 设备号登录被拒绝：设备未注册或 wx 未绑定该设备。
-// 故意不区分具体原因，降低通过响应枚举设备状态的攻击面。
-var ErrWxDeviceLoginRejected = errors.New("设备登录失败，请确认设备已注册且已绑定账号")
+// ErrWxDeviceLoginRejected 设备号登录被拒绝：仅当设备号未在 user 表注册时使用（与「无 wx 绑定」无关：无绑定时 wxId 返回 0）。
+var ErrWxDeviceLoginRejected = errors.New("设备登录失败，请确认设备已注册")
 
 // ErrWxDeviceLoginDeviceNoEmpty 入参 device_no 为空（trim 后）。
 var ErrWxDeviceLoginDeviceNoEmpty = errors.New("deviceNo 不能为空")
 
-// WxDeviceLoginByDeviceNo 校验 user 表已存在该 device_no，且 wx 行已绑定同一设备号；成功返回 wxId 等（不含 JWT）。
+// WxDeviceLoginByDeviceNo 仅校验 user 表已注册该 device_no；若 wx 已绑定同号则返回对应 wxId，否则 wxId=0（网关仍凭 device_no 签发 access）。
+// 不使用 Scan 查空集：部分驱动会返回 sql.ErrNoRows，经网关拼接进 message。
 func WxDeviceLoginByDeviceNo(ctx context.Context, deviceNo string) (*WxLoginResult, error) {
 	deviceNo = strings.TrimSpace(deviceNo)
 	if deviceNo == "" {
@@ -56,12 +56,19 @@ func WxDeviceLoginByDeviceNo(ctx context.Context, deviceNo string) (*WxLoginResu
 		}
 		return nil, err
 	}
+	one, err := dao.Wx.Ctx(ctx).Where(dao.Wx.Columns().DeviceNo, deviceNo).One()
+	if err != nil {
+		return nil, err
+	}
+	if one.IsEmpty() {
+		return &WxLoginResult{WxId: 0, DeviceNo: deviceNo, IsNewUser: false}, nil
+	}
 	var row entity.Wx
-	if err := dao.Wx.Ctx(ctx).Where(dao.Wx.Columns().DeviceNo, deviceNo).Scan(&row); err != nil {
+	if err := one.Struct(&row); err != nil {
 		return nil, err
 	}
 	if row.Id == 0 || strings.TrimSpace(row.DeviceNo) != deviceNo {
-		return nil, ErrWxDeviceLoginRejected
+		return &WxLoginResult{WxId: 0, DeviceNo: deviceNo, IsNewUser: false}, nil
 	}
 	_ = invalidateWxCaches(ctx, row.Id, strings.TrimSpace(row.UnionId))
 	return &WxLoginResult{

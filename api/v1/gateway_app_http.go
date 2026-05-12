@@ -21,12 +21,12 @@ type GatewayAppLoginRes struct {
 // GatewayAppDeviceLoginReq 设备号聚合登录：转发 device 业务校验后签发与微信登录同形态的令牌。
 type GatewayAppDeviceLoginReq struct {
 	g.Meta   `path:"/device/app/api/device_login" method:"post" tags:"gateway-app" summary:"设备号聚合登录"`
-	DeviceNo string `json:"deviceNo" dc:"已注册且 wx 已绑定的设备号"`
+	DeviceNo string `json:"deviceNo" dc:"须在 device user 表已注册；无 wx 绑定时网关签发 sub=0 的 access"`
 }
 
-// GatewayAppDeviceLoginRes 与 GatewayAppLoginRes 字段对齐。
+// GatewayAppDeviceLoginRes 与 GatewayAppLoginRes 字段对齐；wxId 可为 0（纯设备会话）。
 type GatewayAppDeviceLoginRes struct {
-	WxId         int64  `json:"wxId"`
+	WxId         int64  `json:"wxId" dc:"wx 主键，无 wx 绑定时为 0"`
 	DeviceNo     string `json:"deviceNo"`
 	IsNewUser    bool   `json:"isNewUser"`
 	AccessToken  string `json:"accessToken"`

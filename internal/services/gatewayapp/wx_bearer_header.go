@@ -31,7 +31,11 @@ func InjectAccessHeadersFromBearer(r *ghttp.Request) error {
 	}
 	raw := strings.TrimSpace(auth[len(pfx):])
 	wxID, deviceNo, err := ParseAccessClaims(ctx, raw)
-	if err != nil || wxID <= 0 {
+	if err != nil || wxID < 0 {
+		return ErrGatewayBearerInvalid
+	}
+	// sub=0 表示仅设备会话：必须带 device_no claim，否则无法与伪造空 sub 区分且下游无法识别设备。
+	if wxID == 0 && strings.TrimSpace(deviceNo) == "" {
 		return ErrGatewayBearerInvalid
 	}
 	r.Header.Set(HeaderInternalWxId, strconv.FormatInt(wxID, 10))

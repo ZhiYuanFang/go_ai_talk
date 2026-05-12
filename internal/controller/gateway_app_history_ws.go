@@ -45,7 +45,7 @@ func gatewayAppHistoryWS(r *ghttp.Request) {
 		return
 	}
 	wxID, deviceNoFromJWT, err := gatewayapp.ParseAccessClaims(ctx, strings.TrimSpace(af.AccessToken))
-	if err != nil || wxID <= 0 {
+	if err != nil || wxID < 0 {
 		_ = ws.WriteJSON(g.Map{"type": "error", "message": "access_token 无效"})
 		return
 	}

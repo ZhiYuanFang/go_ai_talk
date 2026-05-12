@@ -65,15 +65,15 @@ type DeviceWxLoginRes struct {
 	IsNewUser bool   `json:"isNewUser"`
 }
 
-// DeviceWxDeviceLoginReq 设备号业务登录（仅校验已注册且 wx 已绑定，不签发 JWT）。
+// DeviceWxDeviceLoginReq 设备号业务登录（仅校验设备域已注册，不签发 JWT）。
 type DeviceWxDeviceLoginReq struct {
 	g.Meta   `path:"/device/app/api/user/device_login" method:"post" tags:"device" summary:"设备号登录业务"`
-	DeviceNo string `json:"deviceNo" dc:"设备号，须已在设备域注册且 wx.device_no 已绑定"`
+	DeviceNo string `json:"deviceNo" dc:"设备号，须已在设备域 user 表注册"`
 }
 
-// DeviceWxDeviceLoginRes 设备号登录业务响应（形态与微信业务登录子集一致，无 token）。
+// DeviceWxDeviceLoginRes 设备号登录业务响应（无 token）。wxId 为 0 表示当前无 wx 行绑定该设备号；非 0 为 wx 表主键。
 type DeviceWxDeviceLoginRes struct {
-	WxId      int64  `json:"wxId"`
+	WxId      int64  `json:"wxId" dc:"wx 表主键，无绑定时为 0"`
 	DeviceNo  string `json:"deviceNo"`
 	IsNewUser bool   `json:"isNewUser" dc:"设备号登录恒为 false"`
 }
