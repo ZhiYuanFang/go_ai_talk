@@ -11,26 +11,26 @@
 
 ### Requirement: Bearer 鉴权与内部头注入
 
-系统 SHALL 对除白名单外的受保护 HTTP 路径校验 `Authorization: Bearer <access_token>`，其中 `access_token` **MUST** 为符合 RFC 7519 的 **JWT**；系统 SHALL 先验证 JWT 签名与 `exp`，再从 **标准 JWT claim `sub`** 解析出大于 0 的整数 `wx.id`，通过 device-service 契约获取对应 `wxCode` 并写入转发请求头 `X-Internal-Wx-Code` 后再进入反向代理链。
+系统 SHALL 对除白名单外的受保护 HTTP 路径校验 `Authorization: Bearer <access_token>`，其中 `access_token` **MUST** 为符合 RFC 7519 的 **JWT**；系统 SHALL 先验证 JWT 签名与 `exp`，再从 **标准 JWT claim `sub`** 解析出大于 0 的整数 `wx.id`，通过 device-service 契约获取对应 **`unionid`（`wx.union_id`）** 并写入转发请求头 **`X-Internal-Wx-Union-Id`** 后再进入反向代理链。
 
 #### Scenario: 鉴权通过并代理
 
 - **WHEN** 客户端请求受保护路径且 Bearer 为合法未过期的 JWT、`sub` 对应 wx.id 在 device 侧存在
-- **THEN** 网关 SHALL 在发往 device-service 或 history-service 的代理请求上设置 `X-Internal-Wx-Code`，且 SHALL NOT 依赖修改原始 HTTP body 来传递 wxCode
+- **THEN** 网关 SHALL 在发往 device-service 或 history-service 的代理请求上设置 **`X-Internal-Wx-Union-Id`**，且 SHALL NOT 依赖修改原始 HTTP body 来传递 **unionid**
 
 #### Scenario: 鉴权失败
 
 - **WHEN** Bearer 缺失、非 JWT、JWT 签名校验失败、已过期或 `sub` 无法解析为有效 wx 行
-- **THEN** 网关 SHALL 拒绝请求并返回明确错误响应，且 SHALL NOT 设置 `X-Internal-Wx-Code`
+- **THEN** 网关 SHALL 拒绝请求并返回明确错误响应，且 SHALL NOT 设置 **`X-Internal-Wx-Union-Id`**
 
 ### Requirement: 登录与令牌仅由 gateway-app 签发
 
-系统 SHALL 在 gateway-app-server 上暴露 `POST /device/app/api/login`，其通过 HTTP 调用 device-service 的 `POST /device/app/api/user/login` 获取业务字段后签发 access_token 与 refresh_token；其中 **access_token SHALL 为纯 JWT**，其载荷 **MUST** 包含标准 claim **`sub`** 且其值等于 wx 表主键 id（与 device 返回的 wxId 一致），**MUST** 包含 **`iat`** 与 **`exp`**；**refresh_token SHALL NOT** 为 JWT，SHALL 为高熵不透明串并与 Redis 会话绑定以便刷新与吊销。
+系统 SHALL 在 gateway-app-server 上暴露 `POST /device/app/api/login`，其通过 HTTP 调用 device-service 的 `POST /device/app/api/user/login`（Body 含 **`jsCode`** 与 **`platform`**，语义见 device 规格）获取业务字段后签发 access_token 与 refresh_token；其中 **access_token SHALL 为纯 JWT**，其载荷 **MUST** 包含标准 claim **`sub`** 且其值等于 wx 表主键 id（与 device 返回的 wxId 一致），**MUST** 包含 **`iat`** 与 **`exp`**；**refresh_token SHALL NOT** 为 JWT，SHALL 为高熵不透明串并与 Redis 会话绑定以便刷新与吊销。
 
 #### Scenario: 登录成功
 
-- **WHEN** App 调用 gateway-app 的登录接口且 device 返回有效业务结果
-- **THEN** 响应 SHALL 包含 access_token 与 refresh_token（及 device 返回的业务字段），且 access_token SHALL 可被验证为结构正确的 JWT，且 device-service SHALL NOT 在 `POST /device/app/api/user/login` 响应中返回 JWT 形式的 access_token
+- **WHEN** App 调用 gateway-app 的登录接口且 device 返回有效业务结果（含 wxId 等，**不含**需保密的 unionid/openid）
+- **THEN** 响应 SHALL 包含 access_token 与 refresh_token（及 device 返回的约定业务字段），且 access_token SHALL 可被验证为结构正确的 JWT，且 device-service SHALL NOT 在 `POST /device/app/api/user/login` 响应中返回 JWT 形式的 access_token
 
 ### Requirement: 刷新令牌接口
 

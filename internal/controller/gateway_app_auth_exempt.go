@@ -19,8 +19,10 @@ var (
 	// POST 且路径精确匹配。
 	gatewayAppAuthExemptExactPOST = []string{
 		"/device/app/api/login",
+		"/device/app/api/device_login",
 		"/device/app/api/token/refresh",
 		"/device/app/api/user/login",
+		"/device/app/api/user/device_login",
 	}
 
 	// GET 且路径精确匹配（WebSocket Upgrade 等不要求 HTTP 层 Bearer）。

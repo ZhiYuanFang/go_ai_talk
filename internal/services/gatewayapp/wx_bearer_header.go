@@ -4,29 +4,25 @@ import (
 	"errors"
 	"strconv"
 	"strings"
-	"time"
 
-	"hello/internal/platform/cachekit"
-
-	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/net/ghttp"
 )
-
-var wxBearerWxCodeCache = cachekit.WithObserver(cachekit.NewRedisCache(), cachekit.LoggingObserver{})
-
-const cacheKeyWxBearerWxID = "gw:app:wxid2code:"
 
 // 与 gateway-app 中间件历史文案保持一致，便于客户端统一处理。
 var (
 	ErrGatewayBearerMissing = errors.New("缺少或无效的 Authorization")
 	ErrGatewayBearerInvalid = errors.New("access_token 无效或已过期")
-	ErrGatewayWxCodeResolve = errors.New("无法解析 wx 身份")
 )
 
-// InjectWxCodeFromBearer 解析 Authorization Bearer JWT，将 wxCode 写入 r 的请求头。
-// gateway-app-server 在 HookBeforeServe 中统一调用，先于各反代 BindMiddleware，使 /device/app/api/user/* 等到 device 的流量
-// 在无需各 *_route_proxy 重复鉴权的情况下也能带上 X-Internal-Wx-Code（白名单路径由 controller 侧豁免）。
-func InjectWxCodeFromBearer(r *ghttp.Request) error {
+// HeaderInternalWxId 下游 device 识别 wx 行（主键），由网关注入。
+const HeaderInternalWxId = "X-Internal-Wx-Id"
+
+// HeaderInternalDeviceNo 下游识别当前会话绑定设备号，由网关注入（来自 JWT device_no claim）。
+const HeaderInternalDeviceNo = "X-Internal-Device-No"
+
+// InjectAccessHeadersFromBearer 解析 Authorization Bearer JWT，写入 X-Internal-Wx-Id 与可选 X-Internal-Device-No。
+// 不再调用 device internal/by-id 做 id→unionid；unionid 仅保留在 device 登录换票写库路径。
+func InjectAccessHeadersFromBearer(r *ghttp.Request) error {
 	ctx := r.Context()
 	auth := strings.TrimSpace(r.Header.Get("Authorization"))
 	const pfx = "Bearer "
@@ -34,26 +30,15 @@ func InjectWxCodeFromBearer(r *ghttp.Request) error {
 		return ErrGatewayBearerMissing
 	}
 	raw := strings.TrimSpace(auth[len(pfx):])
-	wxID, err := ParseAccessWxID(ctx, raw)
+	wxID, deviceNo, err := ParseAccessClaims(ctx, raw)
 	if err != nil || wxID <= 0 {
 		return ErrGatewayBearerInvalid
 	}
-	cacheKey := cacheKeyWxBearerWxID + strconv.FormatInt(wxID, 10)
-	wxCode := ""
-	if v, ok, e2 := wxBearerWxCodeCache.Get(ctx, cacheKey); e2 == nil && ok && strings.TrimSpace(v) != "" {
-		wxCode = strings.TrimSpace(v)
-	} else {
-		wxCode, err = FetchWxCodeByID(ctx, wxID)
-		if err != nil || wxCode == "" {
-			return ErrGatewayWxCodeResolve
-		}
-		ttlSec := g.Cfg().MustGet(ctx, "gatewayApp.wxIdCodeCacheSeconds").Int64()
-		if ttlSec <= 0 {
-			ttlSec = 120
-		}
-		_ = wxBearerWxCodeCache.SetEX(ctx, cacheKey, wxCode, time.Duration(ttlSec)*time.Second)
+	r.Header.Set(HeaderInternalWxId, strconv.FormatInt(wxID, 10))
+	r.Request.Header.Set(HeaderInternalWxId, strconv.FormatInt(wxID, 10))
+	if deviceNo != "" {
+		r.Header.Set(HeaderInternalDeviceNo, deviceNo)
+		r.Request.Header.Set(HeaderInternalDeviceNo, deviceNo)
 	}
-	r.Header.Set("X-Internal-Wx-Code", wxCode)
-	r.Request.Header.Set("X-Internal-Wx-Code", wxCode)
 	return nil
 }

@@ -8,9 +8,9 @@
 
 **Goals:**
 
-- gateway-app-server 与现 gateway **能力对齐**（静态页、领域代理模式、跨切中间件），并增加 **Bearer → wx.id → wxCode → `X-Internal-Wx-Code`** 的代理链增强。
-- **access_token 为纯 JWT**（RFC 7519 JWS 紧凑序列化），载荷经签名校验后可得到 **`wx` 表主键 id**（见 D9）；网关通过 **device 只读契约** 解析 `wxCode`，并对缓存做短 TTL 与写路径失效。
-- **access / refresh 的生成、校验、刷新接口仅在 gateway-app**；device **`POST /device/app/api/user/login`** 只处理 wx 行与业务返回字段（与网关聚合 **`POST /device/app/api/login`** 路径区分）。
+- gateway-app-server 与现 gateway **能力对齐**（静态页、领域代理模式、跨切中间件），并增加 **Bearer → wx.id → unionid → `X-Internal-Wx-Union-Id`** 的代理链增强。
+- **access_token 为纯 JWT**（RFC 7519 JWS 紧凑序列化），载荷经签名校验后可得到 **`wx` 表主键 id**（见 D9）；网关通过 **device 只读契约** 解析 **`unionid`（`wx.union_id`）**，并对缓存做短 TTL 与写路径失效。
+- **access / refresh 的生成、校验、刷新接口仅在 gateway-app**；device **`POST /device/app/api/user/login`** 负责 **jscode2session**、**unionid** 落库/匹配与业务返回字段（与网关聚合 **`POST /device/app/api/login`** 路径区分）。
 - **history CUD** 后 **PUBLISH**；gateway-app **SUBSCRIBE** 并向已认证 **device_no** 的 WS 客户端推送含 **create/update/delete** 的消息体。
 - **Redis**：KV 场景优先 `cachekit`；Pub/Sub 使用与现网相同的 Redis 配置族，订阅逻辑在 gateway-app 进程生命周期内管理（启动订阅、退出取消）。
 
@@ -29,18 +29,23 @@
 
 ### D2：登录与令牌拆分
 
-- **决策**：**device** `POST /device/app/api/user/login` 返回 **wxId、wxCode、device_no（可空）、is_new_user** 等；**gateway-app** `POST /device/app/api/login` 调用 device 后签发 **access_token**（**纯 JWT**，见 D9）与 **refresh_token**（高熵随机串 + Redis 存储，**非 JWT**）；刷新接口例如 `POST /device/app/api/token/refresh`（路径在 tasks 中最终确定，前缀固定为 `/device/app/api/`）。
+- **决策**：**device** `POST /device/app/api/user/login` 入参 **`jsCode`/`platform`**，服务端换票后以 **unionid** 唯一匹配/创建 wx 行；返回 **wxId、device_no（可空）、is_new_user** 等（**不**回传 unionid/openid）；**gateway-app** `POST /device/app/api/login` 将客户端 **`jsCode`/`platform`** 转发至 device 后签发 **access_token**（**纯 JWT**，见 D9）与 **refresh_token**（高熵随机串 + Redis 存储，**非 JWT**）；刷新接口例如 `POST /device/app/api/token/refresh`（路径在 tasks 中最终确定，前缀固定为 `/device/app/api/`）。
 - **备选**：由 device 直接返回 JWT（已拒绝，与「签发仅在 gateway-app」冲突）。
 
-### D3：下游注入 wxCode
+### D3：下游注入 unionid（内部头）
 
-- **决策**：鉴权中间件在解析出 **id > 0** 后获取 `wxCode`，对代理请求统一设置 **`X-Internal-Wx-Code`**；**不修改** POST body（与现 ReverseProxy 约束一致）。
-- **理由**：避免双写响应体与 body 缓冲问题；device 已有 profile 接口从 body 取参的模式，本变更对 wx 相关接口约定为 **从 Header 读 wxCode**（网关注入）。
+- **决策**：鉴权中间件在解析出 **id > 0** 后通过 device **internal/by-id** 获取 **`unionid`**，对代理请求统一设置 **`X-Internal-Wx-Union-Id`**；**不修改** POST body（与现 ReverseProxy 约束一致）。
+- **理由**：避免双写响应体与 body 缓冲问题；device 对 wx 相关接口约定为 **从 Header 读 `X-Internal-Wx-Union-Id`**（网关注入），值为 **`wx.union_id`**。
 
-### D4：device 提供 id → wxCode
+### D4：device 提供 id → unionid
 
-- **决策**：新增 **仅内网** 可调用的只读接口 **`GET /device/app/api/user/internal/by-id`**，入参 **id**，出参 **wxCode**；网关调用时携带可选 **`X-Internal-Gateway`** 或依赖网络策略；失败时中间件返回 401/403 与明确错误码。
-- **缓存**：`cachekit.SetEX`，TTL 建议 60–300s；**bindwx / 更新 wx 行** 后对该 id（及 wxCode）做 **Del** 或版本键失效。
+- **决策**：**仅内网**可调用的只读接口 **`GET /device/app/api/user/internal/by-id`**，入参 **id**，出参 **`unionId`**（对应库列 **`union_id`**）；网关调用时携带 **`X-Gateway-Internal-Secret`**（与 device 环境 **`DEVICE_GATEWAY_INTERNAL_SECRET`** 一致）；失败时中间件返回 401/403 与明确错误码。
+- **缓存**：`cachekit.SetEX`，TTL 建议 60–300s；**bindwx / 更新 wx 行** 后对该 id（及 **unionid**）做 **Del** 或版本键失效。
+
+### D4b：微信小程序换票与配置
+
+- **决策**：device-service 从配置 **`wechatMp.platforms.<platform>`** 读取 **appId/appSecret**，调用微信 **`sns/jscode2session`**；仅以响应中的 **unionid** 写入 **`wx.union_id`**（UNIQUE）。**SHALL NOT** 持久化临时 **jsCode**；**SHALL NOT** 以客户端直传的 openid/unionid 作为认证依据。若响应无 **unionid**，SHALL 失败并返回可观测中文错误（提示绑定开放平台等）。
+- **理由**：临时 code 会失效且不可作身份键；多端统一身份依赖开放平台 **unionid**。
 
 ### D5：历史 WS 与授权
 
@@ -58,7 +63,7 @@
 
 ### D8：`auto_save` 无设备号时的创建设备
 
-- **决策**：`POST /device/app/api/user/auto_save` 在处理请求时，若当前 wx（由 Header `X-Internal-Wx-Code` 识别）**尚未绑定** `device_no`，则 SHALL **生成一个新的设备号**：长度为 **6** 的字符串，字符集为 **大写英文字母 A–Z**，在 `user`（或项目既有的设备注册表）中 **插入新设备行**；将该 `device_no` 与 wx 行**绑定**；再写入画像（`birthday`、`sex`，语义与现有 `SaveUserProfile` 对齐）。若 wx **已绑定** `device_no`，则 SHALL **不重新生成**设备号，仅更新画像并返回已有 `device_no`。
+- **决策**：`POST /device/app/api/user/auto_save` 在处理请求时，若当前 wx（由 Header **`X-Internal-Wx-Union-Id`** 识别）**尚未绑定** `device_no`，则 SHALL **生成一个新的设备号**：长度为 **6** 的字符串，字符集为 **大写英文字母 A–Z**，在 `user`（或项目既有的设备注册表）中 **插入新设备行**；将该 `device_no` 与 wx 行**绑定**；再写入画像（`birthday`、`sex`，语义与现有 `SaveUserProfile` 对齐）。若 wx **已绑定** `device_no`，则 SHALL **不重新生成**设备号，仅更新画像并返回已有 `device_no`。
 - **全局唯一**：`device_no` 在设备注册表中 **MUST 全局唯一**；随机生成的候选值 **MUST NOT** 与库中**任意已有** `device_no` 冲突。实现 SHALL 依赖数据库 **UNIQUE 约束**作为最终权威，并在冲突时 **重新生成候选**（或插入前 `SELECT`/存在性检查后再插入，二者至少满足其一且与唯一约束一致）；重试直至成功或达到实现约定的最大次数后返回可观测错误。
 - **理由**：与「登录时尚无 device_no」的 App 流程衔接，设备创建权威仍在 device 域，且不跨库访问 history。
 
@@ -66,7 +71,7 @@
 
 - **决策**：`access_token` **MUST** 为符合 **RFC 7519** 的 **JWT**（三段式 JWS compact serialization），由 gateway-app **签发与校验**；**refresh_token** 保持 **不透明串**，不得伪装为 JWT。
 - **Claims**：`sub` **MUST** 承载 `wx` 表主键 id（与 device 返回的 wxId 一致，编码为字符串或整型之一并在实现中固定）；**MUST** 包含 `exp` 与 `iat`；算法（如 **HS256** 或 **RS256**）与签名密钥 **MUST** 来自 gateway-app 专用配置（不写死密钥）。
-- **校验**：Bearer 中间件与 WS auth **MUST** 先完成 JWT 签名与 `exp` 校验，再解析 `sub` 为大于 0 的 id 并继续 wxCode 解析链。
+- **校验**：Bearer 中间件与 WS auth **MUST** 先完成 JWT 签名与 `exp` 校验，再解析 `sub` 为大于 0 的 id 并继续 **unionid** 解析链（internal/by-id → 注入 **`X-Internal-Wx-Union-Id`**）。
 - **TTL**：access 过期时间 **MUST** 为可配置项（建议在配置中默认 15–60 分钟量级，具体值在实现 PR 中落默认）；refresh 生命周期与是否单次旋转仍由实现与 code review 在单一策略下定稿。
 
 ## Risks / Trade-offs
@@ -74,7 +79,7 @@
 - **[Risk] Pub/Sub 不持久**：断连期间消息丢失 → **缓解**：App 侧仍以轮询或进入前台时拉取列表为主；WS 为增量提示。
 - **[Risk] Cluster 与 SUBSCRIBE**：跨 slot 与客户端重连 → **缓解**：单订阅连接、记录重连退避；实现阶段按 goframe/redis 文档验证。
 - **[Risk] 内部头伪造**：若 App 可直连 device → **缓解**：网络策略仅允许 gateway 网段访问带 internal 契约的路径；或 internal 路径要求 mTLS/共享密钥（后续加固项）。
-- **[Trade-off] 网关多一次 device RTT**：id→wxCode → **缓解**：Redis 短缓存。
+- **[Trade-off] 网关多一次 device RTT**：id→unionid → **缓解**：Redis 短缓存（如 `gatewayApp.wxIdUnionCacheSeconds`）。
 
 ## Migration Plan
 

@@ -28,7 +28,7 @@ type DeviceProfileSaveReq struct {
 // DeviceProfileSaveRes 保存成功。
 type DeviceProfileSaveRes struct{}
 
-// DeviceProfileBindWxReq 绑定设备到当前 wx（wxCode 来自 Header X-Internal-Wx-Code）。
+// DeviceProfileBindWxReq 绑定设备到当前 wx（wx 主键来自 Header X-Internal-Wx-Id，由 gateway-app 从 JWT sub 注入）。
 type DeviceProfileBindWxReq struct {
 	g.Meta   `path:"/device/app/api/user/bindwx" method:"post" tags:"device" summary:"wx 绑定设备"`
 	DeviceNo string `json:"deviceNo" dc:"设备号"`
@@ -37,7 +37,7 @@ type DeviceProfileBindWxReq struct {
 // DeviceProfileBindWxRes 绑定成功。
 type DeviceProfileBindWxRes struct{}
 
-// DeviceProfileAutoSaveReq 自动保存画像（wxCode 来自 Header）。
+// DeviceProfileAutoSaveReq 自动保存画像（wx 主键来自 Header X-Internal-Wx-Id）。
 type DeviceProfileAutoSaveReq struct {
 	g.Meta   `path:"/device/app/api/user/auto_save" method:"post" tags:"device" summary:"自动保存画像并返回设备号"`
 	Birthday int64 `json:"birthday" dc:"生日，Unix 秒"`
@@ -54,19 +54,31 @@ type DeviceProfileAutoSaveRes struct {
 // DeviceWxLoginReq 微信登录（仅业务，不返回 JWT）。
 type DeviceWxLoginReq struct {
 	g.Meta   `path:"/device/app/api/user/login" method:"post" tags:"device" summary:"微信登录业务"`
-	WxCode   string `json:"wxCode"   dc:"微信侧 code"`
-	Platform string `json:"platform" dc:"平台标识"`
+	JsCode   string `json:"jsCode"   dc:"微信小程序临时 js_code，服务端 jscode2session 换 unionid"`
+	Platform string `json:"platform" dc:"与 wechatMp.platforms 配置键一致"`
 }
 
 // DeviceWxLoginRes 微信登录业务响应。
 type DeviceWxLoginRes struct {
 	WxId      int64  `json:"wxId"`
-	WxCode    string `json:"wxCode"`
 	DeviceNo  string `json:"deviceNo"`
 	IsNewUser bool   `json:"isNewUser"`
 }
 
-// DeviceWxDetailReq 按 wx 查询已绑定设备号（wxCode 来自 Header X-Internal-Wx-Code）。
+// DeviceWxDeviceLoginReq 设备号业务登录（仅校验已注册且 wx 已绑定，不签发 JWT）。
+type DeviceWxDeviceLoginReq struct {
+	g.Meta   `path:"/device/app/api/user/device_login" method:"post" tags:"device" summary:"设备号登录业务"`
+	DeviceNo string `json:"deviceNo" dc:"设备号，须已在设备域注册且 wx.device_no 已绑定"`
+}
+
+// DeviceWxDeviceLoginRes 设备号登录业务响应（形态与微信业务登录子集一致，无 token）。
+type DeviceWxDeviceLoginRes struct {
+	WxId      int64  `json:"wxId"`
+	DeviceNo  string `json:"deviceNo"`
+	IsNewUser bool   `json:"isNewUser" dc:"设备号登录恒为 false"`
+}
+
+// DeviceWxDetailReq 按 wx 查询已绑定设备号（wx 主键来自 Header X-Internal-Wx-Id）。
 type DeviceWxDetailReq struct {
 	g.Meta `path:"/device/app/api/user/detail" method:"get" tags:"device" summary:"wx 绑定设备号"`
 }
@@ -76,13 +88,24 @@ type DeviceWxDetailRes struct {
 	DeviceNo string `json:"deviceNo"`
 }
 
-// DeviceWxInternalByIDReq 网关内部：按 wx 主键取 wxCode。
+// DeviceWxInternalByIDReq 网关内部：按 wx 主键取 unionid。
 type DeviceWxInternalByIDReq struct {
-	g.Meta `path:"/device/app/api/user/internal/by-id" method:"get" tags:"device" summary:"内部按 id 取 wxCode"`
+	g.Meta `path:"/device/app/api/user/internal/by-id" method:"get" tags:"device" summary:"内部按 id 取 unionid"`
 	Id     int64 `json:"id" p:"id" dc:"wx 表主键"`
 }
 
 // DeviceWxInternalByIDRes 内部查询响应。
 type DeviceWxInternalByIDRes struct {
-	WxCode string `json:"wxCode"`
+	UnionId string `json:"unionId"`
+}
+
+// DeviceWxInternalDeviceNoByWxIDReq 网关内部：按 wx 主键取 device_no（刷新 access 写 claim 等）。
+type DeviceWxInternalDeviceNoByWxIDReq struct {
+	g.Meta `path:"/device/app/api/user/internal/device-no-by-wx-id" method:"get" tags:"device" summary:"内部按 wxId 取 device_no"`
+	WxId   int64 `json:"wxId" p:"wxId" dc:"wx 表主键"`
+}
+
+// DeviceWxInternalDeviceNoByWxIDRes 内部 device_no 响应。
+type DeviceWxInternalDeviceNoByWxIDRes struct {
+	DeviceNo string `json:"deviceNo"`
 }

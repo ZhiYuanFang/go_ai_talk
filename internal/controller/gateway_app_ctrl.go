@@ -31,7 +31,7 @@ func (c *GatewayAppCtrl) Login(ctx context.Context, req *v1.GatewayAppLoginReq) 
 	}
 	url := strings.TrimRight(base, "/") + "/device/app/api/user/login"
 	resp, err := gclient.New().ContentJson().Post(ctx, url, g.Map{
-		"wxCode":   strings.TrimSpace(req.WxCode),
+		"jsCode":   strings.TrimSpace(req.JsCode),
 		"platform": strings.TrimSpace(req.Platform),
 	})
 	if err != nil {
@@ -43,13 +43,12 @@ func (c *GatewayAppCtrl) Login(ctx context.Context, req *v1.GatewayAppLoginReq) 
 	}
 	data := j.GetJson("data")
 	wxID := data.Get("wxId").Int64()
-	wxCode := strings.TrimSpace(data.Get("wxCode").String())
 	deviceNo := strings.TrimSpace(data.Get("deviceNo").String())
 	isNew := data.Get("isNewUser").Bool()
-	if wxID <= 0 || wxCode == "" {
-		return nil, gerror.NewCode(gcode.CodeInternalError, "device 返回缺少 wxId/wxCode")
+	if wxID <= 0 {
+		return nil, gerror.NewCode(gcode.CodeInternalError, "device 返回缺少 wxId")
 	}
-	access, err := gatewayapp.SignAccess(ctx, wxID)
+	access, err := gatewayapp.SignAccess(ctx, wxID, deviceNo)
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +58,47 @@ func (c *GatewayAppCtrl) Login(ctx context.Context, req *v1.GatewayAppLoginReq) 
 	}
 	return &v1.GatewayAppLoginRes{
 		WxId:         wxID,
-		WxCode:       wxCode,
+		DeviceNo:     deviceNo,
+		IsNewUser:    isNew,
+		AccessToken:  access,
+		RefreshToken: refresh,
+	}, nil
+}
+
+// DeviceLogin POST /device/app/api/device_login：device 设备号业务校验通过后签发 access/refresh。
+func (c *GatewayAppCtrl) DeviceLogin(ctx context.Context, req *v1.GatewayAppDeviceLoginReq) (res *v1.GatewayAppDeviceLoginRes, err error) {
+	base := deviceServiceBase(ctx)
+	if base == "" {
+		return nil, gerror.NewCode(gcode.CodeInvalidConfiguration, "DEVICE_SERVICE_URL 未配置")
+	}
+	url := strings.TrimRight(base, "/") + "/device/app/api/user/device_login"
+	resp, err := gclient.New().ContentJson().Post(ctx, url, g.Map{
+		"deviceNo": strings.TrimSpace(req.DeviceNo),
+	})
+	if err != nil {
+		return nil, err
+	}
+	j := gjson.New(resp.ReadAllString())
+	if j.Get("code").Int() != 0 {
+		return nil, gerror.NewCodef(gcode.CodeBusinessValidationFailed, "设备登录失败: %s", j.Get("message").String())
+	}
+	data := j.GetJson("data")
+	wxID := data.Get("wxId").Int64()
+	deviceNo := strings.TrimSpace(data.Get("deviceNo").String())
+	isNew := data.Get("isNewUser").Bool()
+	if wxID <= 0 {
+		return nil, gerror.NewCode(gcode.CodeInternalError, "device 返回缺少 wxId")
+	}
+	access, err := gatewayapp.SignAccess(ctx, wxID, deviceNo)
+	if err != nil {
+		return nil, err
+	}
+	refresh, err := gatewayapp.IssueRefreshToken(ctx, wxID)
+	if err != nil {
+		return nil, err
+	}
+	return &v1.GatewayAppDeviceLoginRes{
+		WxId:         wxID,
 		DeviceNo:     deviceNo,
 		IsNewUser:    isNew,
 		AccessToken:  access,
@@ -73,7 +112,11 @@ func (c *GatewayAppCtrl) TokenRefresh(ctx context.Context, req *v1.GatewayAppTok
 	if err != nil {
 		return nil, gerror.NewCode(gcode.CodeNotAuthorized, err.Error())
 	}
-	access, err := gatewayapp.SignAccess(ctx, wxID)
+	deviceNo := ""
+	if dn, e2 := gatewayapp.FetchDeviceNoByWxID(ctx, wxID); e2 == nil {
+		deviceNo = strings.TrimSpace(dn)
+	}
+	access, err := gatewayapp.SignAccess(ctx, wxID, deviceNo)
 	if err != nil {
 		return nil, err
 	}

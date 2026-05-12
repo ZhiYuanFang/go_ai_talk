@@ -5,14 +5,28 @@ import "github.com/gogf/gf/v2/frame/g"
 // GatewayAppLoginReq App 登录：网关聚合 device 微信登录并签发令牌。
 type GatewayAppLoginReq struct {
 	g.Meta   `path:"/device/app/api/login" method:"post" tags:"gateway-app" summary:"App 登录"`
-	WxCode   string `json:"wxCode"   dc:"微信侧 code"`
-	Platform string `json:"platform" dc:"平台"`
+	JsCode   string `json:"jsCode"   dc:"微信小程序临时登录凭证（wx.login），服务端换票，禁止持久化"`
+	Platform string `json:"platform" dc:"与 device 配置 wechatMp.platforms 下键一致，用于选择 appId/secret"`
 }
 
 // GatewayAppLoginRes 登录响应（含 JWT access 与不透明 refresh）。
 type GatewayAppLoginRes struct {
 	WxId         int64  `json:"wxId"`
-	WxCode       string `json:"wxCode"`
+	DeviceNo     string `json:"deviceNo"`
+	IsNewUser    bool   `json:"isNewUser"`
+	AccessToken  string `json:"accessToken"`
+	RefreshToken string `json:"refreshToken"`
+}
+
+// GatewayAppDeviceLoginReq 设备号聚合登录：转发 device 业务校验后签发与微信登录同形态的令牌。
+type GatewayAppDeviceLoginReq struct {
+	g.Meta   `path:"/device/app/api/device_login" method:"post" tags:"gateway-app" summary:"设备号聚合登录"`
+	DeviceNo string `json:"deviceNo" dc:"已注册且 wx 已绑定的设备号"`
+}
+
+// GatewayAppDeviceLoginRes 与 GatewayAppLoginRes 字段对齐。
+type GatewayAppDeviceLoginRes struct {
+	WxId         int64  `json:"wxId"`
 	DeviceNo     string `json:"deviceNo"`
 	IsNewUser    bool   `json:"isNewUser"`
 	AccessToken  string `json:"accessToken"`

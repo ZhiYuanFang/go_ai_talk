@@ -12,9 +12,9 @@ import (
 )
 
 type gatewayAppAuthFrame struct {
-	Type         string `json:"type"`
-	AccessToken  string `json:"access_token"`
-	DeviceNo     string `json:"deviceNo"`
+	Type        string `json:"type"`
+	AccessToken string `json:"access_token"`
+	DeviceNo    string `json:"deviceNo"`
 }
 
 func gatewayAppHistoryWS(r *ghttp.Request) {
@@ -44,24 +44,18 @@ func gatewayAppHistoryWS(r *ghttp.Request) {
 		_ = ws.WriteJSON(g.Map{"type": "error", "message": "首帧必须为 auth"})
 		return
 	}
-	wxID, err := gatewayapp.ParseAccessWxID(ctx, strings.TrimSpace(af.AccessToken))
+	wxID, deviceNoFromJWT, err := gatewayapp.ParseAccessClaims(ctx, strings.TrimSpace(af.AccessToken))
 	if err != nil || wxID <= 0 {
 		_ = ws.WriteJSON(g.Map{"type": "error", "message": "access_token 无效"})
 		return
 	}
-	wxCode, err := gatewayapp.FetchWxCodeByID(ctx, wxID)
-	if err != nil || wxCode == "" {
-		_ = ws.WriteJSON(g.Map{"type": "error", "message": "无法解析 wx 身份"})
-		return
-	}
-	bound, err := gatewayapp.FetchWxDeviceNo(ctx, wxCode)
-	if err != nil {
-		_ = ws.WriteJSON(g.Map{"type": "error", "message": "校验设备绑定失败"})
+	if deviceNoFromJWT == "" {
+		_ = ws.WriteJSON(g.Map{"type": "error", "message": "未绑定设备，无法订阅历史推送"})
 		return
 	}
 	want := strings.TrimSpace(af.DeviceNo)
-	if want == "" || bound == "" || want != bound {
-		_ = ws.WriteJSON(g.Map{"type": "error", "message": "device_no 与当前 wx 绑定不一致"})
+	if want == "" || want != deviceNoFromJWT {
+		_ = ws.WriteJSON(g.Map{"type": "error", "message": "device_no 与 token 不一致"})
 		return
 	}
 	deviceNo = want

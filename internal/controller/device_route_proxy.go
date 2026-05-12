@@ -26,7 +26,7 @@ func installDeviceProxyMiddleware(s *ghttp.Server) {
 	}
 	// gateway-app-server 等边缘进程不挂载 DeviceAppUserCtrl，依赖本中间件把请求透传到 device-service。
 	// 不得使用 /device/app/api/* 总前缀：会与网关本机路由（token、version 等）冲突；App 用户域统一为 /device/app/api/user/*（与聚合登录 /device/app/api/login 区分）。
-	// App 网关下 Bearer 与 X-Internal-Wx-Code 由 installGatewayAppBearerMiddleware（HookBeforeServe）统一处理，先于本反代执行，此处不再重复鉴权。
+	// App 网关下 Bearer 与 X-Internal-Wx-Id / X-Internal-Device-No 由 installGatewayAppBearerMiddleware（HookBeforeServe）统一处理，先于本反代执行，此处不再重复鉴权。
 	serve := func(r *ghttp.Request) {
 		if !shouldProxyDomainRequest(cfg, routeKeyForDomainRequest(r)) {
 			r.Middleware.Next()

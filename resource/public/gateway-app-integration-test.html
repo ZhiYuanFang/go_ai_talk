@@ -34,8 +34,8 @@
 			<input id="baseUrl" type="text" placeholder="http://127.0.0.1:9702" />
 			<div class="row2">
 				<div>
-					<label>wxCode（模拟微信唯一标识）</label>
-					<input id="wxCode" type="text" placeholder="test-wx-openid-001" />
+					<label>jsCode（微信小程序 wx.login 临时 code，须可被 jscode2session 校验）</label>
+					<input id="jsCode" type="text" placeholder="真实 js_code；联调须配置 wechatMp.platforms" />
 				</div>
 				<div>
 					<label>platform</label>
@@ -43,8 +43,10 @@
 				</div>
 			</div>
 			<button type="button" id="btnLogin">POST /device/app/api/login</button>
+			<button type="button" class="secondary" id="btnDeviceLogin">POST /device/app/api/device_login（仅 deviceNo，须已绑 wx）</button>
 			<button type="button" class="secondary" id="btnRefresh">POST /device/app/api/token/refresh</button>
 			<button type="button" class="secondary" id="btnVersion">GET /device/app/api/version/check</button>
+			<p class="hint">设备号登录走网关聚合接口，成功时写入下方 token，与微信登录共用 access/refresh 文本框。</p>
 			<label>accessToken（自动填充，勿泄露）</label>
 			<textarea id="accessToken" rows="2" readonly placeholder="登录后出现"></textarea>
 			<label>refreshToken</label>
@@ -154,7 +156,7 @@
 			const res = await fetch(url, {
 				method:'POST',
 				headers:{'Content-Type':'application/json'},
-				body: JSON.stringify({ wxCode: $('wxCode').value.trim(), platform: $('platform').value.trim() })
+				body: JSON.stringify({ jsCode: $('jsCode').value.trim(), platform: $('platform').value.trim() })
 			});
 			const data = await res.json().catch(()=>({}));
 			if(!res.ok || data.code !== 0) throw new Error(data.message || 'login failed');
@@ -164,6 +166,22 @@
 			if(d.deviceNo) $('deviceNo').value = d.deviceNo;
 			log($('msgLogin'), { ok:true, wxId:d.wxId, deviceNo:d.deviceNo, isNewUser:d.isNewUser });
 		}catch(e){ log($('msgLogin'), String(e.message||e)); }
+	};
+	$('btnDeviceLogin').onclick = async () => {
+		try{
+			const url = base() + '/device/app/api/device_login';
+			const res = await fetch(url, {
+				method:'POST',
+				headers:{'Content-Type':'application/json'},
+				body: JSON.stringify({ deviceNo: $('deviceNo').value.trim() })
+			});
+			const data = await res.json().catch(()=>({}));
+			if(!res.ok || data.code !== 0) throw new Error(data.message || 'device_login failed');
+			const d = data.data || {};
+			$('accessToken').value = d.accessToken || '';
+			$('refreshToken').value = d.refreshToken || '';
+			log($('msgLogin'), { ok:true, via:'device_login', wxId:d.wxId, deviceNo:d.deviceNo, isNewUser:d.isNewUser }, true);
+		}catch(e){ log($('msgLogin'), String(e.message||e), true); }
 	};
 	$('btnRefresh').onclick = async () => {
 		try{

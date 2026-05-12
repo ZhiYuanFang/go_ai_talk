@@ -21,3 +21,11 @@ redis:
     # Redis Cluster：三主种子逗号分隔（与 docker-compose.redis-cluster 拓扑一致）。
     address: "redis-node-1:7001,redis-node-2:7002,redis-node-3:7003"
     db: 0
+
+# 微信小程序 jscode2session：platform 与客户端 POST /device/app/api/user/login 的 platform 一致。
+# 生产环境务必覆盖 appSecret，勿提交真实密钥。
+wechatMp:
+  platforms:
+    integration-test:
+      appId: "wx0000000000000000"
+      appSecret: "replace-with-real-secret"

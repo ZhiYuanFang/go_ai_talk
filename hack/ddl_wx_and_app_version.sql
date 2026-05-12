@@ -2,11 +2,11 @@
 -- ai_voice_device.wx
 CREATE TABLE IF NOT EXISTS `wx` (
   `id` bigint NOT NULL AUTO_INCREMENT,
-  `wx_code` varchar(255) NOT NULL,
+  `union_id` varchar(128) NOT NULL COMMENT '微信开放平台 unionid，多端统一身份',
   `device_no` varchar(64) DEFAULT NULL,
   `platform` varchar(64) DEFAULT '',
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_wx_code` (`wx_code`)
+  UNIQUE KEY `uk_wx_union_id` (`union_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ai_voice_app.version
