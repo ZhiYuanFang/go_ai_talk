@@ -38,8 +38,9 @@ type chatResult struct {
 	NeedCasualStream bool
 }
 
+// detectChatModeByTranscript 用于「显式切换命令」场景下，从话术里推断目标模式。
+// 命中「母婴」→ 母婴；否则→ 闲聊（例如「切换到闲聊」不含母婴关键词时仍应落到闲聊）。
 func detectChatModeByTranscript(text string) string {
-	// 目前按关键词做轻量路由，命中“母婴”进入母婴模式，其余走闲聊。
 	if strings.Contains(strings.TrimSpace(text), "母婴") {
 		return ChatModeMaternity.String()
 	}
@@ -115,14 +116,15 @@ func (s *VoiceService) getDeviceChatMode(deviceNo string) string {
 
 func (s *VoiceService) resolveChatMode(deviceNo, text string) string {
 	normalized := strings.TrimSpace(text)
-	// 显式切换命令优先级最高，其次复用设备已有模式，最后按文本兜底推断。
+	// 显式切换命令优先级最高，其次复用设备已有模式，最后默认母婴（新设备/无会话内记忆）。
 	if isModeSwitchCommand(normalized) {
 		return detectChatModeByTranscript(normalized)
 	}
 	if mode := s.getDeviceChatMode(deviceNo); mode != "" {
 		return mode
 	}
-	return detectChatModeByTranscript(normalized)
+	// 新账号或本进程内尚未写入模式时默认走母婴喂养流程；闲聊需用户显式切换话术触发上一分支。
+	return ChatModeMaternity.String()
 }
 
 // normalizeAndValidateChatText 统一清理并校验转写文本长度。
@@ -152,7 +154,7 @@ func (s *VoiceService) chatWithResult(ctx context.Context, deviceNo, transcript 
 	if isModeQueryCommand(normalizedTranscript) {
 		currentMode := s.getDeviceChatMode(deviceNo)
 		if currentMode == "" {
-			currentMode = ChatModeCasual.String()
+			currentMode = ChatModeMaternity.String()
 		}
 		reply := fmt.Sprintf("当前是%s模式", chatModeDisplayName(currentMode))
 		s.insertQa(ctx, normalizedTranscript, reply)

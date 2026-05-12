@@ -70,6 +70,7 @@
 > `docker compose --env-file manifest/docker/.env.example -f manifest/docker/docker-compose.microservices.yml up -d --build voice-service`  
 > `docker compose --env-file manifest/docker/.env.example -f manifest/docker/docker-compose.microservices.yml up -d --build history-service`  
 > `docker compose --env-file manifest/docker/.env.example -f manifest/docker/docker-compose.microservices.yml up -d --build gateway-app`  
+> `docker compose --env-file manifest/docker/.env.example -f manifest/docker/docker-compose.microservices.yml up -d --build gateway`  
 4) 健康检查（自宿主机探测各服务端口映射；**history 对 voice/device 的 HTTP 委派在容器内走服务名**，见上文环境变量）：
 
 - gateway: `http://127.0.0.1:9701/api.json`
