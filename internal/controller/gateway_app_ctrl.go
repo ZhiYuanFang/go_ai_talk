@@ -91,6 +91,10 @@ func (c *GatewayAppCtrl) DeviceLogin(ctx context.Context, req *v1.GatewayAppDevi
 	if wxID < 0 {
 		return nil, gerror.NewCode(gcode.CodeInternalError, "device 返回 wxId 无效")
 	}
+	// 下游 data 未带 deviceNo 时，用本次请求体兜底，保证聚合响应与 JWT 内 device_no 一致（见 openspec gateway-app-device-login-return-device-no）。
+	if deviceNo == "" {
+		deviceNo = strings.TrimSpace(req.DeviceNo)
+	}
 	if deviceNo == "" {
 		return nil, gerror.NewCode(gcode.CodeInternalError, "device 返回缺少 deviceNo")
 	}
