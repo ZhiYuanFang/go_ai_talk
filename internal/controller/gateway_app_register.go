@@ -23,6 +23,8 @@ func RegisterGatewayAppHTTP(s *ghttp.Server) {
 		r.Response.ServeFile("resource/public/gateway-app-integration-test.html")
 	})
 
+	// CORS 仅 App 网关：须在跨切面之前注册，使外层在中间件返回后仍可补写反代响应头。
+	installGatewayAppCORSMiddleware(s)
 	installGatewayCrosscuttingMiddlewares(s)
 	installGatewayAppBearerMiddleware(s)
 	installDomainProxyMiddlewares(s)
