@@ -6,9 +6,12 @@ import (
 )
 
 // 联调阶段允许通过 CORS 回显 Origin 的主机（任意端口、http/https），与 openspec change gateway-app-cors-ip-allowlist 对齐。
+// localhost / 127.0.0.1：Flutter Web、Vite 等本地开发页跨域请求线上/局域网网关时使用。
 var gatewayAppCORSAllowedHosts = map[string]struct{}{
 	"192.168.0.131":   {},
 	"120.55.50.105": {},
+	"localhost":       {},
+	"127.0.0.1":     {},
 }
 
 // ReflectGatewayAppCORSOrigin 解析并校验浏览器发来的 Origin 头。
