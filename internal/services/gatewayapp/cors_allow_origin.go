@@ -1,8 +1,16 @@
 package gatewayapp
 
 import (
+	"net/http"
 	"net/url"
 	"strings"
+)
+
+// App 网关 CORS 固定响应头（与浏览器预检及带 Authorization 的 JSON 请求对齐）。
+const (
+	GatewayAppCORSAllowMethods = "GET, POST, OPTIONS"
+	GatewayAppCORSAllowHeaders = "Content-Type, Authorization"
+	GatewayAppCORSMaxAge       = "86400"
 )
 
 // 联调阶段允许通过 CORS 回显 Origin 的主机（任意端口、http/https），与 openspec change gateway-app-cors-ip-allowlist 对齐。
@@ -37,4 +45,23 @@ func ReflectGatewayAppCORSOrigin(originHeader string) (echo string, ok bool) {
 		return "", false
 	}
 	return raw, true
+}
+
+// SetGatewayAppCORSHeaders 将 CORS 头写入 dst（调用方已校验 allowOrigin 合法）。
+func SetGatewayAppCORSHeaders(dst http.Header, allowOrigin string) {
+	dst.Set("Access-Control-Allow-Origin", allowOrigin)
+	dst.Set("Access-Control-Allow-Methods", GatewayAppCORSAllowMethods)
+	dst.Set("Access-Control-Allow-Headers", GatewayAppCORSAllowHeaders)
+	dst.Set("Access-Control-Max-Age", GatewayAppCORSMaxAge)
+}
+
+// ApplyGatewayAppCORSHeaders 根据浏览器 Origin 头选择性写入 CORS：仅白名单命中时写入并返回 true。
+// 用于 HTTP 中间件与 httputil.ReverseProxy.ModifyResponse 等共享同一语义。
+func ApplyGatewayAppCORSHeaders(dst http.Header, originHeader string) bool {
+	echo, ok := ReflectGatewayAppCORSOrigin(originHeader)
+	if !ok {
+		return false
+	}
+	SetGatewayAppCORSHeaders(dst, echo)
+	return true
 }

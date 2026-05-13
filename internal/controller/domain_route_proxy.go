@@ -2,11 +2,14 @@ package controller
 
 import (
 	"hash/fnv"
+	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"os"
 	"strconv"
 	"strings"
+
+	"hello/internal/services/gatewayapp"
 
 	"github.com/gogf/gf/v2/net/ghttp"
 )
@@ -105,5 +108,19 @@ func buildReverseProxy(target string) *httputil.ReverseProxy {
 	if err != nil {
 		return nil
 	}
-	return httputil.NewSingleHostReverseProxy(u)
+	p := httputil.NewSingleHostReverseProxy(u)
+	// 领域反代在 ServeHTTP 内直接写回客户端，外层 CORS 中间件在 Next 之后补头不可靠；在此处统一合并，
+	// history/voice/device 凡经 buildReverseProxy 构建的实例均自动带上与 gateway_app_cors 一致的 CORS 语义。
+	p.ModifyResponse = func(resp *http.Response) error {
+		if resp == nil {
+			return nil
+		}
+		// RoundTrip 返回的 Response.Request 为发往下游的 outreq（含浏览器原始 Origin 等头），用于白名单判定。
+		if resp.Request == nil {
+			return nil
+		}
+		_ = gatewayapp.ApplyGatewayAppCORSHeaders(resp.Header, resp.Request.Header.Get("Origin"))
+		return nil
+	}
+	return p
 }
