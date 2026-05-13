@@ -2,7 +2,9 @@ package controller
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"strings"
 
 	v1 "hello/api/v1"
@@ -145,19 +147,42 @@ func (c *GatewayAppCtrl) VersionCheck(ctx context.Context, req *v1.GatewayAppVer
 			}
 		}
 	}
-	var row entity.AppVersion
-	if err := dao.AppVersion.Ctx(ctx).OrderDesc(dao.AppVersion.Columns().Id).Limit(1).Scan(&row); err != nil {
+	// 使用 One+IsEmpty：Scan 在结果集为空时部分驱动会返回 sql.ErrNoRows，经统一响应包装后客户端易误判为失败。
+	one, err := dao.AppVersion.Ctx(ctx).OrderDesc(dao.AppVersion.Columns().Id).Limit(1).One()
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return versionCheckWhenNoPublishedRow(cur), nil
+		}
 		glog.Warningf(ctx, "[gateway-app] 读取 version 表失败 err=%v", err)
-		return &v1.GatewayAppVersionCheckRes{
-			NeedUpdate:    false,
-			LatestVersion: cur,
-			ReleaseDate:   0,
-		}, nil
+		return versionCheckWhenNoPublishedRow(cur), nil
+	}
+	if one.IsEmpty() {
+		return versionCheckWhenNoPublishedRow(cur), nil
+	}
+	var row entity.AppVersion
+	if err := one.Struct(&row); err != nil {
+		glog.Warningf(ctx, "[gateway-app] 解析 version 行失败 err=%v", err)
+		return versionCheckWhenNoPublishedRow(cur), nil
+	}
+	if strings.TrimSpace(row.LatestVersion) == "" {
+		return versionCheckWhenNoPublishedRow(cur), nil
 	}
 	if blob, err := json.Marshal(row); err == nil {
 		_, _ = g.Redis().Do(ctx, "SET", cacheKey, string(blob), "EX", 60)
 	}
 	return buildVersionRes(cur, row), nil
+}
+
+// versionCheckWhenNoPublishedRow 版本表无行或无可用的 latestVersion：业务成功、无需更新；latestVersion 回填为客户端当前版本（与历史 Scan 失败兜底一致）。
+func versionCheckWhenNoPublishedRow(current string) *v1.GatewayAppVersionCheckRes {
+	return &v1.GatewayAppVersionCheckRes{
+		NeedUpdate:    false,
+		LatestVersion: strings.TrimSpace(current),
+		ReleaseDate:   0,
+		ReleaseNotes:  "",
+		DownloadUrl:   "",
+		ForceUpdate:   false,
+	}
 }
 
 func buildVersionRes(current string, row entity.AppVersion) *v1.GatewayAppVersionCheckRes {
