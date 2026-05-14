@@ -220,6 +220,9 @@ func EndLatestDeviceHistoryIfMatch(ctx context.Context, deviceNo string, eventID
 	}
 	last.EndTime = endTimeUnixSec
 	historyCache.patchHistoryOnUpdate(ctx, last)
+	// 与 UpdateDeviceHistory 一致：仅改 endTime 时也要递增 piece 版本并向 app:history:notify 广播，否则 App WS 收不到「结束事件」类更新。
+	bumpPieceCacheEpoch(ctx, deviceNo)
+	publishHistoryChange(ctx, deviceNo, "update", historyToPayload(last))
 	return true, nil
 }
 
