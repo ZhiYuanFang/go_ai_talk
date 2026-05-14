@@ -13,7 +13,7 @@ import (
 
 type gatewayAppAuthFrame struct {
 	Type        string `json:"type"`
-	AccessToken string `json:"access_token"`
+	AccessToken string `json:"accessToken"`
 	DeviceNo    string `json:"deviceNo"`
 }
 
@@ -46,7 +46,7 @@ func gatewayAppHistoryWS(r *ghttp.Request) {
 	}
 	wxID, deviceNoFromJWT, err := gatewayapp.ParseAccessClaims(ctx, strings.TrimSpace(af.AccessToken))
 	if err != nil || wxID < 0 {
-		_ = ws.WriteJSON(g.Map{"type": "error", "message": "access_token 无效"})
+		_ = ws.WriteJSON(g.Map{"type": "error", "message": "accessToken 无效"})
 		return
 	}
 	if deviceNoFromJWT == "" {
