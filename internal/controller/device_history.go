@@ -35,6 +35,27 @@ func (c *HistoryCtrl) eventRuleByID(ctx context.Context, eventID int64) (needQua
 	return false, false
 }
 
+// canonicalEventNameForRow 有 eventId 时与事件主档 name 对齐写入 history，避免请求体携带别名/展示名落库。
+func (c *HistoryCtrl) canonicalEventNameForRow(ctx context.Context, eventID int64, fallback string) string {
+	out := strings.TrimSpace(fallback)
+	if eventID <= 0 {
+		return out
+	}
+	events, err := c.Svc.ListEventOptions(ctx)
+	if err != nil {
+		return out
+	}
+	for i := range events {
+		if events[i].Id == eventID {
+			if n := strings.TrimSpace(events[i].Name); n != "" {
+				return n
+			}
+			break
+		}
+	}
+	return out
+}
+
 // NewHistoryCtrl 构造 HistoryCtrl。
 func NewHistoryCtrl(s contracts.DeviceHistoryContract, voice contracts.VoiceContract) *HistoryCtrl {
 	return &HistoryCtrl{Svc: s, Voice: voice}
@@ -157,7 +178,7 @@ func (c *HistoryCtrl) EventAdd(ctx context.Context, req *v1.DeviceHistoryEventAd
 	id, err := c.Svc.AddHistory(ctx, entity.History{
 		DeviceNo:    deviceNo,
 		EventId:     req.EventId,
-		EventName:   strings.TrimSpace(req.EventName),
+		EventName:   c.canonicalEventNameForRow(ctx, req.EventId, req.EventName),
 		EventNumber: int64(req.EventNumber),
 		StartTime:   req.StartTime,
 		EndTime:     req.EndTime,
@@ -182,7 +203,7 @@ func (c *HistoryCtrl) EventUpdate(ctx context.Context, req *v1.DeviceHistoryEven
 		Id:          req.Id,
 		DeviceNo:    deviceNo,
 		EventId:     req.EventId,
-		EventName:   strings.TrimSpace(req.EventName),
+		EventName:   c.canonicalEventNameForRow(ctx, req.EventId, req.EventName),
 		EventNumber: int64(req.EventNumber),
 		StartTime:   req.StartTime,
 		EndTime:     req.EndTime,

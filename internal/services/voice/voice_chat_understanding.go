@@ -29,6 +29,14 @@ type deepSeekUnifiedIntent struct {
 	TargetType    string `json:"target_type"`
 }
 
+// historyRowEventName 写入 history.event_name：始终用事件主档标准名；displayHint 为模型/用户说法或 extra 命中词，仅作主档名为空时的回退。
+func historyRowEventName(ev entity.Event, displayHint string) string {
+	if n := strings.TrimSpace(ev.Name); n != "" {
+		return n
+	}
+	return strings.TrimSpace(displayHint)
+}
+
 type chatResult struct {
 	Reply            string
 	Ask              string
@@ -400,7 +408,7 @@ func (s *VoiceService) handleUnifiedIntentAction(ctx context.Context, deviceNo, 
 		_, err = DeviceHistory().AddHistory(ctx, entity.History{
 			DeviceNo:  deviceNo,
 			EventId:   event.Id,
-			EventName: targetName,
+			EventName: historyRowEventName(event, targetName),
 			StartTime: nowTime,
 			Remark:    normalizedTranscript,
 		})
@@ -420,7 +428,7 @@ func (s *VoiceService) handleUnifiedIntentAction(ctx context.Context, deviceNo, 
 		_, err = DeviceHistory().AddHistory(ctx, entity.History{
 			DeviceNo:  deviceNo,
 			EventId:   event.Id,
-			EventName: targetName,
+			EventName: historyRowEventName(event, targetName),
 			StartTime: nowTime,
 			EndTime:   nowTime,
 			Remark:    normalizedTranscript,
@@ -450,7 +458,7 @@ func (s *VoiceService) handleUnifiedIntentAction(ctx context.Context, deviceNo, 
 		_, err = DeviceHistory().AddHistory(ctx, entity.History{
 			DeviceNo:    deviceNo,
 			EventId:     event.Id,
-			EventName:   targetName,
+			EventName:   historyRowEventName(event, targetName),
 			EventNumber: eventNumber,
 			StartTime:   nowTime,
 			EndTime:     nowTime,
@@ -519,7 +527,7 @@ func (s *VoiceService) handleActionRecord(ctx context.Context, deviceNo string, 
 		_, err = DeviceHistory().AddHistory(ctx, entity.History{
 			DeviceNo:  deviceNo,
 			EventId:   event.Id,
-			EventName: targetName,
+			EventName: historyRowEventName(event, targetName),
 			StartTime: nowTime,
 			Remark:    normalizedTranscript,
 		})
@@ -560,7 +568,7 @@ func (s *VoiceService) handleActionRecord(ctx context.Context, deviceNo string, 
 			_, err = DeviceHistory().AddHistory(ctx, entity.History{
 				DeviceNo:  deviceNo,
 				EventId:   event.Id,
-				EventName: targetName,
+				EventName: historyRowEventName(event, targetName),
 				StartTime: nowTime,
 				EndTime:   nowTime,
 				Remark:    normalizedTranscript,
@@ -603,7 +611,7 @@ func (s *VoiceService) handleActionRecord(ctx context.Context, deviceNo string, 
 			_, err = DeviceHistory().AddHistory(ctx, entity.History{
 				DeviceNo:    deviceNo,
 				EventId:     event.Id,
-				EventName:   targetName,
+				EventName:   historyRowEventName(event, targetName),
 				EventNumber: int64(quantity),
 				StartTime:   nowTime,
 				EndTime:     nowTime,
@@ -619,7 +627,7 @@ func (s *VoiceService) handleActionRecord(ctx context.Context, deviceNo string, 
 			_, err = DeviceHistory().AddHistory(ctx, entity.History{
 				DeviceNo:    deviceNo,
 				EventId:     event.Id,
-				EventName:   targetName,
+				EventName:   historyRowEventName(event, targetName),
 				EventNumber: 1,
 				StartTime:   nowTime,
 				EndTime:     nowTime,
