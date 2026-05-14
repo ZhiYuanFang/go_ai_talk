@@ -33,12 +33,25 @@
 - 每设备每天仅生成一次并落库 `suggest`
 - 同一天再次询问直接返回当日已生成建议
 
-### 4) 页面能力
+### 4) Web 页面与静态入口（汇总）
 
-- 设备管理页：`/device/admin`
-- 设备历史页：`/device/history/{deviceNo}`
-  - 展示事件历史
-  - 独立模块展示历史成长建议
+仓库内联调/运维用页面集中在 `resource/public/`，由**主网关**（`gateway-service`，默认 `:9701`，见 `manifest/config/config.yaml`）与 **App 专用网关**（`gateway-app-server`，默认 `:9702`，见 `manifest/config/config.gateway-app-server.yaml`）分别挂载；下文路径均相对于对应网关根地址（如 `http://127.0.0.1:9701`、`http://127.0.0.1:9702`）。
+
+| 进程 | 路径 | 静态文件 | 用途简述 |
+|------|------|----------|----------|
+| 主网关 | `/` | （内联文案） | 根路径提示「智能语音」 |
+| 主网关、App 网关 | `/device/admin` | `resource/public/admin.html` | 设备注册与列表（管理 API 需 `X-Admin-Password`，见下文「设备管理 API」） |
+| 主网关、App 网关 | `/device/history/{deviceNo}` | `resource/public/history.html` | 单设备历史事件 + 成长建议；壳页内请求 `/device/history/api/*`（经网关反代至 history-service） |
+| App 网关 | `/device/app/integration-test.html` | `resource/public/gateway-app-integration-test.html` | App 联调：模拟登录、绑定、文本对话、历史 WS、piece 趋势等（Bearer 白名单页，**勿暴露公网**） |
+| App 网关 | `/device/app/version-admin.html` | `resource/public/gateway-app-version-admin.html` | 版本与 APK 管理：口令登录后上传包、写 `ai_voice_app.version` 的 `download_url`（口令与 `publicBaseUrl` 见 `docs/runbooks/release-deploy-and-run.md`） |
+| App 网关 | `/device/app/apk/{文件名}` | （磁盘 `/apk/ai_talk/` 等配置目录） | 安装包匿名下载；URL 由版本管理上传流程写入库表 |
+| 两网关 | `/resource/*` | `resource/` 下文件 | GoFrame 静态资源目录（按需访问） |
+| App 网关 | `/` | （内联文案） | 根路径提示「智能语音 App 网关」 |
+
+说明：
+
+- **主网关**侧重设备域壳页 + 语音 WS 等统一入口；**App 网关**侧重小程序/App 聚合登录、JWT、`/device/app/api/version/check`、历史 WS 代理及上表 App 专用页。
+- `admin.html` / `history.html` 在两套网关中路径相同，便于本地只起 App 网关时仍能打开壳页（实际 API 仍依赖下游与 `DEVICE_SERVICE_URL` / `HISTORY_SERVICE_URL` 等配置）。
 
 ---
 
@@ -89,9 +102,9 @@
 
 ### B. 设备管理 API
 
-#### 1. 管理页
+#### 1. 管理页（Web）
 
-- **GET** `/device/admin`
+- **GET** `/device/admin` → `resource/public/admin.html`（主网关或 App 网关，见上文「Web 页面」表）
 
 #### 2. 注册设备
 
@@ -114,9 +127,9 @@
 
 ### C. 设备历史与建议 API
 
-#### 1. 历史页面
+#### 1. 历史页面（Web）
 
-- **GET** `/device/history/{deviceNo}`
+- **GET** `/device/history/{deviceNo}` → `resource/public/history.html`（主网关或 App 网关）
 
 #### 2. 获取设备历史事件
 
@@ -143,9 +156,9 @@
 
 ## 三、主要配置
 
-运行配置见 [manifest/config/config.yaml](manifest/config/config.yaml)（网关）；微服务下 `voice-service` / `history-service` 的对话参数统一在 [manifest/config/voice-chat.shared.yaml](manifest/config/voice-chat.shared.yaml)：
+运行配置见 [manifest/config/config.yaml](manifest/config/config.yaml)（主网关）；**App 网关**独立配置见 [manifest/config/config.gateway-app-server.yaml](manifest/config/config.gateway-app-server.yaml)（含 `database.app`、JWT、版本管理页相关 `gatewayApp.publicBaseUrl` 等）。微服务下 `voice-service` / `history-service` 的对话参数统一在 [manifest/config/voice-chat.shared.yaml](manifest/config/voice-chat.shared.yaml)：
 
-- `server.address`：服务监听地址（默认示例 `:9701`）
+- `server.address`：服务监听地址（主网关默认示例 `:9701`，App 网关默认 `:9702`）
 - `voiceChat.audio`：音频参数与最大时长
 - `voiceChat.session`：会话轮数、TTL、清理间隔
 - `voiceChat.stt`：语音识别配置（百度）
