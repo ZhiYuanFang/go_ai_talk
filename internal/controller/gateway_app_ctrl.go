@@ -191,7 +191,7 @@ func versionCheckWhenNoPublishedRow(current string) *v1.GatewayAppVersionCheckRe
 
 func buildVersionRes(current string, row entity.AppVersion) *v1.GatewayAppVersionCheckRes {
 	latest := strings.TrimSpace(row.LatestVersion)
-	need := latest != "" && strings.TrimSpace(current) != latest
+	need := gatewayapp.ShouldNeedAppUpdate(current, latest)
 	return &v1.GatewayAppVersionCheckRes{
 		NeedUpdate:    need,
 		LatestVersion: latest,
