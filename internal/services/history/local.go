@@ -222,7 +222,7 @@ func EndLatestDeviceHistoryIfMatch(ctx context.Context, deviceNo string, eventID
 	historyCache.patchHistoryOnUpdate(ctx, last)
 	// 与 UpdateDeviceHistory 一致：仅改 endTime 时也要递增 piece 版本并向 app:history:notify 广播，否则 App WS 收不到「结束事件」类更新。
 	bumpPieceCacheEpoch(ctx, deviceNo)
-	publishHistoryChange(ctx, deviceNo, "update", historyToPayload(last))
+	publishHistoryChange(ctx, deviceNo, "update", historyToNotifyPayload(ctx, last))
 	return true, nil
 }
 
@@ -323,7 +323,7 @@ func AddDeviceHistory(ctx context.Context, item entity.History) (int64, error) {
 		item.Id = id
 		historyCache.patchHistoryOnAdd(ctx, item)
 		bumpPieceCacheEpoch(ctx, item.DeviceNo)
-		publishHistoryChange(ctx, item.DeviceNo, "create", historyToPayload(item))
+		publishHistoryChange(ctx, item.DeviceNo, "create", historyToNotifyPayload(ctx, item))
 	}
 	if err == nil && id > 0 && isOutboxRelayEnabled() {
 		version := time.Now().UnixNano()
@@ -373,7 +373,7 @@ func UpdateDeviceHistory(ctx context.Context, item entity.History) error {
 	if err == nil {
 		historyCache.patchHistoryOnUpdate(ctx, item)
 		bumpPieceCacheEpoch(ctx, item.DeviceNo)
-		publishHistoryChange(ctx, item.DeviceNo, "update", historyToPayload(item))
+		publishHistoryChange(ctx, item.DeviceNo, "update", historyToNotifyPayload(ctx, item))
 	}
 	if err == nil && isOutboxRelayEnabled() {
 		version := time.Now().UnixNano()

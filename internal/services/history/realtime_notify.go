@@ -54,12 +54,35 @@ func publishHistoryChange(ctx context.Context, deviceNo, action string, payload 
 	}
 }
 
-func historyToPayload(h entity.History) map[string]interface{} {
+// notifyEventDisplayName 供 App WS 推送：始终使用事件主数据中的标准名称（如「吃奶」），
+// 避免 history 行里落的是模型/用户说法等扩展命中名（与 voice 意图里 extra_event_name 同源）。
+func notifyEventDisplayName(ctx context.Context, eventID int64, storedRowName string) string {
+	stored := strings.TrimSpace(storedRowName)
+	if eventID <= 0 {
+		return stored
+	}
+	events, err := ListEventOptions(ctx)
+	if err != nil {
+		glog.Warningf(ctx, "[history-realtime] 解析标准事件名失败 eventId=%d err=%v，回退为库内 eventName", eventID, err)
+		return stored
+	}
+	for i := range events {
+		if events[i].Id == eventID {
+			if n := strings.TrimSpace(events[i].Name); n != "" {
+				return n
+			}
+			break
+		}
+	}
+	return stored
+}
+
+func historyToNotifyPayload(ctx context.Context, h entity.History) map[string]interface{} {
 	return map[string]interface{}{
 		"id":          h.Id,
 		"deviceNo":    h.DeviceNo,
 		"eventId":     h.EventId,
-		"eventName":   h.EventName,
+		"eventName":   notifyEventDisplayName(ctx, h.EventId, h.EventName),
 		"eventNumber": h.EventNumber,
 		"startTime":   h.StartTime,
 		"endTime":     h.EndTime,
