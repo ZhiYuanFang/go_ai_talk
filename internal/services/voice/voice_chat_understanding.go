@@ -419,7 +419,7 @@ func (s *VoiceService) handleUnifiedIntentAction(ctx context.Context, deviceNo, 
 	case ActionTargetTypeEnd.String():
 		lastEvent, _ := DeviceHistory().GetLatestHistory(ctx, deviceNo)
 		if lastEvent.EventId == event.Id {
-			_, err = DeviceHistory().EndLatestHistoryIfMatch(ctx, deviceNo, event.Id, nowTime)
+			_, err = DeviceHistory().EndLatestHistoryIfMatch(ctx, deviceNo, event.Id, nowTime, normalizedTranscript)
 			if err != nil {
 				return "更新结束时间失败,请重试", false, true, err
 			}
@@ -437,7 +437,7 @@ func (s *VoiceService) handleUnifiedIntentAction(ctx context.Context, deviceNo, 
 			return "记录事件失败,请重试", false, true, err
 		}
 		if lastEvent.EndTime == 0 && lastEvent.EventId > 0 {
-			_, _ = DeviceHistory().EndLatestHistoryIfMatch(ctx, deviceNo, lastEvent.EventId, nowTime)
+			_, _ = DeviceHistory().EndLatestHistoryIfMatch(ctx, deviceNo, lastEvent.EventId, nowTime, "")
 			return fmt.Sprintf("好的，已记录%s结束，%s自动结束", targetName, lastEvent.EventName), false, true, nil
 		}
 		return fmt.Sprintf("好的，已记录%s结束", targetName), false, true, nil
@@ -554,7 +554,7 @@ func (s *VoiceService) handleActionRecord(ctx context.Context, deviceNo string, 
 		lastEvent, _ := DeviceHistory().GetLatestHistory(ctx, deviceNo)
 		if lastEvent.EventId == event.Id {
 			// 是同一事件，则更新结束时间
-			_, err = DeviceHistory().EndLatestHistoryIfMatch(ctx, deviceNo, event.Id, nowTime)
+			_, err = DeviceHistory().EndLatestHistoryIfMatch(ctx, deviceNo, event.Id, nowTime, normalizedTranscript)
 			if err != nil {
 				return "更新结束时间失败,请重试", false, true, err
 			}
@@ -578,7 +578,7 @@ func (s *VoiceService) handleActionRecord(ctx context.Context, deviceNo string, 
 			}
 			// 上一件事如果没有结束时间,则告知用户上一件事自动结束
 			if lastEvent.EndTime == 0 {
-				_, updateErr := DeviceHistory().EndLatestHistoryIfMatch(ctx, deviceNo, lastEvent.EventId, nowTime)
+				_, updateErr := DeviceHistory().EndLatestHistoryIfMatch(ctx, deviceNo, lastEvent.EventId, nowTime, "")
 				if updateErr != nil {
 					return fmt.Sprintf("好的，已记录%s结束，%s结束失败,请手动结束", targetName, lastEvent.EventName), false, true, updateErr
 				}

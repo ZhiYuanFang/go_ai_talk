@@ -90,7 +90,8 @@ type DeviceHistoryContract interface {
 	ListHistory(ctx context.Context, deviceNo string) ([]entity.History, error)
 	ListHistoryPage(ctx context.Context, deviceNo string, page int, pageSize int) (HistoryPageResult, error)
 	GetLatestHistory(ctx context.Context, deviceNo string) (entity.History, error)
-	EndLatestHistoryIfMatch(ctx context.Context, deviceNo string, eventID int64, endTimeUnixSec int64) (bool, error)
+	// EndLatestHistoryIfMatch 若最近一条历史与 eventID 匹配则更新结束时间；remark 非空时同时覆盖备注，空串表示不修改原备注。
+	EndLatestHistoryIfMatch(ctx context.Context, deviceNo string, eventID int64, endTimeUnixSec int64, remark string) (bool, error)
 	ListSuggest(ctx context.Context, deviceNo string) ([]entity.Suggest, error)
 	DeleteSuggest(ctx context.Context, id int64, deviceNo string) error
 	ListEventOptions(ctx context.Context) ([]entity.Event, error)

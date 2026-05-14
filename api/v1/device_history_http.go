@@ -150,7 +150,8 @@ type DeviceHistoryEndLatestReq struct {
 	g.Meta   `path:"/device/history/api/event/end-latest" method:"post" tags:"device" summary:"条件结束最近一条历史事件"`
 	DeviceNo string `json:"deviceNo" dc:"设备号"`
 	EventId  int64  `json:"eventId" dc:"事件ID"`
-	EndTime  int64 `json:"endTime" dc:"结束时间，Unix 秒"`
+	EndTime  int64  `json:"endTime" dc:"结束时间，Unix 秒"`
+	Remark   string `json:"remark" dc:"备注；非空时与结束时间一并写入，空串表示保持原备注"`
 }
 
 // DeviceHistoryEndLatestRes 条件结束结果。

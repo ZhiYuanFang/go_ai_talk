@@ -268,7 +268,7 @@ func (c *HistoryCtrl) EventEndLatest(ctx context.Context, req *v1.DeviceHistoryE
 	if req.EventId <= 0 {
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "eventId 无效")
 	}
-	updated, err := c.Svc.EndLatestHistoryIfMatch(ctx, deviceNo, req.EventId, req.EndTime)
+	updated, err := c.Svc.EndLatestHistoryIfMatch(ctx, deviceNo, req.EventId, req.EndTime, strings.TrimSpace(req.Remark))
 	if err != nil {
 		return nil, err
 	}

@@ -34,8 +34,8 @@ func (s *localService) GetLatestHistory(ctx context.Context, deviceNo string) (e
 	return GetLatestDeviceHistory(ctx, deviceNo)
 }
 
-func (s *localService) EndLatestHistoryIfMatch(ctx context.Context, deviceNo string, eventID int64, endTimeUnixSec int64) (bool, error) {
-	return EndLatestDeviceHistoryIfMatch(ctx, deviceNo, eventID, endTimeUnixSec)
+func (s *localService) EndLatestHistoryIfMatch(ctx context.Context, deviceNo string, eventID int64, endTimeUnixSec int64, remark string) (bool, error) {
+	return EndLatestDeviceHistoryIfMatch(ctx, deviceNo, eventID, endTimeUnixSec, remark)
 }
 
 func (s *localService) ListSuggest(ctx context.Context, deviceNo string) ([]entity.Suggest, error) {
@@ -194,7 +194,7 @@ func GetLatestDeviceHistory(ctx context.Context, deviceNo string) (entity.Histor
 	return item, nil
 }
 
-func EndLatestDeviceHistoryIfMatch(ctx context.Context, deviceNo string, eventID int64, endTimeUnixSec int64) (bool, error) {
+func EndLatestDeviceHistoryIfMatch(ctx context.Context, deviceNo string, eventID int64, endTimeUnixSec int64, remark string) (bool, error) {
 	deviceNo = strings.TrimSpace(deviceNo)
 	if deviceNo == "" || eventID <= 0 {
 		return false, nil
@@ -203,6 +203,7 @@ func EndLatestDeviceHistoryIfMatch(ctx context.Context, deviceNo string, eventID
 	if endTimeUnixSec == 0 {
 		endTimeUnixSec = time.Now().Unix()
 	}
+	remark = strings.TrimSpace(remark)
 	last, err := GetLatestDeviceHistory(ctx, deviceNo)
 	if err != nil {
 		return false, err
@@ -210,17 +211,22 @@ func EndLatestDeviceHistoryIfMatch(ctx context.Context, deviceNo string, eventID
 	if last.Id <= 0 || last.EventId != eventID {
 		return false, nil
 	}
+	data := g.Map{dao.History.Columns().EndTime: endTimeUnixSec}
+	if remark != "" {
+		data[dao.History.Columns().Remark] = remark
+		last.Remark = remark
+	}
 	_, err = dao.History.Ctx(ctx).
 		Where(dao.History.Columns().Id, last.Id).
 		Where(dao.History.Columns().DeviceNo, deviceNo).
-		Data(g.Map{dao.History.Columns().EndTime: endTimeUnixSec}).
+		Data(data).
 		Update()
 	if err != nil {
 		return false, err
 	}
 	last.EndTime = endTimeUnixSec
 	historyCache.patchHistoryOnUpdate(ctx, last)
-	// 与 UpdateDeviceHistory 一致：仅改 endTime 时也要递增 piece 版本并向 app:history:notify 广播，否则 App WS 收不到「结束事件」类更新。
+	// 与 UpdateDeviceHistory 一致：改 endTime（及可选 remark）时也要递增 piece 版本并向 app:history:notify 广播，否则 App WS 收不到「结束事件」类更新。
 	bumpPieceCacheEpoch(ctx, deviceNo)
 	publishHistoryChange(ctx, deviceNo, "update", historyToNotifyPayload(ctx, last))
 	return true, nil

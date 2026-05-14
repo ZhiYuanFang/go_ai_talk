@@ -97,7 +97,7 @@ func (r *historyRemoteClient) GetLatestHistory(ctx context.Context, deviceNo str
 	return resp.Item, err
 }
 
-func (r *historyRemoteClient) EndLatestHistoryIfMatch(ctx context.Context, deviceNo string, eventID int64, endTimeUnixSec int64) (bool, error) {
+func (r *historyRemoteClient) EndLatestHistoryIfMatch(ctx context.Context, deviceNo string, eventID int64, endTimeUnixSec int64, remark string) (bool, error) {
 	if err := r.notReady(); err != nil {
 		return false, err
 	}
@@ -109,6 +109,7 @@ func (r *historyRemoteClient) EndLatestHistoryIfMatch(ctx context.Context, devic
 		"deviceNo": strings.TrimSpace(deviceNo),
 		"eventId":  eventID,
 		"endTime":  endTimeUnixSec,
+		"remark":   strings.TrimSpace(remark),
 	}, &resp)
 	return resp.Updated, err
 }
@@ -408,18 +409,21 @@ func (a *switchAdapter) GetLatestHistory(ctx context.Context, deviceNo string) (
 	return item, err
 }
 
-func (a *switchAdapter) EndLatestHistoryIfMatch(ctx context.Context, deviceNo string, eventID int64, endTimeUnixSec int64) (bool, error) {
+func (a *switchAdapter) EndLatestHistoryIfMatch(ctx context.Context, deviceNo string, eventID int64, endTimeUnixSec int64, remark string) (bool, error) {
 	if !a.shouldUseRemote(deviceNo) {
-		return a.local.EndLatestHistoryIfMatch(ctx, deviceNo, eventID, endTimeUnixSec)
+		return a.local.EndLatestHistoryIfMatch(ctx, deviceNo, eventID, endTimeUnixSec, remark)
 	}
-	updated, err := a.remote.EndLatestHistoryIfMatch(ctx, deviceNo, eventID, endTimeUnixSec)
+	updated, err := a.remote.EndLatestHistoryIfMatch(ctx, deviceNo, eventID, endTimeUnixSec, remark)
 	if err != nil && a.cfg.failoverToLocal {
-		return a.local.EndLatestHistoryIfMatch(ctx, deviceNo, eventID, endTimeUnixSec)
+		return a.local.EndLatestHistoryIfMatch(ctx, deviceNo, eventID, endTimeUnixSec, remark)
 	}
 	if err == nil && updated {
 		item, lErr := a.GetLatestHistory(ctx, deviceNo)
 		if lErr == nil && item.Id > 0 {
 			item.EndTime = endTimeUnixSec
+			if r := strings.TrimSpace(remark); r != "" {
+				item.Remark = r
+			}
 			historyCache.patchHistoryOnUpdate(ctx, item)
 		}
 	}
