@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>App 版本管理 — gateway-app</title>
+	<style>
+		body { font-family: system-ui, sans-serif; max-width: 640px; margin: 24px auto; padding: 0 12px; }
+		label { display: block; margin-top: 12px; font-weight: 600; }
+		input[type="text"], input[type="password"], textarea { width: 100%; box-sizing: border-box; padding: 8px; }
+		button { margin-top: 16px; padding: 10px 16px; cursor: pointer; }
+		#panel { margin-top: 24px; border-top: 1px solid #ddd; padding-top: 16px; }
+		.err { color: #b00020; }
+		.ok { color: #0a6; }
+		pre { background: #f4f4f4; padding: 8px; overflow: auto; font-size: 12px; }
+	</style>
+</head>
+<body>
+	<h1>App 版本管理</h1>
+	<p>先登录（口令由服务端环境变量 / 配置注入，勿在页面硬编码）。登录成功后浏览器会携带 HttpOnly Cookie，再上传 APK。</p>
+
+	<div id="loginBox">
+		<label for="password">管理员口令</label>
+		<input type="password" id="password" autocomplete="current-password" />
+		<button type="button" id="btnLogin">登录</button>
+		<p id="loginMsg" class="err"></p>
+	</div>
+
+	<div id="panel" style="display:none;">
+		<h2>上传新版本 APK</h2>
+		<p class="ok">已登录。Cookie 路径为 <code>/device/app</code>，请保持同源访问本页。</p>
+		<form id="upForm">
+			<label for="latestVersion">latestVersion（如 1.0.1）</label>
+			<input type="text" id="latestVersion" required />
+			<label for="releaseNotes">releaseNotes（可选）</label>
+			<textarea id="releaseNotes" rows="3"></textarea>
+			<label><input type="checkbox" id="forceUpdate" /> forceUpdate（强制更新）</label>
+			<label for="apk">APK 文件</label>
+			<input type="file" id="apk" accept=".apk" required />
+			<button type="submit">上传并写库</button>
+		</form>
+		<p id="upMsg"></p>
+		<pre id="upResult" style="display:none;"></pre>
+	</div>
+
+	<script>
+	(function(){
+		const loginMsg = document.getElementById('loginMsg');
+		const upMsg = document.getElementById('upMsg');
+		const upResult = document.getElementById('upResult');
+
+		document.getElementById('btnLogin').addEventListener('click', async function(){
+			loginMsg.textContent = '';
+			const password = (document.getElementById('password').value || '').trim();
+			if(!password){ loginMsg.textContent = '请输入口令'; return; }
+			try{
+				const res = await fetch('/device/app/api/version/admin/login', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					credentials: 'same-origin',
+					body: JSON.stringify({ password })
+				});
+				const data = await res.json().catch(function(){ return {}; });
+				if(!res.ok || data.code !== 0){
+					loginMsg.textContent = data.message || ('HTTP ' + res.status);
+					return;
+				}
+				document.getElementById('loginBox').style.display = 'none';
+				document.getElementById('panel').style.display = 'block';
+			}catch(e){
+				loginMsg.textContent = String(e);
+			}
+		});
+
+		document.getElementById('upForm').addEventListener('submit', async function(ev){
+			ev.preventDefault();
+			upMsg.textContent = '';
+			upResult.style.display = 'none';
+			const latestVersion = (document.getElementById('latestVersion').value || '').trim();
+			const releaseNotes = (document.getElementById('releaseNotes').value || '').trim();
+			const forceUpdate = document.getElementById('forceUpdate').checked ? '1' : '0';
+			const fileInput = document.getElementById('apk');
+			if(!fileInput.files || !fileInput.files[0]){
+				upMsg.textContent = '请选择 APK';
+				return;
+			}
+			const fd = new FormData();
+			fd.append('latestVersion', latestVersion);
+			fd.append('releaseNotes', releaseNotes);
+			fd.append('forceUpdate', forceUpdate);
+			fd.append('apk', fileInput.files[0]);
+			try{
+				const res = await fetch('/device/app/api/version/admin/upload', {
+					method: 'POST',
+					body: fd,
+					credentials: 'same-origin'
+				});
+				const data = await res.json().catch(function(){ return {}; });
+				if(!res.ok || data.code !== 0){
+					upMsg.className = 'err';
+					upMsg.textContent = data.message || ('HTTP ' + res.status);
+					return;
+				}
+				upMsg.className = 'ok';
+				upMsg.textContent = '上传成功。downloadUrl 已写入 version 表。';
+				upResult.style.display = 'block';
+				upResult.textContent = JSON.stringify(data, null, 2);
+			}catch(e){
+				upMsg.className = 'err';
+				upMsg.textContent = String(e);
+			}
+		});
+	})();
+	</script>
+</body>
+</html>

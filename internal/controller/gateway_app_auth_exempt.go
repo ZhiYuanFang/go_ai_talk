@@ -23,6 +23,8 @@ var (
 		"/device/app/api/token/refresh",
 		"/device/app/api/user/login",
 		"/device/app/api/user/device_login",
+		"/device/app/api/version/admin/login",
+		"/device/app/api/version/admin/upload",
 	}
 
 	// GET 且路径精确匹配（WebSocket Upgrade 等不要求 HTTP 层 Bearer）。
@@ -38,6 +40,7 @@ var (
 		"/device/admin",
 		"/device/admin/",
 		"/device/app/api/version/check",
+		"/device/app/version-admin.html",
 		"/device/app/integration-test.html",
 		"/favicon.ico",
 		"/robots.txt",
@@ -46,6 +49,7 @@ var (
 	// GET 或 HEAD：路径以前缀命中即豁免。
 	gatewayAppAuthExemptPrefixesGETHEAD = []string{
 		"/resource/",
+		"/device/app/apk/",
 	}
 )
 

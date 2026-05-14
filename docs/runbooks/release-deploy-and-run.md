@@ -6,6 +6,7 @@
 
 - `gateway-service`：`manifest/config/config.yaml`（仅网关与公共项，不含数据库）
 - **`gateway-app-server`**：`manifest/config/config.gateway-app-server.yaml`（**含** `database.app`，用于版本检查读 `ai_voice_app`；**新建实例**须在 yaml 中把 `database.app.link` 配为真实 DSN，或通过环境变量 **`APP_DB_LINK`** 覆盖——与 `HISTORY_DB_LINK` 等同理，Compose 已传 `${APP_DB_LINK:-}`，勿漏配导致版本接口连库失败）
+- **gateway-app-server（版本管理 / APK）**：上传安装包并写 `version.download_url` 时，必须配置 **`gatewayApp.publicBaseUrl`** 或环境变量 **`GATEWAY_APP_PUBLIC_BASE_URL`**（无末尾斜杠的对外根地址，如 `https://www.example.com:9702`），否则上传接口会拒绝生成下载链接。管理员口令仅通过 **`GATEWAY_APP_VERSION_ADMIN_PASSWORD`**（或本地私有 yaml 中的 `gatewayApp.versionAdmin.password`，**勿将生产口令提交到 git**）注入。APK 默认落盘 **`/apk/ai_talk/`**（可用 `GATEWAY_APP_APK_STORAGE_DIR` 覆盖）；Linux 上请保证运行用户可写（可 `mkdir -p /apk/ai_talk` 并 `chown`）。管理页：`GET /device/app/version-admin.html`；匿名下载：`GET /device/app/apk/{文件名}`（与写入库的 URL 路径一致）。
 - `voice-service`：`manifest/config/config.voice-service.yaml`
 - `device-service`：`manifest/config/config.device-service.yaml`
 - `history-service`：`manifest/config/config.history-service.yaml`

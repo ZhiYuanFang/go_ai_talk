@@ -23,6 +23,14 @@ func RegisterGatewayAppHTTP(s *ghttp.Server) {
 		r.Response.ServeFile("resource/public/gateway-app-integration-test.html")
 	})
 
+	// 版本管理：口令登录 + APK 上传 + 匿名 APK 下载（路径在 Bearer 白名单）。
+	s.BindHandler("/device/app/version-admin.html", func(r *ghttp.Request) {
+		r.Response.ServeFile("resource/public/gateway-app-version-admin.html")
+	})
+	s.BindHandler("/device/app/api/version/admin/login", gatewayAppVersionAdminLogin)
+	s.BindHandler("/device/app/api/version/admin/upload", gatewayAppVersionAdminUpload)
+	s.BindHandler("/device/app/apk/*filename", gatewayAppApkDownload)
+
 	// CORS 仅 App 网关：须在跨切面之前注册，使外层在中间件返回后仍可补写反代响应头。
 	installGatewayAppCORSMiddleware(s)
 	installGatewayCrosscuttingMiddlewares(s)

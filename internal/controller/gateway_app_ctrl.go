@@ -141,7 +141,7 @@ func (c *GatewayAppCtrl) TokenRefresh(ctx context.Context, req *v1.GatewayAppTok
 // VersionCheck GET /device/app/api/version/check
 func (c *GatewayAppCtrl) VersionCheck(ctx context.Context, req *v1.GatewayAppVersionCheckReq) (res *v1.GatewayAppVersionCheckRes, err error) {
 	cur := strings.TrimSpace(req.CurrentVersion)
-	cacheKey := "gw:app:version:latest"
+	cacheKey := gatewayapp.RedisKeyAppVersionLatestCache
 	if raw, err := g.Redis().Do(ctx, "GET", cacheKey); err == nil && raw != nil {
 		s := strings.TrimSpace(raw.String())
 		if s != "" {

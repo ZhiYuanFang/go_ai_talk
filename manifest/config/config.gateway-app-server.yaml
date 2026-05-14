@@ -37,3 +37,17 @@ gatewayApp:
   # 以下缓存项曾为 id→unionid 热路径保留；当前 Bearer 仅从 JWT 注入 Wx-Id/Device-No，可删除整段或保留作占位兼容
   wxIdUnionCacheSeconds: 120
   wxIdCodeCacheSeconds: 120
+  # —— App 版本管理页（上传 APK、写 download_url）——
+  # 对外可访问的 gateway-app 根 URL（无末尾斜杠），用于拼接 APK 绝对下载地址；生产请用环境变量 GATEWAY_APP_PUBLIC_BASE_URL 覆盖。
+  publicBaseUrl: ""
+  # APK 存储目录（Linux 云主机默认 /apk/ai_talk/）；可用 GATEWAY_APP_APK_STORAGE_DIR 覆盖。
+  apkStorageDir: "/apk/ai_talk/"
+  # 单包大小上限（字节），默认 200MB；可用 GATEWAY_APP_APK_MAX_BYTES 覆盖。
+  apkMaxBytes: 209715200
+  versionAdmin:
+    # 管理员口令：务必使用环境变量 GATEWAY_APP_VERSION_ADMIN_PASSWORD 注入，勿将生产口令写入提交到 git 的 yaml。
+    password: ""
+    # 管理会话 TTL（秒），默认 8 小时。
+    sessionTtlSeconds: 28800
+    # HTTPS 部署时建议 true，或用环境变量 GATEWAY_APP_VERSION_ADMIN_COOKIE_SECURE=1；本地 http 可 false。
+    cookieSecure: false
