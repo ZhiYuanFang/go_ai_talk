@@ -87,7 +87,7 @@
 
 		<div class="card">
 			<h2>4. WebSocket 历史变更</h2>
-			<p class="hint">路径 <code>/device/app/ws/history</code>；首帧 JSON：<code>{"type":"auth","access_token":"…","deviceNo":"…"}</code>（snake_case）。</p>
+			<p class="hint">路径 <code>/device/app/ws/history</code>；首帧 JSON：<code>{"type":"auth","accessToken":"…","deviceNo":"…"}</code>（与 HTTP 登录响应字段风格一致）。</p>
 			<button type="button" id="btnWsConnect">连接 WS</button>
 			<button type="button" class="danger" id="btnWsClose">断开</button>
 			<div id="msgWs" class="log"></div>
@@ -244,7 +244,7 @@
 		if(!token || !dn){ log($('msgWs'), '请先登录并填写 deviceNo'); return; }
 		sock = new WebSocket(wsUrl());
 		sock.onopen = () => {
-			sock.send(JSON.stringify({ type:'auth', access_token: token, deviceNo: dn }));
+			sock.send(JSON.stringify({ type:'auth', accessToken: token, deviceNo: dn }));
 			log($('msgWs'), 'opened, auth sent');
 		};
 		sock.onmessage = (ev) => { log($('msgWs'), ev.data, true); };
