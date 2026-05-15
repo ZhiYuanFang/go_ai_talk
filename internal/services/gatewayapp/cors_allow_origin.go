@@ -17,7 +17,7 @@ const (
 // localhost / 127.0.0.1：Flutter Web、Vite 等本地开发页跨域请求线上/局域网网关时使用。
 var gatewayAppCORSAllowedHosts = map[string]struct{}{
 	"192.168.0.131":   {},
-	"120.55.50.105": {},
+	"www.cuplay.top": {},
 	"localhost":       {},
 	"127.0.0.1":     {},
 }
