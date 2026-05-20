@@ -19,6 +19,13 @@
 - 跨服务资料获取走 API，不跨库直查；`history-service` 内对 suggest/画像/事件字典的本地实现通过 `VOICE_SERVICE_URL` / `DEVICE_SERVICE_URL` 委派到对应服务（默认值见 `internal/services/contracts/http_targets.go`）。**容器或 Pod 内** `127.0.0.1` 指向本实例自身，不得用于访问其他微服务；Compose 参考见 `manifest/docker/docker-compose.microservices.yml` 中 `history-service.environment`，K8s 参考见 `manifest/deploy/kustomize/base/history-deployment.yaml`。
 - `voice-service` 对 device 域（事件/动作/画像/注册校验/最近对话等）**仅经 HTTP**（`DEVICE_SERVICE_URL` → `internal/services/device/admin_http_client.go`），不得依赖 voice 进程 default 库直连 `user`/`event`/`action`；部署时建议 `DEVICE_PROFILE_SERVICE_MODE=remote`（与 `manifest/deploy/.../voice-deployment.yaml` 一致）。
 
+### 解决宝塔面板无响应
+1. 重启宝塔面板服务
+> /etc/init.d/bt restart
+
+2. 等待几秒后，检查服务状态（看是否显示 running）
+> /etc/init.d/bt status
+
 ### 2. 本地 Compose 启动
 > cd /www/wwwroot/go/go_ai_talk/
 > mysql可能没有启动

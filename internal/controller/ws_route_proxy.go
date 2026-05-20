@@ -33,27 +33,33 @@ var (
 	voiceWSProxy     *httputil.ReverseProxy
 )
 
+// voiceWSProxyPaths 为经 gateway 透传至 voice-service 的 WebSocket 路径（与 VOICE_WS_PROXY_URL 共用）。
+var voiceWSProxyPaths = []string{
+	"/voice/chat/ws",
+	"/voice/asr/ws",
+}
+
 // installVoiceWSProxyMiddleware 在网关挂载 voice WS 入口代理中间件。
 // 说明：该路由只在 proxy 模式生效，配置非法时返回结构化错误并终止链路。
 func installVoiceWSProxyMiddleware(s *ghttp.Server) {
 	cfg, proxy := voiceWSProxyFromEnv()
-	s.BindMiddleware("/voice/chat/ws", func(r *ghttp.Request) {
-		// 非 proxy 模式直接拒绝，避免误将本地模式请求落入不完整链路。
+	handler := func(r *ghttp.Request) {
 		if cfg.mode != domainRouteModeProxy {
 			writeWSProxyConfigError(r, http.StatusServiceUnavailable, "voice ws route mode is not proxy")
 			r.ExitAll()
 			return
 		}
-		// 目标为空或代理构建失败时返回明确错误，避免静默降级。
 		if strings.TrimSpace(cfg.targetURL) == "" || proxy == nil {
 			writeWSProxyConfigError(r, http.StatusBadGateway, "voice ws proxy target is invalid")
 			r.ExitAll()
 			return
 		}
-		// 命中代理后直接转发并结束后续中间件，防止重复处理。
 		proxy.ServeHTTP(r.Response.Writer, r.Request)
 		r.ExitAll()
-	})
+	}
+	for _, path := range voiceWSProxyPaths {
+		s.BindMiddleware(path, handler)
+	}
 }
 
 // voiceWSProxyFromEnv 从环境变量读取配置并惰性构建代理对象。

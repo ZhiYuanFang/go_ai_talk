@@ -31,6 +31,7 @@ var (
 	gatewayAppAuthExemptExactGET = []string{
 		"/device/app/ws/history",
 		"/voice/chat/ws",
+		"/voice/asr/ws",
 	}
 
 	// GET 或 HEAD：路径精确匹配。

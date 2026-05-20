@@ -98,6 +98,34 @@
 {"type":"error","code":1,"stage":"chat","message":"..."}
 ```
 
+#### 2. 实时听写（WebSocket，仅语音→中文文本）
+
+- **Path**: `/voice/asr/ws`（经主网关 `:9701` 或 App 网关 `:9702` 透传至 voice-service，与对话 WS 共用 `VOICE_WS_ROUTE_MODE` / `VOICE_WS_PROXY_URL`）
+- **用途**：仅需流式听写（`asr_partial` / `asr_final`），无 LLM、TTS、对话落库
+- **协议**：`start` → 二进制 PCM 分片 → 可选 `commit`（手动截句）或 `end`
+
+客户端 `start`（`mode` 可省略或设为 `stream`）：
+
+```json
+{"type":"start","deviceNo":"device-001","sampleRate":16000,"bits":16,"channels":1,"length":32000}
+```
+
+服务端下行示例：
+
+```json
+{"type":"started","code":0,"mode":"stream"}
+```
+
+```json
+{"type":"asr_partial","code":0,"text":"你好"}
+```
+
+```json
+{"type":"asr_final","code":0,"text":"你好世界","source":"silence"}
+```
+
+`source` 可为 `asr_callback`、`client`（手动 commit）、`silence`、`auto_commit`、`end` 等。
+
 ---
 
 ### B. 设备管理 API

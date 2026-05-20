@@ -12,6 +12,8 @@ func RegisterVoiceServiceHTTP(s *ghttp.Server) {
 	s.Use(ghttp.MiddlewareHandlerResponse)
 	// 语音会话仍通过 WS 通道承载，避免文本接口和流式接口割裂。
 	registerVoiceChatWS(s)
+	// 实时听写专用 WS，与对话 WS 分离（无 TTS/LLM/单设备连接互踢）。
+	registerVoiceAsrWS(s)
 	s.Group("/", func(group *ghttp.RouterGroup) {
 		// voice-service 仅绑定语音文本域能力，避免引入非语音职责。
 		group.Bind(NewVoiceTextCtrl(voice.Voice(), voice.DeviceAdmin()), Voice)
