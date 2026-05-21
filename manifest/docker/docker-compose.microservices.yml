@@ -99,6 +99,7 @@ services:
       HISTORY_DB_LINK: "${HISTORY_DB_LINK:-}"
       # history 容器内不得用 127.0.0.1 访问他域服务，须走 compose 服务名。
       VOICE_SERVICE_URL: "http://voice-service:9802"
+      DEVICE_PROFILE_SERVICE_MODE: "remote"
       DEVICE_SERVICE_URL: "http://device-service:9803"
       WORKER_SERVICE_URL: "http://worker:9901"
       OUTBOX_RELAY_ENABLED: "true"

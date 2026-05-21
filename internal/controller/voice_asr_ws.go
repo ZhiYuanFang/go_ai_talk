@@ -48,7 +48,8 @@ func voiceAsrWS(r *ghttp.Request) {
 		}
 	}()
 
-	streamStartAt := time.Time{}
+	streamStartAt := time.Time{}   // 整段听写 WS 会话起始（仅 start 时设置）
+	utteranceStartAt := time.Time{} // 当前句/当前 ASR 连接起始，finalize 或新建 ASR 时重置
 	chunkCount := 0
 	streamASRBroken := false
 	audioPassThroughLogged := false
@@ -152,6 +153,7 @@ func voiceAsrWS(r *ghttp.Request) {
 		}
 		resetStreamBuffers()
 		resetStreamASRUntilNextValid()
+		utteranceStartAt = time.Time{}
 	}
 
 	openStreamASR := func() error {
@@ -185,6 +187,7 @@ func voiceAsrWS(r *ghttp.Request) {
 				glog.Infof(ctx, "[听写WS] ASR final 回调。deviceNo=%s textLen=%d", deviceNo, utf8.RuneCountInString(text))
 				resetStreamBuffers()
 				resetStreamASRUntilNextValid()
+				utteranceStartAt = time.Time{}
 			},
 		)
 		if sErr != nil {
@@ -192,6 +195,8 @@ func voiceAsrWS(r *ghttp.Request) {
 			return sErr
 		}
 		streamASR = sess
+		// 新一句 ASR 计时从建连成功开始，避免沿用整段 WS 的 streamStartAt 触发误截句。
+		utteranceStartAt = time.Now()
 		return nil
 	}
 
@@ -202,7 +207,11 @@ func voiceAsrWS(r *ghttp.Request) {
 		if asrCallbackCount > 0 || chunkCount < wsNoASRAutoCommitChunk {
 			return
 		}
-		if time.Since(streamStartAt) < wsAutoCommitTimeout {
+		ref := utteranceStartAt
+		if ref.IsZero() {
+			ref = streamStartAt
+		}
+		if ref.IsZero() || time.Since(ref) < wsAutoCommitTimeout {
 			return
 		}
 		if chunkCount-lastNoASRWarnChunk < wsNoASRAutoCommitChunk {
@@ -261,6 +270,7 @@ func voiceAsrWS(r *ghttp.Request) {
 				lastASRAt = time.Time{}
 				lastNoASRWarnChunk = 0
 				audioPassThroughLogged = false
+				utteranceStartAt = time.Time{}
 				resetStreamASRUntilNextValid()
 
 				glog.Infof(ctx, "[听写WS] 会话启动。deviceNo=%s sampleRate=%d bits=%d channels=%d", deviceNo, meta.SampleRate, meta.Bits, meta.Channels)
@@ -294,6 +304,7 @@ func voiceAsrWS(r *ghttp.Request) {
 				resetStreamBuffers()
 				resetStreamASRUntilNextValid()
 				streamStartAt = time.Time{}
+				utteranceStartAt = time.Time{}
 				endPayload, _ := json.Marshal(map[string]interface{}{"type": "ended", "code": 0})
 				_ = safeWriteMessage(1, endPayload)
 				continue
@@ -334,28 +345,31 @@ func voiceAsrWS(r *ghttp.Request) {
 		}
 
 		if streamASR != nil && !streamASRBroken {
-			now := time.Now()
-			sttSilence := time.Duration(0)
-			if !lastASRAt.IsZero() {
-				sttSilence = now.Sub(lastASRAt)
-			}
-			hasFirstSTT := !lastASRAt.IsZero()
-			noFirstSTTTimeout := !hasFirstSTT && !streamStartAt.IsZero() && now.Sub(streamStartAt) >= wsInitialNoASRGap
-			sttTimeout := hasFirstSTT && sttSilence >= wsInterruptCommitGap
-
-			if noFirstSTTTimeout || sttTimeout {
-				runAsrFinalize("silence")
-				continue
-			}
-		}
-
-		if streamASR != nil {
 			if wErr := streamASR.WriteAudio(msg); wErr != nil {
 				safeWriteWSError("stt", "流式 ASR 写入失败")
 				streamASRBroken = true
 				_ = streamASR.Close()
 				streamASR = nil
+				utteranceStartAt = time.Time{}
 			} else {
+				// 先写入百度，再判断静音截句，避免「刚建连尚未送音频」就被 finalize。
+				now := time.Now()
+				sttSilence := time.Duration(0)
+				if !lastASRAt.IsZero() {
+					sttSilence = now.Sub(lastASRAt)
+				}
+				hasFirstSTT := !lastASRAt.IsZero()
+				uttRef := utteranceStartAt
+				if uttRef.IsZero() {
+					uttRef = streamStartAt
+				}
+				noFirstSTTTimeout := !hasFirstSTT && !uttRef.IsZero() && now.Sub(uttRef) >= wsInitialNoASRGap
+				sttTimeout := hasFirstSTT && sttSilence >= wsInterruptCommitGap
+
+				if noFirstSTTTimeout || sttTimeout {
+					runAsrFinalize("silence")
+					continue
+				}
 				tryAutoCommitWhenNoASRCallback()
 			}
 		}
