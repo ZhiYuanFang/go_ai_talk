@@ -102,12 +102,26 @@
 
 - **Path**: `/voice/asr/ws`（经主网关 `:9701` 或 App 网关 `:9702` 透传至 voice-service，与对话 WS 共用 `VOICE_WS_ROUTE_MODE` / `VOICE_WS_PROXY_URL`）
 - **用途**：仅需流式听写（`asr_partial` / `asr_final`），无 LLM、TTS、对话落库
-- **协议**：`start` → 二进制 PCM 分片 → 可选 `commit`（手动截句）或 `end`
+- **协议**：`start` → 二进制 PCM 分片 → **`commit`（必须，一句结束）** → `end`（关会话）
+- **截句**：服务端**不会**因静音自动结束一句；`asr_final` **仅**在 `commit` 或 `end` 时下发（`source` 为 `client` 或 `end`）
+- **预览纠正**：说话过程中百度引擎可能对某短语产生 final，服务端会**再发一条** `asr_partial`（与中间 partial 同类型）覆盖预览，前端用最新 `text` 替换即可；**定稿**仍须 `commit`
 
 客户端 `start`（`mode` 可省略或设为 `stream`）：
 
 ```json
 {"type":"start","deviceNo":"device-001","sampleRate":16000,"bits":16,"channels":1,"length":32000}
+```
+
+松手或点「完成」时**必须**发送（否则只有预览、没有定稿听写）：
+
+```json
+{"type":"commit"}
+```
+
+结束听写会话：
+
+```json
+{"type":"end"}
 ```
 
 服务端下行示例：
@@ -121,10 +135,8 @@
 ```
 
 ```json
-{"type":"asr_final","code":0,"text":"你好世界","source":"silence"}
+{"type":"asr_final","code":0,"text":"你好世界","source":"client"}
 ```
-
-`source` 可为 `asr_callback`、`client`（手动 commit）、`silence`、`auto_commit`、`end` 等。
 
 ---
 

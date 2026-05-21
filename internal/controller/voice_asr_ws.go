@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"time"
 	"unicode/utf8"
 
 	voice "hello/internal/services/voice"
@@ -21,8 +20,12 @@ func registerVoiceAsrWS(s *ghttp.Server) {
 	s.BindHandler("/voice/asr/ws", voiceAsrWS)
 }
 
-// voiceAsrWS 处理实时听写：上行 PCM，下行 asr_partial/asr_final。
-// 不注册 VoiceWSManager、不调用 LLM/TTS/UpdateLastTalk，避免与 /voice/chat/ws 互相踢连接或落对话库。
+// voiceAsrWS 处理实时听写：上行 PCM，下行 asr_partial / asr_final。
+//
+// 与 /voice/chat/ws 的差异：听写线不做服务端静音截句（无 silence/auto_commit），
+// 引擎 onFinal 仅再发 asr_partial 纠正预览，不作为 asr_final、不关 ASR；
+// 业务定稿 asr_final 仅由前端 commit/end 触发。
+// 不注册 VoiceWSManager，不调用 LLM/TTS/UpdateLastTalk。
 func voiceAsrWS(r *ghttp.Request) {
 	ctx := r.Context()
 	ws, err := r.WebSocket()
@@ -48,16 +51,11 @@ func voiceAsrWS(r *ghttp.Request) {
 		}
 	}()
 
-	streamStartAt := time.Time{}   // 整段听写 WS 会话起始（仅 start 时设置）
-	utteranceStartAt := time.Time{} // 当前句/当前 ASR 连接起始，finalize 或新建 ASR 时重置
 	chunkCount := 0
 	streamASRBroken := false
 	audioPassThroughLogged := false
 	lastPartialText := ""
 	latestTranscript := ""
-	asrCallbackCount := 0
-	lastASRAt := time.Time{}
-	lastNoASRWarnChunk := 0
 
 	preferLongerTranscript := func(current, candidate string) string {
 		current = strings.TrimSpace(current)
@@ -115,12 +113,9 @@ func voiceAsrWS(r *ghttp.Request) {
 			streamASR = nil
 		}
 		streamASRBroken = false
-		asrCallbackCount = 0
-		lastASRAt = time.Time{}
-		lastNoASRWarnChunk = 0
 	}
 
-	// runAsrFinalize 对当前流式 ASR 执行 FINISH/commit，仅下发听写结果，不进入对话链路。
+	// runAsrFinalize 仅由前端 commit/end 调用：向百度发送 FINISH 并下发 asr_final。
 	runAsrFinalize := func(source string) {
 		transcript := ""
 		if streamASR != nil && !streamASRBroken {
@@ -153,7 +148,6 @@ func voiceAsrWS(r *ghttp.Request) {
 		}
 		resetStreamBuffers()
 		resetStreamASRUntilNextValid()
-		utteranceStartAt = time.Time{}
 	}
 
 	openStreamASR := func() error {
@@ -168,26 +162,23 @@ func voiceAsrWS(r *ghttp.Request) {
 				if text == "" || text == lastPartialText {
 					return
 				}
-				asrCallbackCount++
-				lastASRAt = time.Now()
 				lastPartialText = text
 				latestTranscript = preferLongerTranscript(latestTranscript, text)
 				emitAsrPartial(text)
 			},
+			// 引擎 onFinal：再发 asr_partial 纠正预览（对齐 chat WS），不发 asr_final、不关 ASR。
 			func(text string) {
 				text = strings.TrimSpace(text)
 				if text == "" {
 					return
 				}
-				asrCallbackCount++
-				lastASRAt = time.Now()
-				latestTranscript = preferLongerTranscript(latestTranscript, text)
+				if text == lastPartialText {
+					return
+				}
 				lastPartialText = text
-				emitAsrFinal(text, "asr_callback")
-				glog.Infof(ctx, "[听写WS] ASR final 回调。deviceNo=%s textLen=%d", deviceNo, utf8.RuneCountInString(text))
-				resetStreamBuffers()
-				resetStreamASRUntilNextValid()
-				utteranceStartAt = time.Time{}
+				latestTranscript = text
+				emitAsrPartial(text)
+				glog.Infof(ctx, "[听写WS] 引擎 final 转发为 partial。deviceNo=%s textLen=%d", deviceNo, utf8.RuneCountInString(text))
 			},
 		)
 		if sErr != nil {
@@ -195,30 +186,7 @@ func voiceAsrWS(r *ghttp.Request) {
 			return sErr
 		}
 		streamASR = sess
-		// 新一句 ASR 计时从建连成功开始，避免沿用整段 WS 的 streamStartAt 触发误截句。
-		utteranceStartAt = time.Now()
 		return nil
-	}
-
-	tryAutoCommitWhenNoASRCallback := func() {
-		if streamASR == nil || streamASRBroken {
-			return
-		}
-		if asrCallbackCount > 0 || chunkCount < wsNoASRAutoCommitChunk {
-			return
-		}
-		ref := utteranceStartAt
-		if ref.IsZero() {
-			ref = streamStartAt
-		}
-		if ref.IsZero() || time.Since(ref) < wsAutoCommitTimeout {
-			return
-		}
-		if chunkCount-lastNoASRWarnChunk < wsNoASRAutoCommitChunk {
-			return
-		}
-		lastNoASRWarnChunk = chunkCount
-		runAsrFinalize("auto_commit")
 	}
 
 	for {
@@ -262,15 +230,10 @@ func voiceAsrWS(r *ghttp.Request) {
 				started = true
 				audioBuffer.Reset()
 				chunkCount = 0
-				streamStartAt = time.Now()
 				streamASRBroken = false
 				lastPartialText = ""
 				latestTranscript = ""
-				asrCallbackCount = 0
-				lastASRAt = time.Time{}
-				lastNoASRWarnChunk = 0
 				audioPassThroughLogged = false
-				utteranceStartAt = time.Time{}
 				resetStreamASRUntilNextValid()
 
 				glog.Infof(ctx, "[听写WS] 会话启动。deviceNo=%s sampleRate=%d bits=%d channels=%d", deviceNo, meta.SampleRate, meta.Bits, meta.Channels)
@@ -279,7 +242,7 @@ func voiceAsrWS(r *ghttp.Request) {
 				continue
 
 			case "commit":
-				// 可选「手动截句」：仅触发 ASR finalize 并返回 asr_final，不进入对话/TTS。
+				// 一句听写结束：唯一由前端主动截句的常规路径（松手/点完成时发送）。
 				if !started {
 					safeWriteWSError("state", "请先发送 start")
 					continue
@@ -303,8 +266,6 @@ func voiceAsrWS(r *ghttp.Request) {
 				started = false
 				resetStreamBuffers()
 				resetStreamASRUntilNextValid()
-				streamStartAt = time.Time{}
-				utteranceStartAt = time.Time{}
 				endPayload, _ := json.Marshal(map[string]interface{}{"type": "ended", "code": 0})
 				_ = safeWriteMessage(1, endPayload)
 				continue
@@ -350,27 +311,6 @@ func voiceAsrWS(r *ghttp.Request) {
 				streamASRBroken = true
 				_ = streamASR.Close()
 				streamASR = nil
-				utteranceStartAt = time.Time{}
-			} else {
-				// 先写入百度，再判断静音截句，避免「刚建连尚未送音频」就被 finalize。
-				now := time.Now()
-				sttSilence := time.Duration(0)
-				if !lastASRAt.IsZero() {
-					sttSilence = now.Sub(lastASRAt)
-				}
-				hasFirstSTT := !lastASRAt.IsZero()
-				uttRef := utteranceStartAt
-				if uttRef.IsZero() {
-					uttRef = streamStartAt
-				}
-				noFirstSTTTimeout := !hasFirstSTT && !uttRef.IsZero() && now.Sub(uttRef) >= wsInitialNoASRGap
-				sttTimeout := hasFirstSTT && sttSilence >= wsInterruptCommitGap
-
-				if noFirstSTTTimeout || sttTimeout {
-					runAsrFinalize("silence")
-					continue
-				}
-				tryAutoCommitWhenNoASRCallback()
 			}
 		}
 	}
