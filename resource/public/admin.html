@@ -28,6 +28,11 @@
 		.modal{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:center;justify-content:center;z-index:99}
 		.modal.show{display:flex}
 		.modal-card{background:#fff;border-radius:12px;padding:16px;min-width:320px;max-width:640px;width:90%;box-shadow:0 10px 30px rgba(0,0,0,.15)}
+		.event-logo-cell,.event-color-cell{cursor:pointer;vertical-align:middle}
+		.event-logo-placeholder{display:inline-flex;align-items:center;justify-content:center;min-width:56px;min-height:36px;padding:4px 8px;border:1px dashed #cbd5e1;border-radius:6px;font-size:12px;color:#64748b;background:#f8fafc}
+		.event-logo-cell img{display:block;max-height:40px;max-width:56px;border-radius:4px}
+		.event-color-swatch{display:inline-block;width:22px;height:22px;border:1px solid #cbd5e1;border-radius:4px;vertical-align:middle;margin-right:6px}
+		.event-row-busy{opacity:.55;pointer-events:none}
 	</style>
 </head>
 <body>
@@ -77,6 +82,9 @@
 			</div>
 		</div>
 		<div id="eventMsg" class="msg"></div>
+		<p class="msg" style="color:#64748b;margin-top:0;">点击列表中的 <strong>Logo</strong> 或 <strong>色调</strong> 可直接修改；图片地址与当前页同源。</p>
+		<input type="file" id="eventInlineLogoFile" accept="image/png,image/jpeg,image/webp" style="display:none" />
+		<input type="color" id="eventInlineColor" value="#4A90D9" style="display:none" />
 		<div class="table-wrap">
 			<table>
 				<thead>
@@ -282,11 +290,50 @@ function versionAdminPageUrl(){
 	return gatewayAppBase() + '/device/app/version-admin.html';
 }
 
+/** 事件 logo：与当前管理页同源（主网关 :9701），path-only 拼 origin */
 function eventLogoUrl(logoPath){
 	const p = String(logoPath || '').trim();
 	if(!p) return '';
 	if(/^https?:\/\//i.test(p)) return p;
-	return gatewayAppBase() + (p.startsWith('/') ? p : '/' + p);
+	const origin = window.location.origin || '';
+	return origin + (p.startsWith('/') ? p : '/' + p);
+}
+
+function normalizeEventColor(c){
+	const s = String(c || '').trim();
+	if(/^#[0-9a-f]{6}$/i.test(s)) return s;
+	return '#4A90D9';
+}
+
+function eventColorCss(c){
+	const s = normalizeEventColor(c);
+	return /^#[0-9a-f]{6}$/i.test(String(c||'').trim()) ? s : '#cccccc';
+}
+
+let eventRowBusyId = 0;
+let pendingInlineEventRow = null;
+
+async function submitEventRowUpdate(row, opts){
+	if(!row || !row.id) return;
+	if(eventRowBusyId){ throw new Error('请等待上一条提交完成'); }
+	eventRowBusyId = row.id;
+	const tr = document.querySelector('tr[data-event-id="'+ row.id +'"]');
+	if(tr) tr.classList.add('event-row-busy');
+	try{
+		const fd = new FormData();
+		fd.append('id', String(row.id));
+		fd.append('name', row.name);
+		fd.append('needQuantity', row.needQuantity ? '1' : '0');
+		fd.append('extraNames', row.extraNames || '');
+		fd.append('color', opts && opts.color != null ? opts.color : normalizeEventColor(row.color));
+		if(opts && opts.logoFile){ fd.append('logo', opts.logoFile); }
+		await apiForm('/device/admin/api/event/update', fd);
+		setMsg(eventMsg, '已更新', true);
+		await loadEventList();
+	} finally {
+		eventRowBusyId = 0;
+		if(tr) tr.classList.remove('event-row-busy');
+	}
 }
 
 (function initVersionAdminLink(){
@@ -341,58 +388,156 @@ async function loadList(){
 	});
 }
 
+function buildEventRowData(it){
+	const needQ = Number(it.needQuantity||0) > 0;
+	return {
+		id: Number(it.id||0),
+		name: String(it.name||''),
+		extraNames: String(it.extraNames||''),
+		color: String(it.color||''),
+		logo: String(it.logo||''),
+		needQuantity: needQ
+	};
+}
+
 async function loadEventList(){
-	const data = asListPayload(await api('/device/admin/api/event/list'));
 	const tbody = document.getElementById('eventTbody');
-	tbody.innerHTML = '';
-	(data || []).forEach(it => {
-		const needQ = Number(it.needQuantity||0) > 0;
-		const tr = document.createElement('tr');
-		const id = it.id||0;
-		const name = it.name||'';
-		const extra = it.extraNames||'';
-		const color = it.color || '';
-		const logo = it.logo || '';
-		const logoSrc = eventLogoUrl(logo);
-		const logoCell = logoSrc
-			? '<img src="'+ escapeHtml(logoSrc) +'" alt="" style="max-height:32px;max-width:48px;vertical-align:middle;" />'
-			: '';
-		tr.innerHTML = '<td>'+ escapeHtml(id) +'</td>' +
-			'<td>'+ escapeHtml(name) +'</td>' +
-			'<td>'+ logoCell +'</td>' +
-			'<td>'+ (color ? '<span style="display:inline-block;width:14px;height:14px;background:'+ escapeHtml(color) +';border:1px solid #ccc;vertical-align:middle;"></span> '+ escapeHtml(color) : '') +'</td>' +
-			'<td class="td-check">'+ (needQ ? '√' : '') +'</td>' +
-			'<td class="wrapcell">'+ escapeHtml(extra) +'</td>' +
-			'<td><button type="button" class="event-edit-btn">编辑</button> ' +
-			'<button type="button" class="event-del-btn" style="background:#b91c1c;">删除</button></td>';
-		tr.querySelector('.event-edit-btn').addEventListener('click', () => {
-			eventFormMode = 'edit';
-			editingEventId = Number(id);
-			eventModalTitle.textContent = '编辑事件';
-			eventFormName.value = name;
-			eventFormNeedQuantity.checked = needQ;
-			eventFormExtraNames.value = extra;
-			eventFormColor.value = (color && /^#[0-9a-f]{6}$/i.test(color)) ? color : '#4A90D9';
-			eventFormLogo.value = '';
-			eventFormMsg.textContent = '';
-			eventModal.classList.add('show');
-		});
-		tr.querySelector('.event-del-btn').addEventListener('click', async () => {
-			if (!window.confirm('确定删除该事件？若其它数据仍引用该事件可能删除失败。')) return;
-			try {
-				await api('/device/admin/api/event/delete', { method: 'POST', body: JSON.stringify({ id: Number(id) }) });
-				setMsg(eventMsg, '已删除', true);
-				if (editingEventId === Number(id)) {
-					eventModal.classList.remove('show');
+	try {
+		const data = asListPayload(await api('/device/admin/api/event/list'));
+		tbody.innerHTML = '';
+		(data || []).forEach(it => {
+			const row = buildEventRowData(it);
+			const tr = document.createElement('tr');
+			tr.dataset.eventId = String(row.id);
+
+			const tdId = document.createElement('td');
+			tdId.textContent = row.id;
+			const tdName = document.createElement('td');
+			tdName.textContent = row.name;
+
+			const tdLogo = document.createElement('td');
+			tdLogo.className = 'event-logo-cell';
+			const logoSrc = eventLogoUrl(row.logo);
+			if(logoSrc){
+				const img = document.createElement('img');
+				img.src = logoSrc;
+				img.alt = '';
+				tdLogo.appendChild(img);
+			}else{
+				const ph = document.createElement('span');
+				ph.className = 'event-logo-placeholder';
+				ph.textContent = '点击上传';
+				tdLogo.appendChild(ph);
+			}
+			tdLogo.title = '点击更换 Logo';
+			tdLogo.addEventListener('click', () => {
+				if(eventRowBusyId) return;
+				pendingInlineEventRow = row;
+				const fin = document.getElementById('eventInlineLogoFile');
+				fin.value = '';
+				fin.click();
+			});
+
+			const tdColor = document.createElement('td');
+			tdColor.className = 'event-color-cell';
+			tdColor.title = '点击修改色调';
+			const swatch = document.createElement('span');
+			swatch.className = 'event-color-swatch';
+			swatch.style.background = eventColorCss(row.color);
+			const colorText = document.createElement('span');
+			colorText.textContent = row.color || '（未设置）';
+			tdColor.appendChild(swatch);
+			tdColor.appendChild(colorText);
+			tdColor.addEventListener('click', () => {
+				if(eventRowBusyId) return;
+				pendingInlineEventRow = row;
+				const cin = document.getElementById('eventInlineColor');
+				cin.value = normalizeEventColor(row.color);
+				cin.click();
+			});
+
+			const tdNeed = document.createElement('td');
+			tdNeed.className = 'td-check';
+			tdNeed.textContent = row.needQuantity ? '√' : '';
+			const tdExtra = document.createElement('td');
+			tdExtra.className = 'wrapcell';
+			tdExtra.textContent = row.extraNames;
+
+			const tdAct = document.createElement('td');
+			const btnEdit = document.createElement('button');
+			btnEdit.type = 'button';
+			btnEdit.textContent = '编辑';
+			btnEdit.addEventListener('click', () => {
+				eventFormMode = 'edit';
+				editingEventId = row.id;
+				eventModalTitle.textContent = '编辑事件';
+				eventFormName.value = row.name;
+				eventFormNeedQuantity.checked = row.needQuantity;
+				eventFormExtraNames.value = row.extraNames;
+				eventFormColor.value = normalizeEventColor(row.color);
+				eventFormLogo.value = '';
+				eventFormMsg.textContent = '';
+				eventModal.classList.add('show');
+			});
+			const btnDel = document.createElement('button');
+			btnDel.type = 'button';
+			btnDel.textContent = '删除';
+			btnDel.style.background = '#b91c1c';
+			btnDel.addEventListener('click', async () => {
+				if (!window.confirm('确定删除该事件？若其它数据仍引用该事件可能删除失败。')) return;
+				try {
+					await api('/device/admin/api/event/delete', { method: 'POST', body: JSON.stringify({ id: row.id }) });
+					setMsg(eventMsg, '已删除', true);
+					if (editingEventId === row.id) eventModal.classList.remove('show');
+					await loadEventList();
+				} catch (e) {
+					setMsg(eventMsg, e.message || '删除失败');
 				}
-				await loadEventList();
+			});
+			tdAct.appendChild(btnEdit);
+			tdAct.appendChild(document.createTextNode(' '));
+			tdAct.appendChild(btnDel);
+
+			tr.append(tdId, tdName, tdLogo, tdColor, tdNeed, tdExtra, tdAct);
+			tbody.appendChild(tr);
+		});
+		if(!(data && data.length)){
+			setMsg(eventMsg, '暂无事件，可点击「新增事件」', true);
+		}
+	} catch (e) {
+		tbody.innerHTML = '';
+		setMsg(eventMsg, '加载事件列表失败：' + (e.message || String(e)));
+	}
+}
+
+(function initEventInlineEditors(){
+	const fin = document.getElementById('eventInlineLogoFile');
+	const cin = document.getElementById('eventInlineColor');
+	if(fin){
+		fin.addEventListener('change', async function(){
+			const row = pendingInlineEventRow;
+			pendingInlineEventRow = null;
+			if(!row || !this.files || !this.files[0]) return;
+			try {
+				await submitEventRowUpdate(row, { logoFile: this.files[0] });
 			} catch (e) {
-				setMsg(eventMsg, e.message || '删除失败');
+				setMsg(eventMsg, e.message || '更新 Logo 失败');
 			}
 		});
-		tbody.appendChild(tr);
-	});
-}
+	}
+	if(cin){
+		cin.addEventListener('change', async function(){
+			const row = pendingInlineEventRow;
+			pendingInlineEventRow = null;
+			if(!row) return;
+			try {
+				await submitEventRowUpdate(row, { color: this.value });
+			} catch (e) {
+				setMsg(eventMsg, e.message || '更新色调失败');
+			}
+		});
+	}
+})();
 
 async function loadQaList(){
 	const data = asListPayload(await api('/device/admin/api/qa/list'));

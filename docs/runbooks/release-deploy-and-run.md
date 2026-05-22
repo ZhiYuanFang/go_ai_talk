@@ -18,6 +18,7 @@
 - 每服务一个数据库，配置以 `database.default` 为主；`device-service` 若需向 **history 库** 的 `domain_outbox` 投递事件，可额外配置 `database.history_relay`（与 history 同实例时），未配置时进程会跳过 outbox 写入并打 Debug 日志。
 - 跨服务资料获取走 API，不跨库直查；`history-service` 内对 suggest/画像/事件字典的本地实现通过 `VOICE_SERVICE_URL` / `DEVICE_SERVICE_URL` 委派到对应服务（默认值见 `internal/services/contracts/http_targets.go`）。**容器或 Pod 内** `127.0.0.1` 指向本实例自身，不得用于访问其他微服务；Compose 参考见 `manifest/docker/docker-compose.microservices.yml` 中 `history-service.environment`，K8s 参考见 `manifest/deploy/kustomize/base/history-deployment.yaml`。
 - `voice-service` 对 device 域（事件/动作/画像/注册校验/最近对话等）**仅经 HTTP**（`DEVICE_SERVICE_URL` → `internal/services/device/admin_http_client.go`），不得依赖 voice 进程 default 库直连 `user`/`event`/`action`；部署时建议 `DEVICE_PROFILE_SERVICE_MODE=remote`（与 `manifest/deploy/.../voice-deployment.yaml` 一致）。
+- **设备管理页事件 logo（:9701）**：`GET /device/admin` 加载 `admin.html`；事件 logo 预览为 **主网关同源** `origin + /ai_talk_images/...`。主网关须反代 `/ai_talk_images/*` 至 device-service（与 `DEVICE_API_PROXY_URL` 一致），并部署含 Logo/色调列与行内点击编辑的静态页。App 网关 `:9702` 仍保留 `/ai_talk_images` 反代供客户端使用。
 
 ### 解决宝塔面板无响应
 1. 重启宝塔面板服务
