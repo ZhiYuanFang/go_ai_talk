@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"hello/internal/dao"
+	"hello/internal/model/entity"
 	"hello/internal/services/gatewayapp"
 
 	"github.com/gogf/gf/v2/frame/g"
@@ -24,6 +25,12 @@ import (
 
 // 简易上传节流：同一管理会话两次上传最小间隔（防误触连点）。
 const versionAdminUploadMinInterval = 3 * time.Second
+
+const (
+	versionAdminListLimitDefault = 50
+	versionAdminListLimitMax     = 200
+	versionAdminApkURLPrefix     = "/device/app/apk/"
+)
 
 var (
 	versionAdminUploadMu    sync.Mutex
@@ -99,18 +106,34 @@ func gatewayAppVersionAdminLogin(r *ghttp.Request) {
 	r.Response.WriteJson(g.Map{"code": 0, "message": "ok"})
 }
 
+// requireVersionAdminSession 校验版本管理已启用且持有有效管理会话；失败时已写 JSON 响应。
+func requireVersionAdminSession(r *ghttp.Request) bool {
+	ctx := r.Context()
+	if gatewayapp.VersionAdminPassword(ctx) == "" {
+		glog.Warningf(ctx, "[gateway-app-version-admin] 未配置管理员口令，拒绝管理操作")
+		r.Response.Status = http.StatusServiceUnavailable
+		r.Response.WriteJson(g.Map{"code": 503, "message": "版本管理未启用（未配置口令）"})
+		return false
+	}
+	sid := versionAdminSessionIDFromRequest(r)
+	if sid == "" || !versionAdminSessionValid(ctx, sid) {
+		r.Response.Status = http.StatusUnauthorized
+		r.Response.WriteJson(g.Map{"code": 401, "message": "请先登录管理页"})
+		return false
+	}
+	return true
+}
+
 func gatewayAppVersionAdminUpload(r *ghttp.Request) {
 	if r.Method != http.MethodPost {
 		r.Response.WriteStatusExit(http.StatusMethodNotAllowed)
 		return
 	}
 	ctx := r.Context()
-	sid := versionAdminSessionIDFromRequest(r)
-	if sid == "" || !versionAdminSessionValid(ctx, sid) {
-		r.Response.Status = http.StatusUnauthorized
-		r.Response.WriteJson(g.Map{"code": 401, "message": "请先登录管理页"})
+	if !requireVersionAdminSession(r) {
 		return
 	}
+	sid := versionAdminSessionIDFromRequest(r)
 	versionAdminUploadMu.Lock()
 	if t, ok := versionAdminLastUpload[sid]; ok && time.Since(t) < versionAdminUploadMinInterval {
 		versionAdminUploadMu.Unlock()
@@ -227,6 +250,271 @@ func gatewayAppVersionAdminUpload(r *ghttp.Request) {
 		"latestVersion": latestVer,
 		"savedFile":     serverName,
 	})
+}
+
+func gatewayAppVersionAdminList(r *ghttp.Request) {
+	if r.Method != http.MethodGet {
+		r.Response.WriteStatusExit(http.StatusMethodNotAllowed)
+		return
+	}
+	if !requireVersionAdminSession(r) {
+		return
+	}
+	ctx := r.Context()
+	limit := r.Get("limit").Int()
+	if limit <= 0 {
+		limit = versionAdminListLimitDefault
+	}
+	if limit > versionAdminListLimitMax {
+		limit = versionAdminListLimitMax
+	}
+	offset := r.Get("offset").Int()
+	if offset < 0 {
+		offset = 0
+	}
+	total, err := dao.AppVersion.Ctx(ctx).Count()
+	if err != nil {
+		glog.Warningf(ctx, "[gateway-app-version-admin] 统计版本行失败 err=%v", err)
+		r.Response.Status = http.StatusInternalServerError
+		r.Response.WriteJson(g.Map{"code": 500, "message": "数据库查询失败"})
+		return
+	}
+	maxID := versionAdminMaxRowID(ctx)
+	rows, err := dao.AppVersion.Ctx(ctx).OrderDesc(dao.AppVersion.Columns().Id).Limit(limit).Offset(offset).All()
+	if err != nil {
+		glog.Warningf(ctx, "[gateway-app-version-admin] 列表查询失败 err=%v", err)
+		r.Response.Status = http.StatusInternalServerError
+		r.Response.WriteJson(g.Map{"code": 500, "message": "数据库查询失败"})
+		return
+	}
+	items := make([]g.Map, 0, len(rows))
+	for _, rec := range rows {
+		var row entity.AppVersion
+		if err := rec.Struct(&row); err != nil {
+			glog.Warningf(ctx, "[gateway-app-version-admin] 解析版本行失败 err=%v", err)
+			continue
+		}
+		items = append(items, appVersionItemJSON(row, maxID > 0 && row.Id == maxID))
+	}
+	r.Response.WriteJson(g.Map{
+		"code":    0,
+		"message": "ok",
+		"items":   items,
+		"total":   total,
+		"maxId":   maxID,
+	})
+}
+
+func gatewayAppVersionAdminGet(r *ghttp.Request) {
+	if r.Method != http.MethodGet {
+		r.Response.WriteStatusExit(http.StatusMethodNotAllowed)
+		return
+	}
+	if !requireVersionAdminSession(r) {
+		return
+	}
+	ctx := r.Context()
+	id := r.Get("id").Int64()
+	if id <= 0 {
+		r.Response.Status = http.StatusBadRequest
+		r.Response.WriteJson(g.Map{"code": 400, "message": "id 无效"})
+		return
+	}
+	row, ok := loadAppVersionByID(ctx, id)
+	if !ok {
+		r.Response.Status = http.StatusNotFound
+		r.Response.WriteJson(g.Map{"code": 404, "message": "版本记录不存在"})
+		return
+	}
+	maxID := versionAdminMaxRowID(ctx)
+	r.Response.WriteJson(g.Map{
+		"code":    0,
+		"message": "ok",
+		"item":    appVersionItemJSON(row, maxID > 0 && row.Id == maxID),
+	})
+}
+
+func gatewayAppVersionAdminUpdate(r *ghttp.Request) {
+	if r.Method != http.MethodPost {
+		r.Response.WriteStatusExit(http.StatusMethodNotAllowed)
+		return
+	}
+	if !requireVersionAdminSession(r) {
+		return
+	}
+	ctx := r.Context()
+	var body struct {
+		ID            int64   `json:"id"`
+		LatestVersion *string `json:"latestVersion"`
+		ReleaseNotes  *string `json:"releaseNotes"`
+		ForceUpdate   *bool   `json:"forceUpdate"`
+		MinVersion    *string `json:"minVersion"`
+		ReleaseDate   *int64  `json:"releaseDate"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 64<<10)).Decode(&body); err != nil {
+		r.Response.Status = http.StatusBadRequest
+		r.Response.WriteJson(g.Map{"code": 400, "message": "JSON 解析失败"})
+		return
+	}
+	if body.ID <= 0 {
+		r.Response.Status = http.StatusBadRequest
+		r.Response.WriteJson(g.Map{"code": 400, "message": "id 无效"})
+		return
+	}
+	if _, ok := loadAppVersionByID(ctx, body.ID); !ok {
+		r.Response.Status = http.StatusNotFound
+		r.Response.WriteJson(g.Map{"code": 404, "message": "版本记录不存在"})
+		return
+	}
+	data := g.Map{}
+	if body.LatestVersion != nil {
+		v := strings.TrimSpace(*body.LatestVersion)
+		if v == "" {
+			r.Response.Status = http.StatusBadRequest
+			r.Response.WriteJson(g.Map{"code": 400, "message": "latestVersion 不能为空"})
+			return
+		}
+		data[dao.AppVersion.Columns().LatestVersion] = v
+	}
+	if body.ReleaseNotes != nil {
+		data[dao.AppVersion.Columns().ReleaseNotes] = strings.TrimSpace(*body.ReleaseNotes)
+	}
+	if body.ForceUpdate != nil {
+		forceN := 0
+		if *body.ForceUpdate {
+			forceN = 1
+		}
+		data[dao.AppVersion.Columns().ForceUpdate] = forceN
+	}
+	if body.MinVersion != nil {
+		data[dao.AppVersion.Columns().MinVersion] = strings.TrimSpace(*body.MinVersion)
+	}
+	if body.ReleaseDate != nil {
+		if *body.ReleaseDate < 0 {
+			r.Response.Status = http.StatusBadRequest
+			r.Response.WriteJson(g.Map{"code": 400, "message": "releaseDate 无效"})
+			return
+		}
+		data[dao.AppVersion.Columns().ReleaseDate] = *body.ReleaseDate
+	}
+	if len(data) == 0 {
+		r.Response.Status = http.StatusBadRequest
+		r.Response.WriteJson(g.Map{"code": 400, "message": "未提供可更新字段"})
+		return
+	}
+	if _, err := dao.AppVersion.Ctx(ctx).Where(dao.AppVersion.Columns().Id, body.ID).Data(data).Update(); err != nil {
+		glog.Warningf(ctx, "[gateway-app-version-admin] 更新版本行失败 id=%d err=%v", body.ID, err)
+		r.Response.Status = http.StatusInternalServerError
+		r.Response.WriteJson(g.Map{"code": 500, "message": "数据库更新失败"})
+		return
+	}
+	gatewayapp.InvalidateAppVersionLatestCache(ctx)
+	row, _ := loadAppVersionByID(ctx, body.ID)
+	maxID := versionAdminMaxRowID(ctx)
+	r.Response.WriteJson(g.Map{
+		"code":    0,
+		"message": "ok",
+		"item":    appVersionItemJSON(row, maxID > 0 && row.Id == maxID),
+	})
+}
+
+func gatewayAppVersionAdminDelete(r *ghttp.Request) {
+	if r.Method != http.MethodPost {
+		r.Response.WriteStatusExit(http.StatusMethodNotAllowed)
+		return
+	}
+	if !requireVersionAdminSession(r) {
+		return
+	}
+	ctx := r.Context()
+	id := r.Get("id").Int64()
+	if id <= 0 {
+		var body struct {
+			ID int64 `json:"id"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&body); err == nil {
+			id = body.ID
+		}
+	}
+	if id <= 0 {
+		r.Response.Status = http.StatusBadRequest
+		r.Response.WriteJson(g.Map{"code": 400, "message": "id 无效"})
+		return
+	}
+	row, ok := loadAppVersionByID(ctx, id)
+	if !ok {
+		r.Response.Status = http.StatusNotFound
+		r.Response.WriteJson(g.Map{"code": 404, "message": "版本记录不存在"})
+		return
+	}
+	if _, err := dao.AppVersion.Ctx(ctx).Where(dao.AppVersion.Columns().Id, id).Delete(); err != nil {
+		glog.Warningf(ctx, "[gateway-app-version-admin] 删除版本行失败 id=%d err=%v", id, err)
+		r.Response.Status = http.StatusInternalServerError
+		r.Response.WriteJson(g.Map{"code": 500, "message": "数据库删除失败"})
+		return
+	}
+	tryRemoveApkForDownloadPath(ctx, row.DownloadUrl)
+	gatewayapp.InvalidateAppVersionLatestCache(ctx)
+	r.Response.WriteJson(g.Map{"code": 0, "message": "ok"})
+}
+
+func versionAdminMaxRowID(ctx context.Context) int64 {
+	one, err := dao.AppVersion.Ctx(ctx).OrderDesc(dao.AppVersion.Columns().Id).Limit(1).Fields(dao.AppVersion.Columns().Id).One()
+	if err != nil || one.IsEmpty() {
+		return 0
+	}
+	return one[dao.AppVersion.Columns().Id].Int64()
+}
+
+func loadAppVersionByID(ctx context.Context, id int64) (entity.AppVersion, bool) {
+	one, err := dao.AppVersion.Ctx(ctx).Where(dao.AppVersion.Columns().Id, id).One()
+	if err != nil || one.IsEmpty() {
+		return entity.AppVersion{}, false
+	}
+	var row entity.AppVersion
+	if err := one.Struct(&row); err != nil {
+		return entity.AppVersion{}, false
+	}
+	return row, true
+}
+
+func appVersionItemJSON(row entity.AppVersion, isLatest bool) g.Map {
+	return g.Map{
+		"id":            row.Id,
+		"latestVersion": strings.TrimSpace(row.LatestVersion),
+		"releaseDate":   row.ReleaseDate,
+		"releaseNotes":  strings.TrimSpace(row.ReleaseNotes),
+		"downloadUrl":   gatewayapp.NormalizeAssetPath(strings.TrimSpace(row.DownloadUrl)),
+		"forceUpdate":   row.ForceUpdate != 0,
+		"minVersion":    strings.TrimSpace(row.MinVersion),
+		"isLatest":      isLatest,
+	}
+}
+
+// tryRemoveApkForDownloadPath 删行后尽力删除约定目录下的 APK；失败仅记日志。
+func tryRemoveApkForDownloadPath(ctx context.Context, dlPath string) {
+	dlPath = gatewayapp.NormalizeAssetPath(strings.TrimSpace(dlPath))
+	if !strings.HasPrefix(dlPath, versionAdminApkURLPrefix) {
+		return
+	}
+	name := strings.TrimPrefix(dlPath, versionAdminApkURLPrefix)
+	if name == "" || !apkFilenameSafe(name) || !strings.HasSuffix(strings.ToLower(name), ".apk") {
+		return
+	}
+	dir := filepath.Clean(gatewayapp.ApkStorageDir(ctx))
+	abs := filepath.Join(dir, name)
+	dirClean := filepath.Clean(dir)
+	absClean := filepath.Clean(abs)
+	rel, err := filepath.Rel(dirClean, absClean)
+	if err != nil || strings.HasPrefix(rel, "..") {
+		return
+	}
+	if !gfile.Exists(abs) {
+		return
+	}
+	if err := os.Remove(abs); err != nil {
+		glog.Warningf(ctx, "[gateway-app-version-admin] 删除 APK 文件失败 path=%s err=%v", abs, err)
+	}
 }
 
 func gatewayAppApkDownload(r *ghttp.Request) {

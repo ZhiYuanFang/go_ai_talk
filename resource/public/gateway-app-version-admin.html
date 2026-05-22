@@ -5,19 +5,25 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1" />
 	<title>App 版本管理 — gateway-app</title>
 	<style>
-		body { font-family: system-ui, sans-serif; max-width: 640px; margin: 24px auto; padding: 0 12px; }
+		body { font-family: system-ui, sans-serif; max-width: 960px; margin: 24px auto; padding: 0 12px; }
 		label { display: block; margin-top: 12px; font-weight: 600; }
-		input[type="text"], input[type="password"], textarea { width: 100%; box-sizing: border-box; padding: 8px; }
-		button { margin-top: 16px; padding: 10px 16px; cursor: pointer; }
+		input[type="text"], input[type="password"], input[type="number"], textarea { width: 100%; box-sizing: border-box; padding: 8px; }
+		button { margin-top: 8px; margin-right: 8px; padding: 8px 14px; cursor: pointer; }
 		#panel { margin-top: 24px; border-top: 1px solid #ddd; padding-top: 16px; }
 		.err { color: #b00020; }
 		.ok { color: #0a6; }
-		pre { background: #f4f4f4; padding: 8px; overflow: auto; font-size: 12px; }
+		table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 14px; }
+		th, td { border: 1px solid #ddd; padding: 8px; text-align: left; vertical-align: top; }
+		th { background: #f4f4f4; }
+		.badge-latest { background: #0a6; color: #fff; font-size: 11px; padding: 2px 6px; border-radius: 4px; }
+		#editDlg { display: none; margin-top: 16px; padding: 12px; border: 1px solid #ccc; background: #fafafa; }
+		.actions button { margin-top: 0; }
+		code { word-break: break-all; }
 	</style>
 </head>
 <body>
 	<h1>App 版本管理</h1>
-	<p>先登录（口令由服务端环境变量 / 配置注入，勿在页面硬编码）。登录成功后浏览器会携带 HttpOnly Cookie，再上传 APK。</p>
+	<p>先登录（口令由服务端 <code>GATEWAY_APP_VERSION_ADMIN_PASSWORD</code> 注入）。登录后可查看历史版本、编辑元数据、删除记录或上传新 APK。</p>
 
 	<div id="loginBox">
 		<label for="password">管理员口令</label>
@@ -27,8 +33,42 @@
 	</div>
 
 	<div id="panel" style="display:none;">
-		<h2>上传新版本 APK</h2>
-		<p class="ok">已登录。Cookie 路径为 <code>/device/app</code>，请保持同源访问本页。</p>
+		<p class="ok">已登录。Cookie 路径为 <code>/device/app</code>。</p>
+		<button type="button" id="btnRefresh">刷新列表</button>
+		<p id="listMsg"></p>
+		<table id="verTable">
+			<thead>
+				<tr>
+					<th>ID</th>
+					<th>版本号</th>
+					<th>上线时间</th>
+					<th>downloadUrl</th>
+					<th>强制</th>
+					<th>minVersion</th>
+					<th>备注</th>
+					<th>操作</th>
+				</tr>
+			</thead>
+			<tbody id="verBody"></tbody>
+		</table>
+
+		<div id="editDlg">
+			<h3>编辑版本 <span id="editIdLabel"></span></h3>
+			<label for="editLatest">latestVersion</label>
+			<input type="text" id="editLatest" />
+			<label for="editNotes">releaseNotes</label>
+			<textarea id="editNotes" rows="2"></textarea>
+			<label for="editMin">minVersion</label>
+			<input type="text" id="editMin" />
+			<label for="editDate">releaseDate（Unix 秒）</label>
+			<input type="number" id="editDate" min="0" step="1" />
+			<label><input type="checkbox" id="editForce" /> forceUpdate</label>
+			<button type="button" id="btnSaveEdit">保存</button>
+			<button type="button" id="btnCancelEdit">取消</button>
+			<p id="editMsg"></p>
+		</div>
+
+		<h2 style="margin-top:32px;">上传新版本 APK</h2>
 		<form id="upForm">
 			<label for="latestVersion">latestVersion（如 1.0.1）</label>
 			<input type="text" id="latestVersion" required />
@@ -40,48 +80,186 @@
 			<button type="submit">上传并写库</button>
 		</form>
 		<p id="upMsg"></p>
-		<pre id="upResult" style="display:none;"></pre>
 	</div>
 
 	<script>
 	(function(){
 		const loginMsg = document.getElementById('loginMsg');
+		const listMsg = document.getElementById('listMsg');
 		const upMsg = document.getElementById('upMsg');
-		const upResult = document.getElementById('upResult');
+		const verBody = document.getElementById('verBody');
+		const editDlg = document.getElementById('editDlg');
+		const editMsg = document.getElementById('editMsg');
+		let editingId = 0;
 
-		document.getElementById('btnLogin').addEventListener('click', async function(){
-			loginMsg.textContent = '';
-			const password = (document.getElementById('password').value || '').trim();
-			if(!password){ loginMsg.textContent = '请输入口令'; return; }
-			try{
-				const res = await fetch('/device/app/api/version/admin/login', {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					credentials: 'same-origin',
-					body: JSON.stringify({ password })
-				});
-				const data = await res.json().catch(function(){ return {}; });
-				if(!res.ok || data.code !== 0){
-					loginMsg.textContent = data.message || ('HTTP ' + res.status);
+		function showErr(el, text) {
+			el.className = 'err';
+			el.textContent = text || '';
+		}
+		function showOk(el, text) {
+			el.className = 'ok';
+			el.textContent = text || '';
+		}
+		function clearMsg(el) { el.textContent = ''; el.className = ''; }
+
+		function formatReleaseDate(ts) {
+			if (!ts) return '—';
+			const d = new Date(ts * 1000);
+			return d.toLocaleString('zh-CN') + ' (' + ts + ')';
+		}
+
+		async function apiJson(url, opts) {
+			const res = await fetch(url, Object.assign({ credentials: 'same-origin' }, opts || {}));
+			const data = await res.json().catch(function(){ return {}; });
+			if (!res.ok || (data.code !== undefined && data.code !== 0)) {
+				const err = new Error(data.message || ('HTTP ' + res.status));
+				err.status = res.status;
+				err.data = data;
+				throw err;
+			}
+			return data;
+		}
+
+		async function refreshList() {
+			clearMsg(listMsg);
+			verBody.innerHTML = '<tr><td colspan="8">加载中…</td></tr>';
+			try {
+				const data = await apiJson('/device/app/api/version/admin/list?limit=200');
+				const items = data.items || [];
+				if (!items.length) {
+					verBody.innerHTML = '<tr><td colspan="8">暂无发版记录</td></tr>';
 					return;
 				}
-				document.getElementById('loginBox').style.display = 'none';
-				document.getElementById('panel').style.display = 'block';
-			}catch(e){
-				loginMsg.textContent = String(e);
+				verBody.innerHTML = '';
+				items.forEach(function(row) {
+					const tr = document.createElement('tr');
+					const latestBadge = row.isLatest ? ' <span class="badge-latest">当前 check 最新</span>' : '';
+					const dl = row.downloadUrl || '';
+					const dlHtml = dl ? '<code><a href="' + dl + '" target="_blank" rel="noopener">' + dl + '</a></code>' : '—';
+					tr.innerHTML =
+						'<td>' + row.id + latestBadge + '</td>' +
+						'<td>' + escapeHtml(row.latestVersion || '') + '</td>' +
+						'<td>' + escapeHtml(formatReleaseDate(row.releaseDate)) + '</td>' +
+						'<td>' + dlHtml + '</td>' +
+						'<td>' + (row.forceUpdate ? '是' : '否') + '</td>' +
+						'<td>' + escapeHtml(row.minVersion || '—') + '</td>' +
+						'<td>' + escapeHtml((row.releaseNotes || '').slice(0, 80)) + (row.releaseNotes && row.releaseNotes.length > 80 ? '…' : '') + '</td>' +
+						'<td class="actions"></td>';
+					const actions = tr.querySelector('.actions');
+					const btnEdit = document.createElement('button');
+					btnEdit.type = 'button';
+					btnEdit.textContent = '编辑';
+					btnEdit.addEventListener('click', function(){ openEdit(row); });
+					const btnDel = document.createElement('button');
+					btnDel.type = 'button';
+					btnDel.textContent = '删除';
+					btnDel.addEventListener('click', function(){ deleteRow(row); });
+					actions.appendChild(btnEdit);
+					actions.appendChild(btnDel);
+					verBody.appendChild(tr);
+				});
+				showOk(listMsg, '共 ' + (data.total != null ? data.total : items.length) + ' 条');
+			} catch (e) {
+				verBody.innerHTML = '';
+				showErr(listMsg, e.message || String(e));
+			}
+		}
+
+		function escapeHtml(s) {
+			return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+		}
+
+		function openEdit(row) {
+			editingId = row.id;
+			document.getElementById('editIdLabel').textContent = '#' + row.id;
+			document.getElementById('editLatest').value = row.latestVersion || '';
+			document.getElementById('editNotes').value = row.releaseNotes || '';
+			document.getElementById('editMin').value = row.minVersion || '';
+			document.getElementById('editDate').value = row.releaseDate || 0;
+			document.getElementById('editForce').checked = !!row.forceUpdate;
+			editDlg.style.display = 'block';
+			clearMsg(editMsg);
+			editDlg.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+		}
+
+		document.getElementById('btnCancelEdit').addEventListener('click', function(){
+			editDlg.style.display = 'none';
+			editingId = 0;
+		});
+
+		document.getElementById('btnSaveEdit').addEventListener('click', async function(){
+			if (!editingId) return;
+			clearMsg(editMsg);
+			const body = {
+				id: editingId,
+				latestVersion: (document.getElementById('editLatest').value || '').trim(),
+				releaseNotes: (document.getElementById('editNotes').value || '').trim(),
+				minVersion: (document.getElementById('editMin').value || '').trim(),
+				releaseDate: parseInt(document.getElementById('editDate').value, 10) || 0,
+				forceUpdate: document.getElementById('editForce').checked
+			};
+			try {
+				await apiJson('/device/app/api/version/admin/update', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(body)
+				});
+				showOk(editMsg, '已保存');
+				editDlg.style.display = 'none';
+				await refreshList();
+			} catch (e) {
+				showErr(editMsg, e.message || String(e));
 			}
 		});
 
+		async function deleteRow(row) {
+			const hint = row.isLatest
+				? '该记录为 version/check 当前最新行，删除后客户端将看到次新 id 行。'
+				: '';
+			if (!confirm('确定删除版本 #' + row.id + ' ' + (row.latestVersion || '') + '？\n' + hint)) {
+				return;
+			}
+			try {
+				await apiJson('/device/app/api/version/admin/delete', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ id: row.id })
+				});
+				await refreshList();
+			} catch (e) {
+				showErr(listMsg, e.message || String(e));
+			}
+		}
+
+		document.getElementById('btnLogin').addEventListener('click', async function(){
+			clearMsg(loginMsg);
+			const password = (document.getElementById('password').value || '').trim();
+			if (!password) { showErr(loginMsg, '请输入口令'); return; }
+			try {
+				await apiJson('/device/app/api/version/admin/login', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ password })
+				});
+				document.getElementById('loginBox').style.display = 'none';
+				document.getElementById('panel').style.display = 'block';
+				await refreshList();
+			} catch (e) {
+				showErr(loginMsg, e.message || String(e));
+			}
+		});
+
+		document.getElementById('btnRefresh').addEventListener('click', refreshList);
+
 		document.getElementById('upForm').addEventListener('submit', async function(ev){
 			ev.preventDefault();
-			upMsg.textContent = '';
-			upResult.style.display = 'none';
+			clearMsg(upMsg);
 			const latestVersion = (document.getElementById('latestVersion').value || '').trim();
 			const releaseNotes = (document.getElementById('releaseNotes').value || '').trim();
 			const forceUpdate = document.getElementById('forceUpdate').checked ? '1' : '0';
 			const fileInput = document.getElementById('apk');
-			if(!fileInput.files || !fileInput.files[0]){
-				upMsg.textContent = '请选择 APK';
+			if (!fileInput.files || !fileInput.files[0]) {
+				showErr(upMsg, '请选择 APK');
 				return;
 			}
 			const fd = new FormData();
@@ -89,25 +267,16 @@
 			fd.append('releaseNotes', releaseNotes);
 			fd.append('forceUpdate', forceUpdate);
 			fd.append('apk', fileInput.files[0]);
-			try{
-				const res = await fetch('/device/app/api/version/admin/upload', {
+			try {
+				await apiJson('/device/app/api/version/admin/upload', {
 					method: 'POST',
-					body: fd,
-					credentials: 'same-origin'
+					body: fd
 				});
-				const data = await res.json().catch(function(){ return {}; });
-				if(!res.ok || data.code !== 0){
-					upMsg.className = 'err';
-					upMsg.textContent = data.message || ('HTTP ' + res.status);
-					return;
-				}
-				upMsg.className = 'ok';
-				upMsg.textContent = '上传成功。downloadUrl 已写入 version 表。';
-				upResult.style.display = 'block';
-				upResult.textContent = JSON.stringify(data, null, 2);
-			}catch(e){
-				upMsg.className = 'err';
-				upMsg.textContent = String(e);
+				showOk(upMsg, '上传成功，已写入 version 表。');
+				document.getElementById('upForm').reset();
+				await refreshList();
+			} catch (e) {
+				showErr(upMsg, e.message || String(e));
 			}
 		});
 	})();

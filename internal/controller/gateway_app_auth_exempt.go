@@ -25,6 +25,8 @@ var (
 		"/device/app/api/user/device_login",
 		"/device/app/api/version/admin/login",
 		"/device/app/api/version/admin/upload",
+		"/device/app/api/version/admin/update",
+		"/device/app/api/version/admin/delete",
 	}
 
 	// GET 且路径精确匹配（WebSocket Upgrade 等不要求 HTTP 层 Bearer）。
@@ -41,6 +43,8 @@ var (
 		"/device/admin",
 		"/device/admin/",
 		"/device/app/api/version/check",
+		"/device/app/api/version/admin/list",
+		"/device/app/api/version/admin/get",
 		"/device/app/version-admin.html",
 		"/device/app/integration-test.html",
 		"/favicon.ico",

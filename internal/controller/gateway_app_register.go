@@ -29,6 +29,10 @@ func RegisterGatewayAppHTTP(s *ghttp.Server) {
 	})
 	s.BindHandler("/device/app/api/version/admin/login", gatewayAppVersionAdminLogin)
 	s.BindHandler("/device/app/api/version/admin/upload", gatewayAppVersionAdminUpload)
+	s.BindHandler("/device/app/api/version/admin/list", gatewayAppVersionAdminList)
+	s.BindHandler("/device/app/api/version/admin/get", gatewayAppVersionAdminGet)
+	s.BindHandler("/device/app/api/version/admin/update", gatewayAppVersionAdminUpdate)
+	s.BindHandler("/device/app/api/version/admin/delete", gatewayAppVersionAdminDelete)
 	s.BindHandler("/device/app/apk/*filename", gatewayAppApkDownload)
 
 	// CORS 仅 App 网关：须在跨切面之前注册，使外层在中间件返回后仍可补写反代响应头。
