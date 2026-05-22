@@ -25,6 +25,8 @@ func RegisterGatewayAppHTTP(s *ghttp.Server) {
 
 	// 版本管理：口令登录 + APK 上传 + 匿名 APK 下载（路径在 Bearer 白名单）。
 	s.BindHandler("/device/app/version-admin.html", func(r *ghttp.Request) {
+		// 避免浏览器长期缓存旧版静态页（无历史列表 UI）。
+		r.Response.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
 		r.Response.ServeFile("resource/public/gateway-app-version-admin.html")
 	})
 	s.BindHandler("/device/app/api/version/admin/login", gatewayAppVersionAdminLogin)

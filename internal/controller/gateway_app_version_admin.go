@@ -17,6 +17,7 @@ import (
 	"hello/internal/model/entity"
 	"hello/internal/services/gatewayapp"
 
+	"github.com/gogf/gf/v2/database/gdb"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/net/ghttp"
 	"github.com/gogf/gf/v2/os/gfile"
@@ -289,12 +290,15 @@ func gatewayAppVersionAdminList(r *ghttp.Request) {
 	}
 	items := make([]g.Map, 0, len(rows))
 	for _, rec := range rows {
-		var row entity.AppVersion
-		if err := rec.Struct(&row); err != nil {
-			glog.Warningf(ctx, "[gateway-app-version-admin] 解析版本行失败 err=%v", err)
+		row, ok := appVersionFromRecord(rec)
+		if !ok {
+			glog.Warningf(ctx, "[gateway-app-version-admin] 解析版本行失败 id=%v", rec[dao.AppVersion.Columns().Id])
 			continue
 		}
 		items = append(items, appVersionItemJSON(row, maxID > 0 && row.Id == maxID))
+	}
+	if int(total) > len(items) && len(rows) > 0 {
+		glog.Warningf(ctx, "[gateway-app-version-admin] 列表行解析不完整 total=%d parsed=%d rows=%d", total, len(items), len(rows))
 	}
 	r.Response.WriteJson(g.Map{
 		"code":    0,
@@ -471,11 +475,25 @@ func loadAppVersionByID(ctx context.Context, id int64) (entity.AppVersion, bool)
 	if err != nil || one.IsEmpty() {
 		return entity.AppVersion{}, false
 	}
-	var row entity.AppVersion
-	if err := one.Struct(&row); err != nil {
+	row, ok := appVersionFromRecord(one)
+	return row, ok
+}
+
+// appVersionFromRecord 从查询结果构造版本行，避免 Struct 映射失败导致管理列表为空。
+func appVersionFromRecord(rec gdb.Record) (entity.AppVersion, bool) {
+	if rec == nil || rec.IsEmpty() {
 		return entity.AppVersion{}, false
 	}
-	return row, true
+	c := dao.AppVersion.Columns()
+	return entity.AppVersion{
+		Id:            rec[c.Id].Int64(),
+		LatestVersion: rec[c.LatestVersion].String(),
+		ReleaseNotes:  rec[c.ReleaseNotes].String(),
+		DownloadUrl:   rec[c.DownloadUrl].String(),
+		ForceUpdate:   rec[c.ForceUpdate].Int(),
+		MinVersion:    rec[c.MinVersion].String(),
+		ReleaseDate:   rec[c.ReleaseDate].Int64(),
+	}, true
 }
 
 func appVersionItemJSON(row entity.AppVersion, isLatest bool) g.Map {
