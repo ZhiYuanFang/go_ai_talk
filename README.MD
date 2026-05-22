@@ -40,7 +40,7 @@
 | 进程 | 路径 | 静态文件 | 用途简述 |
 |------|------|----------|----------|
 | 主网关 | `/` | （内联文案） | 根路径提示「智能语音」 |
-| 主网关、App 网关 | `/device/admin` | `resource/public/admin.html` | 设备注册与列表（管理 API 需 `X-Admin-Password`，见下文「设备管理 API」） |
+| 主网关、App 网关 | `/device/admin` | `resource/public/admin.html` | 设备注册与列表（管理 API 需 `X-Admin-Password`）；登录后可跳转 **App 版本管理**（`:9702/device/app/version-admin.html`，独立口令） |
 | 主网关、App 网关 | `/device/history/{deviceNo}` | `resource/public/history.html` | 单设备历史事件 + 成长建议；壳页内请求 `/device/history/api/*`（经网关反代至 history-service） |
 | App 网关 | `/device/app/integration-test.html` | `resource/public/gateway-app-integration-test.html` | App 联调：模拟登录、绑定、文本对话、历史 WS、piece 趋势等（Bearer 白名单页，**勿暴露公网**） |
 | App 网关 | `/device/app/version-admin.html` | `resource/public/gateway-app-version-admin.html` | 版本与 APK 管理：口令登录后上传包、写 `ai_voice_app.version` 的 `download_url`（口令与 `publicBaseUrl` 见 `docs/runbooks/release-deploy-and-run.md`） |
@@ -162,6 +162,17 @@
 - **Method**: `GET`
 - **Path**: `/device/admin/api/list`
 - **Header**: `X-Admin-Password: a521521521`
+
+#### 4. 事件管理（logo / color）
+
+- **列表**: `GET /device/admin/api/event/list` — 每项含 `logo`（应用内路径，如 `/ai_talk_images/event_1_xxx.png`）、`color`（如 `#FF6B6B`）
+- **新增/更新**: `POST` multipart 至 `/device/admin/api/event/add` 或 `/event/update`
+  - 表单字段：`name`、`needQuantity`（0/1）、`extraNames`、`color`（`#RGB`/`#RRGGBB`）、可选文件 `logo`
+  - 更新时未传 `logo` 文件则保留原 logo
+- **静态资源**：库内**不存域名**；由客户端拼接 **App 网关基址** + 路径，例如：
+  - 事件 logo：`https://www.cuplay.top:9702` + `/ai_talk_images/xxx.png`
+  - APK：`https://www.cuplay.top:9702` + `/device/app/apk/xxx.apk`
+- **BREAKING**：`GET /device/app/api/version/check` 的 `downloadUrl` 现为**路径**（非绝对 URL），App 须自行拼接网关基址。
 
 ---
 

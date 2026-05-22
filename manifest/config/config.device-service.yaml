@@ -24,6 +24,11 @@ redis:
 
 # 微信小程序 jscode2session：platform 与客户端 POST /device/app/api/user/login 的 platform 一致。
 # 生产环境务必覆盖 appSecret，勿提交真实密钥。
+# 事件 logo 落盘目录（库内 logo 字段仅存 /ai_talk_images/... 路径，不含域名）。
+device:
+  eventImageStorageDir: "/ai_talk_images/"
+  eventImageMaxBytes: 2097152
+
 wechatMp:
   platforms:
     integration-test:

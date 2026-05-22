@@ -13,6 +13,6 @@ type Wx struct {
 	g.Meta   `orm:"table:wx, do:true"`
 	Id       interface{} //
 	DeviceNo interface{} //
-	UnionId  interface{} //
+	Unionid  interface{} //
 	Platform interface{} // 平台来源
 }

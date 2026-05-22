@@ -12,6 +12,8 @@
 		textarea{min-height:72px;resize:vertical;font-family:inherit}
 		button{background:#1677ff;color:#fff;border:none;cursor:pointer}
 		button:disabled{background:#9bbcf5;cursor:not-allowed}
+		a.link-btn{display:inline-block;padding:10px 12px;border-radius:8px;font-size:14px;background:#6b7280;color:#fff;text-decoration:none;line-height:1.2}
+		a.link-btn:hover{background:#4b5563}
 		.table-wrap{overflow-x:auto;margin-top:12px}
 		table{width:max-content;min-width:100%;border-collapse:collapse}
 		th,td{border-bottom:1px solid #eee;padding:10px;text-align:left;font-size:13px}
@@ -45,8 +47,10 @@
 				<input id="deviceNo" placeholder="device_no" />
 				<button id="registerBtn" type="button">注册</button>
 				<button id="refreshBtn" type="button">刷新列表</button>
+				<a id="versionAdminLink" class="link-btn" href="#" target="_blank" rel="noopener">App 版本管理</a>
 			</div>
 		</div>
+		<p class="msg" style="color:#64748b;margin-top:0;">版本管理在 App 网关（:9702），需单独登录；与设备管理口令不同。</p>
 		<div id="mainMsg" class="msg"></div>
 		<div class="table-wrap">
 			<table>
@@ -79,6 +83,8 @@
 					<tr>
 						<th>ID</th>
 						<th>事件名称</th>
+						<th>Logo</th>
+						<th>色调</th>
 						<th class="td-check">需要计数</th>
 						<th>事件扩展</th>
 						<th>操作</th>
@@ -149,6 +155,14 @@
 				<div style="font-size:13px;color:#444;margin-bottom:6px;">事件扩展（别名等，可选）</div>
 				<textarea id="eventFormExtraNames" placeholder="多个别名可用逗号、顿号等分隔" style="width:100%;box-sizing:border-box;"></textarea>
 			</div>
+			<div class="row" style="margin-top:10px;align-items:center;gap:12px;">
+				<label style="font-size:13px;color:#444;">色调
+					<input id="eventFormColor" type="color" value="#4A90D9" style="vertical-align:middle;margin-left:6px;" />
+				</label>
+				<label style="font-size:13px;color:#444;">Logo
+					<input id="eventFormLogo" type="file" accept="image/png,image/jpeg,image/webp" style="max-width:220px;" />
+				</label>
+			</div>
 			<div class="row" style="margin-top:10px;">
 				<button id="eventFormSubmitBtn">提交</button>
 				<button id="eventFormCancelBtn" style="background:#6b7280;">取消</button>
@@ -196,6 +210,8 @@ const eventModalTitle = document.getElementById('eventModalTitle');
 const eventFormName = document.getElementById('eventFormName');
 const eventFormNeedQuantity = document.getElementById('eventFormNeedQuantity');
 const eventFormExtraNames = document.getElementById('eventFormExtraNames');
+const eventFormColor = document.getElementById('eventFormColor');
+const eventFormLogo = document.getElementById('eventFormLogo');
 const eventFormMsg = document.getElementById('eventFormMsg');
 const eventFormSubmitBtn = document.getElementById('eventFormSubmitBtn');
 const eventFormCancelBtn = document.getElementById('eventFormCancelBtn');
@@ -255,9 +271,43 @@ function formatActionTargetHtml(targetTypeLabel, targetType){
 	return escapeHtml(zh) + ' <span style="color:#64748b;font-size:12px;">(' + escapeHtml(tt) + ')</span>';
 }
 
+/** App 网关基址（:9702）；设备管理页常在 :9701，静态资源与版本管理在 :9702 */
+function gatewayAppBase(){
+	const host = window.location.hostname || '127.0.0.1';
+	const proto = window.location.protocol || 'http:';
+	return proto + '//' + host + ':9702';
+}
+
+function versionAdminPageUrl(){
+	return gatewayAppBase() + '/device/app/version-admin.html';
+}
+
+function eventLogoUrl(logoPath){
+	const p = String(logoPath || '').trim();
+	if(!p) return '';
+	if(/^https?:\/\//i.test(p)) return p;
+	return gatewayAppBase() + (p.startsWith('/') ? p : '/' + p);
+}
+
+(function initVersionAdminLink(){
+	const el = document.getElementById('versionAdminLink');
+	if(el){ el.href = versionAdminPageUrl(); }
+})();
+
 async function api(path, options={}){
 	const headers = Object.assign({'Content-Type':'application/json','X-Admin-Password':adminPwd}, options.headers || {});
 	const res = await fetch(path, Object.assign({}, options, {headers}));
+	const data = await res.json().catch(() => ({}));
+	if(!res.ok || data.code !== 0){ throw new Error(data.message || ('HTTP '+res.status)); }
+	return data.data;
+}
+
+async function apiForm(path, formData){
+	const res = await fetch(path, {
+		method: 'POST',
+		headers: { 'X-Admin-Password': adminPwd },
+		body: formData
+	});
 	const data = await res.json().catch(() => ({}));
 	if(!res.ok || data.code !== 0){ throw new Error(data.message || ('HTTP '+res.status)); }
 	return data.data;
@@ -301,8 +351,16 @@ async function loadEventList(){
 		const id = it.id||0;
 		const name = it.name||'';
 		const extra = it.extraNames||'';
+		const color = it.color || '';
+		const logo = it.logo || '';
+		const logoSrc = eventLogoUrl(logo);
+		const logoCell = logoSrc
+			? '<img src="'+ escapeHtml(logoSrc) +'" alt="" style="max-height:32px;max-width:48px;vertical-align:middle;" />'
+			: '';
 		tr.innerHTML = '<td>'+ escapeHtml(id) +'</td>' +
 			'<td>'+ escapeHtml(name) +'</td>' +
+			'<td>'+ logoCell +'</td>' +
+			'<td>'+ (color ? '<span style="display:inline-block;width:14px;height:14px;background:'+ escapeHtml(color) +';border:1px solid #ccc;vertical-align:middle;"></span> '+ escapeHtml(color) : '') +'</td>' +
 			'<td class="td-check">'+ (needQ ? '√' : '') +'</td>' +
 			'<td class="wrapcell">'+ escapeHtml(extra) +'</td>' +
 			'<td><button type="button" class="event-edit-btn">编辑</button> ' +
@@ -314,6 +372,8 @@ async function loadEventList(){
 			eventFormName.value = name;
 			eventFormNeedQuantity.checked = needQ;
 			eventFormExtraNames.value = extra;
+			eventFormColor.value = (color && /^#[0-9a-f]{6}$/i.test(color)) ? color : '#4A90D9';
+			eventFormLogo.value = '';
 			eventFormMsg.textContent = '';
 			eventModal.classList.add('show');
 		});
@@ -446,6 +506,8 @@ document.getElementById('addEventBtn').addEventListener('click', async () => {
 	eventFormName.value = '';
 	eventFormNeedQuantity.checked = false;
 	eventFormExtraNames.value = '';
+	eventFormColor.value = '#4A90D9';
+	eventFormLogo.value = '';
 	eventFormMsg.textContent = '';
 	eventModal.classList.add('show');
 });
@@ -458,15 +520,25 @@ eventFormSubmitBtn.addEventListener('click', async () => {
 	const name = eventFormName.value.trim();
 	const needQuantity = eventFormNeedQuantity.checked ? 1 : 0;
 	const extraNames = eventFormExtraNames.value.trim();
+	const color = eventFormColor.value.trim();
 	if(!name){ eventFormMsg.textContent = '事件名称不能为空'; eventFormMsg.style.color = '#c1121f'; return; }
 	eventFormSubmitBtn.disabled = true;
 	eventFormSubmitBtn.textContent = '提交中...';
 	try {
+		const fd = new FormData();
+		fd.append('name', name);
+		fd.append('needQuantity', String(needQuantity));
+		fd.append('extraNames', extraNames);
+		fd.append('color', color);
+		if(eventFormLogo.files && eventFormLogo.files[0]){
+			fd.append('logo', eventFormLogo.files[0]);
+		}
 		if(eventFormMode === 'edit'){
-			await api('/device/admin/api/event/update', {method:'POST', body: JSON.stringify({id: editingEventId, name, needQuantity, extraNames})});
+			fd.append('id', String(editingEventId));
+			await apiForm('/device/admin/api/event/update', fd);
 			setMsg(eventMsg, '修改成功', true);
 		}else{
-			await api('/device/admin/api/event/add', {method:'POST', body: JSON.stringify({name, needQuantity, extraNames})});
+			await apiForm('/device/admin/api/event/add', fd);
 			setMsg(eventMsg, '新增成功', true);
 		}
 		eventModal.classList.remove('show');

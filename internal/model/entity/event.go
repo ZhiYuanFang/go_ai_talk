@@ -10,4 +10,6 @@ type Event struct {
 	Name         string `json:"name"         ` // 吃奶/睡觉/尿/屎等
 	NeedQuantity int    `json:"needQuantity" ` // 是否需要计数1要
 	ExtraNames   string `json:"extraNames"   ` // name的其它表达方式
+	Color        string `json:"color"        ` //
+	Logo         string `json:"logo"         ` //
 }

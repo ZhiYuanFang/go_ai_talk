@@ -121,13 +121,6 @@ func gatewayAppVersionAdminUpload(r *ghttp.Request) {
 	versionAdminLastUpload[sid] = time.Now()
 	versionAdminUploadMu.Unlock()
 
-	base := gatewayapp.PublicBaseURL(ctx)
-	if base == "" {
-		glog.Warningf(ctx, "[gateway-app-version-admin] publicBaseUrl 未配置，无法生成下载 URL")
-		r.Response.Status = http.StatusBadRequest
-		r.Response.WriteJson(g.Map{"code": 400, "message": "未配置 gatewayApp.publicBaseUrl（或环境变量 GATEWAY_APP_PUBLIC_BASE_URL）"})
-		return
-	}
 	maxBytes := gatewayapp.ApkMaxBytes(ctx)
 	if err := r.ParseMultipartForm(maxBytes + (4 << 20)); err != nil { // 略大于单文件上限以容纳表单字段
 		glog.Warningf(ctx, "[gateway-app-version-admin] ParseMultipartForm 失败 err=%v", err)
@@ -206,7 +199,6 @@ func gatewayAppVersionAdminUpload(r *ghttp.Request) {
 	}
 
 	dlPath := "/device/app/apk/" + serverName
-	downloadURL := base + dlPath
 
 	forceN := 0
 	if force {
@@ -214,7 +206,7 @@ func gatewayAppVersionAdminUpload(r *ghttp.Request) {
 	}
 	_, err = dao.AppVersion.Ctx(ctx).Data(g.Map{
 		dao.AppVersion.Columns().LatestVersion: latestVer,
-		dao.AppVersion.Columns().DownloadUrl:   downloadURL,
+		dao.AppVersion.Columns().DownloadUrl:   dlPath,
 		dao.AppVersion.Columns().ReleaseNotes:  releaseNotes,
 		dao.AppVersion.Columns().ForceUpdate:   forceN,
 		dao.AppVersion.Columns().ReleaseDate:   time.Now().Unix(),
@@ -231,7 +223,7 @@ func gatewayAppVersionAdminUpload(r *ghttp.Request) {
 	r.Response.WriteJson(g.Map{
 		"code":          0,
 		"message":       "ok",
-		"downloadUrl":   downloadURL,
+		"downloadUrl":   dlPath,
 		"latestVersion": latestVer,
 		"savedFile":     serverName,
 	})

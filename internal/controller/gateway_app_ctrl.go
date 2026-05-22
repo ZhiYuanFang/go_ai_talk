@@ -197,7 +197,7 @@ func buildVersionRes(current string, row entity.AppVersion) *v1.GatewayAppVersio
 		LatestVersion: latest,
 		ReleaseDate:   row.ReleaseDate,
 		ReleaseNotes:  strings.TrimSpace(row.ReleaseNotes),
-		DownloadUrl:   strings.TrimSpace(row.DownloadUrl),
+		DownloadUrl:   gatewayapp.NormalizeAssetPath(strings.TrimSpace(row.DownloadUrl)),
 		ForceUpdate:   row.ForceUpdate != 0,
 	}
 }

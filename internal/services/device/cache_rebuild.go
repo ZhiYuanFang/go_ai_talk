@@ -11,14 +11,10 @@ import (
 // RebuildEventCache 重建事件缓存快照。
 func RebuildEventCache(ctx context.Context) error {
 	rows := make([]entity.Event, 0)
-	if err := dao.Event.Ctx(ctx).Fields(
-		dao.Event.Columns().Id,
-		dao.Event.Columns().Name,
-		dao.Event.Columns().NeedQuantity,
-		dao.Event.Columns().ExtraNames,
-	).OrderAsc(dao.Event.Columns().Id).Scan(&rows); err != nil {
+	if err := dao.Event.Ctx(ctx).Fields(eventListFields()...).OrderAsc(dao.Event.Columns().Id).Scan(&rows); err != nil {
 		return err
 	}
+	normalizeEventRows(rows)
 	return deviceCache.setEventOptions(ctx, rows)
 }
 

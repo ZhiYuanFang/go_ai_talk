@@ -70,7 +70,7 @@ func WxDeviceLoginByDeviceNo(ctx context.Context, deviceNo string) (*WxLoginResu
 	if row.Id == 0 || strings.TrimSpace(row.DeviceNo) != deviceNo {
 		return &WxLoginResult{WxId: 0, DeviceNo: deviceNo, IsNewUser: false}, nil
 	}
-	_ = invalidateWxCaches(ctx, row.Id, strings.TrimSpace(row.UnionId))
+	_ = invalidateWxCaches(ctx, row.Id, strings.TrimSpace(row.Unionid))
 	return &WxLoginResult{
 		WxId:      row.Id,
 		DeviceNo:  deviceNo,
@@ -88,13 +88,13 @@ func WxLogin(ctx context.Context, jsCode, platform string) (*WxLoginResult, erro
 	unionID := strings.TrimSpace(sess.UnionID)
 	platform = strings.TrimSpace(platform)
 
-	one, err := dao.Wx.Ctx(ctx).Where(dao.Wx.Columns().UnionId, unionID).One()
+	one, err := dao.Wx.Ctx(ctx).Where(dao.Wx.Columns().Unionid, unionID).One()
 	if err != nil {
 		return nil, err
 	}
 	if one.IsEmpty() {
 		res, insErr := dao.Wx.Ctx(ctx).Data(g.Map{
-			dao.Wx.Columns().UnionId:   unionID,
+			dao.Wx.Columns().Unionid:   unionID,
 			dao.Wx.Columns().Platform: platform,
 		}).Insert()
 		if insErr != nil {
@@ -138,7 +138,7 @@ func WxBindDevice(ctx context.Context, wxID int64, deviceNo string) error {
 	}
 	row, _ := wxRowByWxID(ctx, wxID)
 	if row != nil {
-		_ = invalidateWxCaches(ctx, row.Id, strings.TrimSpace(row.UnionId))
+		_ = invalidateWxCaches(ctx, row.Id, strings.TrimSpace(row.Unionid))
 	}
 	return nil
 }
@@ -155,7 +155,7 @@ func WxAutoSaveProfile(ctx context.Context, wxID int64, birthdayUnixSec int64, s
 	if row == nil || row.Id == 0 {
 		return "", errors.New("wx 记录不存在，请先登录")
 	}
-	unionID := strings.TrimSpace(row.UnionId)
+	unionID := strings.TrimSpace(row.Unionid)
 	svc := DeviceAdmin()
 	deviceNo := strings.TrimSpace(row.DeviceNo)
 	if deviceNo != "" {
@@ -220,10 +220,10 @@ func WxUnionIDByID(ctx context.Context, id int64) (string, error) {
 	if err := dao.Wx.Ctx(ctx).Where(dao.Wx.Columns().Id, id).Scan(&row); err != nil {
 		return "", err
 	}
-	if row.Id == 0 || strings.TrimSpace(row.UnionId) == "" {
+	if row.Id == 0 || strings.TrimSpace(row.Unionid) == "" {
 		return "", errors.New("wx 记录不存在")
 	}
-	u := strings.TrimSpace(row.UnionId)
+	u := strings.TrimSpace(row.Unionid)
 	_ = wxLookupCache.SetEX(ctx, key, u, cacheTTLWxLookup)
 	return u, nil
 }

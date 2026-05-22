@@ -15,4 +15,6 @@ type Event struct {
 	Name         interface{} // 吃奶/睡觉/尿/屎等
 	NeedQuantity interface{} // 是否需要计数1要
 	ExtraNames   interface{} // name的其它表达方式
+	Color        interface{} //
+	Logo         interface{} //
 }

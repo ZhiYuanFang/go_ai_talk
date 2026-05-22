@@ -141,12 +141,15 @@ func (c *httpDeviceAdminClient) List(ctx context.Context) ([]entity.User, error)
 	return out.List, err
 }
 
-func (c *httpDeviceAdminClient) AddEvent(ctx context.Context, name string, needQuantity int, extraNames string) error {
-	return c.doJSON(ctx, http.MethodPost, "/device/internal/api/event/add", nil, map[string]interface{}{
+func (c *httpDeviceAdminClient) AddEvent(ctx context.Context, name string, needQuantity int, extraNames, color, logoPath string) (int64, error) {
+	err := c.doJSON(ctx, http.MethodPost, "/device/internal/api/event/add", nil, map[string]interface{}{
 		"name":         strings.TrimSpace(name),
 		"needQuantity": needQuantity,
 		"extraNames":   strings.TrimSpace(extraNames),
+		"color":        strings.TrimSpace(color),
+		"logo":         strings.TrimSpace(logoPath),
 	}, nil)
+	return 0, err
 }
 
 func (c *httpDeviceAdminClient) ListEvents(ctx context.Context) ([]entity.Event, error) {
@@ -157,12 +160,14 @@ func (c *httpDeviceAdminClient) ListEvents(ctx context.Context) ([]entity.Event,
 	return out.List, err
 }
 
-func (c *httpDeviceAdminClient) UpdateEvent(ctx context.Context, id int64, name string, needQuantity int, extraNames string) error {
+func (c *httpDeviceAdminClient) UpdateEvent(ctx context.Context, id int64, name string, needQuantity int, extraNames, color, logoPath string) error {
 	return c.doJSON(ctx, http.MethodPost, "/device/internal/api/event/update", nil, map[string]interface{}{
 		"id":           id,
 		"name":         strings.TrimSpace(name),
 		"needQuantity": needQuantity,
 		"extraNames":   strings.TrimSpace(extraNames),
+		"color":        strings.TrimSpace(color),
+		"logo":         strings.TrimSpace(logoPath),
 	}, nil)
 }
 

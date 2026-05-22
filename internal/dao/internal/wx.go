@@ -22,7 +22,7 @@ type WxDao struct {
 type WxColumns struct {
 	Id       string //
 	DeviceNo string //
-	UnionId  string //
+	Unionid  string //
 	Platform string // 平台来源
 }
 
@@ -30,7 +30,7 @@ type WxColumns struct {
 var wxColumns = WxColumns{
 	Id:       "id",
 	DeviceNo: "device_no",
-	UnionId:  "union_id",
+	Unionid:  "unionid",
 	Platform: "platform",
 }
 

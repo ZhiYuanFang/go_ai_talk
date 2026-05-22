@@ -59,9 +59,9 @@ type DeviceAdminContract interface {
 	EnsureRegistered(ctx context.Context, deviceNo string) error
 	UpdateLastTalk(ctx context.Context, deviceNo, ask, answer string) error
 	List(ctx context.Context) ([]entity.User, error)
-	AddEvent(ctx context.Context, name string, needQuantity int, extraNames string) error
+	AddEvent(ctx context.Context, name string, needQuantity int, extraNames, color, logoPath string) (int64, error)
 	ListEvents(ctx context.Context) ([]entity.Event, error)
-	UpdateEvent(ctx context.Context, id int64, name string, needQuantity int, extraNames string) error
+	UpdateEvent(ctx context.Context, id int64, name string, needQuantity int, extraNames, color, logoPath string) error
 	DeleteEvent(ctx context.Context, id int64) error
 	ListQA(ctx context.Context) ([]entity.Qa, error)
 	ListActionsForAdmin(ctx context.Context) ([]sharedtypes.AdminActionItem, error)

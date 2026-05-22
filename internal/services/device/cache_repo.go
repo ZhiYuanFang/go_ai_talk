@@ -164,14 +164,10 @@ func ApplyProjection(ctx context.Context, routingKey, payload string) error {
 			return nil
 		}
 		rows := make([]entity.Event, 0)
-		if err := dao.Event.Ctx(ctx).Fields(
-			dao.Event.Columns().Id,
-			dao.Event.Columns().Name,
-			dao.Event.Columns().NeedQuantity,
-			dao.Event.Columns().ExtraNames,
-		).OrderAsc(dao.Event.Columns().Id).Scan(&rows); err != nil {
+		if err := dao.Event.Ctx(ctx).Fields(eventListFields()...).OrderAsc(dao.Event.Columns().Id).Scan(&rows); err != nil {
 			return err
 		}
+		normalizeEventRows(rows)
 		if err := deviceCache.setEventOptions(ctx, rows); err != nil {
 			return err
 		}

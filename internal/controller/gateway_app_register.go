@@ -35,6 +35,7 @@ func RegisterGatewayAppHTTP(s *ghttp.Server) {
 	installGatewayAppCORSMiddleware(s)
 	installGatewayCrosscuttingMiddlewares(s)
 	installGatewayAppBearerMiddleware(s)
+	installGatewayAppEventImageProxy(s)
 	installDomainProxyMiddlewares(s)
 	installVoiceWSProxyMiddleware(s)
 

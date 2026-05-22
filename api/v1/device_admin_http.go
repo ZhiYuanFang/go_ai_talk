@@ -40,24 +40,26 @@ type DeviceAdminEventListRes struct {
 	List []entity.Event `json:"list"`
 }
 
-// DeviceAdminEventAddReq 新增事件。
+// DeviceAdminEventAddReq 新增事件（实现为 multipart，见 device_admin_event.go，不在此 Bind）。
 type DeviceAdminEventAddReq struct {
-	g.Meta       `path:"/device/admin/api/event/add" method:"post" tags:"admin" summary:"新增事件"`
-	Name         string `json:"name" dc:"事件名称"`
-	NeedQuantity int    `json:"needQuantity" dc:"是否需要计数(0否1是)"`
-	ExtraNames   string `json:"extraNames" dc:"事件扩展（别名等）"`
+	Name         string `dc:"事件名称，表单字段 name"`
+	NeedQuantity int    `dc:"是否需要计数(0否1是)，表单 needQuantity"`
+	ExtraNames   string `dc:"事件扩展，表单 extraNames"`
+	Color        string `dc:"色值 #RGB/#RRGGBB，表单 color"`
+	Logo         string `dc:"可选，表单文件字段 logo"`
 }
 
 // DeviceAdminEventAddRes 新增成功。
 type DeviceAdminEventAddRes struct{}
 
-// DeviceAdminEventUpdateReq 更新事件名称。
+// DeviceAdminEventUpdateReq 更新事件（multipart，见 device_admin_event.go）。
 type DeviceAdminEventUpdateReq struct {
-	g.Meta       `path:"/device/admin/api/event/update" method:"post" tags:"admin" summary:"更新事件"`
-	Id           int64  `json:"id" dc:"事件ID"`
-	Name         string `json:"name" dc:"新名称"`
-	NeedQuantity int    `json:"needQuantity" dc:"是否需要计数(0否1是)"`
-	ExtraNames   string `json:"extraNames" dc:"事件扩展（别名等）"`
+	Id           int64  `dc:"事件ID，表单 id"`
+	Name         string `dc:"表单 name"`
+	NeedQuantity int    `dc:"表单 needQuantity"`
+	ExtraNames   string `dc:"表单 extraNames"`
+	Color        string `dc:"表单 color"`
+	Logo         string `dc:"可选文件 logo"`
 }
 
 // DeviceAdminEventUpdateRes 更新成功。

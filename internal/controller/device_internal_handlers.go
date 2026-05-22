@@ -71,7 +71,7 @@ func (c *DeviceInternalCtrl) UserList(ctx context.Context, req *v1.DeviceInterna
 // EventAddInternal 新增事件字典。
 func (c *DeviceInternalCtrl) EventAddInternal(ctx context.Context, req *v1.DeviceInternalEventAddReq) (res *v1.DeviceInternalEventAddRes, err error) {
 	_ = c
-	if err := device.DeviceAdmin().AddEvent(ctx, strings.TrimSpace(req.Name), req.NeedQuantity, req.ExtraNames); err != nil {
+	if _, err := device.DeviceAdmin().AddEvent(ctx, strings.TrimSpace(req.Name), req.NeedQuantity, req.ExtraNames, "", ""); err != nil {
 		if err == device.ErrEventExists {
 			return nil, gerror.NewCode(gcode.CodeInvalidOperation, err.Error())
 		}
@@ -83,7 +83,7 @@ func (c *DeviceInternalCtrl) EventAddInternal(ctx context.Context, req *v1.Devic
 // EventUpdateInternal 更新事件。
 func (c *DeviceInternalCtrl) EventUpdateInternal(ctx context.Context, req *v1.DeviceInternalEventUpdateReq) (res *v1.DeviceInternalEventUpdateRes, err error) {
 	_ = c
-	if err := device.DeviceAdmin().UpdateEvent(ctx, req.Id, strings.TrimSpace(req.Name), req.NeedQuantity, req.ExtraNames); err != nil {
+	if err := device.DeviceAdmin().UpdateEvent(ctx, req.Id, strings.TrimSpace(req.Name), req.NeedQuantity, req.ExtraNames, "", ""); err != nil {
 		switch err {
 		case device.ErrEventExists:
 			return nil, gerror.NewCode(gcode.CodeInvalidOperation, err.Error())

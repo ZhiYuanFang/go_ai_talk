@@ -12,6 +12,7 @@ import (
 	"hello/internal/dao"
 	"hello/internal/model/entity"
 	"hello/internal/platform/eventkit"
+	"hello/internal/shared/assetpath"
 	sharedtypes "hello/internal/shared/types"
 	"hello/internal/services/workeroutbox"
 
@@ -247,32 +248,53 @@ func (s *service) List(ctx context.Context) ([]entity.User, error) {
 	return listUsersWithRetry(ctx)
 }
 
-func (s *service) AddEvent(ctx context.Context, name string, needQuantity int, extraNames string) error {
+func eventListFields() []interface{} {
+	c := dao.Event.Columns()
+	return []interface{}{
+		c.Id, c.Name, c.NeedQuantity, c.ExtraNames, c.Logo, c.Color,
+	}
+}
+
+func normalizeEventRows(rows []entity.Event) {
+	for i := range rows {
+		rows[i].Logo = assetpath.Normalize(rows[i].Logo)
+	}
+}
+
+func (s *service) AddEvent(ctx context.Context, name string, needQuantity int, extraNames, color, logoPath string) (int64, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return errors.New("事件名称不能为空")
+		return 0, errors.New("事件名称不能为空")
+	}
+	if err := ValidateEventColor(color); err != nil {
+		return 0, err
 	}
 	if needQuantity > 0 {
 		needQuantity = 1
 	}
 	count, err := dao.Event.Ctx(ctx).Where(dao.Event.Columns().Name, name).Count()
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if count > 0 {
-		return ErrEventExists
+		return 0, ErrEventExists
 	}
-	_, err = dao.Event.Ctx(ctx).Data(g.Map{
+	logoPath = assetpath.Normalize(strings.TrimSpace(logoPath))
+	result, err := dao.Event.Ctx(ctx).Data(g.Map{
 		dao.Event.Columns().Name:         name,
 		dao.Event.Columns().NeedQuantity: needQuantity,
 		dao.Event.Columns().ExtraNames:   strings.TrimSpace(extraNames),
+		dao.Event.Columns().Color:        strings.TrimSpace(color),
+		dao.Event.Columns().Logo:         logoPath,
 	}).Insert()
 	if err != nil {
 		msg := strings.ToLower(err.Error())
 		if strings.Contains(msg, "duplicate") || strings.Contains(msg, "unique") {
-			return ErrEventExists
+			return 0, ErrEventExists
 		}
+		return 0, err
 	}
+	id, _ := result.LastInsertId()
 	if err == nil {
 		_ = enqueueDeviceProjectionEvent(ctx, eventkit.RoutingDeviceEventChanged, map[string]interface{}{
 			"event_id":    fmt.Sprintf("device-event-changed-%d", time.Now().UnixNano()),
@@ -284,33 +306,33 @@ func (s *service) AddEvent(ctx context.Context, name string, needQuantity int, e
 			_ = deviceCache.setEventOptions(ctx, rows)
 		}
 	}
-	return err
+	return id, err
 }
 
 func (s *service) ListEvents(ctx context.Context) ([]entity.Event, error) {
 	if rows, ok, err := deviceCache.getEventOptions(ctx); err == nil && ok {
+		normalizeEventRows(rows)
 		return rows, nil
 	}
 	rows := make([]entity.Event, 0)
-	err := dao.Event.Ctx(ctx).Fields(
-		dao.Event.Columns().Id,
-		dao.Event.Columns().Name,
-		dao.Event.Columns().NeedQuantity,
-		dao.Event.Columns().ExtraNames,
-	).OrderAsc(dao.Event.Columns().Id).Scan(&rows)
+	err := dao.Event.Ctx(ctx).Fields(eventListFields()...).OrderAsc(dao.Event.Columns().Id).Scan(&rows)
 	if err == nil {
+		normalizeEventRows(rows)
 		_ = deviceCache.setEventOptions(ctx, rows)
 	}
 	return rows, err
 }
 
-func (s *service) UpdateEvent(ctx context.Context, id int64, name string, needQuantity int, extraNames string) error {
+func (s *service) UpdateEvent(ctx context.Context, id int64, name string, needQuantity int, extraNames, color, logoPath string) error {
 	if id <= 0 {
 		return errors.New("事件ID无效")
 	}
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return errors.New("事件名称不能为空")
+	}
+	if err := ValidateEventColor(color); err != nil {
+		return err
 	}
 	if needQuantity > 0 {
 		needQuantity = 1
@@ -332,11 +354,16 @@ func (s *service) UpdateEvent(ctx context.Context, id int64, name string, needQu
 	if nameCount > 0 {
 		return ErrEventExists
 	}
-	_, err = dao.Event.Ctx(ctx).Where(dao.Event.Columns().Id, id).Data(g.Map{
+	data := g.Map{
 		dao.Event.Columns().Name:         name,
 		dao.Event.Columns().NeedQuantity: needQuantity,
 		dao.Event.Columns().ExtraNames:   strings.TrimSpace(extraNames),
-	}).Update()
+		dao.Event.Columns().Color:        strings.TrimSpace(color),
+	}
+	if lp := assetpath.Normalize(strings.TrimSpace(logoPath)); lp != "" {
+		data[dao.Event.Columns().Logo] = lp
+	}
+	_, err = dao.Event.Ctx(ctx).Where(dao.Event.Columns().Id, id).Data(data).Update()
 	if err != nil {
 		msg := strings.ToLower(err.Error())
 		if strings.Contains(msg, "duplicate") || strings.Contains(msg, "unique") {

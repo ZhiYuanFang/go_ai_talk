@@ -83,59 +83,6 @@ func (c *AdminCtrl) EventList(ctx context.Context, req *v1.DeviceAdminEventListR
 	return &v1.DeviceAdminEventListRes{List: items}, nil
 }
 
-// EventAdd 新增事件。
-func (c *AdminCtrl) EventAdd(ctx context.Context, req *v1.DeviceAdminEventAddReq) (res *v1.DeviceAdminEventAddRes, err error) {
-	if err := c.requireAdmin(ctx); err != nil {
-		return nil, err
-	}
-	name := strings.TrimSpace(req.Name)
-	if name == "" {
-		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "事件名称不能为空")
-	}
-	needQuantity := 0
-	if req.NeedQuantity > 0 {
-		needQuantity = 1
-	}
-	err = c.Admin.AddEvent(ctx, name, needQuantity, req.ExtraNames)
-	if err != nil {
-		if err == device.ErrEventExists {
-			return nil, gerror.NewCode(gcode.CodeInvalidOperation, err.Error())
-		}
-		return nil, err
-	}
-	return &v1.DeviceAdminEventAddRes{}, nil
-}
-
-// EventUpdate 更新事件名称。
-func (c *AdminCtrl) EventUpdate(ctx context.Context, req *v1.DeviceAdminEventUpdateReq) (res *v1.DeviceAdminEventUpdateRes, err error) {
-	if err := c.requireAdmin(ctx); err != nil {
-		return nil, err
-	}
-	if req.Id <= 0 {
-		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "事件ID无效")
-	}
-	name := strings.TrimSpace(req.Name)
-	if name == "" {
-		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "事件名称不能为空")
-	}
-	needQuantity := 0
-	if req.NeedQuantity > 0 {
-		needQuantity = 1
-	}
-	err = c.Admin.UpdateEvent(ctx, req.Id, name, needQuantity, req.ExtraNames)
-	if err != nil {
-		switch err {
-		case device.ErrEventExists:
-			return nil, gerror.NewCode(gcode.CodeInvalidOperation, err.Error())
-		case device.ErrEventNotFound:
-			return nil, gerror.NewCode(gcode.CodeNotFound, err.Error())
-		default:
-			return nil, err
-		}
-	}
-	return &v1.DeviceAdminEventUpdateRes{}, nil
-}
-
 // EventDelete 删除事件。
 func (c *AdminCtrl) EventDelete(ctx context.Context, req *v1.DeviceAdminEventDeleteReq) (res *v1.DeviceAdminEventDeleteRes, err error) {
 	if err := c.requireAdmin(ctx); err != nil {
