@@ -169,7 +169,7 @@
 - **新增/更新**: `POST` multipart 至 `/device/admin/api/event/add` 或 `/event/update`
   - 表单字段：`name`、`needQuantity`（0/1）、`extraNames`、`color`（`#RGB`/`#RRGGBB`）、可选文件 `logo`
   - 更新时未传 `logo` 文件则保留原 logo
-- **静态资源**：库内**不存域名**；由客户端按当前访问网关 **origin + path** 拼接，例如：
+- **静态资源**：库内**不存域名**；由客户端按当前访问网关 **origin + path** 拼接。Docker Compose 默认将 **`/ai_talk_images`**（device-service 写 logo）、**`/apk/ai_talk`**（gateway-app 写 APK）bind 到 **Linux 宿主机同路径**，便于备份与排障（见 `docs/runbooks/release-deploy-and-run.md`）。例如：
   - 事件 logo（设备管理页 `:9701`）：`https://<host>:9701` + `/ai_talk_images/xxx.png`（主网关反代 device-service）
   - 事件 logo / APK（App 端 `:9702`）：`https://<host>:9702` + 路径
 - **管理页**：`admin.html` 事件表展示 Logo、色调；**点击**色块或 Logo 可直接更新（无需打开完整编辑弹窗）

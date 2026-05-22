@@ -1,6 +1,11 @@
 version: "3.9"
 # 业务库连接：history/device/voice/worker 见各服务 *_DB_LINK；gateway-app 另需 APP_DB_LINK（ai_voice_app），
 # 与 manifest/docker/.env.example、docs/runbooks/release-deploy-and-run.md 一致，避免新栈漏配版本库。
+#
+# 宿主机静态资源（Linux 根目录持久化，与 config 默认路径一致）：
+#   device-service  → /ai_talk_images  （event.eventImageStorageDir）
+#   gateway-app     → /apk/ai_talk       （gatewayApp.apkStorageDir）
+# 首次部署建议在宿主机：sudo mkdir -p /ai_talk_images /apk/ai_talk && sudo chmod 755 /ai_talk_images /apk/ai_talk
 
 services:
   gateway:
@@ -82,6 +87,9 @@ services:
         condition: service_healthy
       device-service:
         condition: service_healthy
+    # APK 落盘目录与 gatewayApp.apkStorageDir 默认 /apk/ai_talk/ 一致，映射到宿主机根目录便于备份
+    volumes:
+      - /apk/ai_talk:/apk/ai_talk
     networks: [go-ai-talk-net]
 
   history-service:
@@ -177,6 +185,9 @@ services:
       interval: 10s
       timeout: 3s
       retries: 6
+    # 事件 logo 与 device.eventImageStorageDir 默认 /ai_talk_images/ 一致，映射到宿主机根目录
+    volumes:
+      - /ai_talk_images:/ai_talk_images
     networks: [go-ai-talk-net]
 
   worker:

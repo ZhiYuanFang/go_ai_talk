@@ -6,7 +6,8 @@
 
 - `gateway-service`：`manifest/config/config.yaml`（仅网关与公共项，不含数据库）
 - **`gateway-app-server`**：`manifest/config/config.gateway-app-server.yaml`（**含** `database.app`，用于版本检查读 `ai_voice_app`；**新建实例**须在 yaml 中把 `database.app.link` 配为真实 DSN，或通过环境变量 **`APP_DB_LINK`** 覆盖——与 `HISTORY_DB_LINK` 等同理，Compose 已传 `${APP_DB_LINK:-}`，勿漏配导致版本接口连库失败）
-- **gateway-app-server（版本管理 / APK）**：`version.download_url` 存 **path-only**（如 `/device/app/apk/<file>.apk`），客户端与 `version/check` 按同源或网关基址拼接访问。管理员口令仅通过 **`GATEWAY_APP_VERSION_ADMIN_PASSWORD`**（或本地私有 yaml 中的 `gatewayApp.versionAdmin.password`，**勿将生产口令提交到 git**）注入；未配置时管理 API 返回 503。APK 默认落盘 **`/apk/ai_talk/`**（可用 `GATEWAY_APP_APK_STORAGE_DIR` 覆盖）；Linux 上请保证运行用户可写。管理页：`GET /device/app/version-admin.html`（登录后可列表/编辑/删除/上传）。管理 API（均需先 `POST /device/app/api/version/admin/login`，Cookie 鉴权）：`GET .../admin/list`、`GET .../admin/get?id=`、`POST .../admin/update`、`POST .../admin/delete`、`POST .../admin/upload`。匿名下载：`GET /device/app/apk/{文件名}`。`GET /device/app/api/version/check` 取表中 **最大 `id`** 行作为最新发版。
+- **gateway-app-server（版本管理 / APK）**：`version.download_url` 存 **path-only**（如 `/device/app/apk/<file>.apk`），客户端与 `version/check` 按同源或网关基址拼接访问。管理员口令仅通过 **`GATEWAY_APP_VERSION_ADMIN_PASSWORD`**（或本地私有 yaml 中的 `gatewayApp.versionAdmin.password`，**勿将生产口令提交到 git**）注入；未配置时管理 API 返回 503。APK 默认落盘 **`/apk/ai_talk/`**（可用 `GATEWAY_APP_APK_STORAGE_DIR` 覆盖，**须与 Compose 挂载点一致**）。**Docker Compose** 已将 **`/apk/ai_talk`** bind 到宿主机同路径。管理页：`GET /device/app/version-admin.html`（登录后可列表/编辑/删除/上传）。管理 API（均需先 `POST /device/app/api/version/admin/login`，Cookie 鉴权）：`GET .../admin/list`、`GET .../admin/get?id=`、`POST .../admin/update`、`POST .../admin/delete`、`POST .../admin/upload`。匿名下载：`GET /device/app/apk/{文件名}`。`GET /device/app/api/version/check` 取表中 **最大 `id`** 行作为最新发版。
+- **事件 logo 落盘（device-service）**：默认 **`/ai_talk_images/`**（`device.eventImageStorageDir`；可用 **`DEVICE_EVENT_IMAGE_STORAGE_DIR`** 覆盖，须与挂载点一致）。**Docker Compose** 已将 **`/ai_talk_images`** bind 到宿主机根目录。
 - `voice-service`：`manifest/config/config.voice-service.yaml`
 - `device-service`：`manifest/config/config.device-service.yaml`
 - `history-service`：`manifest/config/config.history-service.yaml`
@@ -62,6 +63,37 @@
 - 上述变量**留空**时不会覆盖 yaml，进程仍使用 `config.*.yaml` 里的占位地址（如公网 `120.55.50.105:3306`）；**gateway-app** 另看 `database.app.link`，未设 `APP_DB_LINK` 时同样易踩占位库。  
 - 若你已在 `.env.example` 里写好 link 却仍连旧 IP：① 确认 compose 中 DSN 插值已用**引号**（本仓库已改为 `"${DEVICE_DB_LINK:-}"` 等形式，避免 YAML 把 `mysql:...:3306` 截断）；② 对业务服务 **`docker compose ... up -d --force-recreate`**；③ 容器内 **`printenv DEVICE_DB_LINK`** 核对。  
 - `manifest/docker/docker-compose.microservices.yml` 已为 `history-service`、`voice-service`、`device-service`、`worker` 配置 `extra_hosts: host.docker.internal:host-gateway`（Docker 20.10+），便于同机连库。
+
+**宿主机静态资源目录（Linux + Compose，首次部署建议）**
+
+Compose 将容器内写盘路径映射到宿主机根目录，便于 `ls`、备份与 `recreate` 后文件仍在：
+
+| 宿主机路径 | 服务 | 用途 |
+|------------|------|------|
+| `/ai_talk_images` | device-service | 事件 logo 文件 |
+| `/apk/ai_talk` | gateway-app | App 版本 APK |
+
+```bash
+sudo mkdir -p /ai_talk_images /apk/ai_talk
+sudo chmod 755 /ai_talk_images /apk/ai_talk
+```
+
+更新 compose 卷配置后，至少重建写盘服务：
+
+```bash
+docker compose -f manifest/docker/docker-compose.microservices.yml up -d --force-recreate device-service gateway-app
+```
+
+验收示例（上传 logo / APK 之后）：
+
+```bash
+ls -la /ai_talk_images/
+ls -la /apk/ai_talk/
+docker exec go-ai-talk-device-service ls -la /ai_talk_images/
+docker exec go-ai-talk-gateway-app ls -la /apk/ai_talk/
+```
+
+RHEL/CentOS 等若遇容器无法写入，可在 compose 卷行尝试后缀 `:z`（SELinux）。若曾把文件只写在旧容器层内，需 `docker cp` 到宿主机目录或重新上传。
 
 3) 启动业务（`--env-file` 指向你实际填写了各 `*_DB_LINK` / `APP_DB_LINK` 的文件即可）：
 > 停止并删除 compose 项目
