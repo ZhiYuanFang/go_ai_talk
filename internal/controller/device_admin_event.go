@@ -17,7 +17,7 @@ import (
 	"github.com/gogf/gf/v2/os/gfile"
 )
 
-// deviceAdminEventAdd 管理端新增事件（multipart：name/needQuantity/extraNames/color，可选 logo 文件）。
+// deviceAdminEventAdd 管理端新增事件（multipart：name/eventType/extraNames/color，可选 logo 文件）。
 func deviceAdminEventAdd(r *ghttp.Request, c *AdminCtrl) {
 	if r.Method != http.MethodPost {
 		r.Response.WriteStatusExit(http.StatusMethodNotAllowed)
@@ -33,12 +33,12 @@ func deviceAdminEventAdd(r *ghttp.Request, c *AdminCtrl) {
 		writeDeviceAdminFail(r, gcode.CodeInvalidParameter, "multipart 解析失败")
 		return
 	}
-	name, needQuantity, extraNames, color, err := parseEventMultipartFields(r)
+	name, eventType, extraNames, color, err := parseEventMultipartFields(r)
 	if err != nil {
 		writeDeviceAdminFail(r, gcode.CodeInvalidParameter, err.Error())
 		return
 	}
-	eventID, err := c.Admin.AddEvent(ctx, name, needQuantity, extraNames, color, "")
+	eventID, err := c.Admin.AddEvent(ctx, name, eventType, extraNames, color, "")
 	if err != nil {
 		writeDeviceAdminEventErr(r, err)
 		return
@@ -49,7 +49,7 @@ func deviceAdminEventAdd(r *ghttp.Request, c *AdminCtrl) {
 		return
 	}
 	if logoPath != "" {
-		if err := c.Admin.UpdateEvent(ctx, eventID, name, needQuantity, extraNames, color, logoPath); err != nil {
+		if err := c.Admin.UpdateEvent(ctx, eventID, name, eventType, extraNames, color, logoPath); err != nil {
 			writeDeviceAdminEventErr(r, err)
 			return
 		}
@@ -78,7 +78,7 @@ func deviceAdminEventUpdate(r *ghttp.Request, c *AdminCtrl) {
 		writeDeviceAdminFail(r, gcode.CodeInvalidParameter, "事件ID无效")
 		return
 	}
-	name, needQuantity, extraNames, color, err := parseEventMultipartFields(r)
+	name, eventType, extraNames, color, err := parseEventMultipartFields(r)
 	if err != nil {
 		writeDeviceAdminFail(r, gcode.CodeInvalidParameter, err.Error())
 		return
@@ -88,7 +88,7 @@ func deviceAdminEventUpdate(r *ghttp.Request, c *AdminCtrl) {
 		writeDeviceAdminFail(r, gcode.CodeInvalidParameter, err.Error())
 		return
 	}
-	if err := c.Admin.UpdateEvent(ctx, id, name, needQuantity, extraNames, color, logoPath); err != nil {
+	if err := c.Admin.UpdateEvent(ctx, id, name, eventType, extraNames, color, logoPath); err != nil {
 		writeDeviceAdminEventErr(r, err)
 		return
 	}
@@ -126,20 +126,21 @@ func deviceEventImageServe(r *ghttp.Request) {
 	r.Response.ServeFile(abs)
 }
 
-func parseEventMultipartFields(r *ghttp.Request) (name string, needQuantity int, extraNames, color string, err error) {
+func parseEventMultipartFields(r *ghttp.Request) (name string, eventType string, extraNames, color string, err error) {
 	name = strings.TrimSpace(r.GetForm("name").String())
 	if name == "" {
-		return "", 0, "", "", gerror.New("事件名称不能为空")
+		return "", "", "", "", gerror.New("事件名称不能为空")
 	}
-	if r.GetForm("needQuantity").Int() > 0 {
-		needQuantity = 1
+	eventType = device.NormalizeEventType(r.GetForm("eventType").String())
+	if err := device.ValidateEventType(eventType); err != nil {
+		return "", "", "", "", err
 	}
 	extraNames = r.GetForm("extraNames").String()
 	color = strings.TrimSpace(r.GetForm("color").String())
 	if err := device.ValidateEventColor(color); err != nil {
-		return "", 0, "", "", err
+		return "", "", "", "", err
 	}
-	return name, needQuantity, extraNames, color, nil
+	return name, eventType, extraNames, color, nil
 }
 
 func saveEventLogoFromRequest(ctx context.Context, r *ghttp.Request, eventID int64) (string, error) {

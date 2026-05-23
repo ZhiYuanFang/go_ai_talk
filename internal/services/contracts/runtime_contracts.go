@@ -59,9 +59,9 @@ type DeviceAdminContract interface {
 	EnsureRegistered(ctx context.Context, deviceNo string) error
 	UpdateLastTalk(ctx context.Context, deviceNo, ask, answer string) error
 	List(ctx context.Context) ([]entity.User, error)
-	AddEvent(ctx context.Context, name string, needQuantity int, extraNames, color, logoPath string) (int64, error)
+	AddEvent(ctx context.Context, name string, eventType string, extraNames, color, logoPath string) (int64, error)
 	ListEvents(ctx context.Context) ([]entity.Event, error)
-	UpdateEvent(ctx context.Context, id int64, name string, needQuantity int, extraNames, color, logoPath string) error
+	UpdateEvent(ctx context.Context, id int64, name string, eventType string, extraNames, color, logoPath string) error
 	DeleteEvent(ctx context.Context, id int64) error
 	ListQA(ctx context.Context) ([]entity.Qa, error)
 	ListActionsForAdmin(ctx context.Context) ([]sharedtypes.AdminActionItem, error)
@@ -72,7 +72,7 @@ type DeviceAdminContract interface {
 	// InsertVoiceActionRecord 语音 DeepSeek 新增动作词典，名称冲突时返回错误。
 	InsertVoiceActionRecord(ctx context.Context, name, targetType string) error
 	// InsertOrGetEventByNeedle 统一意图路径创建事件并回读最新行。
-	InsertOrGetEventByNeedle(ctx context.Context, needle string, needQuantity bool) (entity.Event, error)
+	InsertOrGetEventByNeedle(ctx context.Context, needle string, eventType string) (entity.Event, error)
 	// ApplyDeepSeekEventExtractPersistence DeepSeek 实体抽取管线写事件字典（新增或合并 extra_names）。
 	ApplyDeepSeekEventExtractPersistence(ctx context.Context, out entity.Event) (entity.Event, string, error)
 }

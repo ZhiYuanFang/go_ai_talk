@@ -19,22 +19,6 @@ type HistoryCtrl struct {
 	Voice contracts.VoiceContract
 }
 
-func (c *HistoryCtrl) eventRuleByID(ctx context.Context, eventID int64) (needQuantity bool, ok bool) {
-	if eventID <= 0 {
-		return false, false
-	}
-	events, err := c.Svc.ListEventOptions(ctx)
-	if err != nil {
-		return false, false
-	}
-	for _, ev := range events {
-		if ev.Id == eventID {
-			return ev.NeedQuantity > 0, true
-		}
-	}
-	return false, false
-}
-
 // canonicalEventNameForRow 有 eventId 时与事件主档 name 对齐写入 history，避免请求体携带别名/展示名落库。
 func (c *HistoryCtrl) canonicalEventNameForRow(ctx context.Context, eventID int64, fallback string) string {
 	out := strings.TrimSpace(fallback)

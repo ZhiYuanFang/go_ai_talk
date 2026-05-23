@@ -111,7 +111,7 @@
 						<th>事件名称</th>
 						<th>Logo</th>
 						<th>色调</th>
-						<th class="td-check">需要计数</th>
+						<th>事件类型</th>
 						<th>事件扩展</th>
 						<th>操作</th>
 					</tr>
@@ -172,9 +172,12 @@
 			<h3 id="eventModalTitle">新增事件</h3>
 			<div class="row">
 				<input id="eventFormName" placeholder="例如：吃奶 / 睡觉 / 换尿布" style="flex:1;min-width:220px;" />
-				<label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#444;">
-					<input id="eventFormNeedQuantity" type="checkbox" />
-					需要计数
+				<label style="font-size:13px;color:#444;">事件类型
+					<select id="eventFormEventType" style="margin-left:6px;min-width:120px;">
+						<option value="time">计时</option>
+						<option value="number">计数</option>
+						<option value="one">一次性</option>
+					</select>
 				</label>
 			</div>
 			<div style="margin-top:10px;">
@@ -252,7 +255,7 @@ const actionMsg = document.getElementById('actionMsg');
 const eventModal = document.getElementById('eventModal');
 const eventModalTitle = document.getElementById('eventModalTitle');
 const eventFormName = document.getElementById('eventFormName');
-const eventFormNeedQuantity = document.getElementById('eventFormNeedQuantity');
+const eventFormEventType = document.getElementById('eventFormEventType');
 const eventFormExtraNames = document.getElementById('eventFormExtraNames');
 const eventFormColor = document.getElementById('eventFormColor');
 const eventFormLogo = document.getElementById('eventFormLogo');
@@ -341,6 +344,18 @@ function eventLogoUrl(logoPath){
 	if(/^https?:\/\//i.test(p)) return p;
 	const origin = window.location.origin || '';
 	return origin + (p.startsWith('/') ? p : '/' + p);
+}
+
+const EVENT_TYPE_LABELS = { number: '计数', time: '计时', one: '一次性' };
+
+function normalizeEventType(t){
+	const s = String(t || '').trim().toLowerCase();
+	if(s === 'number' || s === 'time' || s === 'one') return s;
+	return 'time';
+}
+
+function eventTypeLabel(t){
+	return EVENT_TYPE_LABELS[normalizeEventType(t)] || '计时';
 }
 
 function normalizeEventColor(c){
@@ -444,7 +459,7 @@ async function submitEventRowUpdate(row, opts){
 		const fd = new FormData();
 		fd.append('id', String(row.id));
 		fd.append('name', row.name);
-		fd.append('needQuantity', row.needQuantity ? '1' : '0');
+		fd.append('eventType', normalizeEventType(row.eventType));
 		fd.append('extraNames', row.extraNames || '');
 		fd.append('color', opts && opts.color != null ? opts.color : normalizeEventColor(row.color));
 		if(opts && opts.logoFile){ fd.append('logo', opts.logoFile); }
@@ -510,14 +525,13 @@ async function loadList(){
 }
 
 function buildEventRowData(it){
-	const needQ = Number(it.needQuantity||0) > 0;
 	return {
 		id: Number(it.id||0),
 		name: String(it.name||''),
 		extraNames: String(it.extraNames||''),
 		color: String(it.color||''),
 		logo: String(it.logo||''),
-		needQuantity: needQ
+		eventType: normalizeEventType(it.eventType)
 	};
 }
 
@@ -575,9 +589,8 @@ async function loadEventList(){
 				openEventColorPopover(tdColor, row);
 			});
 
-			const tdNeed = document.createElement('td');
-			tdNeed.className = 'td-check';
-			tdNeed.textContent = row.needQuantity ? '√' : '';
+			const tdType = document.createElement('td');
+			tdType.textContent = eventTypeLabel(row.eventType);
 			const tdExtra = document.createElement('td');
 			tdExtra.className = 'wrapcell';
 			tdExtra.textContent = row.extraNames;
@@ -591,7 +604,7 @@ async function loadEventList(){
 				editingEventId = row.id;
 				eventModalTitle.textContent = '编辑事件';
 				eventFormName.value = row.name;
-				eventFormNeedQuantity.checked = row.needQuantity;
+				eventFormEventType.value = normalizeEventType(row.eventType);
 				eventFormExtraNames.value = row.extraNames;
 				eventFormLogo.value = '';
 				eventFormMsg.textContent = '';
@@ -617,7 +630,7 @@ async function loadEventList(){
 			tdAct.appendChild(document.createTextNode(' '));
 			tdAct.appendChild(btnDel);
 
-			tr.append(tdId, tdName, tdLogo, tdColor, tdNeed, tdExtra, tdAct);
+			tr.append(tdId, tdName, tdLogo, tdColor, tdType, tdExtra, tdAct);
 			tbody.appendChild(tr);
 		});
 		if(!(data && data.length)){
@@ -825,7 +838,7 @@ document.getElementById('addEventBtn').addEventListener('click', async () => {
 	editingEventId = 0;
 	eventModalTitle.textContent = '新增事件';
 	eventFormName.value = '';
-	eventFormNeedQuantity.checked = false;
+	eventFormEventType.value = 'time';
 	eventFormExtraNames.value = '';
 	eventFormLogo.value = '';
 	eventFormMsg.textContent = '';
@@ -840,7 +853,7 @@ eventFormCancelBtn.addEventListener('click', () => {
 
 eventFormSubmitBtn.addEventListener('click', async () => {
 	const name = eventFormName.value.trim();
-	const needQuantity = eventFormNeedQuantity.checked ? 1 : 0;
+	const eventType = normalizeEventType(eventFormEventType.value);
 	const extraNames = eventFormExtraNames.value.trim();
 	const color = eventFormColor.value.trim();
 	if(!name){ eventFormMsg.textContent = '事件名称不能为空'; eventFormMsg.style.color = '#c1121f'; return; }
@@ -849,7 +862,7 @@ eventFormSubmitBtn.addEventListener('click', async () => {
 	try {
 		const fd = new FormData();
 		fd.append('name', name);
-		fd.append('needQuantity', String(needQuantity));
+		fd.append('eventType', eventType);
 		fd.append('extraNames', extraNames);
 		fd.append('color', color);
 		if(eventFormLogo.files && eventFormLogo.files[0]){

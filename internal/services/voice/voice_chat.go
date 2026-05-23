@@ -81,7 +81,6 @@ type eventIntentResult struct {
 	Reply         string `json:"reply"`
 	Reason        string `json:"reason"`
 	bool          `json:"need_time"`
-	NeedQuantity  bool `json:"need_quantity"`
 	HasExtraNotes bool `json:"has_extra_notes"`
 	Exit          bool `json:"exit"`
 }
@@ -92,9 +91,9 @@ type generalChatResult struct {
 }
 
 type eventInfo struct {
-	Id           int64  `json:"id"`
-	Name         string `json:"name"`
-	NeedQuantity int    `json:"needQuantity"`
+	Id        int64  `json:"id"`
+	Name      string `json:"name"`
+	EventType string `json:"eventType"`
 }
 
 // VoiceService 语音服务核心实现：

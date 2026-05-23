@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"hello/internal/model/entity"
+	"hello/internal/services/device"
 
 	"github.com/gogf/gf/v2/os/glog"
 )
@@ -22,7 +23,7 @@ type deepSeekUnifiedIntent struct {
 	ActionName    string `json:"action_name"`
 	EventName     string `json:"event_name"`
 	ExtraEvent    string `json:"extra_event_name"`
-	NeedQuantity  bool   `json:"need_quantity"`
+	EventType     string `json:"event_type"`
 	Quantity      int    `json:"quantity"`
 	Reply         string `json:"reply"`
 	NeedUserReply bool   `json:"need_user_reply"`
@@ -30,6 +31,19 @@ type deepSeekUnifiedIntent struct {
 }
 
 // historyRowEventName 写入 history.event_name：始终用事件主档标准名；displayHint 为模型/用户说法或 extra 命中词，仅作主档名为空时的回退。
+// mergeDeepSeekEventTypeJSON 从模型 JSON 读取 event_type（蛇形字段），写入 entity.Event。
+func mergeDeepSeekEventTypeJSON(trimmed string, ev *entity.Event) {
+	if ev == nil || trimmed == "" {
+		return
+	}
+	var aux struct {
+		EventType string `json:"event_type"`
+	}
+	if err := json.Unmarshal([]byte(trimmed), &aux); err == nil && strings.TrimSpace(aux.EventType) != "" {
+		ev.EventType = aux.EventType
+	}
+}
+
 func historyRowEventName(ev entity.Event, displayHint string) string {
 	if n := strings.TrimSpace(ev.Name); n != "" {
 		return n
@@ -338,7 +352,7 @@ func (s *VoiceService) callDeepSeekUnifiedIntent(ctx context.Context, deviceNo, 
   "action_name":"动作展示名",
   "event_name":"事件名(可空)",
   "extra_event_name":"事件别名(可空)",
-  "need_quantity":true/false,
+  "event_type":"number|time|one",
   "quantity":0,
   "reply":"给用户的回复(可空)",
   "need_user_reply":true/false
@@ -347,7 +361,8 @@ func (s *VoiceService) callDeepSeekUnifiedIntent(ctx context.Context, deviceNo, 
 1) 不要输出解释，不要markdown。
 2) 若是对话类，target_type=%s 并尽量给出 reply。
 3) quantity 无法确定时给 0。
-4) 当 target_type=%s 或 target_type=%s 时，你必须直接给出可播报给用户的最终 reply，不要输出“正在查询”这类中间态。`,
+4) 仅当需要新建事件名时填写 event_type：计数语义 number，持续计时 time，一次性记录 one；匹配已有事件名时不要填 event_type。
+5) 当 target_type=%s 或 target_type=%s 时，你必须直接给出可播报给用户的最终 reply，不要输出“正在查询”这类中间态。`,
 		ActionTargetTypeStart, ActionTargetTypeEnd, ActionTargetTypeOne, ActionTargetTypeExit, ActionTargetTypeSuggest, ActionTargetTypeSearch, ActionTargetTypeConversation,
 		ActionTargetTypeStart, ActionTargetTypeEnd, ActionTargetTypeOne, ActionTargetTypeExit, ActionTargetTypeSuggest, ActionTargetTypeSearch, ActionTargetTypeConversation,
 		ActionTargetTypeConversation, ActionTargetTypeSearch, ActionTargetTypeSuggest)
@@ -448,7 +463,7 @@ func (s *VoiceService) handleUnifiedIntentAction(ctx context.Context, deviceNo, 
 				quantity = q
 			}
 		}
-		if event.NeedQuantity > 0 && quantity <= 0 {
+		if strings.EqualFold(strings.TrimSpace(intent.EventType), device.EventTypeNumber) && quantity <= 0 {
 			return "请问 " + action.Name + " " + targetName + " 的数量是" + quantityKeyword, false, false, nil
 		}
 		eventNumber := int64(1)
@@ -497,7 +512,7 @@ func (s *VoiceService) resolveEventFromUnifiedIntent(ctx context.Context, normal
 	if target == "" {
 		target = needle
 	}
-	inserted, insErr := DeviceAdmin().InsertOrGetEventByNeedle(ctx, needle, intent.NeedQuantity)
+	inserted, insErr := DeviceAdmin().InsertOrGetEventByNeedle(ctx, needle, intent.EventType)
 	if insErr != nil {
 		return entity.Event{}, "", false
 	}
@@ -601,45 +616,29 @@ func (s *VoiceService) handleActionRecord(ctx context.Context, deviceNo string, 
 			// 打印日志命中事件
 			glog.Infof(ctx, "没有命中事件名, 请求deepSeek分析文案中的事件名,并落库后，再走命中事件流程,命中事件: %s", targetName)
 		}
-		if event.NeedQuantity > 0 {
-			quantity, ok := extractNumberFromText(normalizedTranscript)
-			if !ok || quantity <= 0 {
-				finalReply = "请问 " + action.Name + " " + targetName + " 的数量是" + quantityKeyword
-				finishTalk = false
-				return finalReply, false, finishTalk, nil
-			}
-			_, err = DeviceHistory().AddHistory(ctx, entity.History{
-				DeviceNo:    deviceNo,
-				EventId:     event.Id,
-				EventName:   historyRowEventName(event, targetName),
-				EventNumber: int64(quantity),
-				StartTime:   nowTime,
-				EndTime:     nowTime,
-				Remark:      normalizedTranscript,
-			})
-			if err != nil {
-				return "记录事件失败,请重试", false, true, err
-			}
-			finalReply = fmt.Sprintf("好的，已记录 %s %d", targetName, quantity)
-			finishTalk = true
-			return finalReply, false, finishTalk, nil
-		} else {
-			_, err = DeviceHistory().AddHistory(ctx, entity.History{
-				DeviceNo:    deviceNo,
-				EventId:     event.Id,
-				EventName:   historyRowEventName(event, targetName),
-				EventNumber: 1,
-				StartTime:   nowTime,
-				EndTime:     nowTime,
-				Remark:      normalizedTranscript,
-			})
-			if err != nil {
-				return "记录事件失败,请重试", false, true, err
-			}
-			finalReply = fmt.Sprintf("好的，已记录 %s", targetName)
-			finishTalk = true
-			return finalReply, false, finishTalk, nil
+		eventNumber := int64(1)
+		if quantity, ok := extractNumberFromText(normalizedTranscript); ok && quantity > 0 {
+			eventNumber = int64(quantity)
 		}
+		_, err = DeviceHistory().AddHistory(ctx, entity.History{
+			DeviceNo:    deviceNo,
+			EventId:     event.Id,
+			EventName:   historyRowEventName(event, targetName),
+			EventNumber: eventNumber,
+			StartTime:   nowTime,
+			EndTime:     nowTime,
+			Remark:      normalizedTranscript,
+		})
+		if err != nil {
+			return "记录事件失败,请重试", false, true, err
+		}
+		if eventNumber > 1 {
+			finalReply = fmt.Sprintf("好的，已记录 %s %d", targetName, eventNumber)
+		} else {
+			finalReply = fmt.Sprintf("好的，已记录 %s", targetName)
+		}
+		finishTalk = true
+		return finalReply, false, finishTalk, nil
 	case "suggest": //成长建议动作
 		reply, handleErr := s.callDeepSeekGrowthSuggestion(ctx, deviceNo)
 		if handleErr != nil {
@@ -916,7 +915,7 @@ func (s *VoiceService) handleIntentGeneral(ctx context.Context, deviceNo, transc
 func (s *VoiceService) callDeepSeekEntityExtract(ctx context.Context, deviceNo, transcript string) (entity.Event, string, error) {
 	out := entity.Event{}
 
-	// deepseek需要分析文本中是否有与原来事件列表中的名称相符的事件类型,如果有提取当前的事件名称并输出json:{"name":"原表中的事件名","extra_name":"当前事件名称"},否则并判断是否需要计数（1表示需要，0表示不需要）输出json:{"name":当前事件名,"extra_name":"","need_quantity":"0或1"}。如果无法确定事件名称，则输出：{\"name\":\"\",\"need_quantity\":\"0\"}"
+	// DeepSeek 分析事件名；新建事件时需输出 event_type（number|time|one）。
 	// 将数据库中的事件名称拼接起来,用逗号分隔,然后告诉deepseek,事件名称有:xxx,xxx,xxx
 	eventList := []entity.Event{}
 	eventList, _ = DeviceAdmin().ListEvents(ctx)
@@ -930,13 +929,14 @@ func (s *VoiceService) callDeepSeekEntityExtract(ctx context.Context, deviceNo, 
 
 特别规则：
 1. 扩展词从文本提取连续文案
-2. 吃奶事件：如无法区分母乳/配方奶，输出{"name":"","extraNames":"","need_quantity":"0"}
-3. 不是想记录事件:输出{"name":"","extraNames":"","need_quantity":"0"}
+2. 吃奶事件：如无法区分母乳/配方奶，输出{"name":"","extraNames":""}
+3. 不是想记录事件:输出{"name":"","extraNames":""}
 
 输出规则：
 1. 匹配事件列表 → {"name":"原事件名","extraNames":"扩展词"}
-2. 不匹配但可识别 → {"name":"新事件名","extraNames":"","need_quantity":"0或1"}
-3. 无法确定 → {"name":"","need_quantity":"0"}`, eventNamesStr)
+2. 不匹配但可识别新事件 → {"name":"新事件名","extraNames":"","event_type":"number|time|one"}
+   - 计数/数量语义 → number；持续开始结束 → time；一次性完成 → one
+3. 无法确定 → {"name":""}`, eventNamesStr)
 
 	prompt := fmt.Sprintf("输入=%s。按规则分析并输出JSON。", transcript)
 	// 你需要从事件列表中,查看是否有符合的事件类型,如果有则直接返回列表中的事件类型,如果没有则需要从文本中提取事件名称。
@@ -969,7 +969,8 @@ func (s *VoiceService) callDeepSeekEntityExtract(ctx context.Context, deviceNo, 
 
 	out.Name = name
 	out.ExtraNames = parsed.ExtraNames
-	out.NeedQuantity = parsed.NeedQuantity
+	mergeDeepSeekEventTypeJSON(trimmed, &parsed)
+	out.EventType = device.NormalizeEventType(parsed.EventType)
 	return DeviceAdmin().ApplyDeepSeekEventExtractPersistence(ctx, out)
 }
 

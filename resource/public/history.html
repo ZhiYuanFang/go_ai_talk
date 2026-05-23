@@ -356,9 +356,21 @@
             return dt.getFullYear() + '-' + pad2(dt.getMonth() + 1) + '-' + pad2(dt.getDate()) + ' ' + formatClock(dt);
         }
 
-        function rowEventNeedQuantity(eventId){
+        const EVENT_TYPE_LABELS = { number: '计数', time: '计时', one: '一次性' };
+
+        function normalizeEventType(t){
+            const s = String(t || '').trim().toLowerCase();
+            if(s === 'number' || s === 'time' || s === 'one') return s;
+            return 'time';
+        }
+
+        function eventTypeLabel(t){
+            return EVENT_TYPE_LABELS[normalizeEventType(t)] || '计时';
+        }
+
+        function rowEventType(eventId){
             const ev = eventOptions.find(e => String(e.id) === String(eventId));
-            return !!(ev && Number(ev.needQuantity || 0) > 0);
+            return normalizeEventType(ev && ev.eventType);
         }
 
         function escapeHtml(v){
@@ -551,11 +563,10 @@
             eventOptions.forEach(ev => {
                 const opt = document.createElement('option');
                 opt.value = String(ev.id);
-                const needQuantity = Number(ev.needQuantity || 0) > 0;
-                const suffix = [needQuantity ? '计数' : '计时'];
-                opt.textContent = String(ev.name || ('事件#'+ev.id)) + '（' + suffix.join('/') + '）';
+                const et = normalizeEventType(ev.eventType);
+                opt.textContent = String(ev.name || ('事件#'+ev.id)) + '（' + eventTypeLabel(et) + '）';
                 opt.setAttribute('data-name', String(ev.name || ''));
-                opt.setAttribute('data-need-quantity', needQuantity ? '1' : '0');
+                opt.setAttribute('data-event-type', et);
                 fEventSelect.appendChild(opt);
             });
             syncEventUnitAndNumberReadonly();
@@ -585,13 +596,15 @@
                 return;
             }
             rows.forEach(it => {
-                const needQty = rowEventNeedQuantity(it.eventId);
+                const et = rowEventType(it.eventId);
                 const start = parseDateTime(it.startTime);
                 const end = parseDateTime(it.endTime);
                 const hasEnd = Number(it.endTime || 0) !== 0;
                 let numberText;
-                if(needQty){
+                if(et === 'number'){
                     numberText = String(it.eventNumber ?? '').trim() || '-';
+                }else if(et === 'one'){
+                    numberText = '1次';
                 }else{
                     if(!start){
                         numberText = '-';
@@ -738,14 +751,19 @@
 
         async function submitHistoryModal(){
             const selected = fEventSelect.options[fEventSelect.selectedIndex];
-            const needQuantity = Number((selected && selected.getAttribute('data-need-quantity')) || 0) > 0;
+            const et = normalizeEventType(selected && selected.getAttribute('data-event-type'));
             const endTimeSec = fromDateTimeLocal(fEndTime.value);
-            const startTimeSec = needQuantity ? endTimeSec : fromDateTimeLocal(fStartTime.value);
+            let startTimeSec = fromDateTimeLocal(fStartTime.value);
+            if(et === 'number'){
+                startTimeSec = endTimeSec;
+            }else if(et === 'one'){
+                startTimeSec = endTimeSec;
+            }
             const payload = {
                 deviceNo,
                 eventId: Number(fEventSelect.value || 0),
                 eventName: String((fEventSelect.options[fEventSelect.selectedIndex] || {}).getAttribute('data-name') || '').trim(),
-                eventNumber: needQuantity ? Number(fEventNumber.value || 0) : 0,
+                eventNumber: et === 'number' ? Number(fEventNumber.value || 0) : (et === 'one' ? 1 : 0),
                 startTime: startTimeSec,
                 endTime: endTimeSec,
                 remark: String(fRemark.value || '').trim()
@@ -755,19 +773,24 @@
                 historyFormError.textContent = '请选择历史事件';
                 return;
             }
-            if(needQuantity && payload.endTime === 0){
+            if(et === 'number' && payload.endTime === 0){
                 historyFormError.style.display = 'block';
                 historyFormError.textContent = '计数事件请填写结束时间';
                 return;
             }
-            if(!needQuantity && payload.startTime === 0){
+            if(et === 'time' && payload.startTime === 0){
                 historyFormError.style.display = 'block';
                 historyFormError.textContent = '请完整填写必填项：历史事件、开始时间';
                 return;
             }
-            if(needQuantity && Number.isNaN(payload.eventNumber)){
+            if(et === 'one' && payload.endTime === 0){
                 historyFormError.style.display = 'block';
-                historyFormError.textContent = '需要计数的事件必须填写数量';
+                historyFormError.textContent = '一次性事件请填写记录时间';
+                return;
+            }
+            if(et === 'number' && Number.isNaN(payload.eventNumber)){
+                historyFormError.style.display = 'block';
+                historyFormError.textContent = '计数事件必须填写数量';
                 return;
             }
             if(payload.endTime !== 0 && payload.endTime < payload.startTime){
@@ -890,32 +913,35 @@
 
         function syncEventUnitAndNumberReadonly(){
             const selected = fEventSelect.options[fEventSelect.selectedIndex];
-            const needQuantity = Number((selected && selected.getAttribute('data-need-quantity')) || 0) > 0;
-            fEventNumberWrap.style.display = needQuantity ? '' : 'none';
-            fStartTimeWrap.style.display = needQuantity ? 'none' : '';
+            const et = normalizeEventType(selected && selected.getAttribute('data-event-type'));
+            const isNumber = et === 'number';
+            const isTime = et === 'time';
+            const isOne = et === 'one';
+            fEventNumberWrap.style.display = isNumber ? '' : 'none';
+            fStartTimeWrap.style.display = isTime ? '' : 'none';
             if(fEndTimeLabel){
-                if(needQuantity){
+                if(isNumber || isOne){
                     fEndTimeLabel.classList.add('required');
-                    if(fEndTimeHint){ fEndTimeHint.textContent = ''; }
+                    if(fEndTimeHint){ fEndTimeHint.textContent = isOne ? '（一次性记录时间）' : ''; }
                 }else{
                     fEndTimeLabel.classList.remove('required');
                     if(fEndTimeHint){ fEndTimeHint.textContent = '（可选，留空表示正在进行中）'; }
                 }
             }
-            if(needQuantity){
+            if(isNumber){
                 fEventNumber.placeholder = '例如 1';
                 fEventNumber.readOnly = false;
                 fEventNumber.disabled = false;
             }else{
-                fEventNumber.value = '';
+                fEventNumber.value = isOne ? '1' : '';
             }
             updateAutoTimePreview();
         }
 
         function updateAutoTimePreview(){
             const selected = fEventSelect.options[fEventSelect.selectedIndex];
-            const needQuantity = Number((selected && selected.getAttribute('data-need-quantity')) || 0) > 0;
-            if(needQuantity){
+            const et = normalizeEventType(selected && selected.getAttribute('data-event-type'));
+            if(et === 'number' || et === 'one'){
                 historyAutoTimePreview.style.display = 'none';
                 historyAutoTimePreview.textContent = '';
                 return;

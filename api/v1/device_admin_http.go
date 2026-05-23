@@ -43,7 +43,7 @@ type DeviceAdminEventListRes struct {
 // DeviceAdminEventAddReq 新增事件（实现为 multipart，见 device_admin_event.go，不在此 Bind）。
 type DeviceAdminEventAddReq struct {
 	Name         string `dc:"事件名称，表单字段 name"`
-	NeedQuantity int    `dc:"是否需要计数(0否1是)，表单 needQuantity"`
+	EventType    string `dc:"事件类型 number|time|one，表单 eventType"`
 	ExtraNames   string `dc:"事件扩展，表单 extraNames"`
 	Color        string `dc:"色值 #RGB/#RRGGBB，表单 color"`
 	Logo         string `dc:"可选，表单文件字段 logo"`
@@ -56,7 +56,7 @@ type DeviceAdminEventAddRes struct{}
 type DeviceAdminEventUpdateReq struct {
 	Id           int64  `dc:"事件ID，表单 id"`
 	Name         string `dc:"表单 name"`
-	NeedQuantity int    `dc:"表单 needQuantity"`
+	EventType    string `dc:"表单 eventType"`
 	ExtraNames   string `dc:"表单 extraNames"`
 	Color        string `dc:"表单 color"`
 	Logo         string `dc:"可选文件 logo"`

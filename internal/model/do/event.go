@@ -10,11 +10,11 @@ import (
 
 // Event is the golang structure of table event for DAO operations like Where/Data.
 type Event struct {
-	g.Meta       `orm:"table:event, do:true"`
-	Id           interface{} //
-	Name         interface{} // 吃奶/睡觉/尿/屎等
-	NeedQuantity interface{} // 是否需要计数1要
-	ExtraNames   interface{} // name的其它表达方式
-	Color        interface{} //
-	Logo         interface{} //
+	g.Meta     `orm:"table:event, do:true"`
+	Id         interface{} //
+	Name       interface{} // 吃奶/睡觉/尿/屎等
+	EventType  interface{} // 事件类型，number: 计数，time:计时，one:一次性
+	ExtraNames interface{} // name的其它表达方式
+	Color      interface{} //
+	Logo       interface{} //
 }

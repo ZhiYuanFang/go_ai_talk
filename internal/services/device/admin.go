@@ -136,15 +136,12 @@ func (s *service) InsertVoiceActionRecord(ctx context.Context, name, targetType 
 }
 
 // InsertOrGetEventByNeedle 统一意图路径下按名称插入事件并回读。
-func (s *service) InsertOrGetEventByNeedle(ctx context.Context, needle string, needQuantity bool) (entity.Event, error) {
+func (s *service) InsertOrGetEventByNeedle(ctx context.Context, needle string, eventType string) (entity.Event, error) {
 	needle = strings.TrimSpace(needle)
 	if needle == "" {
 		return entity.Event{}, errors.New("事件名为空")
 	}
-	created := entity.Event{Name: needle}
-	if needQuantity {
-		created.NeedQuantity = 1
-	}
+	created := entity.Event{Name: needle, EventType: NormalizeEventType(eventType)}
 	if _, insErr := dao.Event.Ctx(ctx).Insert(&created); insErr != nil {
 		// 并发或重复名称可能导致唯一约束失败，后续回读仍可拿到已有行。
 		_ = insErr
@@ -180,7 +177,6 @@ func (s *service) ApplyDeepSeekEventExtractPersistence(ctx context.Context, out 
 	}
 	targetName := strings.TrimSpace(out.ExtraNames)
 	if oldEvent.Id > 0 {
-		out.NeedQuantity = oldEvent.NeedQuantity
 		if strings.TrimSpace(out.ExtraNames) == "" {
 			return out, out.Name, errors.New("事件名称已存在")
 		}
@@ -210,6 +206,7 @@ func (s *service) ApplyDeepSeekEventExtractPersistence(ctx context.Context, out 
 		return out, targetName, nil
 	}
 	targetName = out.Name
+	out.EventType = NormalizeEventType(out.EventType)
 	if _, err := dao.Event.Ctx(ctx).Insert(&out); err != nil {
 		return entity.Event{}, "", err
 	}
@@ -245,7 +242,7 @@ func (s *service) List(ctx context.Context) ([]entity.User, error) {
 func eventListFields() []interface{} {
 	c := dao.Event.Columns()
 	return []interface{}{
-		c.Id, c.Name, c.NeedQuantity, c.ExtraNames, c.Logo, c.Color,
+		c.Id, c.Name, c.EventType, c.ExtraNames, c.Logo, c.Color,
 	}
 }
 
@@ -255,7 +252,7 @@ func normalizeEventRows(rows []entity.Event) {
 	}
 }
 
-func (s *service) AddEvent(ctx context.Context, name string, needQuantity int, extraNames, color, logoPath string) (int64, error) {
+func (s *service) AddEvent(ctx context.Context, name string, eventType string, extraNames, color, logoPath string) (int64, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return 0, errors.New("事件名称不能为空")
@@ -263,9 +260,10 @@ func (s *service) AddEvent(ctx context.Context, name string, needQuantity int, e
 	if err := ValidateEventColor(color); err != nil {
 		return 0, err
 	}
-	if needQuantity > 0 {
-		needQuantity = 1
+	if err := ValidateEventType(eventType); err != nil {
+		return 0, err
 	}
+	eventType = NormalizeEventType(eventType)
 	count, err := dao.Event.Ctx(ctx).Where(dao.Event.Columns().Name, name).Count()
 	if err != nil {
 		return 0, err
@@ -275,9 +273,9 @@ func (s *service) AddEvent(ctx context.Context, name string, needQuantity int, e
 	}
 	logoPath = assetpath.Normalize(strings.TrimSpace(logoPath))
 	result, err := dao.Event.Ctx(ctx).Data(g.Map{
-		dao.Event.Columns().Name:         name,
-		dao.Event.Columns().NeedQuantity: needQuantity,
-		dao.Event.Columns().ExtraNames:   strings.TrimSpace(extraNames),
+		dao.Event.Columns().Name:       name,
+		dao.Event.Columns().EventType:  eventType,
+		dao.Event.Columns().ExtraNames: strings.TrimSpace(extraNames),
 		dao.Event.Columns().Color:        strings.TrimSpace(color),
 		dao.Event.Columns().Logo:         logoPath,
 	}).Insert()
@@ -315,7 +313,7 @@ func (s *service) ListEvents(ctx context.Context) ([]entity.Event, error) {
 	return rows, err
 }
 
-func (s *service) UpdateEvent(ctx context.Context, id int64, name string, needQuantity int, extraNames, color, logoPath string) error {
+func (s *service) UpdateEvent(ctx context.Context, id int64, name string, eventType string, extraNames, color, logoPath string) error {
 	if id <= 0 {
 		return errors.New("事件ID无效")
 	}
@@ -326,9 +324,10 @@ func (s *service) UpdateEvent(ctx context.Context, id int64, name string, needQu
 	if err := ValidateEventColor(color); err != nil {
 		return err
 	}
-	if needQuantity > 0 {
-		needQuantity = 1
+	if err := ValidateEventType(eventType); err != nil {
+		return err
 	}
+	eventType = NormalizeEventType(eventType)
 	idCount, err := dao.Event.Ctx(ctx).Where(dao.Event.Columns().Id, id).Count()
 	if err != nil {
 		return err
@@ -347,9 +346,9 @@ func (s *service) UpdateEvent(ctx context.Context, id int64, name string, needQu
 		return ErrEventExists
 	}
 	data := g.Map{
-		dao.Event.Columns().Name:         name,
-		dao.Event.Columns().NeedQuantity: needQuantity,
-		dao.Event.Columns().ExtraNames:   strings.TrimSpace(extraNames),
+		dao.Event.Columns().Name:       name,
+		dao.Event.Columns().EventType:  eventType,
+		dao.Event.Columns().ExtraNames: strings.TrimSpace(extraNames),
 		dao.Event.Columns().Color:        strings.TrimSpace(color),
 	}
 	if lp := assetpath.Normalize(strings.TrimSpace(logoPath)); lp != "" {

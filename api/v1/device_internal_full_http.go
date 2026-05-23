@@ -61,7 +61,7 @@ type DeviceInternalUserListRes struct {
 type DeviceInternalEventAddReq struct {
 	g.Meta       `path:"/device/internal/api/event/add" method:"post" tags:"device" summary:"内部-新增事件"`
 	Name         string `json:"name"`
-	NeedQuantity int    `json:"needQuantity"`
+	EventType    string `json:"eventType"`
 	ExtraNames   string `json:"extraNames"`
 }
 
@@ -71,7 +71,7 @@ type DeviceInternalEventUpdateReq struct {
 	g.Meta       `path:"/device/internal/api/event/update" method:"post" tags:"device" summary:"内部-更新事件"`
 	Id           int64  `json:"id"`
 	Name         string `json:"name"`
-	NeedQuantity int    `json:"needQuantity"`
+	EventType    string `json:"eventType"`
 	ExtraNames   string `json:"extraNames"`
 }
 
@@ -131,7 +131,7 @@ type DeviceInternalVoiceActionRes struct{}
 type DeviceInternalVoiceEventNeedleReq struct {
 	g.Meta         `path:"/device/internal/api/voice/event/needle" method:"post" tags:"device" summary:"内部-语音按名插入事件"`
 	Needle         string `json:"needle"`
-	NeedQuantity   bool   `json:"needQuantity"`
+	EventType      string `json:"eventType"`
 }
 
 type DeviceInternalVoiceEventNeedleRes struct {
@@ -142,7 +142,7 @@ type DeviceInternalVoiceEventDeepSeekReq struct {
 	g.Meta         `path:"/device/internal/api/voice/event/deepseek" method:"post" tags:"device" summary:"内部-DeepSeek事件落库"`
 	Name           string `json:"name"`
 	ExtraNames     string `json:"extraNames"`
-	NeedQuantity   int    `json:"needQuantity"`
+	EventType      string `json:"eventType"`
 }
 
 type DeviceInternalVoiceEventDeepSeekRes struct {
