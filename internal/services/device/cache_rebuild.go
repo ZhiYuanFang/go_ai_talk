@@ -6,7 +6,16 @@ import (
 
 	"hello/internal/dao"
 	"hello/internal/model/entity"
+
+	"github.com/gogf/gf/v2/os/glog"
 )
+
+// refreshEventOptionsCacheAfterMutate 事件表变更后从 DB 重建 Redis 事件字典；勿用 ListEvents，避免读旧缓存。
+func refreshEventOptionsCacheAfterMutate(ctx context.Context) {
+	if err := RebuildEventCache(ctx); err != nil {
+		glog.Warningf(ctx, "[device-admin] 重建事件 Redis 缓存失败 err=%v", err)
+	}
+}
 
 // RebuildEventCache 重建事件缓存快照。
 func RebuildEventCache(ctx context.Context) error {

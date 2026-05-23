@@ -154,9 +154,7 @@ func (s *service) InsertOrGetEventByNeedle(ctx context.Context, needle string, n
 		"version":     time.Now().UnixNano(),
 		"occurred_at": time.Now().Format(time.RFC3339Nano),
 	})
-	if rows, listErr := s.ListEvents(ctx); listErr == nil {
-		_ = deviceCache.setEventOptions(ctx, rows)
-	}
+	refreshEventOptionsCacheAfterMutate(ctx)
 	var inserted entity.Event
 	err := dao.Event.Ctx(ctx).Where(dao.Event.Columns().Name, needle).OrderDesc(dao.Event.Columns().Id).Limit(1).Scan(&inserted)
 	return inserted, err
@@ -208,9 +206,7 @@ func (s *service) ApplyDeepSeekEventExtractPersistence(ctx context.Context, out 
 			"version":     time.Now().UnixNano(),
 			"occurred_at": time.Now().Format(time.RFC3339Nano),
 		})
-		if rows, listErr := s.ListEvents(ctx); listErr == nil {
-			_ = deviceCache.setEventOptions(ctx, rows)
-		}
+		refreshEventOptionsCacheAfterMutate(ctx)
 		return out, targetName, nil
 	}
 	targetName = out.Name
@@ -222,9 +218,7 @@ func (s *service) ApplyDeepSeekEventExtractPersistence(ctx context.Context, out 
 		"version":     time.Now().UnixNano(),
 		"occurred_at": time.Now().Format(time.RFC3339Nano),
 	})
-	if rows, listErr := s.ListEvents(ctx); listErr == nil {
-		_ = deviceCache.setEventOptions(ctx, rows)
-	}
+	refreshEventOptionsCacheAfterMutate(ctx)
 	return out, targetName, nil
 }
 
@@ -301,10 +295,8 @@ func (s *service) AddEvent(ctx context.Context, name string, needQuantity int, e
 			"version":     time.Now().UnixNano(),
 			"occurred_at": time.Now().Format(time.RFC3339Nano),
 		})
-		// 事件元数据有变更时，刷新缓存快照避免后续读链路回源。
-		if rows, listErr := s.ListEvents(ctx); listErr == nil {
-			_ = deviceCache.setEventOptions(ctx, rows)
-		}
+		// 事件元数据有变更时，从 DB 重建缓存快照（勿经 ListEvents，避免写回旧缓存）。
+		refreshEventOptionsCacheAfterMutate(ctx)
 	}
 	return id, err
 }
@@ -376,9 +368,7 @@ func (s *service) UpdateEvent(ctx context.Context, id int64, name string, needQu
 			"version":     time.Now().UnixNano(),
 			"occurred_at": time.Now().Format(time.RFC3339Nano),
 		})
-		if rows, listErr := s.ListEvents(ctx); listErr == nil {
-			_ = deviceCache.setEventOptions(ctx, rows)
-		}
+		refreshEventOptionsCacheAfterMutate(ctx)
 	}
 	return err
 }
@@ -401,9 +391,7 @@ func (s *service) DeleteEvent(ctx context.Context, id int64) error {
 			"version":     time.Now().UnixNano(),
 			"occurred_at": time.Now().Format(time.RFC3339Nano),
 		})
-		if rows, listErr := s.ListEvents(ctx); listErr == nil {
-			_ = deviceCache.setEventOptions(ctx, rows)
-		}
+		refreshEventOptionsCacheAfterMutate(ctx)
 	}
 	return err
 }
