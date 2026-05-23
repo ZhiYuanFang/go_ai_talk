@@ -33,6 +33,14 @@
 		.event-logo-cell img{display:block;max-height:40px;max-width:56px;border-radius:4px}
 		.event-color-swatch{display:inline-block;width:22px;height:22px;border:1px solid #cbd5e1;border-radius:4px;vertical-align:middle;margin-right:6px}
 		.event-row-busy{opacity:.55;pointer-events:none}
+		.event-color-popover{position:fixed;z-index:200;display:none;background:#fff;border:1px solid #d0d7de;border-radius:10px;padding:12px 14px;box-shadow:0 8px 24px rgba(0,0,0,.14);min-width:220px}
+		.event-color-popover.show{display:block}
+		.event-color-popover-title{font-size:13px;font-weight:600;margin-bottom:8px;color:#334155}
+		.event-color-popover-row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+		.event-color-popover-actions{display:flex;gap:8px;justify-content:flex-end}
+		.event-form-visual{margin-top:12px;padding:12px;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc}
+		.event-form-logo-preview img{display:block;max-height:64px;max-width:96px;border-radius:6px;border:1px solid #e2e8f0}
+		.event-form-logo-placeholder{display:inline-flex;align-items:center;justify-content:center;min-width:72px;min-height:48px;padding:6px 10px;border:1px dashed #cbd5e1;border-radius:6px;font-size:12px;color:#64748b;background:#fff}
 	</style>
 </head>
 <body>
@@ -84,7 +92,17 @@
 		<div id="eventMsg" class="msg"></div>
 		<p class="msg" style="color:#64748b;margin-top:0;">点击列表中的 <strong>Logo</strong> 或 <strong>色调</strong> 可直接修改；图片地址与当前页同源。</p>
 		<input type="file" id="eventInlineLogoFile" accept="image/png,image/jpeg,image/webp" style="display:none" />
-		<input type="color" id="eventInlineColor" value="#4A90D9" style="display:none" />
+		<div id="eventColorPopover" class="event-color-popover" aria-hidden="true">
+			<div class="event-color-popover-title">修改色调</div>
+			<div class="event-color-popover-row">
+				<input type="color" id="eventInlineColorPick" value="#4A90D9" title="选择颜色" />
+				<input type="text" id="eventInlineColorHex" maxlength="7" style="width:88px;font-family:monospace;" placeholder="#RRGGBB" />
+			</div>
+			<div class="event-color-popover-actions">
+				<button type="button" id="eventColorConfirmBtn">确定</button>
+				<button type="button" id="eventColorCancelBtn" style="background:#6b7280;">取消</button>
+			</div>
+		</div>
 		<div class="table-wrap">
 			<table>
 				<thead>
@@ -163,11 +181,29 @@
 				<div style="font-size:13px;color:#444;margin-bottom:6px;">事件扩展（别名等，可选）</div>
 				<textarea id="eventFormExtraNames" placeholder="多个别名可用逗号、顿号等分隔" style="width:100%;box-sizing:border-box;"></textarea>
 			</div>
-			<div class="row" style="margin-top:10px;align-items:center;gap:12px;">
-				<label style="font-size:13px;color:#444;">色调
+			<div id="eventFormVisual" class="event-form-visual">
+				<div style="font-size:13px;color:#444;margin-bottom:8px;font-weight:600;">当前 Logo 与色调</div>
+				<div class="row" style="align-items:flex-start;gap:20px;">
+					<div>
+						<div style="font-size:12px;color:#666;margin-bottom:6px;">Logo</div>
+						<div id="eventFormLogoPreview" class="event-form-logo-preview">
+							<span class="event-form-logo-placeholder">暂无</span>
+						</div>
+					</div>
+					<div>
+						<div style="font-size:12px;color:#666;margin-bottom:6px;">色调</div>
+						<div style="display:flex;align-items:center;gap:8px;">
+							<span id="eventFormColorSwatch" class="event-color-swatch" style="width:28px;height:28px;"></span>
+							<span id="eventFormColorHex" style="font-family:monospace;font-size:13px;">#4A90D9</span>
+						</div>
+					</div>
+				</div>
+			</div>
+			<div class="row" style="margin-top:12px;align-items:center;gap:12px;">
+				<label style="font-size:13px;color:#444;">修改色调
 					<input id="eventFormColor" type="color" value="#4A90D9" style="vertical-align:middle;margin-left:6px;" />
 				</label>
-				<label style="font-size:13px;color:#444;">Logo
+				<label style="font-size:13px;color:#444;">更换 Logo
 					<input id="eventFormLogo" type="file" accept="image/png,image/jpeg,image/webp" style="max-width:220px;" />
 				</label>
 			</div>
@@ -220,7 +256,15 @@ const eventFormNeedQuantity = document.getElementById('eventFormNeedQuantity');
 const eventFormExtraNames = document.getElementById('eventFormExtraNames');
 const eventFormColor = document.getElementById('eventFormColor');
 const eventFormLogo = document.getElementById('eventFormLogo');
+const eventFormLogoPreview = document.getElementById('eventFormLogoPreview');
+const eventFormColorSwatch = document.getElementById('eventFormColorSwatch');
+const eventFormColorHex = document.getElementById('eventFormColorHex');
 const eventFormMsg = document.getElementById('eventFormMsg');
+const eventColorPopover = document.getElementById('eventColorPopover');
+const eventInlineColorPick = document.getElementById('eventInlineColorPick');
+const eventInlineColorHex = document.getElementById('eventInlineColorHex');
+const eventColorConfirmBtn = document.getElementById('eventColorConfirmBtn');
+const eventColorCancelBtn = document.getElementById('eventColorCancelBtn');
 const eventFormSubmitBtn = document.getElementById('eventFormSubmitBtn');
 const eventFormCancelBtn = document.getElementById('eventFormCancelBtn');
 const actionModal = document.getElementById('actionModal');
@@ -312,6 +356,83 @@ function eventColorCss(c){
 
 let eventRowBusyId = 0;
 let pendingInlineEventRow = null;
+let eventFormLogoObjectUrl = '';
+let eventColorPopoverAnchor = null;
+
+function revokeEventFormLogoObjectUrl(){
+	if(eventFormLogoObjectUrl){
+		try { URL.revokeObjectURL(eventFormLogoObjectUrl); } catch(_){}
+		eventFormLogoObjectUrl = '';
+	}
+}
+
+/** 弹框内展示当前行的 Logo 预览与色调（编辑时来自库；新增时为默认/占位） */
+function updateEventFormVisual(row){
+	const color = normalizeEventColor(row && row.color);
+	eventFormColor.value = color;
+	eventFormColorSwatch.style.background = eventColorCss(row && row.color);
+	eventFormColorHex.textContent = (row && String(row.color||'').trim()) ? normalizeEventColor(row.color) : '（未设置，将使用默认色）';
+	revokeEventFormLogoObjectUrl();
+	const logoSrc = row ? eventLogoUrl(row.logo) : '';
+	eventFormLogoPreview.innerHTML = '';
+	if(logoSrc){
+		const img = document.createElement('img');
+		img.alt = 'Logo';
+		img.src = logoSrc;
+		eventFormLogoPreview.appendChild(img);
+	}else{
+		const ph = document.createElement('span');
+		ph.className = 'event-form-logo-placeholder';
+		ph.textContent = row ? '暂无 Logo' : '新增后可上传';
+		eventFormLogoPreview.appendChild(ph);
+	}
+}
+
+function syncEventFormColorFromPicker(){
+	const c = normalizeEventColor(eventFormColor.value);
+	eventFormColorSwatch.style.background = c;
+	eventFormColorHex.textContent = c;
+}
+
+function closeEventColorPopover(){
+	eventColorPopover.classList.remove('show');
+	eventColorPopover.setAttribute('aria-hidden', 'true');
+	pendingInlineEventRow = null;
+	eventColorPopoverAnchor = null;
+}
+
+function positionEventColorPopover(anchorEl){
+	if(!anchorEl) return;
+	const rect = anchorEl.getBoundingClientRect();
+	const pop = eventColorPopover;
+	const margin = 8;
+	let top = rect.bottom + margin;
+	let left = rect.left;
+	const popW = pop.offsetWidth || 240;
+	const popH = pop.offsetHeight || 120;
+	if(left + popW > window.innerWidth - margin){
+		left = Math.max(margin, window.innerWidth - popW - margin);
+	}
+	if(top + popH > window.innerHeight - margin){
+		top = Math.max(margin, rect.top - popH - margin);
+	}
+	pop.style.top = top + 'px';
+	pop.style.left = left + 'px';
+}
+
+function openEventColorPopover(anchorTd, row){
+	closeEventColorPopover();
+	eventColorPopoverAnchor = anchorTd;
+	pendingInlineEventRow = row;
+	const c = normalizeEventColor(row.color);
+	eventInlineColorPick.value = c;
+	eventInlineColorHex.value = c;
+	eventColorPopover.classList.add('show');
+	eventColorPopover.setAttribute('aria-hidden', 'false');
+	positionEventColorPopover(anchorTd);
+	eventColorConfirmBtn.disabled = !!eventRowBusyId;
+	eventColorCancelBtn.disabled = !!eventRowBusyId;
+}
 
 async function submitEventRowUpdate(row, opts){
 	if(!row || !row.id) return;
@@ -432,6 +553,7 @@ async function loadEventList(){
 			tdLogo.title = '点击更换 Logo';
 			tdLogo.addEventListener('click', () => {
 				if(eventRowBusyId) return;
+				closeEventColorPopover();
 				pendingInlineEventRow = row;
 				const fin = document.getElementById('eventInlineLogoFile');
 				fin.value = '';
@@ -450,10 +572,7 @@ async function loadEventList(){
 			tdColor.appendChild(colorText);
 			tdColor.addEventListener('click', () => {
 				if(eventRowBusyId) return;
-				pendingInlineEventRow = row;
-				const cin = document.getElementById('eventInlineColor');
-				cin.value = normalizeEventColor(row.color);
-				cin.click();
+				openEventColorPopover(tdColor, row);
 			});
 
 			const tdNeed = document.createElement('td');
@@ -474,9 +593,9 @@ async function loadEventList(){
 				eventFormName.value = row.name;
 				eventFormNeedQuantity.checked = row.needQuantity;
 				eventFormExtraNames.value = row.extraNames;
-				eventFormColor.value = normalizeEventColor(row.color);
 				eventFormLogo.value = '';
 				eventFormMsg.textContent = '';
+				updateEventFormVisual(row);
 				eventModal.classList.add('show');
 			});
 			const btnDel = document.createElement('button');
@@ -512,7 +631,6 @@ async function loadEventList(){
 
 (function initEventInlineEditors(){
 	const fin = document.getElementById('eventInlineLogoFile');
-	const cin = document.getElementById('eventInlineColor');
 	if(fin){
 		fin.addEventListener('change', async function(){
 			const row = pendingInlineEventRow;
@@ -525,19 +643,77 @@ async function loadEventList(){
 			}
 		});
 	}
-	if(cin){
-		cin.addEventListener('change', async function(){
+	function syncInlineColorHexFromPick(){
+		eventInlineColorHex.value = normalizeEventColor(eventInlineColorPick.value);
+	}
+	function syncInlineColorPickFromHex(){
+		const v = String(eventInlineColorHex.value || '').trim();
+		if(/^#[0-9a-f]{6}$/i.test(v)){
+			eventInlineColorPick.value = v;
+		}
+	}
+	if(eventInlineColorPick){
+		eventInlineColorPick.addEventListener('input', syncInlineColorHexFromPick);
+		eventInlineColorPick.addEventListener('change', syncInlineColorHexFromPick);
+	}
+	if(eventInlineColorHex){
+		eventInlineColorHex.addEventListener('change', syncInlineColorPickFromHex);
+		eventInlineColorHex.addEventListener('blur', syncInlineColorPickFromHex);
+	}
+	if(eventColorConfirmBtn){
+		eventColorConfirmBtn.addEventListener('click', async () => {
 			const row = pendingInlineEventRow;
-			pendingInlineEventRow = null;
-			if(!row) return;
+			if(!row || eventRowBusyId) return;
+			syncInlineColorPickFromHex();
+			const color = normalizeEventColor(eventInlineColorPick.value);
+			eventColorConfirmBtn.disabled = true;
+			eventColorCancelBtn.disabled = true;
 			try {
-				await submitEventRowUpdate(row, { color: this.value });
+				await submitEventRowUpdate(row, { color });
+				closeEventColorPopover();
+				setMsg(eventMsg, '色调已更新', true);
 			} catch (e) {
 				setMsg(eventMsg, e.message || '更新色调失败');
+			} finally {
+				eventColorConfirmBtn.disabled = !!eventRowBusyId;
+				eventColorCancelBtn.disabled = !!eventRowBusyId;
 			}
 		});
 	}
+	if(eventColorCancelBtn){
+		eventColorCancelBtn.addEventListener('click', () => closeEventColorPopover());
+	}
+	document.addEventListener('click', (e) => {
+		if(!eventColorPopover.classList.contains('show')) return;
+		if(eventColorPopover.contains(e.target)) return;
+		const t = e.target;
+		if(t && t.closest && t.closest('.event-color-cell')) return;
+		closeEventColorPopover();
+	});
+	window.addEventListener('resize', () => {
+		if(!eventColorPopover.classList.contains('show') || !eventColorPopoverAnchor) return;
+		positionEventColorPopover(eventColorPopoverAnchor);
+	});
 })();
+
+if(eventFormColor){
+	eventFormColor.addEventListener('input', syncEventFormColorFromPicker);
+	eventFormColor.addEventListener('change', syncEventFormColorFromPicker);
+}
+if(eventFormLogo){
+	eventFormLogo.addEventListener('change', function(){
+		revokeEventFormLogoObjectUrl();
+		if(!this.files || !this.files[0]){
+			return;
+		}
+		eventFormLogoObjectUrl = URL.createObjectURL(this.files[0]);
+		eventFormLogoPreview.innerHTML = '';
+		const img = document.createElement('img');
+		img.alt = '新 Logo 预览';
+		img.src = eventFormLogoObjectUrl;
+		eventFormLogoPreview.appendChild(img);
+	});
+}
 
 async function loadQaList(){
 	const data = asListPayload(await api('/device/admin/api/qa/list'));
@@ -651,13 +827,14 @@ document.getElementById('addEventBtn').addEventListener('click', async () => {
 	eventFormName.value = '';
 	eventFormNeedQuantity.checked = false;
 	eventFormExtraNames.value = '';
-	eventFormColor.value = '#4A90D9';
 	eventFormLogo.value = '';
 	eventFormMsg.textContent = '';
+	updateEventFormVisual(null);
 	eventModal.classList.add('show');
 });
 
 eventFormCancelBtn.addEventListener('click', () => {
+	revokeEventFormLogoObjectUrl();
 	eventModal.classList.remove('show');
 });
 
@@ -686,6 +863,7 @@ eventFormSubmitBtn.addEventListener('click', async () => {
 			await apiForm('/device/admin/api/event/add', fd);
 			setMsg(eventMsg, '新增成功', true);
 		}
+		revokeEventFormLogoObjectUrl();
 		eventModal.classList.remove('show');
 		await loadEventList();
 	} catch (e) {
@@ -699,6 +877,7 @@ eventFormSubmitBtn.addEventListener('click', async () => {
 
 eventModal.addEventListener('click', (e) => {
 	if(e.target === eventModal){
+		revokeEventFormLogoObjectUrl();
 		eventModal.classList.remove('show');
 	}
 });
