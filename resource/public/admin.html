@@ -123,9 +123,10 @@
 
 	<div class="card hidden" id="qaCard">
 		<div class="card-head">
-			<h3>历史记录（问答库）</h3>
+			<h3>问答库</h3>
 			<div class="card-actions">
 				<button id="refreshQaBtn" type="button">刷新</button>
+				<a id="qaMoreLink" class="link-btn hidden" href="/device/admin/qa-records">展开更多</a>
 			</div>
 		</div>
 		<div id="qaMsg" class="msg"></div>
@@ -503,6 +504,15 @@ function asListPayload(d){
 	return [];
 }
 
+/** 分页列表接口 data 为 { list, total, page, pageSize } */
+function asPagedListPayload(d){
+	const list = asListPayload(d);
+	const total = d && typeof d.total === 'number' ? d.total : list.length;
+	const page = d && typeof d.page === 'number' ? d.page : 1;
+	const pageSize = d && typeof d.pageSize === 'number' ? d.pageSize : list.length;
+	return { list, total, page, pageSize };
+}
+
 function formatUnixLocal(sec){
 	const n = Number(sec);
 	if(!n) return '';
@@ -729,10 +739,10 @@ if(eventFormLogo){
 }
 
 async function loadQaList(){
-	const data = asListPayload(await api('/device/admin/api/qa/list'));
+	const paged = asPagedListPayload(await api('/device/admin/api/qa/list?page=1&pageSize=10'));
 	const tbody = document.getElementById('qaTbody');
 	tbody.innerHTML = '';
-	(data || []).forEach(it => {
+	(paged.list || []).forEach(it => {
 		const tr = document.createElement('tr');
 		tr.innerHTML = '<td>'+ escapeHtml(it.id||'') +'</td>' +
 			'<td class="wrapcell">'+ escapeHtml(it.question||'') +'</td>' +
@@ -740,6 +750,14 @@ async function loadQaList(){
 			'<td>'+ escapeHtml(it.attack ?? '') +'</td>';
 		tbody.appendChild(tr);
 	});
+	const moreLink = document.getElementById('qaMoreLink');
+	if(moreLink){
+		if(paged.total > 10){
+			moreLink.classList.remove('hidden');
+		} else {
+			moreLink.classList.add('hidden');
+		}
+	}
 }
 
 async function loadActionList(){

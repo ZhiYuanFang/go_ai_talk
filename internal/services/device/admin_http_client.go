@@ -177,10 +177,13 @@ func (c *httpDeviceAdminClient) DeleteEvent(ctx context.Context, id int64) error
 	}, nil)
 }
 
-func (c *httpDeviceAdminClient) ListQA(ctx context.Context) ([]entity.Qa, error) {
-	// qa 权威在 voice 库；若再请求 device 会形成 device↔voice 循环，故直连 voice 内部接口。
+func (c *httpDeviceAdminClient) ListQAPage(ctx context.Context, page, pageSize int) (contracts.QaPageResult, error) {
 	t := contracts.ResolveHTTPTargets()
-	return fetchQaListFromVoiceWithClient(ctx, c.client, t.VoiceInternalQaListURL())
+	return fetchQaPageFromVoiceWithClient(ctx, c.client, t.VoiceInternalQaListURL(), page, pageSize)
+}
+
+func (c *httpDeviceAdminClient) DeleteQA(ctx context.Context, id int64) error {
+	return deleteQaFromVoiceHTTP(ctx, id)
 }
 
 func (c *httpDeviceAdminClient) ListActionsForAdmin(ctx context.Context) ([]sharedtypes.AdminActionItem, error) {

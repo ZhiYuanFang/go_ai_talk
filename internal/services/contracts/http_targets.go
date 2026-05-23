@@ -113,6 +113,11 @@ func (t HTTPTargets) VoiceInternalQaListPath() string {
 	return "/voice/internal/api/qa/list"
 }
 
+// VoiceInternalQaDeletePath 语音域内部删除问答库行。
+func (t HTTPTargets) VoiceInternalQaDeletePath() string {
+	return "/voice/internal/api/qa/delete"
+}
+
 // WorkerOutboxEnqueuePath worker 内部 domain_outbox 入队（依赖网络隔离）。
 func (t HTTPTargets) WorkerOutboxEnqueuePath() string {
 	return "/worker/internal/api/outbox/enqueue"
@@ -169,6 +174,11 @@ func (t HTTPTargets) VoiceSuggestDeleteURL() string {
 // VoiceInternalQaListURL 语音域内部问答库列表完整 URL。
 func (t HTTPTargets) VoiceInternalQaListURL() string {
 	return t.VoiceBaseURL + t.VoiceInternalQaListPath()
+}
+
+// VoiceInternalQaDeleteURL 语音域内部删除问答库完整 URL。
+func (t HTTPTargets) VoiceInternalQaDeleteURL() string {
+	return t.VoiceBaseURL + t.VoiceInternalQaDeletePath()
 }
 
 func normalizeBaseURL(raw string) string {

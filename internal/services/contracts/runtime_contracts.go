@@ -63,7 +63,8 @@ type DeviceAdminContract interface {
 	ListEvents(ctx context.Context) ([]entity.Event, error)
 	UpdateEvent(ctx context.Context, id int64, name string, eventType string, extraNames, color, logoPath string) error
 	DeleteEvent(ctx context.Context, id int64) error
-	ListQA(ctx context.Context) ([]entity.Qa, error)
+	ListQAPage(ctx context.Context, page, pageSize int) (QaPageResult, error)
+	DeleteQA(ctx context.Context, id int64) error
 	ListActionsForAdmin(ctx context.Context) ([]sharedtypes.AdminActionItem, error)
 	UpdateAction(ctx context.Context, id int64, name, targetType string) error
 	DeleteAction(ctx context.Context, id int64) error
@@ -81,6 +82,14 @@ type DeviceAdminContract interface {
 // 该结构只服务于外部历史列表接口，避免影响内部全量读取场景。
 type HistoryPageResult struct {
 	List     []entity.History
+	Total    int
+	Page     int
+	PageSize int
+}
+
+// QaPageResult 问答库分页列表（qa 表权威在 voice 库）。
+type QaPageResult struct {
+	List     []entity.Qa
 	Total    int
 	Page     int
 	PageSize int

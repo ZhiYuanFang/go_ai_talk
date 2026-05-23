@@ -74,15 +74,29 @@ type DeviceAdminEventDeleteReq struct {
 // DeviceAdminEventDeleteRes 删除成功。
 type DeviceAdminEventDeleteRes struct{}
 
-// DeviceAdminQaListReq 问答库历史（qa 表）。
+// DeviceAdminQaListReq 问答库分页列表（qa 表，id 倒序）。
 type DeviceAdminQaListReq struct {
-	g.Meta `path:"/device/admin/api/qa/list" method:"get" tags:"admin" summary:"问答库列表"`
+	g.Meta   `path:"/device/admin/api/qa/list" method:"get" tags:"admin" summary:"问答库列表"`
+	Page     int `json:"page" p:"page" dc:"页码，从 1 开始"`
+	PageSize int `json:"pageSize" p:"pageSize" dc:"每页条数，默认 10，最大 100"`
 }
 
-// DeviceAdminQaListRes 问答库列表响应。
+// DeviceAdminQaListRes 问答库分页响应。
 type DeviceAdminQaListRes struct {
-	List []entity.Qa `json:"list"`
+	List     []entity.Qa `json:"list"`
+	Total    int         `json:"total"`
+	Page     int         `json:"page"`
+	PageSize int         `json:"pageSize"`
 }
+
+// DeviceAdminQaDeleteReq 删除问答库行。
+type DeviceAdminQaDeleteReq struct {
+	g.Meta `path:"/device/admin/api/qa/delete" method:"post" tags:"admin" summary:"删除问答库行"`
+	Id     int64 `json:"id" dc:"问答库主键 id"`
+}
+
+// DeviceAdminQaDeleteRes 删除成功。
+type DeviceAdminQaDeleteRes struct{}
 
 // DeviceAdminActionListReq 动作预设列表（action 表）。
 type DeviceAdminActionListReq struct {

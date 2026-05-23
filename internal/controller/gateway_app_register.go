@@ -15,6 +15,10 @@ func RegisterGatewayAppHTTP(s *ghttp.Server) {
 	s.BindHandler("/device/admin", func(r *ghttp.Request) {
 		r.Response.ServeFile("resource/public/admin.html")
 	})
+	s.BindHandler("/device/admin/qa-records", func(r *ghttp.Request) {
+		r.Response.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
+		r.Response.ServeFile("resource/public/qa-records.html")
+	})
 	s.BindHandler("/device/history/*deviceNo", func(r *ghttp.Request) {
 		r.Response.ServeFile("resource/public/history.html")
 	})

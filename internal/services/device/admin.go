@@ -12,6 +12,7 @@ import (
 	"hello/internal/dao"
 	"hello/internal/model/entity"
 	"hello/internal/platform/eventkit"
+	"hello/internal/services/contracts"
 	"hello/internal/shared/assetpath"
 	sharedtypes "hello/internal/shared/types"
 	"hello/internal/services/workeroutbox"
@@ -395,9 +396,13 @@ func (s *service) DeleteEvent(ctx context.Context, id int64) error {
 	return err
 }
 
-func (s *service) ListQA(ctx context.Context) ([]entity.Qa, error) {
-	// qa 表仅在 voice 库存在，device 进程经 HTTP 委派到 voice-service（见 fetchQaListFromVoiceHTTP）。
-	return fetchQaListFromVoiceHTTP(ctx)
+func (s *service) ListQAPage(ctx context.Context, page, pageSize int) (contracts.QaPageResult, error) {
+	// qa 表仅在 voice 库存在，device 进程经 HTTP 委派到 voice-service。
+	return fetchQaPageFromVoiceHTTP(ctx, page, pageSize)
+}
+
+func (s *service) DeleteQA(ctx context.Context, id int64) error {
+	return deleteQaFromVoiceHTTP(ctx, id)
 }
 
 func (s *service) ListActionsForAdmin(ctx context.Context) ([]sharedtypes.AdminActionItem, error) {

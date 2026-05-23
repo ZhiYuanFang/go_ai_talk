@@ -112,11 +112,11 @@ func (c *DeviceInternalCtrl) EventDeleteInternal(ctx context.Context, req *v1.De
 func (c *DeviceInternalCtrl) QAList(ctx context.Context, req *v1.DeviceInternalQAListReq) (res *v1.DeviceInternalQAListRes, err error) {
 	_ = c
 	_ = req
-	items, err := device.DeviceAdmin().ListQA(ctx)
+	result, err := device.DeviceAdmin().ListQAPage(ctx, 1, 100)
 	if err != nil {
 		return nil, err
 	}
-	return &v1.DeviceInternalQAListRes{List: items}, nil
+	return &v1.DeviceInternalQAListRes{List: result.List}, nil
 }
 
 // ActionList 内部动作列表。

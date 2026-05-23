@@ -19,6 +19,11 @@ func RegisterHTTP(s *ghttp.Server) {
 		r.Response.ServeFile("resource/public/admin.html")
 	})
 
+	s.BindHandler("/device/admin/qa-records", func(r *ghttp.Request) {
+		r.Response.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
+		r.Response.ServeFile("resource/public/qa-records.html")
+	})
+
 	// 事件 logo 静态读：与管理页同源（:9701），反代至 device-service。
 	installEventImageProxy(s, gatewayDeviceServiceTarget())
 

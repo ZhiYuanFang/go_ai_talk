@@ -100,17 +100,35 @@ func (c *AdminCtrl) EventDelete(ctx context.Context, req *v1.DeviceAdminEventDel
 	return &v1.DeviceAdminEventDeleteRes{}, nil
 }
 
-// QaList 问答库列表（qa 表）。
+// QaList 问答库分页列表（qa 表，id 倒序）。
 func (c *AdminCtrl) QaList(ctx context.Context, req *v1.DeviceAdminQaListReq) (res *v1.DeviceAdminQaListRes, err error) {
-	_ = req
 	if err := c.requireAdmin(ctx); err != nil {
 		return nil, err
 	}
-	items, err := c.Admin.ListQA(ctx)
+	result, err := c.Admin.ListQAPage(ctx, req.Page, req.PageSize)
 	if err != nil {
 		return nil, err
 	}
-	return &v1.DeviceAdminQaListRes{List: items}, nil
+	return &v1.DeviceAdminQaListRes{
+		List:     result.List,
+		Total:    result.Total,
+		Page:     result.Page,
+		PageSize: result.PageSize,
+	}, nil
+}
+
+// QaDelete 删除问答库行。
+func (c *AdminCtrl) QaDelete(ctx context.Context, req *v1.DeviceAdminQaDeleteReq) (res *v1.DeviceAdminQaDeleteRes, err error) {
+	if err := c.requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	if req.Id <= 0 {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "id 无效")
+	}
+	if err := c.Admin.DeleteQA(ctx, req.Id); err != nil {
+		return nil, err
+	}
+	return &v1.DeviceAdminQaDeleteRes{}, nil
 }
 
 // ActionList 动作预设列表（action 表）。
