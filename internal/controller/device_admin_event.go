@@ -38,7 +38,11 @@ func deviceAdminEventAdd(r *ghttp.Request, c *AdminCtrl) {
 		writeDeviceAdminFail(r, gcode.CodeInvalidParameter, err.Error())
 		return
 	}
-	eventID, err := c.Admin.AddEvent(ctx, name, eventType, extraNames, color, "")
+	parentID := r.GetForm("parentId").Int64()
+	if parentID < 0 {
+		parentID = 0
+	}
+	eventID, err := c.Admin.AddEvent(ctx, name, eventType, extraNames, color, "", parentID)
 	if err != nil {
 		writeDeviceAdminEventErr(r, err)
 		return
@@ -174,6 +178,8 @@ func writeDeviceAdminEventErr(r *ghttp.Request, err error) {
 		writeDeviceAdminFail(r, gcode.CodeInvalidOperation, err.Error())
 	case errors.Is(err, device.ErrEventNotFound):
 		writeDeviceAdminFail(r, gcode.CodeNotFound, err.Error())
+	case errors.Is(err, device.ErrEventHasChildren):
+		writeDeviceAdminFail(r, gcode.CodeInvalidOperation, err.Error())
 	default:
 		if strings.TrimSpace(err.Error()) != "" {
 			writeDeviceAdminFail(r, gcode.CodeInvalidParameter, err.Error())

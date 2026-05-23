@@ -41,6 +41,8 @@
 		.event-form-visual{margin-top:12px;padding:12px;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc}
 		.event-form-logo-preview img{display:block;max-height:64px;max-width:96px;border-radius:6px;border:1px solid #e2e8f0}
 		.event-form-logo-placeholder{display:inline-flex;align-items:center;justify-content:center;min-width:72px;min-height:48px;padding:6px 10px;border:1px dashed #cbd5e1;border-radius:6px;font-size:12px;color:#64748b;background:#fff}
+		.event-tree-indent{display:inline-block;color:#94a3b8;font-family:monospace;user-select:none}
+		.event-tree-name{font-weight:500}
 	</style>
 </head>
 <body>
@@ -280,6 +282,7 @@ const actionFormSubmitBtn = document.getElementById('actionFormSubmitBtn');
 const actionFormCancelBtn = document.getElementById('actionFormCancelBtn');
 let eventFormMode = 'add';
 let editingEventId = 0;
+let eventFormParentId = 0;
 let editingActionId = 0;
 
 /** 管理端可选动作目标（不含 conversation/对话） */
@@ -538,6 +541,7 @@ function buildEventRowData(it){
 	return {
 		id: Number(it.id||0),
 		name: String(it.name||''),
+		parentId: Number(it.parentId||0),
 		extraNames: String(it.extraNames||''),
 		color: String(it.color||''),
 		logo: String(it.logo||''),
@@ -545,103 +549,160 @@ function buildEventRowData(it){
 	};
 }
 
+/** 将扁平事件列表按 parentId 排成森林遍历序（根 id 升序，子 id 升序）。 */
+function buildEventForest(flat){
+	const byParent = new Map();
+	(flat || []).forEach(it => {
+		const row = buildEventRowData(it);
+		const pid = row.parentId > 0 ? row.parentId : 0;
+		if(!byParent.has(pid)) byParent.set(pid, []);
+		byParent.get(pid).push(row);
+	});
+	byParent.forEach(list => list.sort((a, b) => a.id - b.id));
+	const ordered = [];
+	function walk(parentId, depth){
+		(byParent.get(parentId) || []).forEach(row => {
+			ordered.push({ row, depth });
+			walk(row.id, depth + 1);
+		});
+	}
+	walk(0, 0);
+	return ordered;
+}
+
+function openEventAddModal(parentRow){
+	eventFormMode = 'add';
+	editingEventId = 0;
+	eventFormParentId = parentRow && parentRow.id > 0 ? parentRow.id : 0;
+	if(eventFormParentId > 0){
+		eventModalTitle.textContent = '新增子事件（父：' + parentRow.name + '）';
+	}else{
+		eventModalTitle.textContent = '新增事件';
+	}
+	eventFormName.value = '';
+	eventFormEventType.value = 'time';
+	eventFormExtraNames.value = '';
+	eventFormLogo.value = '';
+	eventFormMsg.textContent = '';
+	updateEventFormVisual(null);
+	eventModal.classList.add('show');
+}
+
+function appendEventTableRow(tbody, row, depth){
+	const tr = document.createElement('tr');
+	tr.dataset.eventId = String(row.id);
+
+	const tdId = document.createElement('td');
+	tdId.textContent = row.id;
+	const tdName = document.createElement('td');
+	const indent = document.createElement('span');
+	indent.className = 'event-tree-indent';
+	indent.textContent = depth > 0 ? ('\u2514' + '\u2500'.repeat(Math.max(0, depth - 1)) + ' ') : '';
+	const nameSpan = document.createElement('span');
+	nameSpan.className = 'event-tree-name';
+	nameSpan.textContent = row.name;
+	tdName.appendChild(indent);
+	tdName.appendChild(nameSpan);
+
+	const tdLogo = document.createElement('td');
+	tdLogo.className = 'event-logo-cell';
+	const logoSrc = eventLogoUrl(row.logo);
+	if(logoSrc){
+		const img = document.createElement('img');
+		img.src = logoSrc;
+		img.alt = '';
+		tdLogo.appendChild(img);
+	}else{
+		const ph = document.createElement('span');
+		ph.className = 'event-logo-placeholder';
+		ph.textContent = '点击上传';
+		tdLogo.appendChild(ph);
+	}
+	tdLogo.title = '点击更换 Logo';
+	tdLogo.addEventListener('click', () => {
+		if(eventRowBusyId) return;
+		closeEventColorPopover();
+		pendingInlineEventRow = row;
+		const fin = document.getElementById('eventInlineLogoFile');
+		fin.value = '';
+		fin.click();
+	});
+
+	const tdColor = document.createElement('td');
+	tdColor.className = 'event-color-cell';
+	tdColor.title = '点击修改色调';
+	const swatch = document.createElement('span');
+	swatch.className = 'event-color-swatch';
+	swatch.style.background = eventColorCss(row.color);
+	const colorText = document.createElement('span');
+	colorText.textContent = row.color || '（未设置）';
+	tdColor.appendChild(swatch);
+	tdColor.appendChild(colorText);
+	tdColor.addEventListener('click', () => {
+		if(eventRowBusyId) return;
+		openEventColorPopover(tdColor, row);
+	});
+
+	const tdType = document.createElement('td');
+	tdType.textContent = eventTypeLabel(row.eventType);
+	const tdExtra = document.createElement('td');
+	tdExtra.className = 'wrapcell';
+	tdExtra.textContent = row.extraNames;
+
+	const tdAct = document.createElement('td');
+	const btnAddChild = document.createElement('button');
+	btnAddChild.type = 'button';
+	btnAddChild.textContent = '子事件';
+	btnAddChild.title = '新增子事件';
+	btnAddChild.addEventListener('click', () => openEventAddModal(row));
+	const btnEdit = document.createElement('button');
+	btnEdit.type = 'button';
+	btnEdit.textContent = '编辑';
+	btnEdit.addEventListener('click', () => {
+		eventFormMode = 'edit';
+		editingEventId = row.id;
+		eventFormParentId = 0;
+		eventModalTitle.textContent = '编辑事件';
+		eventFormName.value = row.name;
+		eventFormEventType.value = normalizeEventType(row.eventType);
+		eventFormExtraNames.value = row.extraNames;
+		eventFormLogo.value = '';
+		eventFormMsg.textContent = '';
+		updateEventFormVisual(row);
+		eventModal.classList.add('show');
+	});
+	const btnDel = document.createElement('button');
+	btnDel.type = 'button';
+	btnDel.textContent = '删除';
+	btnDel.style.background = '#b91c1c';
+	btnDel.addEventListener('click', async () => {
+		if (!window.confirm('确定删除该事件？若存在子事件将无法删除。')) return;
+		try {
+			await api('/device/admin/api/event/delete', { method: 'POST', body: JSON.stringify({ id: row.id }) });
+			setMsg(eventMsg, '已删除', true);
+			if (editingEventId === row.id) eventModal.classList.remove('show');
+			await loadEventList();
+		} catch (e) {
+			setMsg(eventMsg, e.message || '删除失败');
+		}
+	});
+	tdAct.appendChild(btnAddChild);
+	tdAct.appendChild(document.createTextNode(' '));
+	tdAct.appendChild(btnEdit);
+	tdAct.appendChild(document.createTextNode(' '));
+	tdAct.appendChild(btnDel);
+
+	tr.append(tdId, tdName, tdLogo, tdColor, tdType, tdExtra, tdAct);
+	tbody.appendChild(tr);
+}
+
 async function loadEventList(){
 	const tbody = document.getElementById('eventTbody');
 	try {
 		const data = asListPayload(await api('/device/admin/api/event/list'));
 		tbody.innerHTML = '';
-		(data || []).forEach(it => {
-			const row = buildEventRowData(it);
-			const tr = document.createElement('tr');
-			tr.dataset.eventId = String(row.id);
-
-			const tdId = document.createElement('td');
-			tdId.textContent = row.id;
-			const tdName = document.createElement('td');
-			tdName.textContent = row.name;
-
-			const tdLogo = document.createElement('td');
-			tdLogo.className = 'event-logo-cell';
-			const logoSrc = eventLogoUrl(row.logo);
-			if(logoSrc){
-				const img = document.createElement('img');
-				img.src = logoSrc;
-				img.alt = '';
-				tdLogo.appendChild(img);
-			}else{
-				const ph = document.createElement('span');
-				ph.className = 'event-logo-placeholder';
-				ph.textContent = '点击上传';
-				tdLogo.appendChild(ph);
-			}
-			tdLogo.title = '点击更换 Logo';
-			tdLogo.addEventListener('click', () => {
-				if(eventRowBusyId) return;
-				closeEventColorPopover();
-				pendingInlineEventRow = row;
-				const fin = document.getElementById('eventInlineLogoFile');
-				fin.value = '';
-				fin.click();
-			});
-
-			const tdColor = document.createElement('td');
-			tdColor.className = 'event-color-cell';
-			tdColor.title = '点击修改色调';
-			const swatch = document.createElement('span');
-			swatch.className = 'event-color-swatch';
-			swatch.style.background = eventColorCss(row.color);
-			const colorText = document.createElement('span');
-			colorText.textContent = row.color || '（未设置）';
-			tdColor.appendChild(swatch);
-			tdColor.appendChild(colorText);
-			tdColor.addEventListener('click', () => {
-				if(eventRowBusyId) return;
-				openEventColorPopover(tdColor, row);
-			});
-
-			const tdType = document.createElement('td');
-			tdType.textContent = eventTypeLabel(row.eventType);
-			const tdExtra = document.createElement('td');
-			tdExtra.className = 'wrapcell';
-			tdExtra.textContent = row.extraNames;
-
-			const tdAct = document.createElement('td');
-			const btnEdit = document.createElement('button');
-			btnEdit.type = 'button';
-			btnEdit.textContent = '编辑';
-			btnEdit.addEventListener('click', () => {
-				eventFormMode = 'edit';
-				editingEventId = row.id;
-				eventModalTitle.textContent = '编辑事件';
-				eventFormName.value = row.name;
-				eventFormEventType.value = normalizeEventType(row.eventType);
-				eventFormExtraNames.value = row.extraNames;
-				eventFormLogo.value = '';
-				eventFormMsg.textContent = '';
-				updateEventFormVisual(row);
-				eventModal.classList.add('show');
-			});
-			const btnDel = document.createElement('button');
-			btnDel.type = 'button';
-			btnDel.textContent = '删除';
-			btnDel.style.background = '#b91c1c';
-			btnDel.addEventListener('click', async () => {
-				if (!window.confirm('确定删除该事件？若其它数据仍引用该事件可能删除失败。')) return;
-				try {
-					await api('/device/admin/api/event/delete', { method: 'POST', body: JSON.stringify({ id: row.id }) });
-					setMsg(eventMsg, '已删除', true);
-					if (editingEventId === row.id) eventModal.classList.remove('show');
-					await loadEventList();
-				} catch (e) {
-					setMsg(eventMsg, e.message || '删除失败');
-				}
-			});
-			tdAct.appendChild(btnEdit);
-			tdAct.appendChild(document.createTextNode(' '));
-			tdAct.appendChild(btnDel);
-
-			tr.append(tdId, tdName, tdLogo, tdColor, tdType, tdExtra, tdAct);
-			tbody.appendChild(tr);
+		buildEventForest(data).forEach(({ row, depth }) => {
+			appendEventTableRow(tbody, row, depth);
 		});
 		if(!(data && data.length)){
 			setMsg(eventMsg, '暂无事件，可点击「新增事件」', true);
@@ -852,20 +913,12 @@ document.getElementById('refreshActionBtn').addEventListener('click', async () =
 });
 
 document.getElementById('addEventBtn').addEventListener('click', async () => {
-	eventFormMode = 'add';
-	editingEventId = 0;
-	eventModalTitle.textContent = '新增事件';
-	eventFormName.value = '';
-	eventFormEventType.value = 'time';
-	eventFormExtraNames.value = '';
-	eventFormLogo.value = '';
-	eventFormMsg.textContent = '';
-	updateEventFormVisual(null);
-	eventModal.classList.add('show');
+	openEventAddModal(null);
 });
 
 eventFormCancelBtn.addEventListener('click', () => {
 	revokeEventFormLogoObjectUrl();
+	eventFormParentId = 0;
 	eventModal.classList.remove('show');
 });
 
@@ -891,10 +944,14 @@ eventFormSubmitBtn.addEventListener('click', async () => {
 			await apiForm('/device/admin/api/event/update', fd);
 			setMsg(eventMsg, '修改成功', true);
 		}else{
+			if(eventFormParentId > 0){
+				fd.append('parentId', String(eventFormParentId));
+			}
 			await apiForm('/device/admin/api/event/add', fd);
 			setMsg(eventMsg, '新增成功', true);
 		}
 		revokeEventFormLogoObjectUrl();
+		eventFormParentId = 0;
 		eventModal.classList.remove('show');
 		await loadEventList();
 	} catch (e) {

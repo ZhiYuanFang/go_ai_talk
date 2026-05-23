@@ -217,6 +217,28 @@ func (s *VoiceService) chatWithResult(ctx context.Context, deviceNo, transcript 
 	}
 	events := []entity.Event{}
 	events, _ = DeviceAdmin().ListEvents(ctx)
+
+	// 待选子事件：上一轮命中非叶子父节点后，本轮仅在直接子节点中匹配并落库。
+	if pending, ok := s.getPendingChildEvent(deviceNo); ok {
+		reply, exit, finishTalk, pendErr := s.continuePendingChildEvent(ctx, deviceNo, normalizedTranscript, events, pending)
+		if pendErr != nil {
+			return chatResult{
+				Reply:      "我暂时没理解清楚，请再说一次",
+				Ask:        normalizedTranscript,
+				Mode:       resolvedMode,
+				FinishTalk: false,
+			}, pendErr
+		}
+		s.insertQa(ctx, normalizedTranscript, reply)
+		return chatResult{
+			Reply:      reply,
+			Ask:        normalizedTranscript,
+			Mode:       resolvedMode,
+			Exit:       exit,
+			FinishTalk: finishTalk,
+		}, nil
+	}
+
 	// 取设备域动作词典（经 DeviceAdmin HTTP → device-service）
 	actions := []entity.Action{}
 	adminActions, _ := DeviceAdmin().ListActionsForAdmin(ctx)
@@ -413,7 +435,13 @@ func (s *VoiceService) handleUnifiedIntentAction(ctx context.Context, deviceNo, 
 		return "好的，再见", true, false, nil
 	}
 
-	event, targetName, ok := s.resolveEventFromUnifiedIntent(ctx, normalizedTranscript, events, intent)
+	event, targetName, pendingReply, ok, err := s.resolveEventForAction(ctx, deviceNo, normalizedTranscript, events, action.TargetType, &intent)
+	if err != nil {
+		return "我听不懂你说的事件,请用具体的名称告诉我", false, false, err
+	}
+	if pendingReply != "" {
+		return pendingReply, false, false, nil
+	}
 	if !ok {
 		return "我听不懂你说的事件,请用具体的名称告诉我", false, false, errors.New("未识别事件")
 	}
@@ -491,35 +519,12 @@ func (s *VoiceService) handleUnifiedIntentAction(ctx context.Context, deviceNo, 
 	}
 }
 
-func (s *VoiceService) resolveEventFromUnifiedIntent(ctx context.Context, normalizedTranscript string, events []entity.Event, intent deepSeekUnifiedIntent) (entity.Event, string, bool) {
-	// 先本地文本匹配，再用模型字段匹配，最后按需要创建新事件，形成逐级兜底。
-	if ev, target, ok := s.extractEventFromText(ctx, normalizedTranscript, events); ok {
-		return ev, target, true
-	}
-	target := strings.TrimSpace(intent.ExtraEvent)
-	needle := strings.TrimSpace(intent.EventName)
-	for _, ev := range events {
-		if needle != "" && (strings.EqualFold(ev.Name, needle) || strings.Contains(strings.ToLower(ev.Name), strings.ToLower(needle))) {
-			if target == "" {
-				target = ev.Name
-			}
-			return ev, target, true
-		}
-	}
-	if needle == "" {
+func (s *VoiceService) resolveEventFromUnifiedIntent(ctx context.Context, deviceNo, normalizedTranscript string, events []entity.Event, intent deepSeekUnifiedIntent) (entity.Event, string, bool) {
+	event, target, pending, ok, err := s.resolveEventForAction(ctx, deviceNo, normalizedTranscript, events, "", &intent)
+	if err != nil || pending != "" || !ok {
 		return entity.Event{}, "", false
 	}
-	if target == "" {
-		target = needle
-	}
-	inserted, insErr := DeviceAdmin().InsertOrGetEventByNeedle(ctx, needle, intent.EventType)
-	if insErr != nil {
-		return entity.Event{}, "", false
-	}
-	if inserted.Id > 0 {
-		return inserted, target, true
-	}
-	return entity.Event{}, "", false
+	return event, target, true
 }
 
 // 根据动作，判断后续逻辑
@@ -528,16 +533,16 @@ func (s *VoiceService) handleActionRecord(ctx context.Context, deviceNo string, 
 	nowTime := time.Now().Unix()
 	switch action.TargetType {
 	case "start": //开始记录计时动作
-		event, targetName, ok := s.extractEventFromText(ctx, normalizedTranscript, events)
-		if !ok { // 没有命中事件名，交给deepseek分析文案中的事件名
-			// 交给deepseek分析文案中的事件名,并落库后，再走命中事件流程
-			event, targetName, err = s.callDeepSeekEntityExtract(ctx, deviceNo, normalizedTranscript)
-			if err != nil {
-				glog.Warningf(ctx, "调用 DeepSeek 进行实体抽取失败，deviceNo=%s transcript=%q err=%v", deviceNo, normalizedTranscript, err)
-				return "我听不懂你说的事件,请用具体的名称告诉我", false, false, err
-			}
-			// 打印日志命中事件
-			glog.Infof(ctx, "没有命中事件名, 请求deepSeek分析文案中的事件名,并落库后，再走命中事件流程,命中事件: %s", targetName)
+		event, targetName, pendingReply, ok, err := s.resolveEventForAction(ctx, deviceNo, normalizedTranscript, events, action.TargetType, nil)
+		if err != nil {
+			glog.Warningf(ctx, "调用 DeepSeek 进行实体抽取失败，deviceNo=%s transcript=%q err=%v", deviceNo, normalizedTranscript, err)
+			return "我听不懂你说的事件,请用具体的名称告诉我", false, false, err
+		}
+		if pendingReply != "" {
+			return pendingReply, false, false, nil
+		}
+		if !ok {
+			return "我听不懂你说的事件,请用具体的名称告诉我", false, false, errors.New("未识别事件")
 		}
 		_, err = DeviceHistory().AddHistory(ctx, entity.History{
 			DeviceNo:  deviceNo,
@@ -553,16 +558,16 @@ func (s *VoiceService) handleActionRecord(ctx context.Context, deviceNo string, 
 		finishTalk = true
 		return finalReply, false, finishTalk, nil
 	case "end": //结束记录计时动作，自动补结束时间
-		event, targetName, ok := s.extractEventFromText(ctx, normalizedTranscript, events)
-		if !ok { // 没有命中事件名，交给deepseek分析文案中的事件名
-			// 交给deepseek分析文案中的事件名,并落库后，再走命中事件流程
-			event, targetName, err = s.callDeepSeekEntityExtract(ctx, deviceNo, normalizedTranscript)
-			if err != nil {
-				glog.Warningf(ctx, "调用 DeepSeek 进行实体抽取失败，deviceNo=%s transcript=%q err=%v", deviceNo, normalizedTranscript, err)
-				return "我听不懂你说的事件,请用具体的名称告诉我", false, false, err
-			}
-			// 打印日志命中事件
-			glog.Infof(ctx, "没有命中事件名, 请求deepSeek分析文案中的事件名,并落库后，再走命中事件流程,命中事件: %s", targetName)
+		event, targetName, pendingReply, ok, err := s.resolveEventForAction(ctx, deviceNo, normalizedTranscript, events, action.TargetType, nil)
+		if err != nil {
+			glog.Warningf(ctx, "调用 DeepSeek 进行实体抽取失败，deviceNo=%s transcript=%q err=%v", deviceNo, normalizedTranscript, err)
+			return "我听不懂你说的事件,请用具体的名称告诉我", false, false, err
+		}
+		if pendingReply != "" {
+			return pendingReply, false, false, nil
+		}
+		if !ok {
+			return "我听不懂你说的事件,请用具体的名称告诉我", false, false, errors.New("未识别事件")
 		}
 
 		// 判断最近一次事件是否是同一事件
@@ -605,16 +610,16 @@ func (s *VoiceService) handleActionRecord(ctx context.Context, deviceNo string, 
 			return finalReply, false, finishTalk, nil
 		}
 	case "one": //记录一次性动作，记录一次
-		event, targetName, ok := s.extractEventFromText(ctx, normalizedTranscript, events)
-		if !ok { // 没有命中事件名，交给deepseek分析文案中的事件名
-			// 交给deepseek分析文案中的事件名,并落库后，再走命中事件流程
-			event, targetName, err = s.callDeepSeekEntityExtract(ctx, deviceNo, normalizedTranscript)
-			if err != nil {
-				glog.Warningf(ctx, "调用 DeepSeek 进行实体抽取失败，deviceNo=%s transcript=%q err=%v", deviceNo, normalizedTranscript, err)
-				return "我听不懂你说的事件,请用具体的名称告诉我", false, false, err
-			}
-			// 打印日志命中事件
-			glog.Infof(ctx, "没有命中事件名, 请求deepSeek分析文案中的事件名,并落库后，再走命中事件流程,命中事件: %s", targetName)
+		event, targetName, pendingReply, ok, err := s.resolveEventForAction(ctx, deviceNo, normalizedTranscript, events, action.TargetType, nil)
+		if err != nil {
+			glog.Warningf(ctx, "调用 DeepSeek 进行实体抽取失败，deviceNo=%s transcript=%q err=%v", deviceNo, normalizedTranscript, err)
+			return "我听不懂你说的事件,请用具体的名称告诉我", false, false, err
+		}
+		if pendingReply != "" {
+			return pendingReply, false, false, nil
+		}
+		if !ok {
+			return "我听不懂你说的事件,请用具体的名称告诉我", false, false, errors.New("未识别事件")
 		}
 		eventNumber := int64(1)
 		if quantity, ok := extractNumberFromText(normalizedTranscript); ok && quantity > 0 {
@@ -731,28 +736,10 @@ func (s *VoiceService) callDeepSeekActionExtract(ctx context.Context, deviceNo, 
 	}
 }
 
-// 提取文本中的事件对象
+// extractEventFromText 提取文本中的事件对象（全树、子节点优先）。
 func (s *VoiceService) extractEventFromText(ctx context.Context, normalizedTranscript string, events []entity.Event) (entity.Event, string, bool) {
-	for _, event := range events {
-		// 原事件名称为部分匹配
-		if hasSignificantOverlap(normalizedTranscript, event.Name) {
-			// 打印命中事件名
-			glog.Infof(ctx, "命中事件名: %s", event.Name)
-			return event, event.Name, true
-		}
-		// 额外名称匹配为包含全量匹配，而不是部分匹配
-		if event.ExtraNames != "" {
-			extraNames := strings.Split(event.ExtraNames, ",")
-			for _, extraName := range extraNames {
-				if strings.Contains(normalizedTranscript, extraName) && extraName != "" {
-					// 打印命中额外名称
-					glog.Infof(ctx, "命中额外名称: %s", extraName)
-					return event, extraName, true
-				}
-			}
-		}
-	}
-	return entity.Event{}, "", false
+	idx := buildEventTreeIndex(events)
+	return extractEventFromCandidates(ctx, normalizedTranscript, events, idx)
 }
 
 // 提取文本中的数量值
@@ -925,12 +912,13 @@ func (s *VoiceService) callDeepSeekEntityExtract(ctx context.Context, deviceNo, 
 	}
 	systemMessage := fmt.Sprintf(`你是一个精准的事件提取器，严格输出JSON。
 
-事件列表：%s
+事件列表（含 parent_id 层级，子事件名更具体）：%s
 
 特别规则：
 1. 扩展词从文本提取连续文案
 2. 吃奶事件：如无法区分母乳/配方奶，输出{"name":"","extraNames":""}
-3. 不是想记录事件:输出{"name":"","extraNames":""}
+3. 用户仅提及父事件且未说明子类型时，可返回该父事件名（是否追问子类型由系统判定）
+4. 不是想记录事件:输出{"name":"","extraNames":""}
 
 输出规则：
 1. 匹配事件列表 → {"name":"原事件名","extraNames":"扩展词"}

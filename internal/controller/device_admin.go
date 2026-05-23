@@ -92,10 +92,14 @@ func (c *AdminCtrl) EventDelete(ctx context.Context, req *v1.DeviceAdminEventDel
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "事件ID无效")
 	}
 	if err := c.Admin.DeleteEvent(ctx, req.Id); err != nil {
-		if err == device.ErrEventNotFound {
+		switch err {
+		case device.ErrEventNotFound:
 			return nil, gerror.NewCode(gcode.CodeNotFound, err.Error())
+		case device.ErrEventHasChildren:
+			return nil, gerror.NewCode(gcode.CodeInvalidOperation, err.Error())
+		default:
+			return nil, err
 		}
-		return nil, err
 	}
 	return &v1.DeviceAdminEventDeleteRes{}, nil
 }

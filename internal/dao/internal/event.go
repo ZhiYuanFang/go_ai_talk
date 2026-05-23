@@ -26,6 +26,7 @@ type EventColumns struct {
 	ExtraNames string // name的其它表达方式
 	Color      string //
 	Logo       string //
+	ParentId   string // 父类ID
 }
 
 // eventColumns holds the columns for table event.
@@ -36,6 +37,7 @@ var eventColumns = EventColumns{
 	ExtraNames: "extra_names",
 	Color:      "color",
 	Logo:       "logo",
+	ParentId:   "parent_id",
 }
 
 // NewEventDao creates and returns a new DAO object for table data access.

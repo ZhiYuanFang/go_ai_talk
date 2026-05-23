@@ -59,7 +59,7 @@ type DeviceAdminContract interface {
 	EnsureRegistered(ctx context.Context, deviceNo string) error
 	UpdateLastTalk(ctx context.Context, deviceNo, ask, answer string) error
 	List(ctx context.Context) ([]entity.User, error)
-	AddEvent(ctx context.Context, name string, eventType string, extraNames, color, logoPath string) (int64, error)
+	AddEvent(ctx context.Context, name string, eventType string, extraNames, color, logoPath string, parentID int64) (int64, error)
 	ListEvents(ctx context.Context) ([]entity.Event, error)
 	UpdateEvent(ctx context.Context, id int64, name string, eventType string, extraNames, color, logoPath string) error
 	DeleteEvent(ctx context.Context, id int64) error

@@ -17,4 +17,5 @@ type Event struct {
 	ExtraNames interface{} // name的其它表达方式
 	Color      interface{} //
 	Logo       interface{} //
+	ParentId   interface{} // 父类ID
 }

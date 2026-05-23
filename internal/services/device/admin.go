@@ -27,6 +27,7 @@ var (
 	ErrDeviceNotRegistered = errors.New("设备未注册，请先注册设备号")
 	ErrEventExists         = errors.New("事件已存在")
 	ErrEventNotFound       = errors.New("事件不存在")
+	ErrEventHasChildren    = errors.New("该事件存在子事件，请先删除子事件")
 	ErrActionNotFound      = errors.New("动作不存在")
 )
 
@@ -243,8 +244,29 @@ func (s *service) List(ctx context.Context) ([]entity.User, error) {
 func eventListFields() []interface{} {
 	c := dao.Event.Columns()
 	return []interface{}{
-		c.Id, c.Name, c.EventType, c.ExtraNames, c.Logo, c.Color,
+		c.Id, c.Name, c.EventType, c.ExtraNames, c.Logo, c.Color, c.ParentId,
 	}
+}
+
+// normalizeEventParentID 将 parent_id 规范为非负；0 表示根节点。
+func normalizeEventParentID(parentID int64) int64 {
+	if parentID < 0 {
+		return 0
+	}
+	return parentID
+}
+
+// eventNameExistsUnderParent 同父下 name 是否已被占用（excludeID>0 时排除自身，用于更新）。
+func eventNameExistsUnderParent(ctx context.Context, parentID int64, name string, excludeID int64) (bool, error) {
+	parentID = normalizeEventParentID(parentID)
+	m := dao.Event.Ctx(ctx).
+		Where(dao.Event.Columns().ParentId, parentID).
+		Where(dao.Event.Columns().Name, strings.TrimSpace(name))
+	if excludeID > 0 {
+		m = m.Where(fmt.Sprintf("%s<>?", dao.Event.Columns().Id), excludeID)
+	}
+	n, err := m.Count()
+	return n > 0, err
 }
 
 func normalizeEventRows(rows []entity.Event) {
@@ -253,7 +275,7 @@ func normalizeEventRows(rows []entity.Event) {
 	}
 }
 
-func (s *service) AddEvent(ctx context.Context, name string, eventType string, extraNames, color, logoPath string) (int64, error) {
+func (s *service) AddEvent(ctx context.Context, name string, eventType string, extraNames, color, logoPath string, parentID int64) (int64, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return 0, errors.New("事件名称不能为空")
@@ -265,11 +287,21 @@ func (s *service) AddEvent(ctx context.Context, name string, eventType string, e
 		return 0, err
 	}
 	eventType = NormalizeEventType(eventType)
-	count, err := dao.Event.Ctx(ctx).Where(dao.Event.Columns().Name, name).Count()
+	parentID = normalizeEventParentID(parentID)
+	if parentID > 0 {
+		parentCount, err := dao.Event.Ctx(ctx).Where(dao.Event.Columns().Id, parentID).Count()
+		if err != nil {
+			return 0, err
+		}
+		if parentCount == 0 {
+			return 0, ErrEventNotFound
+		}
+	}
+	exists, err := eventNameExistsUnderParent(ctx, parentID, name, 0)
 	if err != nil {
 		return 0, err
 	}
-	if count > 0 {
+	if exists {
 		return 0, ErrEventExists
 	}
 	logoPath = assetpath.Normalize(strings.TrimSpace(logoPath))
@@ -277,8 +309,9 @@ func (s *service) AddEvent(ctx context.Context, name string, eventType string, e
 		dao.Event.Columns().Name:       name,
 		dao.Event.Columns().EventType:  eventType,
 		dao.Event.Columns().ExtraNames: strings.TrimSpace(extraNames),
-		dao.Event.Columns().Color:        strings.TrimSpace(color),
-		dao.Event.Columns().Logo:         logoPath,
+		dao.Event.Columns().Color:      strings.TrimSpace(color),
+		dao.Event.Columns().Logo:       logoPath,
+		dao.Event.Columns().ParentId:   parentID,
 	}).Insert()
 	if err != nil {
 		msg := strings.ToLower(err.Error())
@@ -336,14 +369,17 @@ func (s *service) UpdateEvent(ctx context.Context, id int64, name string, eventT
 	if idCount == 0 {
 		return ErrEventNotFound
 	}
-	nameCount, err := dao.Event.Ctx(ctx).
-		Where(dao.Event.Columns().Name, name).
-		Where(fmt.Sprintf("%s<>?", dao.Event.Columns().Id), id).
-		Count()
+	var existing entity.Event
+	if err := dao.Event.Ctx(ctx).Where(dao.Event.Columns().Id, id).
+		Fields(dao.Event.Columns().ParentId).
+		Scan(&existing); err != nil {
+		return err
+	}
+	exists, err := eventNameExistsUnderParent(ctx, existing.ParentId, name, id)
 	if err != nil {
 		return err
 	}
-	if nameCount > 0 {
+	if exists {
 		return ErrEventExists
 	}
 	data := g.Map{
@@ -383,6 +419,13 @@ func (s *service) DeleteEvent(ctx context.Context, id int64) error {
 	}
 	if n == 0 {
 		return ErrEventNotFound
+	}
+	childCount, err := dao.Event.Ctx(ctx).Where(dao.Event.Columns().ParentId, id).Count()
+	if err != nil {
+		return err
+	}
+	if childCount > 0 {
+		return ErrEventHasChildren
 	}
 	_, err = dao.Event.Ctx(ctx).Where(dao.Event.Columns().Id, id).Delete()
 	if err == nil {

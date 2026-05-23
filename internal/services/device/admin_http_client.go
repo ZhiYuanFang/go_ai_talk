@@ -141,13 +141,14 @@ func (c *httpDeviceAdminClient) List(ctx context.Context) ([]entity.User, error)
 	return out.List, err
 }
 
-func (c *httpDeviceAdminClient) AddEvent(ctx context.Context, name string, eventType string, extraNames, color, logoPath string) (int64, error) {
+func (c *httpDeviceAdminClient) AddEvent(ctx context.Context, name string, eventType string, extraNames, color, logoPath string, parentID int64) (int64, error) {
 	err := c.doJSON(ctx, http.MethodPost, "/device/internal/api/event/add", nil, map[string]interface{}{
 		"name":       strings.TrimSpace(name),
 		"eventType":  NormalizeEventType(eventType),
-		"extraNames":   strings.TrimSpace(extraNames),
-		"color":        strings.TrimSpace(color),
-		"logo":         strings.TrimSpace(logoPath),
+		"extraNames": strings.TrimSpace(extraNames),
+		"color":      strings.TrimSpace(color),
+		"logo":       strings.TrimSpace(logoPath),
+		"parentId":   parentID,
 	}, nil)
 	return 0, err
 }

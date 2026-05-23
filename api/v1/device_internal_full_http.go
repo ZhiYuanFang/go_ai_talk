@@ -59,10 +59,11 @@ type DeviceInternalUserListRes struct {
 // --- 事件 ---
 
 type DeviceInternalEventAddReq struct {
-	g.Meta       `path:"/device/internal/api/event/add" method:"post" tags:"device" summary:"内部-新增事件"`
-	Name         string `json:"name"`
-	EventType    string `json:"eventType"`
-	ExtraNames   string `json:"extraNames"`
+	g.Meta     `path:"/device/internal/api/event/add" method:"post" tags:"device" summary:"内部-新增事件"`
+	Name       string `json:"name"`
+	EventType  string `json:"eventType"`
+	ExtraNames string `json:"extraNames"`
+	ParentId   int64  `json:"parentId"`
 }
 
 type DeviceInternalEventAddRes struct{}

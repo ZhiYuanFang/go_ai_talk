@@ -71,11 +71,15 @@ func (c *DeviceInternalCtrl) UserList(ctx context.Context, req *v1.DeviceInterna
 // EventAddInternal 新增事件字典。
 func (c *DeviceInternalCtrl) EventAddInternal(ctx context.Context, req *v1.DeviceInternalEventAddReq) (res *v1.DeviceInternalEventAddRes, err error) {
 	_ = c
-	if _, err := device.DeviceAdmin().AddEvent(ctx, strings.TrimSpace(req.Name), req.EventType, req.ExtraNames, "", ""); err != nil {
-		if err == device.ErrEventExists {
+	if _, err := device.DeviceAdmin().AddEvent(ctx, strings.TrimSpace(req.Name), req.EventType, req.ExtraNames, "", "", req.ParentId); err != nil {
+		switch err {
+		case device.ErrEventExists:
 			return nil, gerror.NewCode(gcode.CodeInvalidOperation, err.Error())
+		case device.ErrEventNotFound:
+			return nil, gerror.NewCode(gcode.CodeNotFound, err.Error())
+		default:
+			return nil, err
 		}
-		return nil, err
 	}
 	return &v1.DeviceInternalEventAddRes{}, nil
 }
@@ -100,10 +104,14 @@ func (c *DeviceInternalCtrl) EventUpdateInternal(ctx context.Context, req *v1.De
 func (c *DeviceInternalCtrl) EventDeleteInternal(ctx context.Context, req *v1.DeviceInternalEventDeleteReq) (res *v1.DeviceInternalEventDeleteRes, err error) {
 	_ = c
 	if err := device.DeviceAdmin().DeleteEvent(ctx, req.Id); err != nil {
-		if err == device.ErrEventNotFound {
+		switch err {
+		case device.ErrEventNotFound:
 			return nil, gerror.NewCode(gcode.CodeNotFound, err.Error())
+		case device.ErrEventHasChildren:
+			return nil, gerror.NewCode(gcode.CodeInvalidOperation, err.Error())
+		default:
+			return nil, err
 		}
-		return nil, err
 	}
 	return &v1.DeviceInternalEventDeleteRes{}, nil
 }

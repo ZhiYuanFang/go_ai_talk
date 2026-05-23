@@ -113,6 +113,8 @@ type VoiceService struct {
 	deviceModes            map[string]string
 	pendingQuantityMu      sync.Mutex
 	pendingQuantity        map[string]pendingQuantityState
+	pendingChildMu         sync.Mutex
+	pendingChild           map[string]pendingChildEventState
 	deviceLocks            sync.Map
 	ensureDeviceRegistered func(ctx context.Context, deviceNo string) error
 	persistTalkRecord      func(ctx context.Context, deviceNo, ask, answer string) error
@@ -166,6 +168,7 @@ func NewVoiceService(cfg VoiceChatConfig) *VoiceService {
 		chatLimiter:            newLimiter(cfg.DeepSeek.MaxConcurrency),
 		deviceModes:            make(map[string]string),
 		pendingQuantity:        make(map[string]pendingQuantityState),
+		pendingChild:           make(map[string]pendingChildEventState),
 		ensureDeviceRegistered: func(ctx context.Context, deviceNo string) error { return nil },
 		persistTalkRecord:      func(ctx context.Context, deviceNo, ask, answer string) error { return nil },
 		taskProducer:           newVoiceTaskProducer(),

@@ -12,4 +12,5 @@ type Event struct {
 	ExtraNames string `json:"extraNames" ` // name的其它表达方式
 	Color      string `json:"color"      ` //
 	Logo       string `json:"logo"       ` //
+	ParentId   int64  `json:"parentId"   ` // 父类ID
 }
