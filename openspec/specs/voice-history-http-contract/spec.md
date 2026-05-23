@@ -36,11 +36,13 @@ history 内部接口 MUST 对参数错误、资源不存在、服务异常返回
 
 - **WHEN** voice 在理解流程中创建或解析事件实体并需持久化
 - **THEN** voice MUST 调用 device 服务接口（或已批准的适配层），MUST NOT 在 voice 进程内对 `event` 表执行 DAO Insert
+- **AND** 新建事件时 MUST 向 device 传递合法 `eventType`（`number` | `time` | `one`）
 
 #### Scenario: 读取事件选项列表
 
-- **WHEN** voice 需要事件类型列表或 `NeedQuantity` 等元数据
+- **WHEN** voice 需要事件字典列表或 `eventType` 等元数据
 - **THEN** voice MUST 从 device 服务获取，MUST NOT 依赖 history 服务返回的 `event` 表投影作为权威来源
+- **AND** 响应项 SHALL 含 `eventType`，SHALL NOT 含 `needQuantity`
 
 ### Requirement: Voice MUST 在本域处理 suggest 表
 
