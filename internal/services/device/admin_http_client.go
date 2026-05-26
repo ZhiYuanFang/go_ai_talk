@@ -161,15 +161,19 @@ func (c *httpDeviceAdminClient) ListEvents(ctx context.Context) ([]entity.Event,
 	return out.List, err
 }
 
-func (c *httpDeviceAdminClient) UpdateEvent(ctx context.Context, id int64, name string, eventType string, extraNames, color, logoPath string) error {
-	return c.doJSON(ctx, http.MethodPost, "/device/internal/api/event/update", nil, map[string]interface{}{
-		"id":          id,
-		"name":        strings.TrimSpace(name),
-		"eventType":   NormalizeEventType(eventType),
-		"extraNames":   strings.TrimSpace(extraNames),
-		"color":        strings.TrimSpace(color),
-		"logo":         strings.TrimSpace(logoPath),
-	}, nil)
+func (c *httpDeviceAdminClient) UpdateEvent(ctx context.Context, id int64, name string, eventType string, extraNames, color, logoPath string, parentID *int64) error {
+	body := map[string]interface{}{
+		"id":         id,
+		"name":       strings.TrimSpace(name),
+		"eventType":  NormalizeEventType(eventType),
+		"extraNames": strings.TrimSpace(extraNames),
+		"color":      strings.TrimSpace(color),
+		"logo":       strings.TrimSpace(logoPath),
+	}
+	if parentID != nil {
+		body["parentId"] = normalizeEventParentID(*parentID)
+	}
+	return c.doJSON(ctx, http.MethodPost, "/device/internal/api/event/update", nil, body, nil)
 }
 
 func (c *httpDeviceAdminClient) DeleteEvent(ctx context.Context, id int64) error {

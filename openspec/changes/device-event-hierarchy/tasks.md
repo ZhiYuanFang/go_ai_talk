@@ -2,7 +2,7 @@
 
 - [x] 1.1 `eventListFields` / `RebuildEventCache` 增加 `parent_id`；`ListEvents` 返回 `parentId`
 - [x] 1.2 `AddEvent` 支持 `parentId`：校验父存在、同父 name 唯一、不复制父 logo/color
-- [x] 1.3 `UpdateEvent` 查重改为同 `(parent_id, name)`；第一期禁止修改 `parent_id`
+- [x] 1.3 `UpdateEvent` 查重改为同 `(parent_id, name)`；~~第一期禁止修改 `parent_id`~~ → 见 change **`device-event-update-parent-id`**
 - [x] 1.4 `DeleteEvent`：存在 `parent_id=id` 子行时返回业务错误
 - [x] 1.5 `device_admin_event.go` / API 类型：`event/add` multipart 增加 `parentId` 表单字段
 - [x] 1.6 更新 `DeviceAdminContract` 与 HTTP client 签名（若 AddEvent 签名变更）

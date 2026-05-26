@@ -28,6 +28,8 @@ var (
 	ErrEventExists         = errors.New("事件已存在")
 	ErrEventNotFound       = errors.New("事件不存在")
 	ErrEventHasChildren    = errors.New("该事件存在子事件，请先删除子事件")
+	ErrEventParentInvalid  = errors.New("父事件不存在")
+	ErrEventParentCycle    = errors.New("不能将父事件设为自己或其子事件")
 	ErrActionNotFound      = errors.New("动作不存在")
 )
 
@@ -248,6 +250,11 @@ func eventListFields() []interface{} {
 	}
 }
 
+// NormalizeEventParentIDForAPI 将 parent_id 规范为非负；0 表示根节点（供 HTTP 层解析表单）。
+func NormalizeEventParentIDForAPI(parentID int64) int64 {
+	return normalizeEventParentID(parentID)
+}
+
 // normalizeEventParentID 将 parent_id 规范为非负；0 表示根节点。
 func normalizeEventParentID(parentID int64) int64 {
 	if parentID < 0 {
@@ -267,6 +274,59 @@ func eventNameExistsUnderParent(ctx context.Context, parentID int64, name string
 	}
 	n, err := m.Count()
 	return n > 0, err
+}
+
+// eventDescendantIDs 返回 rootID 的全部后代事件 id（不含 rootID 自身）。
+func eventDescendantIDs(ctx context.Context, rootID int64) (map[int64]struct{}, error) {
+	out := make(map[int64]struct{})
+	if rootID <= 0 {
+		return out, nil
+	}
+	rows := make([]entity.Event, 0)
+	if err := dao.Event.Ctx(ctx).Fields(dao.Event.Columns().Id, dao.Event.Columns().ParentId).Scan(&rows); err != nil {
+		return nil, err
+	}
+	childrenByParent := make(map[int64][]int64)
+	for _, row := range rows {
+		pid := normalizeEventParentID(row.ParentId)
+		childrenByParent[pid] = append(childrenByParent[pid], row.Id)
+	}
+	stack := append([]int64(nil), childrenByParent[rootID]...)
+	for len(stack) > 0 {
+		id := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if _, seen := out[id]; seen {
+			continue
+		}
+		out[id] = struct{}{}
+		stack = append(stack, childrenByParent[id]...)
+	}
+	return out, nil
+}
+
+func validateEventParentChange(ctx context.Context, eventID, newParentID int64) error {
+	newParentID = normalizeEventParentID(newParentID)
+	if newParentID == 0 {
+		return nil
+	}
+	if newParentID == eventID {
+		return ErrEventParentCycle
+	}
+	n, err := dao.Event.Ctx(ctx).Where(dao.Event.Columns().Id, newParentID).Count()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrEventParentInvalid
+	}
+	desc, err := eventDescendantIDs(ctx, eventID)
+	if err != nil {
+		return err
+	}
+	if _, isDesc := desc[newParentID]; isDesc {
+		return ErrEventParentCycle
+	}
+	return nil
 }
 
 func normalizeEventRows(rows []entity.Event) {
@@ -347,7 +407,8 @@ func (s *service) ListEvents(ctx context.Context) ([]entity.Event, error) {
 	return rows, err
 }
 
-func (s *service) UpdateEvent(ctx context.Context, id int64, name string, eventType string, extraNames, color, logoPath string) error {
+// UpdateEvent 更新事件字典；parentID 非 nil 时同时修改 parent_id（0 表示升为根）。
+func (s *service) UpdateEvent(ctx context.Context, id int64, name string, eventType string, extraNames, color, logoPath string, parentID *int64) error {
 	if id <= 0 {
 		return errors.New("事件ID无效")
 	}
@@ -375,7 +436,16 @@ func (s *service) UpdateEvent(ctx context.Context, id int64, name string, eventT
 		Scan(&existing); err != nil {
 		return err
 	}
-	exists, err := eventNameExistsUnderParent(ctx, existing.ParentId, name, id)
+	targetParent := normalizeEventParentID(existing.ParentId)
+	if parentID != nil {
+		targetParent = normalizeEventParentID(*parentID)
+		if targetParent != normalizeEventParentID(existing.ParentId) {
+			if err := validateEventParentChange(ctx, id, targetParent); err != nil {
+				return err
+			}
+		}
+	}
+	exists, err := eventNameExistsUnderParent(ctx, targetParent, name, id)
 	if err != nil {
 		return err
 	}
@@ -387,6 +457,9 @@ func (s *service) UpdateEvent(ctx context.Context, id int64, name string, eventT
 		dao.Event.Columns().EventType:  eventType,
 		dao.Event.Columns().ExtraNames: strings.TrimSpace(extraNames),
 		dao.Event.Columns().Color:        strings.TrimSpace(color),
+	}
+	if parentID != nil {
+		data[dao.Event.Columns().ParentId] = targetParent
 	}
 	if lp := assetpath.Normalize(strings.TrimSpace(logoPath)); lp != "" {
 		data[dao.Event.Columns().Logo] = lp

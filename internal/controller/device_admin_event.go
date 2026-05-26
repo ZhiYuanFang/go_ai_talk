@@ -53,7 +53,7 @@ func deviceAdminEventAdd(r *ghttp.Request, c *AdminCtrl) {
 		return
 	}
 	if logoPath != "" {
-		if err := c.Admin.UpdateEvent(ctx, eventID, name, eventType, extraNames, color, logoPath); err != nil {
+		if err := c.Admin.UpdateEvent(ctx, eventID, name, eventType, extraNames, color, logoPath, nil); err != nil {
 			writeDeviceAdminEventErr(r, err)
 			return
 		}
@@ -92,11 +92,26 @@ func deviceAdminEventUpdate(r *ghttp.Request, c *AdminCtrl) {
 		writeDeviceAdminFail(r, gcode.CodeInvalidParameter, err.Error())
 		return
 	}
-	if err := c.Admin.UpdateEvent(ctx, id, name, eventType, extraNames, color, logoPath); err != nil {
+	var parentPtr *int64
+	if parentID, ok := eventParentIDFromMultipart(r); ok {
+		parentPtr = &parentID
+	}
+	if err := c.Admin.UpdateEvent(ctx, id, name, eventType, extraNames, color, logoPath, parentPtr); err != nil {
 		writeDeviceAdminEventErr(r, err)
 		return
 	}
 	writeDeviceAdminOK(r, nil)
+}
+
+// eventParentIDFromMultipart 解析表单 parentId；第二返回值表示客户端是否显式提交该字段。
+func eventParentIDFromMultipart(r *ghttp.Request) (int64, bool) {
+	if r.Request.MultipartForm == nil {
+		return 0, false
+	}
+	if _, ok := r.Request.MultipartForm.Value["parentId"]; !ok {
+		return 0, false
+	}
+	return device.NormalizeEventParentIDForAPI(r.GetForm("parentId").Int64()), true
 }
 
 // deviceEventImageServe 提供事件 logo 静态读（路径前缀 /ai_talk_images/）。
@@ -179,6 +194,10 @@ func writeDeviceAdminEventErr(r *ghttp.Request, err error) {
 	case errors.Is(err, device.ErrEventNotFound):
 		writeDeviceAdminFail(r, gcode.CodeNotFound, err.Error())
 	case errors.Is(err, device.ErrEventHasChildren):
+		writeDeviceAdminFail(r, gcode.CodeInvalidOperation, err.Error())
+	case errors.Is(err, device.ErrEventParentInvalid):
+		writeDeviceAdminFail(r, gcode.CodeInvalidParameter, err.Error())
+	case errors.Is(err, device.ErrEventParentCycle):
 		writeDeviceAdminFail(r, gcode.CodeInvalidOperation, err.Error())
 	default:
 		if strings.TrimSpace(err.Error()) != "" {

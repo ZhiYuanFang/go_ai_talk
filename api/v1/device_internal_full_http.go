@@ -69,11 +69,13 @@ type DeviceInternalEventAddReq struct {
 type DeviceInternalEventAddRes struct{}
 
 type DeviceInternalEventUpdateReq struct {
-	g.Meta       `path:"/device/internal/api/event/update" method:"post" tags:"device" summary:"内部-更新事件"`
-	Id           int64  `json:"id"`
-	Name         string `json:"name"`
-	EventType    string `json:"eventType"`
-	ExtraNames   string `json:"extraNames"`
+	g.Meta     `path:"/device/internal/api/event/update" method:"post" tags:"device" summary:"内部-更新事件"`
+	Id         int64  `json:"id"`
+	Name       string `json:"name"`
+	EventType  string `json:"eventType"`
+	ExtraNames string `json:"extraNames"`
+	// ParentId 非空时修改 parent_id；省略或 null 表示不修改父节点。
+	ParentId *int64 `json:"parentId"`
 }
 
 type DeviceInternalEventUpdateRes struct{}

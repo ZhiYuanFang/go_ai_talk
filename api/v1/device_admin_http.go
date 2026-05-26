@@ -55,12 +55,13 @@ type DeviceAdminEventAddRes struct{}
 
 // DeviceAdminEventUpdateReq 更新事件（multipart，见 device_admin_event.go）。
 type DeviceAdminEventUpdateReq struct {
-	Id           int64  `dc:"事件ID，表单 id"`
-	Name         string `dc:"表单 name"`
-	EventType    string `dc:"表单 eventType"`
-	ExtraNames   string `dc:"表单 extraNames"`
-	Color        string `dc:"表单 color"`
-	Logo         string `dc:"可选文件 logo"`
+	Id         int64  `dc:"事件ID，表单 id"`
+	Name       string `dc:"表单 name"`
+	EventType  string `dc:"表单 eventType"`
+	ExtraNames string `dc:"表单 extraNames"`
+	Color      string `dc:"表单 color"`
+	Logo       string `dc:"可选文件 logo"`
+	ParentId   int64  `dc:"父事件 ID，0 为根；编辑时表单 parentId，省略表示不修改"`
 }
 
 // DeviceAdminEventUpdateRes 更新成功。

@@ -187,6 +187,12 @@
 				<div style="font-size:13px;color:#444;margin-bottom:6px;">事件扩展（别名等，可选）</div>
 				<textarea id="eventFormExtraNames" placeholder="多个别名可用逗号、顿号等分隔" style="width:100%;box-sizing:border-box;"></textarea>
 			</div>
+			<div id="eventFormParentWrap" class="hidden" style="margin-top:10px;">
+				<label style="font-size:13px;color:#444;display:block;margin-bottom:6px;">父事件
+					<select id="eventFormParentSelect" style="display:block;margin-top:6px;min-width:260px;max-width:100%;"></select>
+				</label>
+				<p style="font-size:12px;color:#666;margin:8px 0 0;">不能选择自身或其子事件作为父节点。</p>
+			</div>
 			<div id="eventFormVisual" class="event-form-visual">
 				<div style="font-size:13px;color:#444;margin-bottom:8px;font-weight:600;">当前 Logo 与色调</div>
 				<div class="row" style="align-items:flex-start;gap:20px;">
@@ -283,6 +289,8 @@ const actionFormCancelBtn = document.getElementById('actionFormCancelBtn');
 let eventFormMode = 'add';
 let editingEventId = 0;
 let eventFormParentId = 0;
+/** 最近一次加载的扁平事件列表，供编辑时父事件下拉使用。 */
+let eventListCache = [];
 let editingActionId = 0;
 
 /** 管理端可选动作目标（不含 conversation/对话） */
@@ -466,6 +474,7 @@ async function submitEventRowUpdate(row, opts){
 		fd.append('eventType', normalizeEventType(row.eventType));
 		fd.append('extraNames', row.extraNames || '');
 		fd.append('color', opts && opts.color != null ? opts.color : normalizeEventColor(row.color));
+		fd.append('parentId', String(Number(row.parentId || 0)));
 		if(opts && opts.logoFile){ fd.append('logo', opts.logoFile); }
 		await apiForm('/device/admin/api/event/update', fd);
 		setMsg(eventMsg, '已更新', true);
@@ -570,9 +579,57 @@ function buildEventForest(flat){
 	return ordered;
 }
 
+/** 收集某事件全部后代 id（不含自身）。 */
+function collectDescendantEventIds(flatList, rootId){
+	const byParent = new Map();
+	(flatList || []).forEach(it => {
+		const pid = Number(it.parentId || 0) > 0 ? Number(it.parentId) : 0;
+		if(!byParent.has(pid)) byParent.set(pid, []);
+		byParent.get(pid).push(Number(it.id));
+	});
+	const out = new Set();
+	const stack = [Number(rootId)];
+	while(stack.length){
+		const id = stack.pop();
+		(byParent.get(id) || []).forEach(cid => {
+			if(!out.has(cid)){ out.add(cid); stack.push(cid); }
+		});
+	}
+	return out;
+}
+
+function hideEventFormParentSelect(){
+	const wrap = document.getElementById('eventFormParentWrap');
+	if(wrap) wrap.classList.add('hidden');
+}
+
+function fillEventFormParentSelect(editingRow){
+	const wrap = document.getElementById('eventFormParentWrap');
+	const sel = document.getElementById('eventFormParentSelect');
+	if(!wrap || !sel || !editingRow) return;
+	const forbidden = collectDescendantEventIds(eventListCache, editingRow.id);
+	forbidden.add(Number(editingRow.id));
+	sel.innerHTML = '';
+	const optRoot = document.createElement('option');
+	optRoot.value = '0';
+	optRoot.textContent = '无（根事件）';
+	sel.appendChild(optRoot);
+	eventListCache.forEach(it => {
+		if(forbidden.has(Number(it.id))) return;
+		const opt = document.createElement('option');
+		opt.value = String(it.id);
+		opt.textContent = it.name + ' (#' + it.id + ')';
+		sel.appendChild(opt);
+	});
+	const cur = Number(editingRow.parentId || 0);
+	sel.value = String(cur > 0 ? cur : 0);
+	wrap.classList.remove('hidden');
+}
+
 function openEventAddModal(parentRow){
 	eventFormMode = 'add';
 	editingEventId = 0;
+	hideEventFormParentSelect();
 	eventFormParentId = parentRow && parentRow.id > 0 ? parentRow.id : 0;
 	if(eventFormParentId > 0){
 		eventModalTitle.textContent = '新增子事件（父：' + parentRow.name + '）';
@@ -661,7 +718,7 @@ function appendEventTableRow(tbody, row, depth){
 	btnEdit.addEventListener('click', () => {
 		eventFormMode = 'edit';
 		editingEventId = row.id;
-		eventFormParentId = 0;
+		eventFormParentId = Number(row.parentId || 0);
 		eventModalTitle.textContent = '编辑事件';
 		eventFormName.value = row.name;
 		eventFormEventType.value = normalizeEventType(row.eventType);
@@ -669,6 +726,7 @@ function appendEventTableRow(tbody, row, depth){
 		eventFormLogo.value = '';
 		eventFormMsg.textContent = '';
 		updateEventFormVisual(row);
+		fillEventFormParentSelect(row);
 		eventModal.classList.add('show');
 	});
 	const btnDel = document.createElement('button');
@@ -700,6 +758,7 @@ async function loadEventList(){
 	const tbody = document.getElementById('eventTbody');
 	try {
 		const data = asListPayload(await api('/device/admin/api/event/list'));
+		eventListCache = data.slice();
 		tbody.innerHTML = '';
 		buildEventForest(data).forEach(({ row, depth }) => {
 			appendEventTableRow(tbody, row, depth);
@@ -941,6 +1000,8 @@ eventFormSubmitBtn.addEventListener('click', async () => {
 		}
 		if(eventFormMode === 'edit'){
 			fd.append('id', String(editingEventId));
+			const parentSel = document.getElementById('eventFormParentSelect');
+			fd.append('parentId', parentSel ? parentSel.value : String(eventFormParentId || 0));
 			await apiForm('/device/admin/api/event/update', fd);
 			setMsg(eventMsg, '修改成功', true);
 		}else{

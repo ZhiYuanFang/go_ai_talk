@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"strings"
 
 	v1 "hello/api/v1"
@@ -87,12 +88,16 @@ func (c *DeviceInternalCtrl) EventAddInternal(ctx context.Context, req *v1.Devic
 // EventUpdateInternal 更新事件。
 func (c *DeviceInternalCtrl) EventUpdateInternal(ctx context.Context, req *v1.DeviceInternalEventUpdateReq) (res *v1.DeviceInternalEventUpdateRes, err error) {
 	_ = c
-	if err := device.DeviceAdmin().UpdateEvent(ctx, req.Id, strings.TrimSpace(req.Name), req.EventType, req.ExtraNames, "", ""); err != nil {
-		switch err {
-		case device.ErrEventExists:
+	if err := device.DeviceAdmin().UpdateEvent(ctx, req.Id, strings.TrimSpace(req.Name), req.EventType, req.ExtraNames, "", "", req.ParentId); err != nil {
+		switch {
+		case errors.Is(err, device.ErrEventExists):
 			return nil, gerror.NewCode(gcode.CodeInvalidOperation, err.Error())
-		case device.ErrEventNotFound:
+		case errors.Is(err, device.ErrEventNotFound):
 			return nil, gerror.NewCode(gcode.CodeNotFound, err.Error())
+		case errors.Is(err, device.ErrEventParentInvalid):
+			return nil, gerror.NewCode(gcode.CodeInvalidParameter, err.Error())
+		case errors.Is(err, device.ErrEventParentCycle):
+			return nil, gerror.NewCode(gcode.CodeInvalidOperation, err.Error())
 		default:
 			return nil, err
 		}

@@ -61,7 +61,7 @@ type DeviceAdminContract interface {
 	List(ctx context.Context) ([]entity.User, error)
 	AddEvent(ctx context.Context, name string, eventType string, extraNames, color, logoPath string, parentID int64) (int64, error)
 	ListEvents(ctx context.Context) ([]entity.Event, error)
-	UpdateEvent(ctx context.Context, id int64, name string, eventType string, extraNames, color, logoPath string) error
+	UpdateEvent(ctx context.Context, id int64, name string, eventType string, extraNames, color, logoPath string, parentID *int64) error
 	DeleteEvent(ctx context.Context, id int64) error
 	ListQAPage(ctx context.Context, page, pageSize int) (QaPageResult, error)
 	DeleteQA(ctx context.Context, id int64) error
