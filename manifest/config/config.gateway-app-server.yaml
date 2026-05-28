@@ -39,7 +39,14 @@ gatewayApp:
   wxIdCodeCacheSeconds: 120
   # —— App 版本管理页（上传 APK、写 download_url）——
   # 对外可访问的 gateway-app 根 URL（无末尾斜杠），用于拼接 APK 绝对下载地址；生产请用环境变量 GATEWAY_APP_PUBLIC_BASE_URL 覆盖。
+  # 若公网入口为 https://www.pangbao.cuplay.top，则微信 Universal Links 基址为 https://www.pangbao.cuplay.top/wx/ulink/；
+  # 注意：Universal Links 与 AASA 校验必须走 HTTPS，不能使用 http://www.pangbao.cuplay.top。
+  # 但 AASA 文件仍必须由同一 host 的根路径 /apple-app-site-association 或 /.well-known/apple-app-site-association 提供。
   publicBaseUrl: ""
+  ios:
+    # Apple Team ID：优先环境变量 GATEWAY_APP_IOS_TEAM_ID；当前胖宝 iOS 应用为 395D9NUCNF。
+    # 未配置时 AASA 端点返回 503，便于运维识别 Universal Links 尚未完成接入。
+    teamId: "395D9NUCNF"
   # APK 存储目录（Linux 云主机默认 /apk/ai_talk/）；可用 GATEWAY_APP_APK_STORAGE_DIR 覆盖。
   apkStorageDir: "/apk/ai_talk/"
   # 单包大小上限（字节），默认 200MB；可用 GATEWAY_APP_APK_MAX_BYTES 覆盖。

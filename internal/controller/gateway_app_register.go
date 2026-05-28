@@ -9,6 +9,11 @@ import (
 func RegisterGatewayAppHTTP(s *ghttp.Server) {
 	s.SetFileServerEnabled(true)
 	s.SetIndexFolder(true)
+	// Apple Universal Links 验证文件必须从 host 根路径读取，不能只依赖业务子路径暴露。
+	s.BindHandler("/apple-app-site-association", gatewayAppAppleAppSiteAssociation)
+	s.BindHandler("/.well-known/apple-app-site-association", gatewayAppAppleAppSiteAssociation)
+	// 浏览器直接打开 Universal Links 前缀时回退到官网壳页，避免出现 404。
+	s.BindHandler("/wx/ulink/*", gatewayAppUniversalLinksLanding)
 	s.BindHandler("/", func(r *ghttp.Request) {
 		r.Response.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
 		r.Response.ServeFile("resource/public/pangbao-home.html")

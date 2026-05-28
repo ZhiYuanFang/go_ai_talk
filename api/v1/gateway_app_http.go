@@ -95,11 +95,11 @@ type GatewayAppSiteIOSDownload struct {
 
 // GatewayAppSiteHomeRes 官网首页公开聚合响应。
 type GatewayAppSiteHomeRes struct {
-	BrandName      string                          `json:"brandName"`
-	HeroTitle      string                          `json:"heroTitle"`
-	HeroSubtitle   string                          `json:"heroSubtitle"`
-	ServiceSummary string                          `json:"serviceSummary"`
-	Events         []GatewayAppSiteEventItem       `json:"events"`
-	Android        GatewayAppSiteAndroidDownload   `json:"android"`
-	IOS            GatewayAppSiteIOSDownload       `json:"ios"`
+	BrandName      string                        `json:"brandName"`
+	HeroTitle      string                        `json:"heroTitle"`
+	HeroSubtitle   string                        `json:"heroSubtitle"`
+	ServiceSummary string                        `json:"serviceSummary"`
+	Events         []GatewayAppSiteEventItem     `json:"events"`
+	Android        GatewayAppSiteAndroidDownload `json:"android"`
+	IOS            GatewayAppSiteIOSDownload     `json:"ios"`
 }

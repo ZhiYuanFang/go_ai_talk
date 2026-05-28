@@ -39,6 +39,8 @@ var (
 	// GET 或 HEAD：路径精确匹配。
 	gatewayAppAuthExemptExactGETHEAD = []string{
 		"/",
+		"/apple-app-site-association",
+		"/.well-known/apple-app-site-association",
 		"/api.json",
 		"/device/admin",
 		"/device/admin/",
@@ -54,6 +56,7 @@ var (
 
 	// GET 或 HEAD：路径以前缀命中即豁免。
 	gatewayAppAuthExemptPrefixesGETHEAD = []string{
+		"/wx/ulink/",
 		"/resource/",
 		"/device/app/apk/",
 		"/ai_talk_images/",
