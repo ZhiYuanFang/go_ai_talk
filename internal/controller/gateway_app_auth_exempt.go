@@ -42,6 +42,7 @@ var (
 		"/api.json",
 		"/device/admin",
 		"/device/admin/",
+		"/device/app/api/site/home",
 		"/device/app/api/version/check",
 		"/device/app/api/version/admin/list",
 		"/device/app/api/version/admin/get",

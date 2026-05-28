@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>胖宝 - 专注母婴喂养服务</title>
+	<meta name="description" content="胖宝专注母婴喂养服务，让照顾孩子更便捷、更轻松。" />
+	<style>
+		:root{
+			--bg-1:#fdf2f8;
+			--bg-2:#e0f2fe;
+			--bg-3:#ede9fe;
+			--text:#1f2937;
+			--muted:#6b7280;
+			--line:rgba(255,255,255,.45);
+			--glass:rgba(255,255,255,.30);
+			--glass-strong:rgba(255,255,255,.52);
+			--shadow:0 24px 80px rgba(94, 84, 142, .18);
+			--pink:#ec4899;
+			--blue:#38bdf8;
+		}
+		*{box-sizing:border-box}
+		body{
+			margin:0;
+			font-family:"Microsoft YaHei",system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+			color:var(--text);
+			background:
+				radial-gradient(circle at 10% 10%, rgba(236,72,153,.22), transparent 28%),
+				radial-gradient(circle at 88% 18%, rgba(56,189,248,.24), transparent 30%),
+				radial-gradient(circle at 55% 85%, rgba(168,85,247,.18), transparent 34%),
+				linear-gradient(135deg, var(--bg-1), var(--bg-2) 48%, var(--bg-3));
+			min-height:100vh;
+		}
+		a{color:inherit;text-decoration:none}
+		img{display:block;max-width:100%}
+		.page{width:min(1180px, calc(100% - 32px));margin:0 auto;padding:24px 0 56px}
+		.glass{
+			background:var(--glass);
+			border:1px solid var(--line);
+			backdrop-filter:blur(18px);
+			-webkit-backdrop-filter:blur(18px);
+			box-shadow:var(--shadow);
+		}
+		nav{
+			display:flex;justify-content:space-between;align-items:center;
+			padding:16px 20px;border-radius:24px;position:sticky;top:16px;z-index:20;margin-bottom:20px;
+		}
+		.brand{display:flex;align-items:center;gap:14px}
+		.logo{
+			width:44px;height:44px;border-radius:14px;
+			background:linear-gradient(135deg, rgba(236,72,153,.95), rgba(56,189,248,.95));
+			color:#fff;font-weight:800;display:grid;place-items:center;letter-spacing:1px;
+		}
+		.brand strong{display:block;font-size:18px}
+		.brand span{color:var(--muted);font-size:13px}
+		.nav-actions{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+		.nav-link,.btn{
+			border-radius:999px;padding:12px 18px;font-size:14px;font-weight:600;
+			border:1px solid rgba(255,255,255,.55);background:rgba(255,255,255,.45)
+		}
+		.btn-primary{
+			background:linear-gradient(135deg, rgba(236,72,153,.95), rgba(99,102,241,.95));
+			color:#fff;border:none;box-shadow:0 16px 32px rgba(236,72,153,.22)
+		}
+		.hero{display:grid;grid-template-columns:1.15fr .85fr;gap:22px;align-items:stretch}
+		.hero-card,.hero-side,.section-card,.download-card,.status-card{border-radius:32px;padding:28px}
+		.hero-card h1{font-size:clamp(34px, 5vw, 58px);line-height:1.08;margin:10px 0 18px}
+		.kicker{display:inline-flex;gap:8px;align-items:center;padding:8px 14px;border-radius:999px;background:rgba(255,255,255,.55);font-size:13px;font-weight:700;color:#db2777}
+		.hero-card p{font-size:17px;line-height:1.8;color:#4b5563;margin:0 0 14px}
+		.hero-actions{display:flex;gap:14px;flex-wrap:wrap;margin-top:24px}
+		.hero-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:24px}
+		.metric{padding:16px;border-radius:22px;background:rgba(255,255,255,.42);border:1px solid rgba(255,255,255,.5)}
+		.metric strong{display:block;font-size:24px;margin-bottom:4px}
+		.metric span{color:var(--muted);font-size:13px}
+		.hero-side{display:flex;flex-direction:column;justify-content:space-between;gap:18px;overflow:hidden;position:relative}
+		.hero-side::after{
+			content:"";position:absolute;inset:auto -42px -42px auto;width:180px;height:180px;border-radius:50%;
+			background:radial-gradient(circle, rgba(255,255,255,.65), rgba(255,255,255,0));
+		}
+		.bubble{padding:18px 20px;border-radius:24px;background:var(--glass-strong);border:1px solid rgba(255,255,255,.55)}
+		.bubble h3,.section-head h2{margin:0 0 10px}
+		.bubble p,.section-head p,.download-meta,.foot p{margin:0;color:var(--muted);line-height:1.75}
+		.sections{display:grid;gap:22px;margin-top:22px}
+		.section-head{display:flex;justify-content:space-between;gap:16px;align-items:end;margin-bottom:18px}
+		.section-head h2{font-size:28px}
+		.event-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px}
+		.event-card{padding:18px;border-radius:24px;background:rgba(255,255,255,.4);border:1px solid rgba(255,255,255,.55);min-height:170px;display:flex;flex-direction:column;gap:12px}
+		.event-logo{width:58px;height:58px;border-radius:18px;background:rgba(255,255,255,.65);display:grid;place-items:center;overflow:hidden;border:1px solid rgba(255,255,255,.6)}
+		.event-logo img{width:100%;height:100%;object-fit:cover}
+		.event-placeholder{font-size:22px;font-weight:800;color:#6d28d9}
+		.event-name{font-size:17px;font-weight:700}
+		.event-tag{display:inline-flex;align-items:center;gap:6px;padding:8px 12px;border-radius:999px;background:rgba(255,255,255,.55);font-size:12px;color:var(--muted);width:max-content}
+		.download-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px}
+		.download-card{display:flex;flex-direction:column;gap:16px}
+		.qr-wrap{display:grid;place-items:center;min-height:250px;border-radius:24px;background:rgba(255,255,255,.45);border:1px dashed rgba(167,139,250,.5);padding:18px}
+		#qrCanvas{width:196px;height:196px;max-width:100%}
+		.download-meta strong{font-size:20px;display:block;color:#111827;margin-bottom:6px}
+		.download-note{font-size:13px;color:var(--muted)}
+		.inline-actions{display:flex;gap:12px;flex-wrap:wrap}
+		.status-card{display:none;color:#b91c1c;background:rgba(255,255,255,.5)}
+		.status-card.show{display:block}
+		.foot{display:flex;justify-content:space-between;gap:16px;align-items:center;padding:18px 22px;border-radius:24px;margin-top:22px}
+		.loading{opacity:.7}
+		@media (max-width:960px){
+			.hero{grid-template-columns:1fr}
+			.hero-metrics{grid-template-columns:1fr}
+			.section-head,.foot{flex-direction:column;align-items:flex-start}
+		}
+		@media (max-width:600px){
+			.page{width:min(100% - 20px, 1180px)}
+			nav,.hero-card,.hero-side,.section-card,.download-card,.status-card,.foot{padding:20px}
+			.nav-actions{display:none}
+		}
+	</style>
+</head>
+<body>
+	<div class="page loading" id="app">
+		<nav class="glass">
+			<div class="brand">
+				<div class="logo">胖宝</div>
+				<div>
+					<strong>胖宝</strong>
+					<span>专注母婴喂养服务商</span>
+				</div>
+			</div>
+			<div class="nav-actions">
+				<a class="nav-link" href="#events">事件能力</a>
+				<a class="nav-link" href="#download">应用下载</a>
+				<a class="btn btn-primary" href="#download">立即下载</a>
+			</div>
+		</nav>
+
+		<section class="hero">
+			<div class="hero-card glass">
+				<div class="kicker">母婴喂养 · 更便捷 · 更轻松</div>
+				<h1 id="heroTitle">让母婴喂养记录与陪伴更轻松</h1>
+				<p id="heroSubtitle">胖宝专注母婴喂养服务，围绕喂奶、睡眠、换尿布等关键喂养场景，帮助家庭更便捷、更轻松地照顾孩子。</p>
+				<div class="hero-actions">
+					<a class="btn btn-primary" href="#download">下载胖宝 App</a>
+					<a class="btn" href="#events">查看事件能力</a>
+				</div>
+				<div class="hero-metrics">
+					<div class="metric">
+						<strong>喂养更清晰</strong>
+						<span>事件统一呈现，帮助家庭快速掌握照护重点</span>
+					</div>
+					<div class="metric">
+						<strong>记录更轻松</strong>
+						<span>围绕高频照护事件，让日常记录更自然顺手</span>
+					</div>
+					<div class="metric">
+						<strong>下载更直接</strong>
+						<span>Android 扫码下载，iOS 直接前往 App Store 搜索</span>
+					</div>
+				</div>
+			</div>
+			<div class="hero-side glass">
+				<div class="bubble">
+					<h3>品牌定位</h3>
+					<p id="serviceSummary">专注母婴喂养服务，通过更清晰的事件记录与下载体验，让日常照护更省心。</p>
+				</div>
+				<div class="bubble">
+					<h3>为什么选择胖宝</h3>
+					<p>将喂奶、睡眠、换尿布等照护事件集中展示，帮助家人协同记录，减少来回沟通成本，陪伴照顾孩子的每个瞬间。</p>
+				</div>
+				<div class="bubble">
+					<h3>下载指引</h3>
+					<p>Android 可直接扫码安装；iOS 用户前往 App Store 搜索“胖宝”即可下载体验。</p>
+				</div>
+			</div>
+		</section>
+
+		<section class="sections">
+			<div class="status-card glass" id="statusCard"></div>
+
+			<div class="section-card glass" id="events">
+				<div class="section-head">
+					<div>
+						<h2>喂养事件能力</h2>
+						<p>从数据库权威链路读取事件信息，展示胖宝在母婴喂养场景中的核心能力。</p>
+					</div>
+					<div class="event-tag">同源展示 · 实时聚合</div>
+				</div>
+				<div class="event-grid" id="eventGrid"></div>
+			</div>
+
+			<div class="section-card glass" id="download">
+				<div class="section-head">
+					<div>
+						<h2>下载胖宝 App</h2>
+						<p>Android 支持扫码下载；iOS 前往 App Store 搜索“胖宝”即可获取。</p>
+					</div>
+					<div class="event-tag">跨平台下载说明</div>
+				</div>
+				<div class="download-grid">
+					<div class="download-card glass">
+						<div class="download-meta">
+							<strong>Android 下载</strong>
+							<p id="androidStatus">正在读取最新下载信息…</p>
+							<p class="download-note" id="androidVersion"></p>
+						</div>
+						<div class="qr-wrap">
+							<canvas id="qrCanvas" width="196" height="196"></canvas>
+							<div id="qrFallback" class="download-note"></div>
+						</div>
+						<div class="inline-actions">
+							<a class="btn btn-primary" id="androidButton" href="javascript:void(0)">准备中</a>
+						</div>
+						<p class="download-note" id="androidNotes"></p>
+					</div>
+					<div class="download-card glass">
+						<div class="download-meta">
+							<strong>iOS 下载</strong>
+							<p id="iosInstruction">前往 App Store 搜索“胖宝”下载</p>
+						</div>
+						<div class="qr-wrap" style="align-content:center;text-align:center">
+							<div>
+								<div class="event-tag" style="margin:0 auto 14px">App Store</div>
+								<p style="margin:0;font-size:22px;font-weight:700">搜索“胖宝”</p>
+								<p class="download-note" style="margin-top:10px">在 App Store 中输入“胖宝”，即可下载安装。</p>
+							</div>
+						</div>
+						<div class="inline-actions">
+							<a class="btn" href="https://apps.apple.com/cn/" target="_blank" rel="noopener">打开 App Store</a>
+						</div>
+					</div>
+				</div>
+			</div>
+		</section>
+
+		<footer class="foot glass">
+			<p>胖宝 · 专注母婴喂养服务，让照顾孩子更便捷、更轻松。</p>
+			<p>官网由 gateway-app 同源提供，事件 logo 与 Android 下载链路均来自系统权威数据。</p>
+		</footer>
+	</div>
+
+	<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
+	<script>
+	(function(){
+		const app = document.getElementById('app');
+		const eventGrid = document.getElementById('eventGrid');
+		const heroTitle = document.getElementById('heroTitle');
+		const heroSubtitle = document.getElementById('heroSubtitle');
+		const serviceSummary = document.getElementById('serviceSummary');
+		const statusCard = document.getElementById('statusCard');
+		const androidStatus = document.getElementById('androidStatus');
+		const androidVersion = document.getElementById('androidVersion');
+		const androidButton = document.getElementById('androidButton');
+		const androidNotes = document.getElementById('androidNotes');
+		const iosInstruction = document.getElementById('iosInstruction');
+		const qrCanvas = document.getElementById('qrCanvas');
+		const qrFallback = document.getElementById('qrFallback');
+
+		function escapeHtml(text){
+			return String(text || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+		}
+
+		function showStatus(message){
+			statusCard.textContent = message;
+			statusCard.classList.add('show');
+		}
+
+		function renderEvents(events){
+			if(!Array.isArray(events) || !events.length){
+				eventGrid.innerHTML = '<div class="event-card"><div class="event-logo"><span class="event-placeholder">胖</span></div><div class="event-name">事件信息准备中</div><div class="download-note">当前暂未读取到官网事件数据，请稍后再试。</div></div>';
+				return;
+			}
+			eventGrid.innerHTML = events.map(function(item){
+				const color = item.color || '#a855f7';
+				const first = (item.name || '胖').trim().charAt(0) || '胖';
+				const logo = item.logoUrl ? '<img src="' + escapeHtml(item.logoUrl) + '" alt="' + escapeHtml(item.name || '事件') + ' logo" />' : '<span class="event-placeholder">' + escapeHtml(first) + '</span>';
+				return '<div class="event-card" style="box-shadow: inset 0 0 0 1px ' + escapeHtml(color) + '22">'
+					+ '<div class="event-logo">' + logo + '</div>'
+					+ '<div class="event-name">' + escapeHtml(item.name || '未命名事件') + '</div>'
+					+ '<div class="event-tag">母婴喂养事件</div>'
+					+ '</div>';
+			}).join('');
+		}
+
+		function renderAndroid(android){
+			const info = android || {};
+			androidStatus.textContent = info.statusText || 'Android 下载信息准备中';
+			androidVersion.textContent = info.latestVersion ? ('最新版本：' + info.latestVersion) : '';
+			androidNotes.textContent = info.releaseNotes || info.unavailableTip || '';
+			androidButton.textContent = info.buttonText || 'Android 下载';
+			if(info.available && info.downloadUrl){
+				androidButton.href = info.downloadUrl;
+				androidButton.target = '_blank';
+				androidButton.rel = 'noopener';
+				renderQr(info.qrValue || info.downloadUrl);
+			}else{
+				androidButton.href = 'javascript:void(0)';
+				androidButton.removeAttribute('target');
+				androidButton.removeAttribute('rel');
+				qrFallback.textContent = info.unavailableTip || 'Android 下载暂未开放';
+				clearCanvas();
+			}
+		}
+
+		function clearCanvas(){
+			const ctx = qrCanvas.getContext('2d');
+			ctx.clearRect(0, 0, qrCanvas.width, qrCanvas.height);
+		}
+
+		function renderQr(value){
+			qrFallback.textContent = '';
+			if(!value){
+				clearCanvas();
+				qrFallback.textContent = '暂无二维码内容';
+				return;
+			}
+			if(window.QRCode && typeof window.QRCode.toCanvas === 'function'){
+				window.QRCode.toCanvas(qrCanvas, value, {
+					width: 196,
+					margin: 1,
+					color: { dark: '#111827', light: '#ffffff' }
+				}, function(err){
+					if(err){
+						clearCanvas();
+						qrFallback.textContent = '二维码生成失败，请直接点击下载按钮。';
+					}
+				});
+				return;
+			}
+			clearCanvas();
+			qrFallback.textContent = '二维码组件加载失败，请直接点击下载按钮。';
+		}
+
+		fetch('/device/app/api/site/home', { credentials: 'same-origin' })
+			.then(function(res){
+				return res.json().catch(function(){ return {}; }).then(function(body){
+					if(!res.ok || body.code !== 0){
+						throw new Error(body.message || ('HTTP ' + res.status));
+					}
+					return body.data || {};
+				});
+			})
+			.then(function(data){
+				document.title = (data.brandName || '胖宝') + ' - 专注母婴喂养服务';
+				heroTitle.textContent = data.heroTitle || heroTitle.textContent;
+				heroSubtitle.textContent = data.heroSubtitle || heroSubtitle.textContent;
+				serviceSummary.textContent = data.serviceSummary || serviceSummary.textContent;
+				renderEvents(data.events || []);
+				renderAndroid(data.android || {});
+				if(data.ios && data.ios.instruction){
+					iosInstruction.textContent = data.ios.instruction;
+				}
+			})
+			.catch(function(err){
+				showStatus('官网数据读取失败：' + (err.message || err));
+				renderEvents([]);
+				renderAndroid({ available:false, unavailableTip:'当前暂无可用 Android 安装包，请稍后再试。' });
+			})
+			.finally(function(){
+				app.classList.remove('loading');
+			});
+	})();
+	</script>
+</body>
+</html>

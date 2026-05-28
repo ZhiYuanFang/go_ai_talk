@@ -10,7 +10,8 @@ func RegisterGatewayAppHTTP(s *ghttp.Server) {
 	s.SetFileServerEnabled(true)
 	s.SetIndexFolder(true)
 	s.BindHandler("/", func(r *ghttp.Request) {
-		r.Response.Write("智能语音 App 网关")
+		r.Response.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
+		r.Response.ServeFile("resource/public/pangbao-home.html")
 	})
 	s.BindHandler("/device/admin", func(r *ghttp.Request) {
 		r.Response.ServeFile("resource/public/admin.html")

@@ -60,3 +60,46 @@ type GatewayAppVersionCheckRes struct {
 	DownloadUrl   string `json:"downloadUrl"`
 	ForceUpdate   bool   `json:"forceUpdate"`
 }
+
+// GatewayAppSiteHomeReq 官网首页公开聚合数据。
+type GatewayAppSiteHomeReq struct {
+	g.Meta `path:"/device/app/api/site/home" method:"get" tags:"gateway-app" summary:"胖宝官网首页数据"`
+}
+
+// GatewayAppSiteEventItem 官网事件展示项。
+type GatewayAppSiteEventItem struct {
+	Id       int64  `json:"id"`
+	Name     string `json:"name"`
+	LogoUrl  string `json:"logoUrl"`
+	Color    string `json:"color"`
+	ParentId int64  `json:"parentId"`
+}
+
+// GatewayAppSiteAndroidDownload 官网 Android 下载展示数据。
+type GatewayAppSiteAndroidDownload struct {
+	Available      bool   `json:"available"`
+	LatestVersion  string `json:"latestVersion"`
+	ReleaseNotes   string `json:"releaseNotes"`
+	DownloadUrl    string `json:"downloadUrl"`
+	QrValue        string `json:"qrValue"`
+	StatusText     string `json:"statusText"`
+	ButtonText     string `json:"buttonText"`
+	UnavailableTip string `json:"unavailableTip"`
+}
+
+// GatewayAppSiteIOSDownload 官网 iOS 下载说明。
+type GatewayAppSiteIOSDownload struct {
+	SearchTerm  string `json:"searchTerm"`
+	Instruction string `json:"instruction"`
+}
+
+// GatewayAppSiteHomeRes 官网首页公开聚合响应。
+type GatewayAppSiteHomeRes struct {
+	BrandName      string                          `json:"brandName"`
+	HeroTitle      string                          `json:"heroTitle"`
+	HeroSubtitle   string                          `json:"heroSubtitle"`
+	ServiceSummary string                          `json:"serviceSummary"`
+	Events         []GatewayAppSiteEventItem       `json:"events"`
+	Android        GatewayAppSiteAndroidDownload   `json:"android"`
+	IOS            GatewayAppSiteIOSDownload       `json:"ios"`
+}

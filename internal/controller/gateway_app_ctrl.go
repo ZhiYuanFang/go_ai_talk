@@ -141,38 +141,9 @@ func (c *GatewayAppCtrl) TokenRefresh(ctx context.Context, req *v1.GatewayAppTok
 // VersionCheck GET /device/app/api/version/check
 func (c *GatewayAppCtrl) VersionCheck(ctx context.Context, req *v1.GatewayAppVersionCheckReq) (res *v1.GatewayAppVersionCheckRes, err error) {
 	cur := strings.TrimSpace(req.CurrentVersion)
-	cacheKey := gatewayapp.RedisKeyAppVersionLatestCache
-	if raw, err := g.Redis().Do(ctx, "GET", cacheKey); err == nil && raw != nil {
-		s := strings.TrimSpace(raw.String())
-		if s != "" {
-			var row entity.AppVersion
-			if err := json.Unmarshal([]byte(s), &row); err == nil && strings.TrimSpace(row.LatestVersion) != "" {
-				return buildVersionRes(cur, row), nil
-			}
-		}
-	}
-	// 使用 One+IsEmpty：Scan 在结果集为空时部分驱动会返回 sql.ErrNoRows，经统一响应包装后客户端易误判为失败。
-	one, err := dao.AppVersion.Ctx(ctx).OrderDesc(dao.AppVersion.Columns().Id).Limit(1).One()
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return versionCheckWhenNoPublishedRow(cur), nil
-		}
-		glog.Warningf(ctx, "[gateway-app] 读取 version 表失败 err=%v", err)
+	row, ok := loadLatestAppVersionRow(ctx)
+	if !ok {
 		return versionCheckWhenNoPublishedRow(cur), nil
-	}
-	if one.IsEmpty() {
-		return versionCheckWhenNoPublishedRow(cur), nil
-	}
-	var row entity.AppVersion
-	if err := one.Struct(&row); err != nil {
-		glog.Warningf(ctx, "[gateway-app] 解析 version 行失败 err=%v", err)
-		return versionCheckWhenNoPublishedRow(cur), nil
-	}
-	if strings.TrimSpace(row.LatestVersion) == "" {
-		return versionCheckWhenNoPublishedRow(cur), nil
-	}
-	if blob, err := json.Marshal(row); err == nil {
-		_, _ = g.Redis().Do(ctx, "SET", cacheKey, string(blob), "EX", 60)
 	}
 	return buildVersionRes(cur, row), nil
 }
@@ -200,6 +171,40 @@ func buildVersionRes(current string, row entity.AppVersion) *v1.GatewayAppVersio
 		DownloadUrl:   gatewayapp.NormalizeAssetPath(strings.TrimSpace(row.DownloadUrl)),
 		ForceUpdate:   row.ForceUpdate != 0,
 	}
+}
+
+// loadLatestAppVersionRow 读取最新版本行；失败或无可用版本时返回 ok=false，由调用方决定降级语义。
+func loadLatestAppVersionRow(ctx context.Context) (row entity.AppVersion, ok bool) {
+	cacheKey := gatewayapp.RedisKeyAppVersionLatestCache
+	if raw, err := g.Redis().Do(ctx, "GET", cacheKey); err == nil && raw != nil {
+		s := strings.TrimSpace(raw.String())
+		if s != "" {
+			if err := json.Unmarshal([]byte(s), &row); err == nil && strings.TrimSpace(row.LatestVersion) != "" {
+				return row, true
+			}
+		}
+	}
+	one, err := dao.AppVersion.Ctx(ctx).OrderDesc(dao.AppVersion.Columns().Id).Limit(1).One()
+	if err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			glog.Warningf(ctx, "[gateway-app] 读取 version 表失败 err=%v", err)
+		}
+		return entity.AppVersion{}, false
+	}
+	if one.IsEmpty() {
+		return entity.AppVersion{}, false
+	}
+	if err := one.Struct(&row); err != nil {
+		glog.Warningf(ctx, "[gateway-app] 解析 version 行失败 err=%v", err)
+		return entity.AppVersion{}, false
+	}
+	if strings.TrimSpace(row.LatestVersion) == "" {
+		return entity.AppVersion{}, false
+	}
+	if blob, err := json.Marshal(row); err == nil {
+		_, _ = g.Redis().Do(ctx, "SET", cacheKey, string(blob), "EX", 60)
+	}
+	return row, true
 }
 
 func deviceServiceBase(ctx context.Context) string {
