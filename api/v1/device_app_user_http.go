@@ -54,8 +54,8 @@ type DeviceProfileAutoSaveRes struct {
 // DeviceWxLoginReq 微信登录（仅业务，不返回 JWT）。
 type DeviceWxLoginReq struct {
 	g.Meta   `path:"/device/app/api/user/login" method:"post" tags:"device" summary:"微信登录业务"`
-	JsCode   string `json:"jsCode"   dc:"微信小程序临时 js_code，服务端 jscode2session 换 unionid"`
-	Platform string `json:"platform" dc:"与 wechatMp.platforms 配置键一致"`
+	JsCode   string `json:"jsCode"   dc:"微信开放平台授权临时 code（移动应用 SendAuth 或网站 qrconnect），服务端 OAuth 换 unionid"`
+	Platform string `json:"platform" dc:"与 wechat.platforms 配置键一致，如 ios/android/web"`
 }
 
 // DeviceWxLoginRes 微信登录业务响应。

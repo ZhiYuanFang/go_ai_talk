@@ -22,15 +22,21 @@ redis:
     address: "redis-node-1:7001,redis-node-2:7002,redis-node-3:7003"
     db: 0
 
-# 微信小程序 jscode2session：platform 与客户端 POST /device/app/api/user/login 的 platform 一致。
-# 生产环境务必覆盖 appSecret，勿提交真实密钥。
+# 微信开放平台 OAuth（sns/oauth2/access_token）：platform 与客户端 POST /device/app/api/user/login 的 platform 一致。
+# ios/android 须配置为同一移动应用 appId/secret；web 为网站应用独立凭据。生产务必覆盖 appSecret，勿提交真实密钥。
 # 事件 logo 落盘目录（库内 logo 字段仅存 /ai_talk_images/... 路径，不含域名）。
 device:
   eventImageStorageDir: "/ai_talk_images/"
   eventImageMaxBytes: 2097152
 
-wechatMp:
+wechat:
   platforms:
-    integration-test:
-      appId: "wx0000000000000000"
-      appSecret: "replace-with-real-secret"
+    ios:
+      appId: "wxe713de83c921f341"
+      appSecret: "74dd30876697b02bea9fbabd13bfb6fc"
+    android:
+      appId: "wxe713de83c921f341"
+      appSecret: "74dd30876697b02bea9fbabd13bfb6fc"
+    web:
+      appId: "wxe713de83c921f341"
+      appSecret: "74dd30876697b02bea9fbabd13bfb6fc"

@@ -78,14 +78,13 @@ func WxDeviceLoginByDeviceNo(ctx context.Context, deviceNo string) (*WxLoginResu
 	}, nil
 }
 
-// WxLogin 将客户端临时 js_code 经微信换票得到 unionid，再按 unionid 查找或创建 wx 行。
+// WxLogin 将客户端 jsCode（微信开放平台授权临时 code）经 OAuth 换票得到 unionid，再按 unionid 查找或创建 wx 行。
 func WxLogin(ctx context.Context, jsCode, platform string) (*WxLoginResult, error) {
-	sess, err := exchangeJsCodeForUnionID(ctx, platform, jsCode)
+	oauth, err := exchangeAuthCodeForUnionID(ctx, platform, jsCode)
 	if err != nil {
 		return nil, err
 	}
-	_ = sess.SessionKey // 明确丢弃：不落库、不复用，避免成为攻击面
-	unionID := strings.TrimSpace(sess.UnionID)
+	unionID := strings.TrimSpace(oauth.UnionID)
 	platform = strings.TrimSpace(platform)
 
 	one, err := dao.Wx.Ctx(ctx).Where(dao.Wx.Columns().Unionid, unionID).One()

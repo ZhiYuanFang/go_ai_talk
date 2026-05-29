@@ -34,12 +34,12 @@
 			<input id="baseUrl" type="text" placeholder="http://127.0.0.1:9702" />
 			<div class="row2">
 				<div>
-					<label>jsCode（微信小程序 wx.login 临时 code，须可被 jscode2session 校验）</label>
-					<input id="jsCode" type="text" placeholder="真实 js_code；联调须配置 wechatMp.platforms" />
+					<label>jsCode（微信开放平台授权临时 code：移动 SendAuth 或网站 qrconnect）</label>
+					<input id="jsCode" type="text" placeholder="真实 code；须配置 wechat.platforms" />
 				</div>
 				<div>
-					<label>platform</label>
-					<input id="platform" type="text" value="integration-test" />
+					<label>platform（ios / android / web）</label>
+					<input id="platform" type="text" value="ios" />
 				</div>
 			</div>
 			<button type="button" id="btnLogin">POST /device/app/api/login</button>

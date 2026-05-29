@@ -5,8 +5,8 @@ import "github.com/gogf/gf/v2/frame/g"
 // GatewayAppLoginReq App 登录：网关聚合 device 微信登录并签发令牌。
 type GatewayAppLoginReq struct {
 	g.Meta   `path:"/device/app/api/login" method:"post" tags:"gateway-app" summary:"App 登录"`
-	JsCode   string `json:"jsCode"   dc:"微信小程序临时登录凭证（wx.login），服务端换票，禁止持久化"`
-	Platform string `json:"platform" dc:"与 device 配置 wechatMp.platforms 下键一致，用于选择 appId/secret"`
+	JsCode   string `json:"jsCode"   dc:"微信开放平台授权临时 code，服务端 OAuth 换票，禁止持久化"`
+	Platform string `json:"platform" dc:"与 device 配置 wechat.platforms 下键一致（ios/android/web），用于选择 appId/secret"`
 }
 
 // GatewayAppLoginRes 登录响应（含 JWT access 与不透明 refresh）。
