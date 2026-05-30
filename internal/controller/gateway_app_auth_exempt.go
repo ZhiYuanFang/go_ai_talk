@@ -50,6 +50,8 @@ var (
 		"/device/app/api/version/admin/get",
 		"/device/app/version-admin.html",
 		"/device/app/integration-test.html",
+		"/user-agreement.html",
+		"/privacy-policy.html",
 		"/favicon.ico",
 		"/robots.txt",
 	}
