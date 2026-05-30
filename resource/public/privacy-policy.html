@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>胖宝 - 隐私政策</title>
+	<meta name="description" content="胖宝隐私政策" />
+	<style>
+		:root{
+			--bg-1:#fdf2f8;
+			--bg-2:#e0f2fe;
+			--bg-3:#ede9fe;
+			--text:#1f2937;
+			--muted:#6b7280;
+			--line:rgba(255,255,255,.45);
+			--glass:rgba(255,255,255,.30);
+			--shadow:0 24px 80px rgba(94, 84, 142, .18);
+			--pink:#ec4899;
+			--blue:#38bdf8;
+		}
+		*{box-sizing:border-box}
+		body{
+			margin:0;
+			font-family:"Microsoft YaHei",system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+			color:var(--text);
+			background:
+				radial-gradient(circle at 10% 10%, rgba(236,72,153,.22), transparent 28%),
+				radial-gradient(circle at 88% 18%, rgba(56,189,248,.24), transparent 30%),
+				radial-gradient(circle at 55% 85%, rgba(168,85,247,.18), transparent 34%),
+				linear-gradient(135deg, var(--bg-1), var(--bg-2) 48%, var(--bg-3));
+			min-height:100vh;
+		}
+		a{color:inherit;text-decoration:none}
+		.page{width:min(980px, calc(100% - 32px));margin:0 auto;padding:24px 0 56px}
+		.glass{
+			background:var(--glass);
+			border:1px solid var(--line);
+			backdrop-filter:blur(18px);
+			-webkit-backdrop-filter:blur(18px);
+			box-shadow:var(--shadow);
+		}
+		nav{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-radius:24px;position:sticky;top:16px;z-index:20;margin-bottom:20px}
+		.brand{display:flex;align-items:center;gap:14px}
+		.logo{width:44px;height:44px;border-radius:14px;background:linear-gradient(135deg, rgba(236,72,153,.95), rgba(56,189,248,.95));color:#fff;font-weight:800;display:grid;place-items:center;letter-spacing:1px}
+		.brand strong{display:block;font-size:18px}
+		.brand span{color:var(--muted);font-size:13px}
+		.card{border-radius:32px;padding:28px}
+		h1{font-size:clamp(28px, 4vw, 42px);margin:0 0 10px}
+		.kicker{display:inline-flex;gap:8px;align-items:center;padding:8px 14px;border-radius:999px;background:rgba(255,255,255,.55);font-size:13px;font-weight:700;color:#db2777;margin-bottom:16px}
+		.meta{margin:0 0 24px;color:var(--muted)}
+		h2{margin:24px 0 10px;font-size:22px}
+		p,li{line-height:1.85;color:#374151}
+		ul{margin:0;padding-left:20px}
+		.section{padding:16px 0;border-top:1px dashed rgba(255,255,255,.55)}
+		.section:first-of-type{border-top:none;padding-top:0}
+		.foot{margin-top:20px;padding:18px 22px;border-radius:24px;color:var(--muted)}
+		@media (max-width:600px){
+			.page{width:min(100% - 20px, 980px)}
+			nav,.card,.foot{padding:20px}
+		}
+	</style>
+</head>
+<body>
+	<div class="page">
+		<nav class="glass">
+			<div class="brand">
+				<div class="logo">胖宝</div>
+				<div>
+					<strong>胖宝</strong>
+					<span>隐私政策</span>
+				</div>
+			</div>
+			<a href="/" aria-label="返回首页">返回首页</a>
+		</nav>
+
+		<main class="card glass">
+			<div class="kicker">Privacy Policy</div>
+			<h1>胖宝隐私政策</h1>
+			<p class="meta">生效日期：2026-05-30</p>
+
+			<section class="section">
+				<h2>1. 我们收集哪些信息</h2>
+				<ul>
+					<li>微信个人信息：为提供登录功能，我们会收集您的微信头像、昵称、OpenID。</li>
+					<li>宝宝个人档案：为了计算月龄和生成趋势图，我们需要您提供宝宝的昵称、性别、出生日期。</li>
+					<li>成长记录数据：您主动输入的各种记录（喂养、睡眠、排泄等动作及时间）。</li>
+					<li>音频数据：当您使用语音识别功能时，我们会请求使用麦克风权限。音频流仅用于转换为文本信息进行记录，我们不会持久化保留您的原始通话/环境音频。</li>
+				</ul>
+			</section>
+
+			<section class="section">
+				<h2>2. 权限调用说明</h2>
+				<ul>
+					<li>麦克风权限：用于语音输入记录。</li>
+					<li>存储/相册权限（如涉及）：用于用户反馈时上传截图或保存生成的统计图表。</li>
+					<li>网络权限：用于同步记录到云端，确保更换设备后数据不丢失。</li>
+				</ul>
+			</section>
+
+			<section class="section">
+				<h2>3. 信息安全</h2>
+				<p>我们采用工业级的加密技术对您的宝宝数据进行传输和存储，防止未经授权的访问、公开披露、使用、修改、损坏或丢失。</p>
+			</section>
+
+			<section class="section">
+				<h2>4. 注销与申诉</h2>
+				<p>用户可在“设置”中申请注销账号。一旦注销，我们将删除或匿名化处理您的所有个人信息及宝宝记录。</p>
+			</section>
+		</main>
+
+		<footer class="foot glass">
+			<p>如您继续使用胖宝 App，即表示您已阅读并同意本隐私政策。</p>
+		</footer>
+	</div>
+</body>
+</html>

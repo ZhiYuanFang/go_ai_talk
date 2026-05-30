@@ -18,6 +18,15 @@ func RegisterGatewayAppHTTP(s *ghttp.Server) {
 		r.Response.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
 		r.Response.ServeFile("resource/public/pangbao-home.html")
 	})
+	// App 合规文档：用户协议与隐私政策，用于客户端内嵌 WebView 直接展示。
+	s.BindHandler("/user-agreement.html", func(r *ghttp.Request) {
+		r.Response.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
+		r.Response.ServeFile("resource/public/user-agreement.html")
+	})
+	s.BindHandler("/privacy-policy.html", func(r *ghttp.Request) {
+		r.Response.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
+		r.Response.ServeFile("resource/public/privacy-policy.html")
+	})
 	s.BindHandler("/device/admin", func(r *ghttp.Request) {
 		r.Response.ServeFile("resource/public/admin.html")
 	})
