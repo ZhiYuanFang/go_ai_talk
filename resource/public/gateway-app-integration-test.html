@@ -3,7 +3,7 @@
 <head>
 	<meta charset="UTF-8" />
 	<meta name="viewport" content="width=device-width, initial-scale=1" />
-	<title>Gateway-App 联调页（模拟微信 / 绑定 / 画像 / 喂养对话 / WS / 趋势）</title>
+	<title>Gateway-App 联调页（微信/用户名登录、绑定、画像、喂养、WS、趋势）</title>
 	<style>
 		body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#0f172a;color:#e2e8f0;margin:0;padding:20px;line-height:1.45}
 		h1{font-size:1.15rem;margin:0 0 16px;font-weight:600;color:#f8fafc}
@@ -25,7 +25,7 @@
 </head>
 <body>
 	<h1>Gateway-App 联调页</h1>
-	<p class="hint" style="margin-bottom:16px">请从本页所在域名访问（与 gateway-app 同源），或填写下方「网关基址」。流程：模拟登录 → 绑定设备 → 关联宝宝 → 文本喂养对话 → 连接 WS 收历史变更 → 拉取 piece 画趋势。</p>
+	<p class="hint" style="margin-bottom:16px">请从本页所在域名访问（与 gateway-app 同源），或填写下方「网关基址」。流程：微信/用户名登录 → 用户名体系接口联调 → 绑定设备与画像 → 历史对话/WS/趋势。</p>
 
 	<div class="grid">
 		<div class="card">
@@ -55,6 +55,31 @@
 		</div>
 
 		<div class="card">
+			<h2>1.5 用户名体系接口（本次新增）</h2>
+			<div class="row2">
+				<div>
+					<label>用户名 userName</label>
+					<input id="userName" type="text" placeholder="例如 test_user_01" />
+				</div>
+				<div>
+					<label>密码 password</label>
+					<input id="password" type="password" placeholder="请输入密码" />
+				</div>
+			</div>
+			<label>新密码 newPassword（用于改密）</label>
+			<input id="newPassword" type="password" placeholder="例如 NewPass@123" />
+			<button type="button" id="btnGatewayUsernameLogin">POST /device/app/api/username_login（网关聚合，回填 token）</button>
+			<button type="button" class="secondary" id="btnUsernameRegister">POST /device/app/api/user/username/register</button>
+			<button type="button" class="secondary" id="btnUsernameLoginBiz">POST /device/app/api/user/username/login（仅业务）</button>
+			<button type="button" class="secondary" id="btnWxCreateUsername">POST /device/app/api/user/wx/create_username（需登录）</button>
+			<button type="button" class="secondary" id="btnUsernameBindWx">POST /device/app/api/user/username/bindwx（需登录）</button>
+			<button type="button" class="secondary" id="btnUsernameBindDevice">POST /device/app/api/user/username/bind_device（需登录）</button>
+			<button type="button" class="secondary" id="btnUsernameChangePwd">POST /device/app/api/user/username/change_password（需登录）</button>
+			<p class="hint">提示：register/login 为匿名可调用；bind/create/change_password 需要 accessToken（Bearer）。</p>
+			<div id="msgUsername" class="log"></div>
+		</div>
+
+		<div class="card">
 			<h2>2. 绑定设备 & 关联宝宝</h2>
 			<label>deviceNo（须已在 device 注册）</label>
 			<input id="deviceNo" type="text" placeholder="ABCDEF" />
@@ -70,6 +95,8 @@
 				</div>
 			</div>
 			<button type="button" id="btnAutoSave">POST /device/app/api/user/auto_save</button>
+			<button type="button" class="secondary" id="btnProfileGet">GET /device/app/api/user/get（含 nickname）</button>
+			<button type="button" class="secondary" id="btnBirthdayGet">GET /device/history/api/birthday（含 nickname）</button>
 			<p class="hint">未绑设备时 auto_save 会生成 6 位大写 device_no；已绑则只更新画像。</p>
 			<div id="msgProfile" class="log"></div>
 		</div>
@@ -113,11 +140,15 @@
 (function(){
 	const $ = (id) => document.getElementById(id);
 	function base(){ return ($('baseUrl').value || window.location.origin).replace(/\/$/,''); }
+	function jsonOrEmpty(res){ return res.json().catch(()=>({})); }
 	function authHeaders(extra){
 		const t = ($('accessToken').value || '').trim();
 		const h = Object.assign({'Content-Type':'application/json'}, extra||{});
 		if(t) h['Authorization'] = 'Bearer ' + t;
 		return h;
+	}
+	function noAuthHeaders(extra){
+		return Object.assign({'Content-Type':'application/json'}, extra||{});
 	}
 	function log(el, text, append){
 		const s = typeof text === 'string' ? text : JSON.stringify(text, null, 2);
@@ -126,7 +157,16 @@
 	async function apiJson(path, opts){
 		const url = base() + path;
 		const res = await fetch(url, Object.assign({headers: authHeaders()}, opts));
-		const data = await res.json().catch(()=>({}));
+		const data = await jsonOrEmpty(res);
+		if(!res.ok || data.code !== 0){
+			throw new Error(data.message || ('HTTP '+res.status));
+		}
+		return data.data;
+	}
+	async function apiJsonNoAuth(path, opts){
+		const url = base() + path;
+		const res = await fetch(url, Object.assign({headers: noAuthHeaders()}, opts));
+		const data = await jsonOrEmpty(res);
 		if(!res.ok || data.code !== 0){
 			throw new Error(data.message || ('HTTP '+res.status));
 		}
@@ -155,10 +195,10 @@
 			const url = base() + '/device/app/api/login';
 			const res = await fetch(url, {
 				method:'POST',
-				headers:{'Content-Type':'application/json'},
+				headers: noAuthHeaders(),
 				body: JSON.stringify({ jsCode: $('jsCode').value.trim(), platform: $('platform').value.trim() })
 			});
-			const data = await res.json().catch(()=>({}));
+			const data = await jsonOrEmpty(res);
 			if(!res.ok || data.code !== 0) throw new Error(data.message || 'login failed');
 			const d = data.data || {};
 			$('accessToken').value = d.accessToken || '';
@@ -172,10 +212,10 @@
 			const url = base() + '/device/app/api/device_login';
 			const res = await fetch(url, {
 				method:'POST',
-				headers:{'Content-Type':'application/json'},
+				headers: noAuthHeaders(),
 				body: JSON.stringify({ deviceNo: $('deviceNo').value.trim() })
 			});
-			const data = await res.json().catch(()=>({}));
+			const data = await jsonOrEmpty(res);
 			if(!res.ok || data.code !== 0) throw new Error(data.message || 'device_login failed');
 			const d = data.data || {};
 			$('accessToken').value = d.accessToken || '';
@@ -198,9 +238,77 @@
 		try{
 			const v = prompt('currentVersion', '0.0.1') || '0.0.1';
 			const res = await fetch(base() + '/device/app/api/version/check?currentVersion=' + encodeURIComponent(v));
-			const data = await res.json().catch(()=>({}));
+			const data = await jsonOrEmpty(res);
 			log($('msgLogin'), data, true);
 		}catch(e){ log($('msgLogin'), String(e.message||e), true); }
+	};
+
+	$('btnGatewayUsernameLogin').onclick = async () => {
+		try{
+			const d = await apiJsonNoAuth('/device/app/api/username_login', {
+				method:'POST',
+				body: JSON.stringify({ userName: $('userName').value.trim(), password: $('password').value })
+			});
+			$('accessToken').value = d.accessToken || '';
+			$('refreshToken').value = d.refreshToken || '';
+			if(d.deviceNo) $('deviceNo').value = d.deviceNo;
+			log($('msgUsername'), { ok:true, via:'gateway_username_login', wxId:d.wxId, deviceNo:d.deviceNo, isNewUser:d.isNewUser });
+		}catch(e){ log($('msgUsername'), String(e.message||e)); }
+	};
+	$('btnUsernameRegister').onclick = async () => {
+		try{
+			const d = await apiJsonNoAuth('/device/app/api/user/username/register', {
+				method:'POST',
+				body: JSON.stringify({ userName: $('userName').value.trim(), password: $('password').value })
+			});
+			log($('msgUsername'), { ok:true, via:'username_register', wxId:d && d.wxId }, true);
+		}catch(e){ log($('msgUsername'), String(e.message||e), true); }
+	};
+	$('btnUsernameLoginBiz').onclick = async () => {
+		try{
+			const d = await apiJsonNoAuth('/device/app/api/user/username/login', {
+				method:'POST',
+				body: JSON.stringify({ userName: $('userName').value.trim(), password: $('password').value })
+			});
+			if(d && d.deviceNo) $('deviceNo').value = d.deviceNo;
+			log($('msgUsername'), { ok:true, via:'username_login_biz', data:d }, true);
+		}catch(e){ log($('msgUsername'), String(e.message||e), true); }
+	};
+	$('btnWxCreateUsername').onclick = async () => {
+		try{
+			await apiJson('/device/app/api/user/wx/create_username', {
+				method:'POST',
+				body: JSON.stringify({ userName: $('userName').value.trim(), password: $('password').value })
+			});
+			log($('msgUsername'), 'wx/create_username ok', true);
+		}catch(e){ log($('msgUsername'), String(e.message||e), true); }
+	};
+	$('btnUsernameBindWx').onclick = async () => {
+		try{
+			await apiJson('/device/app/api/user/username/bindwx', {
+				method:'POST',
+				body: JSON.stringify({ jsCode: $('jsCode').value.trim(), platform: $('platform').value.trim() })
+			});
+			log($('msgUsername'), 'username/bindwx ok', true);
+		}catch(e){ log($('msgUsername'), String(e.message||e), true); }
+	};
+	$('btnUsernameBindDevice').onclick = async () => {
+		try{
+			await apiJson('/device/app/api/user/username/bind_device', {
+				method:'POST',
+				body: JSON.stringify({ deviceNo: $('deviceNo').value.trim() })
+			});
+			log($('msgUsername'), 'username/bind_device ok', true);
+		}catch(e){ log($('msgUsername'), String(e.message||e), true); }
+	};
+	$('btnUsernameChangePwd').onclick = async () => {
+		try{
+			await apiJson('/device/app/api/user/username/change_password', {
+				method:'POST',
+				body: JSON.stringify({ oldPassword: $('password').value, newPassword: $('newPassword').value })
+			});
+			log($('msgUsername'), 'username/change_password ok', true);
+		}catch(e){ log($('msgUsername'), String(e.message||e), true); }
 	};
 
 	$('btnBind').onclick = async () => {
@@ -220,6 +328,22 @@
 			});
 			if(d && d.deviceNo) $('deviceNo').value = d.deviceNo;
 			log($('msgProfile'), d, true);
+		}catch(e){ log($('msgProfile'), String(e.message||e), true); }
+	};
+	$('btnProfileGet').onclick = async () => {
+		try{
+			const dn = $('deviceNo').value.trim();
+			if(!dn){ log($('msgProfile'), '请先填写 deviceNo', true); return; }
+			const d = await apiJson('/device/app/api/user/get?deviceNo=' + encodeURIComponent(dn), { method:'GET' });
+			log($('msgProfile'), { via:'user/get', data:d }, true);
+		}catch(e){ log($('msgProfile'), String(e.message||e), true); }
+	};
+	$('btnBirthdayGet').onclick = async () => {
+		try{
+			const dn = $('deviceNo').value.trim();
+			if(!dn){ log($('msgProfile'), '请先填写 deviceNo', true); return; }
+			const d = await apiJson('/device/history/api/birthday?deviceNo=' + encodeURIComponent(dn), { method:'GET' });
+			log($('msgProfile'), { via:'history/birthday', data:d }, true);
 		}catch(e){ log($('msgProfile'), String(e.message||e), true); }
 	};
 
