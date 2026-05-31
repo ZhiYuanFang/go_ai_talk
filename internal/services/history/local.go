@@ -50,7 +50,7 @@ func (s *localService) ListEventOptions(ctx context.Context) ([]entity.Event, er
 	return ListEventOptions(ctx)
 }
 
-func (s *localService) GetBirthday(ctx context.Context, deviceNo string) (string, int64, int, error) {
+func (s *localService) GetBirthday(ctx context.Context, deviceNo string) (string, int64, int, string, error) {
 	return GetDeviceBirthday(ctx, deviceNo)
 }
 
@@ -278,29 +278,34 @@ func SaveBirthday(ctx context.Context, deviceNo string, babyName string, birthda
 		logDelegateFailure(ctx, "save_profile", err)
 		return err
 	}
-	_ = historyCache.setBirthday(ctx, deviceNo, babyName, birthdayUnixSec, sex)
+	nickname := ""
+	if _, _, _, n, ok, _ := historyCache.getBirthday(ctx, deviceNo); ok {
+		nickname = n
+	}
+	_ = historyCache.setBirthday(ctx, deviceNo, babyName, birthdayUnixSec, sex, nickname)
 	return nil
 }
 
-func GetDeviceBirthday(ctx context.Context, deviceNo string) (string, int64, int, error) {
+func GetDeviceBirthday(ctx context.Context, deviceNo string) (string, int64, int, string, error) {
 	deviceNo = strings.TrimSpace(deviceNo)
 	if deviceNo == "" {
-		return "", 0, 0, nil
+		return "", 0, 0, "", nil
 	}
-	if babyName, birthday, sex, ok, err := historyCache.getBirthday(ctx, deviceNo); err == nil && ok {
-		return babyName, birthday, sex, nil
+	if babyName, birthday, sex, nickname, ok, err := historyCache.getBirthday(ctx, deviceNo); err == nil && ok {
+		return babyName, birthday, sex, nickname, nil
 	}
-	babyName, birthday, sex, err := delegateGetProfile(ctx, deviceNo)
+	babyName, birthday, sex, nickname, err := delegateGetProfile(ctx, deviceNo)
 	if err != nil {
 		logDelegateFailure(ctx, "get_profile", err)
-		return "", 0, 0, err
+		return "", 0, 0, "", err
 	}
 	babyName = strings.TrimSpace(babyName)
+	nickname = strings.TrimSpace(nickname)
 	if sex > 0 {
 		sex = 1
 	}
-	_ = historyCache.setBirthday(ctx, deviceNo, babyName, birthday, sex)
-	return babyName, birthday, sex, nil
+	_ = historyCache.setBirthday(ctx, deviceNo, babyName, birthday, sex, nickname)
+	return babyName, birthday, sex, nickname, nil
 }
 
 func AddDeviceHistory(ctx context.Context, item entity.History) (int64, error) {

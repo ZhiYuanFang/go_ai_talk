@@ -15,4 +15,6 @@ type Wx struct {
 	DeviceNo interface{} //
 	Unionid  interface{} //
 	Platform interface{} // 平台来源
+	UserName interface{} //
+	Password interface{} //
 }

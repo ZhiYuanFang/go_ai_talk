@@ -35,6 +35,7 @@ func (c *DeviceAppUserCtrl) Get(ctx context.Context, req *v1.DeviceProfileGetReq
 		BabyName: profile.BabyName,
 		Birthday: profile.Birthday,
 		Sex:      profile.Sex,
+		Nickname: profile.Nickname,
 	}, nil
 }
 
@@ -105,6 +106,118 @@ func (c *DeviceAppUserCtrl) Login(ctx context.Context, req *v1.DeviceWxLoginReq)
 		DeviceNo:  out.DeviceNo,
 		IsNewUser: out.IsNewUser,
 	}, nil
+}
+
+// UsernameRegister POST /device/app/api/user/username/register（纯业务，无 JWT）。
+func (c *DeviceAppUserCtrl) UsernameRegister(ctx context.Context, req *v1.DeviceUsernameRegisterReq) (res *v1.DeviceUsernameRegisterRes, err error) {
+	_ = c
+	wxID, err := device.WxUsernameRegister(ctx, req.UserName, req.Password)
+	if err != nil {
+		if errors.Is(err, device.ErrWxUsernameInvalid) || errors.Is(err, device.ErrWxPasswordInvalid) {
+			return nil, gerror.NewCode(gcode.CodeInvalidParameter, err.Error())
+		}
+		if errors.Is(err, device.ErrWxUsernameTaken) {
+			return nil, gerror.NewCode(gcode.CodeBusinessValidationFailed, err.Error())
+		}
+		return nil, err
+	}
+	return &v1.DeviceUsernameRegisterRes{WxId: wxID}, nil
+}
+
+// UsernameLogin POST /device/app/api/user/username/login（纯业务，无 JWT）。
+func (c *DeviceAppUserCtrl) UsernameLogin(ctx context.Context, req *v1.DeviceUsernameLoginReq) (res *v1.DeviceUsernameLoginRes, err error) {
+	_ = c
+	out, err := device.WxUsernameLogin(ctx, req.UserName, req.Password)
+	if err != nil {
+		if errors.Is(err, device.ErrWxUsernameInvalid) || errors.Is(err, device.ErrWxPasswordInvalid) {
+			return nil, gerror.NewCode(gcode.CodeInvalidParameter, err.Error())
+		}
+		if errors.Is(err, device.ErrWxUsernameAuthFailed) {
+			return nil, gerror.NewCode(gcode.CodeBusinessValidationFailed, err.Error())
+		}
+		return nil, err
+	}
+	return &v1.DeviceUsernameLoginRes{WxId: out.WxId, DeviceNo: out.DeviceNo, IsNewUser: out.IsNewUser}, nil
+}
+
+// UsernameBindWx POST /device/app/api/user/username/bindwx（当前账号由 Header X-Internal-Wx-Id 指定）。
+func (c *DeviceAppUserCtrl) UsernameBindWx(ctx context.Context, req *v1.DeviceUsernameBindWxReq) (res *v1.DeviceUsernameBindWxRes, err error) {
+	_ = c
+	r := ghttp.RequestFromCtx(ctx)
+	wxID, err := wxIDFromAppUserHeader(r)
+	if err != nil {
+		return nil, err
+	}
+	if err = device.WxUsernameBindWxByCode(ctx, wxID, req.JsCode, req.Platform); err != nil {
+		if errors.Is(err, device.ErrWxUsernameNotSet) || errors.Is(err, device.ErrWxIDInvalid) {
+			return nil, gerror.NewCode(gcode.CodeInvalidParameter, err.Error())
+		}
+		if errors.Is(err, device.ErrWxAlreadyBoundUnionID) || errors.Is(err, device.ErrWxUnionIDTakenByOther) {
+			return nil, gerror.NewCode(gcode.CodeBusinessValidationFailed, err.Error())
+		}
+		return nil, err
+	}
+	return &v1.DeviceUsernameBindWxRes{}, nil
+}
+
+// UsernameBindDevice POST /device/app/api/user/username/bind_device（当前账号由 Header X-Internal-Wx-Id 指定）。
+func (c *DeviceAppUserCtrl) UsernameBindDevice(ctx context.Context, req *v1.DeviceUsernameBindDeviceReq) (res *v1.DeviceUsernameBindDeviceRes, err error) {
+	_ = c
+	r := ghttp.RequestFromCtx(ctx)
+	wxID, err := wxIDFromAppUserHeader(r)
+	if err != nil {
+		return nil, err
+	}
+	if err = device.WxUsernameBindDevice(ctx, wxID, req.DeviceNo); err != nil {
+		if errors.Is(err, device.ErrWxUsernameNotSet) || errors.Is(err, device.ErrWxIDInvalid) {
+			return nil, gerror.NewCode(gcode.CodeInvalidParameter, err.Error())
+		}
+		if errors.Is(err, device.ErrDeviceNotRegistered) {
+			return nil, gerror.NewCode(gcode.CodeBusinessValidationFailed, err.Error())
+		}
+		return nil, err
+	}
+	return &v1.DeviceUsernameBindDeviceRes{}, nil
+}
+
+// UsernameChangePassword POST /device/app/api/user/username/change_password（当前账号由 Header X-Internal-Wx-Id 指定）。
+func (c *DeviceAppUserCtrl) UsernameChangePassword(ctx context.Context, req *v1.DeviceUsernameChangePasswordReq) (res *v1.DeviceUsernameChangePasswordRes, err error) {
+	_ = c
+	r := ghttp.RequestFromCtx(ctx)
+	wxID, err := wxIDFromAppUserHeader(r)
+	if err != nil {
+		return nil, err
+	}
+	if err = device.WxUsernameChangePassword(ctx, wxID, req.OldPassword, req.NewPassword); err != nil {
+		if errors.Is(err, device.ErrWxPasswordInvalid) || errors.Is(err, device.ErrWxIDInvalid) {
+			return nil, gerror.NewCode(gcode.CodeInvalidParameter, err.Error())
+		}
+		if errors.Is(err, device.ErrWxUsernameAuthFailed) || errors.Is(err, device.ErrWxUsernameNotSet) {
+			return nil, gerror.NewCode(gcode.CodeBusinessValidationFailed, err.Error())
+		}
+		return nil, err
+	}
+	return &v1.DeviceUsernameChangePasswordRes{}, nil
+}
+
+// WxCreateUsername POST /device/app/api/user/wx/create_username（当前账号由 Header X-Internal-Wx-Id 指定）。
+func (c *DeviceAppUserCtrl) WxCreateUsername(ctx context.Context, req *v1.DeviceWxCreateUsernameReq) (res *v1.DeviceWxCreateUsernameRes, err error) {
+	_ = c
+	r := ghttp.RequestFromCtx(ctx)
+	wxID, err := wxIDFromAppUserHeader(r)
+	if err != nil {
+		return nil, err
+	}
+	if err = device.WxCreateUsernamePassword(ctx, wxID, req.UserName, req.Password); err != nil {
+		if errors.Is(err, device.ErrWxUsernameInvalid) || errors.Is(err, device.ErrWxPasswordInvalid) || errors.Is(err, device.ErrWxIDInvalid) {
+			return nil, gerror.NewCode(gcode.CodeInvalidParameter, err.Error())
+		}
+		if errors.Is(err, device.ErrWxUsernameTaken) || errors.Is(err, device.ErrWxUsernameAlreadySet) || errors.Is(err, device.ErrWxUnionIDRequired) {
+			return nil, gerror.NewCode(gcode.CodeBusinessValidationFailed, err.Error())
+		}
+		return nil, err
+	}
+	return &v1.DeviceWxCreateUsernameRes{}, nil
 }
 
 // DeviceLogin POST /device/app/api/user/device_login（纯业务，无 JWT）。

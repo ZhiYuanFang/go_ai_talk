@@ -109,6 +109,7 @@ type cachedUserProfile struct {
 	BabyName string `json:"babyName"`
 	Birthday int64  `json:"birthday"`
 	Sex      int    `json:"sex"`
+	Nickname string `json:"nickname"`
 }
 
 func (r *deviceCacheRepo) getUserProfile(ctx context.Context, deviceNo string) (cachedUserProfile, bool, error) {
@@ -126,6 +127,7 @@ func (r *deviceCacheRepo) getUserProfile(ctx context.Context, deviceNo string) (
 	}
 	out.DeviceNo = strings.TrimSpace(out.DeviceNo)
 	out.BabyName = strings.TrimSpace(out.BabyName)
+	out.Nickname = strings.TrimSpace(out.Nickname)
 	return out, true, nil
 }
 

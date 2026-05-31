@@ -108,6 +108,8 @@
                 <option value="1">男</option>
                 <option value="0">女</option>
             </select>
+            <span>昵称：</span>
+            <span id="nicknameText">未设置昵称</span>
             <button id="saveBirthdayBtn" class="primary" type="button">保存</button>
             <span id="meta"></span>
         </div>
@@ -209,6 +211,7 @@
         const birthdayInput = document.getElementById('birthdayInput');
         const saveBirthdayBtn = document.getElementById('saveBirthdayBtn');
         const sexInput = document.getElementById('sexInput');
+        const nicknameText = document.getElementById('nicknameText');
         const historyBody = document.getElementById('historyBody');
         const suggestWrap = document.getElementById('suggestWrap');
         const chatInput = document.getElementById('chatInput');
@@ -675,9 +678,11 @@
         async function loadBirthday(){
             const data = await api('/device/history/api/birthday?deviceNo=' + encodeURIComponent(deviceNo));
             currentBabyName = String((data && data.babyName) || '').trim();
+            const nickname = String((data && data.nickname) || '').trim();
             const sec = (data && data.birthday != null) ? Number(data.birthday) : 0;
             currentSex = Number((data && data.sex) || 0) > 0 ? 1 : 0;
             babyNameInput.value = currentBabyName;
+            nicknameText.textContent = nickname || '未设置昵称';
             if(sec > 0){
                 const d = new Date(sec * 1000);
                 birthdayInput.value = d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());

@@ -24,6 +24,8 @@ type WxColumns struct {
 	DeviceNo string //
 	Unionid  string //
 	Platform string // 平台来源
+	UserName string //
+	Password string //
 }
 
 // wxColumns holds the columns for table wx.
@@ -32,6 +34,8 @@ var wxColumns = WxColumns{
 	DeviceNo: "device_no",
 	Unionid:  "unionid",
 	Platform: "platform",
+	UserName: "user_name",
+	Password: "password",
 }
 
 // NewWxDao creates and returns a new DAO object for table data access.

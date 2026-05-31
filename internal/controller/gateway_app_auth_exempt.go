@@ -19,9 +19,12 @@ var (
 	// POST 且路径精确匹配。
 	gatewayAppAuthExemptExactPOST = []string{
 		"/device/app/api/login",
+		"/device/app/api/username_login",
 		"/device/app/api/device_login",
 		"/device/app/api/token/refresh",
 		"/device/app/api/user/login",
+		"/device/app/api/user/username/register",
+		"/device/app/api/user/username/login",
 		"/device/app/api/user/device_login",
 		"/device/app/api/version/admin/login",
 		"/device/app/api/version/admin/upload",

@@ -33,6 +33,22 @@ type GatewayAppDeviceLoginRes struct {
 	RefreshToken string `json:"refreshToken"`
 }
 
+// GatewayAppUsernameLoginReq 用户名聚合登录：转发 device 用户名登录后签发 access/refresh。
+type GatewayAppUsernameLoginReq struct {
+	g.Meta   `path:"/device/app/api/username_login" method:"post" tags:"gateway-app" summary:"用户名聚合登录"`
+	UserName string `json:"userName" dc:"用户名"`
+	Password string `json:"password" dc:"密码明文"`
+}
+
+// GatewayAppUsernameLoginRes 与其他聚合登录响应保持同形态。
+type GatewayAppUsernameLoginRes struct {
+	WxId         int64  `json:"wxId"`
+	DeviceNo     string `json:"deviceNo"`
+	IsNewUser    bool   `json:"isNewUser"`
+	AccessToken  string `json:"accessToken"`
+	RefreshToken string `json:"refreshToken"`
+}
+
 // GatewayAppTokenRefreshReq 刷新 access。
 type GatewayAppTokenRefreshReq struct {
 	g.Meta       `path:"/device/app/api/token/refresh" method:"post" tags:"gateway-app" summary:"刷新 access_token"`

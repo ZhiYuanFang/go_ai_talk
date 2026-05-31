@@ -115,6 +115,48 @@ func (c *GatewayAppCtrl) DeviceLogin(ctx context.Context, req *v1.GatewayAppDevi
 	}, nil
 }
 
+// UsernameLogin POST /device/app/api/username_login：用户名聚合登录，device 完成业务校验后由 gateway 签发 access/refresh。
+func (c *GatewayAppCtrl) UsernameLogin(ctx context.Context, req *v1.GatewayAppUsernameLoginReq) (res *v1.GatewayAppUsernameLoginRes, err error) {
+	base := deviceServiceBase(ctx)
+	if base == "" {
+		return nil, gerror.NewCode(gcode.CodeInvalidConfiguration, "DEVICE_SERVICE_URL 未配置")
+	}
+	url := strings.TrimRight(base, "/") + "/device/app/api/user/username/login"
+	resp, err := gclient.New().ContentJson().Post(ctx, url, g.Map{
+		"userName": strings.TrimSpace(req.UserName),
+		"password": strings.TrimSpace(req.Password),
+	})
+	if err != nil {
+		return nil, err
+	}
+	j := gjson.New(resp.ReadAllString())
+	if j.Get("code").Int() != 0 {
+		return nil, gerror.NewCodef(gcode.CodeBusinessValidationFailed, "用户名登录失败: %s", j.Get("message").String())
+	}
+	data := j.GetJson("data")
+	wxID := data.Get("wxId").Int64()
+	deviceNo := strings.TrimSpace(data.Get("deviceNo").String())
+	isNew := data.Get("isNewUser").Bool()
+	if wxID <= 0 {
+		return nil, gerror.NewCode(gcode.CodeInternalError, "device 返回 wxId 无效")
+	}
+	access, err := gatewayapp.SignAccess(ctx, wxID, deviceNo)
+	if err != nil {
+		return nil, err
+	}
+	refresh, err := gatewayapp.IssueRefreshToken(ctx, wxID, deviceNo)
+	if err != nil {
+		return nil, err
+	}
+	return &v1.GatewayAppUsernameLoginRes{
+		WxId:         wxID,
+		DeviceNo:     deviceNo,
+		IsNewUser:    isNew,
+		AccessToken:  access,
+		RefreshToken: refresh,
+	}, nil
+}
+
 // TokenRefresh POST /device/app/api/token/refresh（单次旋转 refresh）。
 func (c *GatewayAppCtrl) TokenRefresh(ctx context.Context, req *v1.GatewayAppTokenRefreshReq) (res *v1.GatewayAppTokenRefreshRes, err error) {
 	wxID, rtDeviceNo, err := gatewayapp.ConsumeRefreshToken(ctx, req.RefreshToken, true)

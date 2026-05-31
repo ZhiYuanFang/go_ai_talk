@@ -5,7 +5,7 @@ TBD - created by archiving change gateway-app-server-wx-auth-history-ws. Update 
 ## Requirements
 ### Requirement: 微信登录仅返回业务字段
 
-device-service SHALL 提供 `POST /device/app/api/user/login`（设备 wx 业务登录，与网关聚合 `POST /device/app/api/login` 区分），接受 **`jsCode`**（微信小程序 `wx.login` 返回的**临时**登录凭证）与 **`platform`**（与 device 配置 `wechatMp.platforms` 下键一致，用于选择该端的 `appId`/`appSecret`）。
+device-service SHALL 提供 `POST /device/app/api/user/login`（设备 wx 业务登录，与网关聚合 `POST /device/app/api/login` 区分），接受 **`jsCode`**（ `wx.login` 返回的**临时**登录凭证）与 **`platform`**（与 device 配置 `wechatMp.platforms` 下键一致，用于选择该端的 `appId`/`appSecret`）。
 
 系统 SHALL **使用服务端持有的凭据**调用微信 **`sns/jscode2session`** 将 `jsCode` 换为 **openid** 与 **unionid**；**SHALL NOT** 接受客户端直传的 openid/unionid 作为身份依据。持久化身份键为 **`wx` 表 `union_id`**（微信开放平台 **unionid**，多端统一）；若微信响应中 **unionid 为空**（未绑定开放平台等），SHALL 返回明确业务错误且 **SHALL NOT** 创建或匹配用户行。
 
