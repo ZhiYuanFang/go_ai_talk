@@ -146,26 +146,28 @@ func (r *historyRemoteClient) ListEventOptions(ctx context.Context) ([]entity.Ev
 	return resp.List, err
 }
 
-func (r *historyRemoteClient) GetBirthday(ctx context.Context, deviceNo string) (int64, int, error) {
+func (r *historyRemoteClient) GetBirthday(ctx context.Context, deviceNo string) (string, int64, int, error) {
 	if err := r.notReady(); err != nil {
-		return 0, 0, err
+		return "", 0, 0, err
 	}
 	var resp struct {
+		BabyName string `json:"babyName"`
 		Birthday int64 `json:"birthday"`
 		Sex      int   `json:"sex"`
 	}
 	t := r.targets
 	err := r.doJSON(ctx, http.MethodGet, t.DeviceBaseURL, t.DeviceProfileGetPath(), map[string]string{"deviceNo": strings.TrimSpace(deviceNo)}, nil, &resp)
-	return resp.Birthday, resp.Sex, err
+	return strings.TrimSpace(resp.BabyName), resp.Birthday, resp.Sex, err
 }
 
-func (r *historyRemoteClient) SaveBirthday(ctx context.Context, deviceNo string, birthdayUnixSec int64, sex int) error {
+func (r *historyRemoteClient) SaveBirthday(ctx context.Context, deviceNo string, babyName string, birthdayUnixSec int64, sex int) error {
 	if err := r.notReady(); err != nil {
 		return err
 	}
 	t := r.targets
 	return r.doJSON(ctx, http.MethodPost, t.DeviceBaseURL, t.DeviceProfileSavePath(), nil, map[string]interface{}{
 		"deviceNo": strings.TrimSpace(deviceNo),
+		"babyName": strings.TrimSpace(babyName),
 		"birthday": birthdayUnixSec,
 		"sex":      sex,
 	}, nil)
@@ -469,33 +471,33 @@ func (a *switchAdapter) ListEventOptions(ctx context.Context) ([]entity.Event, e
 	return items, err
 }
 
-func (a *switchAdapter) GetBirthday(ctx context.Context, deviceNo string) (int64, int, error) {
-	if birthday, sex, ok, err := historyCache.getBirthday(ctx, deviceNo); err == nil && ok {
-		return birthday, sex, nil
+func (a *switchAdapter) GetBirthday(ctx context.Context, deviceNo string) (string, int64, int, error) {
+	if babyName, birthday, sex, ok, err := historyCache.getBirthday(ctx, deviceNo); err == nil && ok {
+		return babyName, birthday, sex, nil
 	}
 	if !a.shouldUseRemote(deviceNo) {
-		birthday, sex, err := a.local.GetBirthday(ctx, deviceNo)
+		babyName, birthday, sex, err := a.local.GetBirthday(ctx, deviceNo)
 		if err == nil {
-			_ = historyCache.setBirthday(ctx, deviceNo, birthday, sex)
+			_ = historyCache.setBirthday(ctx, deviceNo, babyName, birthday, sex)
 		}
-		return birthday, sex, err
+		return babyName, birthday, sex, err
 	}
-	b, sex, err := a.remote.GetBirthday(ctx, deviceNo)
+	babyName, b, sex, err := a.remote.GetBirthday(ctx, deviceNo)
 	if err != nil && a.cfg.failoverToLocal {
-		b, sex, err = a.local.GetBirthday(ctx, deviceNo)
+		babyName, b, sex, err = a.local.GetBirthday(ctx, deviceNo)
 	}
 	if err == nil {
-		_ = historyCache.setBirthday(ctx, deviceNo, b, sex)
+		_ = historyCache.setBirthday(ctx, deviceNo, babyName, b, sex)
 	}
-	return b, sex, err
+	return babyName, b, sex, err
 }
 
-func (a *switchAdapter) SaveBirthday(ctx context.Context, deviceNo string, birthdayUnixSec int64, sex int) error {
-	err := a.run(a.shouldUseRemote(deviceNo), func() error { return a.remote.SaveBirthday(ctx, deviceNo, birthdayUnixSec, sex) }, func() error {
-		return a.local.SaveBirthday(ctx, deviceNo, birthdayUnixSec, sex)
+func (a *switchAdapter) SaveBirthday(ctx context.Context, deviceNo string, babyName string, birthdayUnixSec int64, sex int) error {
+	err := a.run(a.shouldUseRemote(deviceNo), func() error { return a.remote.SaveBirthday(ctx, deviceNo, babyName, birthdayUnixSec, sex) }, func() error {
+		return a.local.SaveBirthday(ctx, deviceNo, babyName, birthdayUnixSec, sex)
 	})
 	if err == nil {
-		_ = historyCache.setBirthday(ctx, deviceNo, birthdayUnixSec, sex)
+		_ = historyCache.setBirthday(ctx, deviceNo, babyName, birthdayUnixSec, sex)
 	}
 	return err
 }

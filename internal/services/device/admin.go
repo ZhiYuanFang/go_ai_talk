@@ -13,9 +13,9 @@ import (
 	"hello/internal/model/entity"
 	"hello/internal/platform/eventkit"
 	"hello/internal/services/contracts"
+	"hello/internal/services/workeroutbox"
 	"hello/internal/shared/assetpath"
 	sharedtypes "hello/internal/shared/types"
-	"hello/internal/services/workeroutbox"
 
 	"github.com/gogf/gf/v2/frame/g"
 )
@@ -40,7 +40,9 @@ var insAdmin = &service{}
 // DeviceAdmin 返回设备管理领域服务实现。
 func DeviceAdmin() *service { return insAdmin }
 
-func (s *service) VerifyPassword(password string) bool { return strings.TrimSpace(password) == fixedDeviceAdminPassword }
+func (s *service) VerifyPassword(password string) bool {
+	return strings.TrimSpace(password) == fixedDeviceAdminPassword
+}
 
 func (s *service) Register(ctx context.Context, deviceNo string) (int64, error) {
 	deviceNo = strings.TrimSpace(deviceNo)
@@ -82,8 +84,9 @@ func (s *service) EnsureRegistered(ctx context.Context, deviceNo string) error {
 }
 
 // SaveUserProfile 更新 user 表画像字段；若开启 outbox 中继且配置了 WORKER_SERVICE_URL，则经 worker HTTP 写入 domain_outbox。
-func (s *service) SaveUserProfile(ctx context.Context, deviceNo string, birthdayUnixSec int64, sex int) error {
+func (s *service) SaveUserProfile(ctx context.Context, deviceNo string, babyName string, birthdayUnixSec int64, sex int) error {
 	deviceNo = strings.TrimSpace(deviceNo)
+	babyName = strings.TrimSpace(babyName)
 	if deviceNo == "" {
 		return nil
 	}
@@ -91,6 +94,7 @@ func (s *service) SaveUserProfile(ctx context.Context, deviceNo string, birthday
 		sex = 1
 	}
 	_, err := dao.User.Ctx(ctx).Where(dao.User.Columns().DeviceNo, deviceNo).Data(g.Map{
+		dao.User.Columns().BabyName: babyName,
 		dao.User.Columns().Birthday: birthdayUnixSec,
 		dao.User.Columns().Sex:      sex,
 	}).Update()
@@ -98,10 +102,11 @@ func (s *service) SaveUserProfile(ctx context.Context, deviceNo string, birthday
 		return err
 	}
 	if isDeviceOutboxRelayEnabled() {
-		_ = enqueueUserProfileOutbox(ctx, deviceNo, birthdayUnixSec, sex)
+		_ = enqueueUserProfileOutbox(ctx, deviceNo, babyName, birthdayUnixSec, sex)
 	}
 	_ = deviceCache.setUserProfile(ctx, cachedUserProfile{
 		DeviceNo: deviceNo,
+		BabyName: babyName,
 		Birthday: birthdayUnixSec,
 		Sex:      sex,
 	})
@@ -381,15 +386,13 @@ func (s *service) AddEvent(ctx context.Context, name string, eventType string, e
 		return 0, err
 	}
 	id, _ := result.LastInsertId()
-	if err == nil {
-		_ = enqueueDeviceProjectionEvent(ctx, eventkit.RoutingDeviceEventChanged, map[string]interface{}{
-			"event_id":    fmt.Sprintf("device-event-changed-%d", time.Now().UnixNano()),
-			"version":     time.Now().UnixNano(),
-			"occurred_at": time.Now().Format(time.RFC3339Nano),
-		})
-		// 事件元数据有变更时，从 DB 重建缓存快照（勿经 ListEvents，避免写回旧缓存）。
-		refreshEventOptionsCacheAfterMutate(ctx)
-	}
+	_ = enqueueDeviceProjectionEvent(ctx, eventkit.RoutingDeviceEventChanged, map[string]interface{}{
+		"event_id":    fmt.Sprintf("device-event-changed-%d", time.Now().UnixNano()),
+		"version":     time.Now().UnixNano(),
+		"occurred_at": time.Now().Format(time.RFC3339Nano),
+	})
+	// 事件元数据有变更时，从 DB 重建缓存快照（勿经 ListEvents，避免写回旧缓存）。
+	refreshEventOptionsCacheAfterMutate(ctx)
 	return id, err
 }
 
@@ -456,7 +459,7 @@ func (s *service) UpdateEvent(ctx context.Context, id int64, name string, eventT
 		dao.Event.Columns().Name:       name,
 		dao.Event.Columns().EventType:  eventType,
 		dao.Event.Columns().ExtraNames: strings.TrimSpace(extraNames),
-		dao.Event.Columns().Color:        strings.TrimSpace(color),
+		dao.Event.Columns().Color:      strings.TrimSpace(color),
 	}
 	if parentID != nil {
 		data[dao.Event.Columns().ParentId] = targetParent
@@ -624,6 +627,7 @@ func listUsersWithRetry(ctx context.Context) ([]entity.User, error) {
 		rows := make([]entity.User, 0)
 		err := dao.User.Ctx(ctx).Fields(
 			dao.User.Columns().DeviceNo,
+			dao.User.Columns().BabyName,
 			dao.User.Columns().ActiveTime,
 			dao.User.Columns().LastTalkTime,
 			dao.User.Columns().LastTalkAsk,
@@ -693,11 +697,12 @@ func isDeviceOutboxRelayEnabled() bool {
 	return v == "1" || v == "true" || v == "yes" || v == "on"
 }
 
-func enqueueUserProfileOutbox(ctx context.Context, deviceNo string, birthdayUnixSec int64, sex int) error {
+func enqueueUserProfileOutbox(ctx context.Context, deviceNo string, babyName string, birthdayUnixSec int64, sex int) error {
 	return enqueueDomainOutboxToHistoryRelay(ctx, eventkit.RoutingDeviceUserProfileUpdated, map[string]interface{}{
 		"event_id":    fmt.Sprintf("device-user-profile-updated-%d", time.Now().UnixNano()),
 		"version":     time.Now().UnixNano(),
 		"device_no":   deviceNo,
+		"baby_name":   strings.TrimSpace(babyName),
 		"birthday":    birthdayUnixSec,
 		"sex":         sex,
 		"occurred_at": time.Now().Format(time.RFC3339Nano),

@@ -28,6 +28,7 @@ type UserColumns struct {
 	ActiveTime     string // 激活时间戳
 	LastTalkTime   string // 最后对话时间戳
 	Birthday       string // 生日时间戳
+	BabyName       string // 宝宝名字
 }
 
 // userColumns holds the columns for table user.
@@ -40,6 +41,7 @@ var userColumns = UserColumns{
 	ActiveTime:     "active_time",
 	LastTalkTime:   "last_talk_time",
 	Birthday:       "birthday",
+	BabyName:       "baby_name",
 }
 
 // NewUserDao creates and returns a new DAO object for table data access.

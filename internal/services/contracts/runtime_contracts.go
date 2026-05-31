@@ -68,8 +68,8 @@ type DeviceAdminContract interface {
 	ListActionsForAdmin(ctx context.Context) ([]sharedtypes.AdminActionItem, error)
 	UpdateAction(ctx context.Context, id int64, name, targetType string) error
 	DeleteAction(ctx context.Context, id int64) error
-	// SaveUserProfile 持久化用户画像（生日为 Unix 秒时间戳、性别），仅由 device 库承载。
-	SaveUserProfile(ctx context.Context, deviceNo string, birthdayUnixSec int64, sex int) error
+	// SaveUserProfile 持久化用户画像（宝宝名字、生日 Unix 秒时间戳、性别），仅由 device 库承载。
+	SaveUserProfile(ctx context.Context, deviceNo string, babyName string, birthdayUnixSec int64, sex int) error
 	// InsertVoiceActionRecord 语音 DeepSeek 新增动作词典，名称冲突时返回错误。
 	InsertVoiceActionRecord(ctx context.Context, name, targetType string) error
 	// InsertOrGetEventByNeedle 统一意图路径创建事件并回读最新行。
@@ -104,8 +104,8 @@ type DeviceHistoryContract interface {
 	ListSuggest(ctx context.Context, deviceNo string) ([]entity.Suggest, error)
 	DeleteSuggest(ctx context.Context, id int64, deviceNo string) error
 	ListEventOptions(ctx context.Context) ([]entity.Event, error)
-	GetBirthday(ctx context.Context, deviceNo string) (birthdayUnixSec int64, sex int, err error)
-	SaveBirthday(ctx context.Context, deviceNo string, birthdayUnixSec int64, sex int) error
+	GetBirthday(ctx context.Context, deviceNo string) (babyName string, birthdayUnixSec int64, sex int, err error)
+	SaveBirthday(ctx context.Context, deviceNo string, babyName string, birthdayUnixSec int64, sex int) error
 	AddHistory(ctx context.Context, item entity.History) (int64, error)
 	UpdateHistory(ctx context.Context, item entity.History) error
 	DeleteHistory(ctx context.Context, id int64, deviceNo string) error

@@ -213,9 +213,10 @@ func (c *httpDeviceAdminClient) DeleteAction(ctx context.Context, id int64) erro
 	}, nil)
 }
 
-func (c *httpDeviceAdminClient) SaveUserProfile(ctx context.Context, deviceNo string, birthdayUnixSec int64, sex int) error {
+func (c *httpDeviceAdminClient) SaveUserProfile(ctx context.Context, deviceNo string, babyName string, birthdayUnixSec int64, sex int) error {
 	return c.doJSON(ctx, http.MethodPost, "/device/app/api/user/save", nil, map[string]interface{}{
 		"deviceNo": strings.TrimSpace(deviceNo),
+		"babyName": strings.TrimSpace(babyName),
 		"birthday": birthdayUnixSec,
 		"sex":      sex,
 	}, nil)

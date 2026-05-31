@@ -13,6 +13,7 @@ type DeviceProfileGetReq struct {
 // DeviceProfileGetRes 设备画像响应。
 type DeviceProfileGetRes struct {
 	DeviceNo string `json:"deviceNo"`
+	BabyName string `json:"babyName" dc:"宝宝名字"`
 	Birthday int64  `json:"birthday" dc:"生日，Unix 秒"`
 	Sex      int    `json:"sex"`
 }
@@ -21,6 +22,7 @@ type DeviceProfileGetRes struct {
 type DeviceProfileSaveReq struct {
 	g.Meta   `path:"/device/app/api/user/save" method:"post" tags:"device" summary:"保存设备画像"`
 	DeviceNo string `json:"deviceNo" dc:"设备号"`
+	BabyName string `json:"babyName" dc:"宝宝名字"`
 	Birthday int64  `json:"birthday" dc:"生日，Unix 秒"`
 	Sex      int    `json:"sex" dc:"性别"`
 }
@@ -40,6 +42,7 @@ type DeviceProfileBindWxRes struct{}
 // DeviceProfileAutoSaveReq 自动保存画像（wx 主键来自 Header X-Internal-Wx-Id）。
 type DeviceProfileAutoSaveReq struct {
 	g.Meta   `path:"/device/app/api/user/auto_save" method:"post" tags:"device" summary:"自动保存画像并返回设备号"`
+	BabyName string `json:"babyName" dc:"宝宝名字"`
 	Birthday int64 `json:"birthday" dc:"生日，Unix 秒"`
 	Sex      int   `json:"sex"      dc:"性别"`
 }

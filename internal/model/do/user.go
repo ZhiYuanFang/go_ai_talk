@@ -19,4 +19,5 @@ type User struct {
 	ActiveTime     interface{} // 激活时间戳
 	LastTalkTime   interface{} // 最后对话时间戳
 	Birthday       interface{} // 生日时间戳
+	BabyName       interface{} // 宝宝名字
 }

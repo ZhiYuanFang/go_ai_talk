@@ -3,11 +3,10 @@ package controller
 import (
 	"context"
 	"errors"
-	"strconv"
-	"strings"
-
 	v1 "hello/api/v1"
 	device "hello/internal/services/device"
+	"strconv"
+	"strings"
 
 	"github.com/gogf/gf/v2/errors/gcode"
 	"github.com/gogf/gf/v2/errors/gerror"
@@ -33,6 +32,7 @@ func (c *DeviceAppUserCtrl) Get(ctx context.Context, req *v1.DeviceProfileGetReq
 	}
 	return &v1.DeviceProfileGetRes{
 		DeviceNo: profile.DeviceNo,
+		BabyName: profile.BabyName,
 		Birthday: profile.Birthday,
 		Sex:      profile.Sex,
 	}, nil
@@ -49,7 +49,7 @@ func (c *DeviceAppUserCtrl) Save(ctx context.Context, req *v1.DeviceProfileSaveR
 	if req.Sex > 0 {
 		sex = 1
 	}
-	if err := device.DeviceAdmin().SaveUserProfile(ctx, deviceNo, req.Birthday, sex); err != nil {
+	if err := device.DeviceAdmin().SaveUserProfile(ctx, deviceNo, strings.TrimSpace(req.BabyName), req.Birthday, sex); err != nil {
 		return nil, err
 	}
 	return &v1.DeviceProfileSaveRes{}, nil
@@ -87,7 +87,7 @@ func (c *DeviceAppUserCtrl) AutoSave(ctx context.Context, req *v1.DeviceProfileA
 	if err != nil {
 		return nil, err
 	}
-	dn, err := device.WxAutoSaveProfile(ctx, wxID, req.Birthday, req.Sex)
+	dn, err := device.WxAutoSaveProfile(ctx, wxID, strings.TrimSpace(req.BabyName), req.Birthday, req.Sex)
 	if err != nil {
 		return nil, err
 	}

@@ -62,6 +62,7 @@ type DeviceHistoryBirthdayGetReq struct {
 
 // DeviceHistoryBirthdayGetRes 生日查询响应。
 type DeviceHistoryBirthdayGetRes struct {
+	BabyName string `json:"babyName" dc:"宝宝名字；未设置时为空串"`
 	Birthday int64 `json:"birthday" dc:"生日，Unix 秒时间戳；0 表示未设置"`
 	Sex      int   `json:"sex"`
 }
@@ -70,6 +71,7 @@ type DeviceHistoryBirthdayGetRes struct {
 type DeviceHistoryBirthdaySaveReq struct {
 	g.Meta   `path:"/device/history/api/birthday/save" method:"post" tags:"device" summary:"保存设备生日"`
 	DeviceNo string `json:"deviceNo" dc:"设备号"`
+	BabyName string `json:"babyName" dc:"宝宝名字"`
 	Birthday int64  `json:"birthday" dc:"生日，Unix 秒时间戳"`
 	Sex      int    `json:"sex" dc:"性别（0女1男）"`
 }

@@ -14,4 +14,5 @@ type User struct {
 	ActiveTime     int64  `json:"activeTime"     ` // 激活时间戳
 	LastTalkTime   int64  `json:"lastTalkTime"   ` // 最后对话时间戳
 	Birthday       int64  `json:"birthday"       ` // 生日时间戳
+	BabyName       string `json:"babyName"       ` // 宝宝名字
 }

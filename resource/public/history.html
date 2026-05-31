@@ -99,6 +99,8 @@
     <div class="card">
         <h1>设备历史记录</h1>
         <div class="meta-row muted">
+            <span>宝宝名字：</span>
+            <input id="babyNameInput" type="text" maxlength="32" placeholder="请输入宝宝名字" />
             <span>生日：</span>
             <input id="birthdayInput" type="date" />
             <span>性别：</span>
@@ -203,6 +205,7 @@
         const parts = window.location.pathname.split('/').filter(Boolean);
         const deviceNo = decodeURIComponent(parts[parts.length - 1] || '').trim();
         const meta = document.getElementById('meta');
+        const babyNameInput = document.getElementById('babyNameInput');
         const birthdayInput = document.getElementById('birthdayInput');
         const saveBirthdayBtn = document.getElementById('saveBirthdayBtn');
         const sexInput = document.getElementById('sexInput');
@@ -240,6 +243,7 @@
         let historyPageSize = 20;
         let historyTotal = 0;
         let eventOptions = [];
+        let currentBabyName = '';
         let currentSex = 1;
         let voiceWS = null;
         const streamAudioState = {
@@ -670,8 +674,10 @@
 
         async function loadBirthday(){
             const data = await api('/device/history/api/birthday?deviceNo=' + encodeURIComponent(deviceNo));
+            currentBabyName = String((data && data.babyName) || '').trim();
             const sec = (data && data.birthday != null) ? Number(data.birthday) : 0;
             currentSex = Number((data && data.sex) || 0) > 0 ? 1 : 0;
+            babyNameInput.value = currentBabyName;
             if(sec > 0){
                 const d = new Date(sec * 1000);
                 birthdayInput.value = d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
@@ -680,10 +686,11 @@
             }
             sexInput.value = String(currentSex);
             applyThemeBySex(currentSex);
-            meta.textContent = sec > 0 ? '已加载' : '未设置';
+            meta.textContent = (currentBabyName || sec > 0) ? '已加载' : '未设置';
         }
 
         async function saveBirthday(){
+            const babyName = String(babyNameInput.value || '').trim();
             const raw = String(birthdayInput.value || '').trim();
             let birthday = 0;
             if(raw){
@@ -693,10 +700,11 @@
                 }
             }
             const sex = Number(sexInput.value || 0) > 0 ? 1 : 0;
-            await apiPost('/device/history/api/birthday/save', {deviceNo, birthday, sex});
+            await apiPost('/device/history/api/birthday/save', {deviceNo, babyName, birthday, sex});
+            currentBabyName = babyName;
             currentSex = sex;
             applyThemeBySex(currentSex);
-            meta.textContent = birthday ? '保存成功' : '已清空';
+            meta.textContent = (currentBabyName || birthday) ? '保存成功' : '已清空';
         }
 
         async function sendTextChat(){
@@ -821,6 +829,7 @@
         async function boot(){
             if(!deviceNo){
                 meta.textContent = '未指定设备号';
+                babyNameInput.disabled = true;
                 birthdayInput.disabled = true;
                 saveBirthdayBtn.disabled = true;
                 historyBody.innerHTML = '<tr><td colspan="7">未指定设备号</td></tr>';

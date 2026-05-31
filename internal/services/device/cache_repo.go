@@ -7,16 +7,16 @@ import (
 	"strings"
 	"time"
 
+	"hello/internal/dao"
 	"hello/internal/model/entity"
 	"hello/internal/platform/cachekit"
 	"hello/internal/platform/eventkit"
-	"hello/internal/dao"
 )
 
 const (
-	eventOptionsTTL = 10 * time.Minute
+	eventOptionsTTL  = 10 * time.Minute
 	actionOptionsTTL = 10 * time.Minute
-	userProfileTTL = 10 * time.Minute
+	userProfileTTL   = 10 * time.Minute
 )
 
 type deviceCacheRepo struct {
@@ -106,6 +106,7 @@ func (r *deviceCacheRepo) setActionOptions(ctx context.Context, items []entity.A
 
 type cachedUserProfile struct {
 	DeviceNo string `json:"deviceNo"`
+	BabyName string `json:"babyName"`
 	Birthday int64  `json:"birthday"`
 	Sex      int    `json:"sex"`
 }
@@ -124,6 +125,7 @@ func (r *deviceCacheRepo) getUserProfile(ctx context.Context, deviceNo string) (
 		return cachedUserProfile{}, false, uErr
 	}
 	out.DeviceNo = strings.TrimSpace(out.DeviceNo)
+	out.BabyName = strings.TrimSpace(out.BabyName)
 	return out, true, nil
 }
 
@@ -143,6 +145,7 @@ type deviceProjectionEvent struct {
 	EventID  string `json:"event_id"`
 	Version  int64  `json:"version"`
 	DeviceNo string `json:"device_no"`
+	BabyName string `json:"baby_name"`
 	Birthday int64  `json:"birthday"`
 	Sex      int    `json:"sex"`
 }
@@ -200,6 +203,7 @@ func ApplyProjection(ctx context.Context, routingKey, payload string) error {
 		}
 		if err := deviceCache.setUserProfile(ctx, cachedUserProfile{
 			DeviceNo: evt.DeviceNo,
+			BabyName: strings.TrimSpace(evt.BabyName),
 			Birthday: evt.Birthday,
 			Sex:      evt.Sex,
 		}); err != nil {

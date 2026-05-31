@@ -48,6 +48,7 @@ func RebuildUserProfileCacheByDevice(ctx context.Context, deviceNo string) error
 	}
 	return deviceCache.setUserProfile(ctx, cachedUserProfile{
 		DeviceNo: profile.DeviceNo,
+		BabyName: profile.BabyName,
 		Birthday: profile.Birthday,
 		Sex:      profile.Sex,
 	})

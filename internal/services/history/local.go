@@ -50,12 +50,12 @@ func (s *localService) ListEventOptions(ctx context.Context) ([]entity.Event, er
 	return ListEventOptions(ctx)
 }
 
-func (s *localService) GetBirthday(ctx context.Context, deviceNo string) (int64, int, error) {
+func (s *localService) GetBirthday(ctx context.Context, deviceNo string) (string, int64, int, error) {
 	return GetDeviceBirthday(ctx, deviceNo)
 }
 
-func (s *localService) SaveBirthday(ctx context.Context, deviceNo string, birthdayUnixSec int64, sex int) error {
-	return SaveBirthday(ctx, deviceNo, birthdayUnixSec, sex)
+func (s *localService) SaveBirthday(ctx context.Context, deviceNo string, babyName string, birthdayUnixSec int64, sex int) error {
+	return SaveBirthday(ctx, deviceNo, babyName, birthdayUnixSec, sex)
 }
 
 func (s *localService) AddHistory(ctx context.Context, item entity.History) (int64, error) {
@@ -264,41 +264,43 @@ func ListEventOptions(ctx context.Context) ([]entity.Event, error) {
 	return rows, nil
 }
 
-func SaveBirthday(ctx context.Context, deviceNo string, birthdayUnixSec int64, sex int) error {
+func SaveBirthday(ctx context.Context, deviceNo string, babyName string, birthdayUnixSec int64, sex int) error {
 	deviceNo = strings.TrimSpace(deviceNo)
+	babyName = strings.TrimSpace(babyName)
 	if deviceNo == "" {
 		return nil
 	}
 	if sex > 0 {
 		sex = 1
 	}
-	err := delegateSaveProfile(ctx, deviceNo, birthdayUnixSec, sex)
+	err := delegateSaveProfile(ctx, deviceNo, babyName, birthdayUnixSec, sex)
 	if err != nil {
 		logDelegateFailure(ctx, "save_profile", err)
 		return err
 	}
-	_ = historyCache.setBirthday(ctx, deviceNo, birthdayUnixSec, sex)
+	_ = historyCache.setBirthday(ctx, deviceNo, babyName, birthdayUnixSec, sex)
 	return nil
 }
 
-func GetDeviceBirthday(ctx context.Context, deviceNo string) (int64, int, error) {
+func GetDeviceBirthday(ctx context.Context, deviceNo string) (string, int64, int, error) {
 	deviceNo = strings.TrimSpace(deviceNo)
 	if deviceNo == "" {
-		return 0, 0, nil
+		return "", 0, 0, nil
 	}
-	if birthday, sex, ok, err := historyCache.getBirthday(ctx, deviceNo); err == nil && ok {
-		return birthday, sex, nil
+	if babyName, birthday, sex, ok, err := historyCache.getBirthday(ctx, deviceNo); err == nil && ok {
+		return babyName, birthday, sex, nil
 	}
-	birthday, sex, err := delegateGetProfile(ctx, deviceNo)
+	babyName, birthday, sex, err := delegateGetProfile(ctx, deviceNo)
 	if err != nil {
 		logDelegateFailure(ctx, "get_profile", err)
-		return 0, 0, err
+		return "", 0, 0, err
 	}
+	babyName = strings.TrimSpace(babyName)
 	if sex > 0 {
 		sex = 1
 	}
-	_ = historyCache.setBirthday(ctx, deviceNo, birthday, sex)
-	return birthday, sex, nil
+	_ = historyCache.setBirthday(ctx, deviceNo, babyName, birthday, sex)
+	return babyName, birthday, sex, nil
 }
 
 func AddDeviceHistory(ctx context.Context, item entity.History) (int64, error) {

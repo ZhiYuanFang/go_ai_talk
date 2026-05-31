@@ -26,6 +26,7 @@ const (
 
 type DeviceProfileInfo struct {
 	DeviceNo string `json:"deviceNo"`
+	BabyName string `json:"babyName"`
 	Birthday int64  `json:"birthday"`
 	Sex      int    `json:"sex"`
 }
@@ -42,23 +43,26 @@ func (localDeviceProfileAdapter) GetProfile(ctx context.Context, deviceNo string
 	if cached, ok, err := deviceCache.getUserProfile(ctx, profile.DeviceNo); err == nil && ok {
 		return DeviceProfileInfo{
 			DeviceNo: cached.DeviceNo,
+			BabyName: cached.BabyName,
 			Birthday: cached.Birthday,
 			Sex:      cached.Sex,
 		}, nil
 	}
 	var row entity.User
 	err := dao.User.Ctx(ctx).
-		Fields(dao.User.Columns().Birthday, dao.User.Columns().Sex).
+		Fields(dao.User.Columns().BabyName, dao.User.Columns().Birthday, dao.User.Columns().Sex).
 		Where(dao.User.Columns().DeviceNo, profile.DeviceNo).
 		Limit(1).
 		Scan(&row)
 	if err != nil {
 		return DeviceProfileInfo{}, err
 	}
+	profile.BabyName = strings.TrimSpace(row.BabyName)
 	profile.Birthday = row.Birthday
 	profile.Sex = row.Sex
 	_ = deviceCache.setUserProfile(ctx, cachedUserProfile{
 		DeviceNo: profile.DeviceNo,
+		BabyName: profile.BabyName,
 		Birthday: profile.Birthday,
 		Sex:      profile.Sex,
 	})

@@ -109,22 +109,24 @@ func delegateListEventOptions(ctx context.Context) ([]entity.Event, error) {
 	return resp.List, nil
 }
 
-func delegateGetProfile(ctx context.Context, deviceNo string) (birthdayUnixSec int64, sex int, err error) {
+func delegateGetProfile(ctx context.Context, deviceNo string) (babyName string, birthdayUnixSec int64, sex int, err error) {
 	t := contracts.ResolveHTTPTargets()
 	var resp struct {
+		BabyName string `json:"babyName"`
 		Birthday int64 `json:"birthday"`
 		Sex      int   `json:"sex"`
 	}
 	if err := localHTTPDoJSON(ctx, http.MethodGet, t.DeviceBaseURL, t.DeviceProfileGetPath(), map[string]string{"deviceNo": strings.TrimSpace(deviceNo)}, nil, &resp); err != nil {
-		return 0, 0, err
+		return "", 0, 0, err
 	}
-	return resp.Birthday, resp.Sex, nil
+	return strings.TrimSpace(resp.BabyName), resp.Birthday, resp.Sex, nil
 }
 
-func delegateSaveProfile(ctx context.Context, deviceNo string, birthdayUnixSec int64, sex int) error {
+func delegateSaveProfile(ctx context.Context, deviceNo string, babyName string, birthdayUnixSec int64, sex int) error {
 	t := contracts.ResolveHTTPTargets()
 	return localHTTPDoJSON(ctx, http.MethodPost, t.DeviceBaseURL, t.DeviceProfileSavePath(), nil, map[string]interface{}{
 		"deviceNo": strings.TrimSpace(deviceNo),
+		"babyName": strings.TrimSpace(babyName),
 		"birthday": birthdayUnixSec,
 		"sex":      sex,
 	}, nil)

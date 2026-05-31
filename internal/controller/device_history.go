@@ -113,11 +113,11 @@ func (c *HistoryCtrl) Birthday(ctx context.Context, req *v1.DeviceHistoryBirthda
 	if deviceNo == "" {
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "deviceNo 不能为空")
 	}
-	birthday, sex, err := c.Svc.GetBirthday(ctx, deviceNo)
+	babyName, birthday, sex, err := c.Svc.GetBirthday(ctx, deviceNo)
 	if err != nil {
 		return nil, err
 	}
-	return &v1.DeviceHistoryBirthdayGetRes{Birthday: birthday, Sex: sex}, nil
+	return &v1.DeviceHistoryBirthdayGetRes{BabyName: babyName, Birthday: birthday, Sex: sex}, nil
 }
 
 // BirthdaySave 保存设备生日。
@@ -130,7 +130,7 @@ func (c *HistoryCtrl) BirthdaySave(ctx context.Context, req *v1.DeviceHistoryBir
 	if req.Sex > 0 {
 		sex = 1
 	}
-	if err := c.Svc.SaveBirthday(ctx, deviceNo, req.Birthday, sex); err != nil {
+	if err := c.Svc.SaveBirthday(ctx, deviceNo, strings.TrimSpace(req.BabyName), req.Birthday, sex); err != nil {
 		return nil, err
 	}
 	return &v1.DeviceHistoryBirthdaySaveRes{}, nil
