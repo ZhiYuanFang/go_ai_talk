@@ -244,8 +244,15 @@ func WxUnionIDByID(ctx context.Context, id int64) (string, error) {
 	if v, ok, err := wxLookupCache.Get(ctx, key); err == nil && ok && v != "" {
 		return v, nil
 	}
+	one, err := dao.Wx.Ctx(ctx).Where(dao.Wx.Columns().Id, id).Limit(1).One()
+	if err != nil {
+		return "", err
+	}
+	if one.IsEmpty() {
+		return "", errors.New("wx 记录不存在")
+	}
 	var row entity.Wx
-	if err := dao.Wx.Ctx(ctx).Where(dao.Wx.Columns().Id, id).Scan(&row); err != nil {
+	if err = one.Struct(&row); err != nil {
 		return "", err
 	}
 	if row.Id == 0 || strings.TrimSpace(row.Unionid) == "" {
@@ -266,8 +273,15 @@ func ValidateGatewayInternalSecret(headerVal string) bool {
 }
 
 func wxRowByWxID(ctx context.Context, wxID int64) (*entity.Wx, error) {
+	one, err := dao.Wx.Ctx(ctx).Where(dao.Wx.Columns().Id, wxID).Limit(1).One()
+	if err != nil {
+		return nil, err
+	}
+	if one.IsEmpty() {
+		return nil, nil
+	}
 	var row entity.Wx
-	if err := dao.Wx.Ctx(ctx).Where(dao.Wx.Columns().Id, wxID).Scan(&row); err != nil {
+	if err = one.Struct(&row); err != nil {
 		return nil, err
 	}
 	if row.Id == 0 {

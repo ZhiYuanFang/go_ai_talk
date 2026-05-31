@@ -71,8 +71,15 @@ func verifyPassword(hashText, raw string) bool {
 }
 
 func wxRowByUserName(ctx context.Context, userName string) (*entity.Wx, error) {
+	one, err := dao.Wx.Ctx(ctx).Where(dao.Wx.Columns().Account, userName).Limit(1).One()
+	if err != nil {
+		return nil, err
+	}
+	if one.IsEmpty() {
+		return nil, nil
+	}
 	var row entity.Wx
-	if err := dao.Wx.Ctx(ctx).Where(dao.Wx.Columns().Account, userName).Scan(&row); err != nil {
+	if err = one.Struct(&row); err != nil {
 		return nil, err
 	}
 	if row.Id == 0 {
