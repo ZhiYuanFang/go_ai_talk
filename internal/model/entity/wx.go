@@ -10,6 +10,6 @@ type Wx struct {
 	DeviceNo string `json:"deviceNo" ` //
 	Unionid  string `json:"unionid"  ` //
 	Platform string `json:"platform" ` // 平台来源
-	UserName string `json:"userName" ` //
-	Password string `json:"password" ` //
+	Account  string `json:"account"  ` // 账户
+	Password string `json:"password" ` // 密码哈希（bcrypt，不可逆）
 }

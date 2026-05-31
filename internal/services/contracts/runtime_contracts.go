@@ -104,7 +104,7 @@ type DeviceHistoryContract interface {
 	ListSuggest(ctx context.Context, deviceNo string) ([]entity.Suggest, error)
 	DeleteSuggest(ctx context.Context, id int64, deviceNo string) error
 	ListEventOptions(ctx context.Context) ([]entity.Event, error)
-	GetBirthday(ctx context.Context, deviceNo string) (babyName string, birthdayUnixSec int64, sex int, nickname string, err error)
+	GetBirthday(ctx context.Context, deviceNo string) (babyName string, birthdayUnixSec int64, sex int, err error)
 	SaveBirthday(ctx context.Context, deviceNo string, babyName string, birthdayUnixSec int64, sex int) error
 	AddHistory(ctx context.Context, item entity.History) (int64, error)
 	UpdateHistory(ctx context.Context, item entity.History) error

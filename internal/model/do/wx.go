@@ -15,6 +15,6 @@ type Wx struct {
 	DeviceNo interface{} //
 	Unionid  interface{} //
 	Platform interface{} // 平台来源
-	UserName interface{} //
-	Password interface{} //
+	Account  interface{} // 账户
+	Password interface{} // 密码哈希（bcrypt，不可逆）
 }

@@ -35,7 +35,6 @@ func (c *DeviceAppUserCtrl) Get(ctx context.Context, req *v1.DeviceProfileGetReq
 		BabyName: profile.BabyName,
 		Birthday: profile.Birthday,
 		Sex:      profile.Sex,
-		Nickname: profile.Nickname,
 	}, nil
 }
 
@@ -111,7 +110,7 @@ func (c *DeviceAppUserCtrl) Login(ctx context.Context, req *v1.DeviceWxLoginReq)
 // UsernameRegister POST /device/app/api/user/username/register（纯业务，无 JWT）。
 func (c *DeviceAppUserCtrl) UsernameRegister(ctx context.Context, req *v1.DeviceUsernameRegisterReq) (res *v1.DeviceUsernameRegisterRes, err error) {
 	_ = c
-	wxID, err := device.WxUsernameRegister(ctx, req.UserName, req.Password)
+	wxID, err := device.WxUsernameRegister(ctx, req.Account, req.Password)
 	if err != nil {
 		if errors.Is(err, device.ErrWxUsernameInvalid) || errors.Is(err, device.ErrWxPasswordInvalid) {
 			return nil, gerror.NewCode(gcode.CodeInvalidParameter, err.Error())
@@ -127,7 +126,7 @@ func (c *DeviceAppUserCtrl) UsernameRegister(ctx context.Context, req *v1.Device
 // UsernameLogin POST /device/app/api/user/username/login（纯业务，无 JWT）。
 func (c *DeviceAppUserCtrl) UsernameLogin(ctx context.Context, req *v1.DeviceUsernameLoginReq) (res *v1.DeviceUsernameLoginRes, err error) {
 	_ = c
-	out, err := device.WxUsernameLogin(ctx, req.UserName, req.Password)
+	out, err := device.WxUsernameLogin(ctx, req.Account, req.Password)
 	if err != nil {
 		if errors.Is(err, device.ErrWxUsernameInvalid) || errors.Is(err, device.ErrWxPasswordInvalid) {
 			return nil, gerror.NewCode(gcode.CodeInvalidParameter, err.Error())
@@ -208,7 +207,7 @@ func (c *DeviceAppUserCtrl) WxCreateUsername(ctx context.Context, req *v1.Device
 	if err != nil {
 		return nil, err
 	}
-	if err = device.WxCreateUsernamePassword(ctx, wxID, req.UserName, req.Password); err != nil {
+	if err = device.WxCreateUsernamePassword(ctx, wxID, req.Account, req.Password); err != nil {
 		if errors.Is(err, device.ErrWxUsernameInvalid) || errors.Is(err, device.ErrWxPasswordInvalid) || errors.Is(err, device.ErrWxIDInvalid) {
 			return nil, gerror.NewCode(gcode.CodeInvalidParameter, err.Error())
 		}

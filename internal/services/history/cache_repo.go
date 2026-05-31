@@ -200,29 +200,28 @@ type birthdayCache struct {
 	BabyName string `json:"babyName"`
 	Birthday int64  `json:"birthday"`
 	Sex      int    `json:"sex"`
-	Nickname string `json:"nickname"`
 }
 
-func (r *cacheRepo) getBirthday(ctx context.Context, deviceNo string) (string, int64, int, string, bool, error) {
+func (r *cacheRepo) getBirthday(ctx context.Context, deviceNo string) (string, int64, int, bool, error) {
 	key, err := cachekit.UserProfileKey(deviceNo)
 	if err != nil {
-		return "", 0, 0, "", false, err
+		return "", 0, 0, false, err
 	}
 	raw, ok, err := r.cache.Get(ctx, key)
 	if err != nil || !ok {
 		if err != nil {
 			glog.Warningf(ctx, "history cache read failed type=birthday deviceNo=%s err=%v", deviceNo, err)
 		}
-		return "", 0, 0, "", false, err
+		return "", 0, 0, false, err
 	}
 	var out birthdayCache
 	if uErr := json.Unmarshal([]byte(raw), &out); uErr != nil {
-		return "", 0, 0, "", false, uErr
+		return "", 0, 0, false, uErr
 	}
-	return strings.TrimSpace(out.BabyName), out.Birthday, out.Sex, strings.TrimSpace(out.Nickname), true, nil
+	return strings.TrimSpace(out.BabyName), out.Birthday, out.Sex, true, nil
 }
 
-func (r *cacheRepo) setBirthday(ctx context.Context, deviceNo string, babyName string, birthdayUnixSec int64, sex int, nickname string) error {
+func (r *cacheRepo) setBirthday(ctx context.Context, deviceNo string, babyName string, birthdayUnixSec int64, sex int) error {
 	key, err := cachekit.UserProfileKey(deviceNo)
 	if err != nil {
 		return err
@@ -231,7 +230,6 @@ func (r *cacheRepo) setBirthday(ctx context.Context, deviceNo string, babyName s
 		BabyName: strings.TrimSpace(babyName),
 		Birthday: birthdayUnixSec,
 		Sex:      sex,
-		Nickname: strings.TrimSpace(nickname),
 	})
 	if err != nil {
 		return err

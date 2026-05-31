@@ -72,7 +72,7 @@ func verifyPassword(hashText, raw string) bool {
 
 func wxRowByUserName(ctx context.Context, userName string) (*entity.Wx, error) {
 	var row entity.Wx
-	if err := dao.Wx.Ctx(ctx).Where(dao.Wx.Columns().UserName, userName).Scan(&row); err != nil {
+	if err := dao.Wx.Ctx(ctx).Where(dao.Wx.Columns().Account, userName).Scan(&row); err != nil {
 		return nil, err
 	}
 	if row.Id == 0 {
@@ -101,7 +101,7 @@ func WxUsernameRegister(ctx context.Context, userName, password string) (int64, 
 		return 0, err
 	}
 	res, err := dao.Wx.Ctx(ctx).Data(g.Map{
-		dao.Wx.Columns().UserName: normalized,
+		dao.Wx.Columns().Account:  normalized,
 		dao.Wx.Columns().Password: hash,
 	}).Insert()
 	if err != nil {
@@ -149,7 +149,7 @@ func WxUsernameBindWxByCode(ctx context.Context, wxID int64, jsCode, platform st
 	if row == nil {
 		return ErrWxIDInvalid
 	}
-	if strings.TrimSpace(row.UserName) == "" || strings.TrimSpace(row.Password) == "" {
+	if strings.TrimSpace(row.Account) == "" || strings.TrimSpace(row.Password) == "" {
 		return ErrWxUsernameNotSet
 	}
 	if strings.TrimSpace(row.Unionid) != "" {
@@ -192,7 +192,7 @@ func WxUsernameBindDevice(ctx context.Context, wxID int64, deviceNo string) erro
 	if row == nil {
 		return ErrWxIDInvalid
 	}
-	if strings.TrimSpace(row.UserName) == "" || strings.TrimSpace(row.Password) == "" {
+	if strings.TrimSpace(row.Account) == "" || strings.TrimSpace(row.Password) == "" {
 		return ErrWxUsernameNotSet
 	}
 	if err = WxBindDevice(ctx, wxID, deviceNo); err != nil {
@@ -222,7 +222,7 @@ func WxUsernameChangePassword(ctx context.Context, wxID int64, oldPassword, newP
 	if row == nil {
 		return ErrWxIDInvalid
 	}
-	if strings.TrimSpace(row.UserName) == "" || strings.TrimSpace(row.Password) == "" {
+	if strings.TrimSpace(row.Account) == "" || strings.TrimSpace(row.Password) == "" {
 		return ErrWxUsernameNotSet
 	}
 	if !verifyPassword(row.Password, oldPassword) {
@@ -263,7 +263,7 @@ func WxCreateUsernamePassword(ctx context.Context, wxID int64, userName, passwor
 	if strings.TrimSpace(row.Unionid) == "" {
 		return ErrWxUnionIDRequired
 	}
-	if strings.TrimSpace(row.UserName) != "" {
+	if strings.TrimSpace(row.Account) != "" {
 		return ErrWxUsernameAlreadySet
 	}
 	if existed, err := wxRowByUserName(ctx, normalized); err != nil {
@@ -276,7 +276,7 @@ func WxCreateUsernamePassword(ctx context.Context, wxID int64, userName, passwor
 		return err
 	}
 	_, err = dao.Wx.Ctx(ctx).Where(dao.Wx.Columns().Id, wxID).Data(g.Map{
-		dao.Wx.Columns().UserName: normalized,
+		dao.Wx.Columns().Account:  normalized,
 		dao.Wx.Columns().Password: hash,
 	}).Update()
 	if err != nil {

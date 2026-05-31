@@ -24,8 +24,8 @@ type WxColumns struct {
 	DeviceNo string //
 	Unionid  string //
 	Platform string // 平台来源
-	UserName string //
-	Password string //
+	Account  string // 账户
+	Password string // 密码哈希（bcrypt，不可逆）
 }
 
 // wxColumns holds the columns for table wx.
@@ -34,7 +34,7 @@ var wxColumns = WxColumns{
 	DeviceNo: "device_no",
 	Unionid:  "unionid",
 	Platform: "platform",
-	UserName: "user_name",
+	Account:  "account",
 	Password: "password",
 }
 

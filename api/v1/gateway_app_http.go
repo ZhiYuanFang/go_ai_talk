@@ -36,7 +36,7 @@ type GatewayAppDeviceLoginRes struct {
 // GatewayAppUsernameLoginReq 用户名聚合登录：转发 device 用户名登录后签发 access/refresh。
 type GatewayAppUsernameLoginReq struct {
 	g.Meta   `path:"/device/app/api/username_login" method:"post" tags:"gateway-app" summary:"用户名聚合登录"`
-	UserName string `json:"userName" dc:"用户名"`
+	Account  string `json:"account" dc:"账号"`
 	Password string `json:"password" dc:"密码明文"`
 }
 

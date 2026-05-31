@@ -16,7 +16,6 @@ type DeviceProfileGetRes struct {
 	BabyName string `json:"babyName" dc:"宝宝名字"`
 	Birthday int64  `json:"birthday" dc:"生日，Unix 秒"`
 	Sex      int    `json:"sex"`
-	Nickname string `json:"nickname" dc:"昵称（来自账号用户名）"`
 }
 
 // DeviceProfileSaveReq 保存设备画像（内部/网关可调）。
@@ -72,7 +71,7 @@ type DeviceWxLoginRes struct {
 // DeviceUsernameRegisterReq 用户名注册（仅业务，不返回 JWT）。
 type DeviceUsernameRegisterReq struct {
 	g.Meta   `path:"/device/app/api/user/username/register" method:"post" tags:"device" summary:"用户名注册业务"`
-	UserName string `json:"userName" dc:"用户名"`
+	Account  string `json:"account" dc:"账号"`
 	Password string `json:"password" dc:"密码明文（服务端哈希入库）"`
 }
 
@@ -84,7 +83,7 @@ type DeviceUsernameRegisterRes struct {
 // DeviceUsernameLoginReq 用户名密码登录（仅业务，不返回 JWT）。
 type DeviceUsernameLoginReq struct {
 	g.Meta   `path:"/device/app/api/user/username/login" method:"post" tags:"device" summary:"用户名登录业务"`
-	UserName string `json:"userName" dc:"用户名"`
+	Account  string `json:"account" dc:"账号"`
 	Password string `json:"password" dc:"密码明文"`
 }
 
@@ -127,7 +126,7 @@ type DeviceUsernameChangePasswordRes struct{}
 // DeviceWxCreateUsernameReq 微信账号下创建用户名密码（当前账号来自 Header X-Internal-Wx-Id）。
 type DeviceWxCreateUsernameReq struct {
 	g.Meta   `path:"/device/app/api/user/wx/create_username" method:"post" tags:"device" summary:"微信账号创建用户名密码"`
-	UserName string `json:"userName" dc:"用户名"`
+	Account  string `json:"account" dc:"账号"`
 	Password string `json:"password" dc:"密码明文（服务端哈希入库）"`
 }
 

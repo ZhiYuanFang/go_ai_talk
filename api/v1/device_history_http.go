@@ -65,7 +65,6 @@ type DeviceHistoryBirthdayGetRes struct {
 	BabyName string `json:"babyName" dc:"宝宝名字；未设置时为空串"`
 	Birthday int64  `json:"birthday" dc:"生日，Unix 秒时间戳；0 表示未设置"`
 	Sex      int    `json:"sex"`
-	Nickname string `json:"nickname" dc:"昵称；未设置时为空串"`
 }
 
 // DeviceHistoryBirthdaySaveReq 保存设备生日（JSON body）。

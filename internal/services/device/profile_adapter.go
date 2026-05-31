@@ -29,7 +29,6 @@ type DeviceProfileInfo struct {
 	BabyName string `json:"babyName"`
 	Birthday int64  `json:"birthday"`
 	Sex      int    `json:"sex"`
-	Nickname string `json:"nickname"`
 }
 
 type DeviceProfileContract interface {
@@ -47,7 +46,6 @@ func (localDeviceProfileAdapter) GetProfile(ctx context.Context, deviceNo string
 			BabyName: cached.BabyName,
 			Birthday: cached.Birthday,
 			Sex:      cached.Sex,
-			Nickname: cached.Nickname,
 		}, nil
 	}
 	var row entity.User
@@ -62,15 +60,11 @@ func (localDeviceProfileAdapter) GetProfile(ctx context.Context, deviceNo string
 	profile.BabyName = strings.TrimSpace(row.BabyName)
 	profile.Birthday = row.Birthday
 	profile.Sex = row.Sex
-	if wxOne, wErr := dao.Wx.Ctx(ctx).Fields(dao.Wx.Columns().UserName).Where(dao.Wx.Columns().DeviceNo, profile.DeviceNo).Limit(1).One(); wErr == nil && !wxOne.IsEmpty() {
-		profile.Nickname = strings.TrimSpace(wxOne[dao.Wx.Columns().UserName].String())
-	}
 	_ = deviceCache.setUserProfile(ctx, cachedUserProfile{
 		DeviceNo: profile.DeviceNo,
 		BabyName: profile.BabyName,
 		Birthday: profile.Birthday,
 		Sex:      profile.Sex,
-		Nickname: profile.Nickname,
 	})
 	return profile, nil
 }

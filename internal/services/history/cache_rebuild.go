@@ -37,11 +37,11 @@ func RebuildHistoryMetaCache(ctx context.Context) error {
 
 // RebuildBirthdayCacheByDevice 按设备重建生日画像缓存。
 func RebuildBirthdayCacheByDevice(ctx context.Context, deviceNo string) error {
-	babyName, birthday, sex, nickname, err := GetDeviceBirthday(ctx, deviceNo)
+	babyName, birthday, sex, err := GetDeviceBirthday(ctx, deviceNo)
 	if err != nil {
 		return err
 	}
-	return historyCache.setBirthday(ctx, strings.TrimSpace(deviceNo), babyName, birthday, sex, nickname)
+	return historyCache.setBirthday(ctx, strings.TrimSpace(deviceNo), babyName, birthday, sex)
 }
 
 // BuildHistoryEntityFromProjection 从投影事件构建历史实体。

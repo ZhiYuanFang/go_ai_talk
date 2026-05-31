@@ -58,8 +58,8 @@
 			<h2>1.5 用户名体系接口（本次新增）</h2>
 			<div class="row2">
 				<div>
-					<label>用户名 userName</label>
-					<input id="userName" type="text" placeholder="例如 test_user_01" />
+					<label>账号 account</label>
+					<input id="account" type="text" placeholder="例如 test_user_01" />
 				</div>
 				<div>
 					<label>密码 password</label>
@@ -95,8 +95,8 @@
 				</div>
 			</div>
 			<button type="button" id="btnAutoSave">POST /device/app/api/user/auto_save</button>
-			<button type="button" class="secondary" id="btnProfileGet">GET /device/app/api/user/get（含 nickname）</button>
-			<button type="button" class="secondary" id="btnBirthdayGet">GET /device/history/api/birthday（含 nickname）</button>
+			<button type="button" class="secondary" id="btnProfileGet">GET /device/app/api/user/get</button>
+			<button type="button" class="secondary" id="btnBirthdayGet">GET /device/history/api/birthday</button>
 			<p class="hint">未绑设备时 auto_save 会生成 6 位大写 device_no；已绑则只更新画像。</p>
 			<div id="msgProfile" class="log"></div>
 		</div>
@@ -247,7 +247,7 @@
 		try{
 			const d = await apiJsonNoAuth('/device/app/api/username_login', {
 				method:'POST',
-				body: JSON.stringify({ userName: $('userName').value.trim(), password: $('password').value })
+				body: JSON.stringify({ account: $('account').value.trim(), password: $('password').value })
 			});
 			$('accessToken').value = d.accessToken || '';
 			$('refreshToken').value = d.refreshToken || '';
@@ -259,7 +259,7 @@
 		try{
 			const d = await apiJsonNoAuth('/device/app/api/user/username/register', {
 				method:'POST',
-				body: JSON.stringify({ userName: $('userName').value.trim(), password: $('password').value })
+				body: JSON.stringify({ account: $('account').value.trim(), password: $('password').value })
 			});
 			log($('msgUsername'), { ok:true, via:'username_register', wxId:d && d.wxId }, true);
 		}catch(e){ log($('msgUsername'), String(e.message||e), true); }
@@ -268,7 +268,7 @@
 		try{
 			const d = await apiJsonNoAuth('/device/app/api/user/username/login', {
 				method:'POST',
-				body: JSON.stringify({ userName: $('userName').value.trim(), password: $('password').value })
+				body: JSON.stringify({ account: $('account').value.trim(), password: $('password').value })
 			});
 			if(d && d.deviceNo) $('deviceNo').value = d.deviceNo;
 			log($('msgUsername'), { ok:true, via:'username_login_biz', data:d }, true);
@@ -278,7 +278,7 @@
 		try{
 			await apiJson('/device/app/api/user/wx/create_username', {
 				method:'POST',
-				body: JSON.stringify({ userName: $('userName').value.trim(), password: $('password').value })
+				body: JSON.stringify({ account: $('account').value.trim(), password: $('password').value })
 			});
 			log($('msgUsername'), 'wx/create_username ok', true);
 		}catch(e){ log($('msgUsername'), String(e.message||e), true); }

@@ -123,7 +123,7 @@ func (c *GatewayAppCtrl) UsernameLogin(ctx context.Context, req *v1.GatewayAppUs
 	}
 	url := strings.TrimRight(base, "/") + "/device/app/api/user/username/login"
 	resp, err := gclient.New().ContentJson().Post(ctx, url, g.Map{
-		"userName": strings.TrimSpace(req.UserName),
+		"account":  strings.TrimSpace(req.Account),
 		"password": strings.TrimSpace(req.Password),
 	})
 	if err != nil {

@@ -51,6 +51,5 @@ func RebuildUserProfileCacheByDevice(ctx context.Context, deviceNo string) error
 		BabyName: profile.BabyName,
 		Birthday: profile.Birthday,
 		Sex:      profile.Sex,
-		Nickname: profile.Nickname,
 	})
 }
