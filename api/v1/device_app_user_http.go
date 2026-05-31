@@ -13,7 +13,7 @@ type DeviceProfileGetReq struct {
 // DeviceProfileGetRes 设备画像响应。
 type DeviceProfileGetRes struct {
 	DeviceNo string `json:"deviceNo"`
-	Birthday int64 `json:"birthday" dc:"生日，Unix 秒"`
+	Birthday int64  `json:"birthday" dc:"生日，Unix 秒"`
 	Sex      int    `json:"sex"`
 }
 
@@ -21,7 +21,7 @@ type DeviceProfileGetRes struct {
 type DeviceProfileSaveReq struct {
 	g.Meta   `path:"/device/app/api/user/save" method:"post" tags:"device" summary:"保存设备画像"`
 	DeviceNo string `json:"deviceNo" dc:"设备号"`
-	Birthday int64 `json:"birthday" dc:"生日，Unix 秒"`
+	Birthday int64  `json:"birthday" dc:"生日，Unix 秒"`
 	Sex      int    `json:"sex" dc:"性别"`
 }
 
@@ -41,7 +41,7 @@ type DeviceProfileBindWxRes struct{}
 type DeviceProfileAutoSaveReq struct {
 	g.Meta   `path:"/device/app/api/user/auto_save" method:"post" tags:"device" summary:"自动保存画像并返回设备号"`
 	Birthday int64 `json:"birthday" dc:"生日，Unix 秒"`
-	Sex      int    `json:"sex"      dc:"性别"`
+	Sex      int   `json:"sex"      dc:"性别"`
 }
 
 // DeviceProfileAutoSaveRes 返回设备号。
@@ -87,6 +87,15 @@ type DeviceWxDetailReq struct {
 type DeviceWxDetailRes struct {
 	DeviceNo string `json:"deviceNo"`
 }
+
+// DeviceUserDeactivateReq 注销账号（按 Header X-Internal-Wx-Id 删除 wx 记录）。
+// 注意：该接口仅删除 wx 表当前主键记录，不联动删除其他域数据。
+type DeviceUserDeactivateReq struct {
+	g.Meta `path:"/device/app/api/user/deactivate" method:"post" tags:"device" summary:"注销账号（删除 wx 记录）"`
+}
+
+// DeviceUserDeactivateRes 注销成功。
+type DeviceUserDeactivateRes struct{}
 
 // DeviceWxInternalByIDReq 网关内部：按 wx 主键取 unionid。
 type DeviceWxInternalByIDReq struct {

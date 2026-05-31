@@ -141,6 +141,27 @@ func (c *DeviceAppUserCtrl) Detail(ctx context.Context, req *v1.DeviceWxDetailRe
 	return &v1.DeviceWxDetailRes{DeviceNo: dn}, nil
 }
 
+// Deactivate POST /device/app/api/user/deactivate
+// 仅删除 wx 表当前主键记录，不联动删除其他域数据。
+func (c *DeviceAppUserCtrl) Deactivate(ctx context.Context, req *v1.DeviceUserDeactivateReq) (res *v1.DeviceUserDeactivateRes, err error) {
+	_ = req
+	r := ghttp.RequestFromCtx(ctx)
+	wxID, err := wxIDFromAppUserHeader(r)
+	if err != nil {
+		return nil, err
+	}
+	if err = device.WxDeactivateByID(ctx, wxID); err != nil {
+		if errors.Is(err, device.ErrWxDeactivateWxIDInvalid) {
+			return nil, gerror.NewCode(gcode.CodeInvalidParameter, err.Error())
+		}
+		if errors.Is(err, device.ErrWxDeactivateNotFound) {
+			return nil, gerror.NewCode(gcode.CodeNotFound, err.Error())
+		}
+		return nil, err
+	}
+	return &v1.DeviceUserDeactivateRes{}, nil
+}
+
 // InternalByID GET /device/app/api/user/internal/by-id — 仅允许携带正确网关密钥的调用方。
 func (c *DeviceAppUserCtrl) InternalByID(ctx context.Context, req *v1.DeviceWxInternalByIDReq) (res *v1.DeviceWxInternalByIDRes, err error) {
 	r := ghttp.RequestFromCtx(ctx)

@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	headerInternalWxId = "X-Internal-Wx-Id"
+	headerInternalWxId       = "X-Internal-Wx-Id"
 	envGatewayInternalSecret = "DEVICE_GATEWAY_INTERNAL_SECRET"
 	cacheKeyWxIDToUnion      = "dev:wx:id2union:"
 	cacheKeyWxUnionToDevice  = "dev:wx:union2dev:"
@@ -42,6 +42,12 @@ var ErrWxDeviceLoginRejected = errors.New("设备登录失败，请确认设备�
 
 // ErrWxDeviceLoginDeviceNoEmpty 入参 device_no 为空（trim 后）。
 var ErrWxDeviceLoginDeviceNoEmpty = errors.New("deviceNo 不能为空")
+
+// ErrWxDeactivateWxIDInvalid 注销入参 wxId 非法。
+var ErrWxDeactivateWxIDInvalid = errors.New("wxId 无效")
+
+// ErrWxDeactivateNotFound 注销目标不存在（已注销或记录不存在）。
+var ErrWxDeactivateNotFound = errors.New("账号不存在或已注销")
 
 // WxDeviceLoginByDeviceNo 仅校验 user 表已注册该 device_no；若 wx 已绑定同号则返回对应 wxId，否则 wxId=0（网关仍凭 device_no 签发 access）。
 // 不使用 Scan 查空集：部分驱动会返回 sql.ErrNoRows，经网关拼接进 message。
@@ -93,7 +99,7 @@ func WxLogin(ctx context.Context, jsCode, platform string) (*WxLoginResult, erro
 	}
 	if one.IsEmpty() {
 		res, insErr := dao.Wx.Ctx(ctx).Data(g.Map{
-			dao.Wx.Columns().Unionid:   unionID,
+			dao.Wx.Columns().Unionid:  unionID,
 			dao.Wx.Columns().Platform: platform,
 		}).Insert()
 		if insErr != nil {
@@ -181,6 +187,29 @@ func WxAutoSaveProfile(ctx context.Context, wxID int64, birthdayUnixSec int64, s
 	}
 	_ = invalidateWxCaches(ctx, row.Id, unionID)
 	return dn, nil
+}
+
+// WxDeactivateByID 按 wx 主键执行账号注销（删除 wx 单条记录）。
+// 失败语义：
+// 1) wxId 非法返回 ErrWxDeactivateWxIDInvalid；
+// 2) 目标不存在返回 ErrWxDeactivateNotFound；
+// 3) 删除失败返回底层数据库错误。
+func WxDeactivateByID(ctx context.Context, wxID int64) error {
+	if wxID <= 0 {
+		return ErrWxDeactivateWxIDInvalid
+	}
+	row, err := wxRowByWxID(ctx, wxID)
+	if err != nil {
+		return err
+	}
+	if row == nil || row.Id == 0 {
+		return ErrWxDeactivateNotFound
+	}
+	if _, err = dao.Wx.Ctx(ctx).Where(dao.Wx.Columns().Id, wxID).Delete(); err != nil {
+		return err
+	}
+	_ = invalidateWxCaches(ctx, row.Id, strings.TrimSpace(row.Unionid))
+	return nil
 }
 
 // WxDeviceNoByWxID 按 wx 主键返回已绑定 device_no。
