@@ -17,6 +17,10 @@ type gatewayAppAuthFrame struct {
 	DeviceNo    string `json:"deviceNo"`
 }
 
+type gatewayAppWsFrame struct {
+	Type string `json:"type"`
+}
+
 func gatewayAppHistoryWS(r *ghttp.Request) {
 	ctx := r.Context()
 	ws, err := r.WebSocket()
@@ -63,8 +67,16 @@ func gatewayAppHistoryWS(r *ghttp.Request) {
 	_ = ws.WriteJSON(g.Map{"type": "auth_ok", "code": 0})
 	glog.Infof(ctx, "[gateway-app-ws] 已订阅历史推送 deviceNo=%s wxId=%d", deviceNo, wxID)
 	for {
-		if _, _, err := ws.ReadMessage(); err != nil {
+		_, msg, err := ws.ReadMessage()
+		if err != nil {
 			return
+		}
+		var frame gatewayAppWsFrame
+		if err := json.Unmarshal(msg, &frame); err != nil {
+			continue
+		}
+		if strings.TrimSpace(strings.ToLower(frame.Type)) == "ping" {
+			_ = ws.WriteJSON(g.Map{"type": "pong"})
 		}
 	}
 }
