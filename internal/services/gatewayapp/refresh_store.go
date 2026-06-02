@@ -19,10 +19,13 @@ const refreshKeyPrefix = "gw:app:rt:"
 // refreshPayloadWxZeroPrefix 设备号直连登录（JWT sub=0）时 Redis 载荷前缀，后接 device_no，与纯数字 wxId 字符串区分。
 const refreshPayloadWxZeroPrefix = "0:"
 
+// refreshPayloadWxDeviceSep wx 会话 refresh 载荷中 wxId 与 device_no 的分隔（格式 `wxId:device_no`；旧载荷仅 wxId 仍兼容）。
+const refreshPayloadWxDeviceSep = ":"
+
 var refreshCache = cachekit.WithObserver(cachekit.NewRedisCache(), cachekit.LoggingObserver{})
 
 // IssueRefreshToken 生成 refresh 并写入 Redis，返回明文令牌（仅返回一次给客户端）。
-// wxID>0 时载荷为十进制 wxId；wxID==0 时（仅设备会话）须传非空 deviceNoCarry，载荷为 "0:"+device_no，供刷新时写回 access 的 device_no claim。
+// wxID>0 时载荷为十进制 wxId，若 deviceNoCarry 非空则为 `wxId:device_no`；wxID==0 时（仅设备会话）须传非空 deviceNoCarry，载荷为 "0:"+device_no。
 func IssueRefreshToken(ctx context.Context, wxID int64, deviceNoCarry string) (string, error) {
 	dn0 := strings.TrimSpace(deviceNoCarry)
 	if wxID == 0 && dn0 == "" {
@@ -44,6 +47,8 @@ func IssueRefreshToken(ctx context.Context, wxID int64, deviceNoCarry string) (s
 	val := strconv.FormatInt(wxID, 10)
 	if wxID == 0 {
 		val = refreshPayloadWxZeroPrefix + dn0
+	} else if dn0 != "" {
+		val = val + refreshPayloadWxDeviceSep + dn0
 	}
 	if err := refreshCache.SetEX(ctx, key, val, time.Duration(ttl)*time.Second); err != nil {
 		return "", err
@@ -51,7 +56,7 @@ func IssueRefreshToken(ctx context.Context, wxID int64, deviceNoCarry string) (s
 	return token, nil
 }
 
-// ConsumeRefreshToken 校验 refresh，返回 wxId 与设备号携带值（仅 wxID==0 时非空）；若 rotate 为 true 则删除旧键（单次使用策略）。
+// ConsumeRefreshToken 校验 refresh，返回 wxId 与设备号携带值（wxID==0 或新格式 wxId:device_no 时非空）；若 rotate 为 true 则删除旧键（单次使用策略）。
 func ConsumeRefreshToken(ctx context.Context, refreshToken string, rotate bool) (wxID int64, deviceNoCarry string, err error) {
 	refreshToken = strings.TrimSpace(refreshToken)
 	if refreshToken == "" {
@@ -76,12 +81,20 @@ func ConsumeRefreshToken(ctx context.Context, refreshToken string, rotate bool) 
 		}
 		return 0, dn, nil
 	}
-	wxID, err = strconv.ParseInt(v, 10, 64)
-	if err != nil || wxID <= 0 {
-		return 0, "", fmt.Errorf("refresh 载荷无效")
+	if idx := strings.Index(v, refreshPayloadWxDeviceSep); idx > 0 {
+		wxID, err = strconv.ParseInt(v[:idx], 10, 64)
+		if err != nil || wxID <= 0 {
+			return 0, "", fmt.Errorf("refresh 载荷无效")
+		}
+		deviceNoCarry = strings.TrimSpace(v[idx+len(refreshPayloadWxDeviceSep):])
+	} else {
+		wxID, err = strconv.ParseInt(v, 10, 64)
+		if err != nil || wxID <= 0 {
+			return 0, "", fmt.Errorf("refresh 载荷无效")
+		}
 	}
 	if rotate {
 		_ = refreshCache.Del(ctx, key)
 	}
-	return wxID, "", nil
+	return wxID, deviceNoCarry, nil
 }

@@ -54,7 +54,7 @@ func (c *GatewayAppCtrl) Login(ctx context.Context, req *v1.GatewayAppLoginReq) 
 	if err != nil {
 		return nil, err
 	}
-	refresh, err := gatewayapp.IssueRefreshToken(ctx, wxID, "")
+	refresh, err := gatewayapp.IssueRefreshToken(ctx, wxID, deviceNo)
 	if err != nil {
 		return nil, err
 	}
