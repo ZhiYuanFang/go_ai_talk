@@ -146,6 +146,18 @@ type DeviceWxDeviceLoginRes struct {
 	IsNewUser bool   `json:"isNewUser" dc:"设备号登录恒为 false"`
 }
 
+// DeviceUserProfileReq 查询当前账号 profile（wx 主键来自 Header X-Internal-Wx-Id，由 gateway-app 从 JWT sub 注入）。
+type DeviceUserProfileReq struct {
+	g.Meta `path:"/device/app/api/user/profile" method:"get" tags:"device" summary:"查询当前账号 profile"`
+}
+
+// DeviceUserProfileRes 当前账号 profile（不含 unionid/password）。
+type DeviceUserProfileRes struct {
+	IsWxBound bool   `json:"isWxBound" dc:"是否已绑定微信（unionid 非空）"`
+	Account   string `json:"account,omitempty" dc:"用户名账号，未设置时省略"`
+	DeviceNo  string `json:"deviceNo" dc:"已绑定设备号，未绑定时为空字符串"`
+}
+
 // DeviceWxDetailReq 按 wx 查询已绑定设备号（wx 主键来自 Header X-Internal-Wx-Id）。
 type DeviceWxDetailReq struct {
 	g.Meta `path:"/device/app/api/user/detail" method:"get" tags:"device" summary:"wx 绑定设备号"`

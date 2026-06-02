@@ -238,6 +238,31 @@ func (c *DeviceAppUserCtrl) DeviceLogin(ctx context.Context, req *v1.DeviceWxDev
 	}, nil
 }
 
+// Profile GET /device/app/api/user/profile（wx 主键来自 Header X-Internal-Wx-Id）。
+func (c *DeviceAppUserCtrl) Profile(ctx context.Context, req *v1.DeviceUserProfileReq) (res *v1.DeviceUserProfileRes, err error) {
+	_ = req
+	r := ghttp.RequestFromCtx(ctx)
+	wxID, err := wxIDFromAppUserHeader(r)
+	if err != nil {
+		return nil, err
+	}
+	out, err := device.WxUserProfileByWxID(ctx, wxID)
+	if err != nil {
+		if errors.Is(err, device.ErrWxDeactivateWxIDInvalid) {
+			return nil, gerror.NewCode(gcode.CodeInvalidParameter, err.Error())
+		}
+		if errors.Is(err, device.ErrWxDeactivateNotFound) {
+			return nil, gerror.NewCode(gcode.CodeNotFound, err.Error())
+		}
+		return nil, err
+	}
+	return &v1.DeviceUserProfileRes{
+		IsWxBound: out.IsWxBound,
+		Account:   out.Account,
+		DeviceNo:  out.DeviceNo,
+	}, nil
+}
+
 // Detail GET /device/app/api/user/detail
 func (c *DeviceAppUserCtrl) Detail(ctx context.Context, req *v1.DeviceWxDetailReq) (res *v1.DeviceWxDetailRes, err error) {
 	_ = req

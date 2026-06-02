@@ -49,6 +49,13 @@ var ErrWxDeactivateWxIDInvalid = errors.New("wxId 无效")
 // ErrWxDeactivateNotFound 注销目标不存在（已注销或记录不存在）。
 var ErrWxDeactivateNotFound = errors.New("账号不存在或已注销")
 
+// WxUserProfile 当前账号 profile 读模型（不含 unionid/password 等敏感字段）。
+type WxUserProfile struct {
+	IsWxBound bool
+	Account   string
+	DeviceNo  string
+}
+
 // WxDeviceLoginByDeviceNo 仅校验 user 表已注册该 device_no；若 wx 已绑定同号则返回对应 wxId，否则 wxId=0（网关仍凭 device_no 签发 access）。
 // 不使用 Scan 查空集：部分驱动会返回 sql.ErrNoRows，经网关拼接进 message。
 func WxDeviceLoginByDeviceNo(ctx context.Context, deviceNo string) (*WxLoginResult, error) {
@@ -210,6 +217,25 @@ func WxDeactivateByID(ctx context.Context, wxID int64) error {
 	}
 	_ = invalidateWxCaches(ctx, row.Id, strings.TrimSpace(row.Unionid))
 	return nil
+}
+
+// WxUserProfileByWxID 按 wx 主键读取账号 profile（单次查库，派生 isWxBound/account/deviceNo）。
+func WxUserProfileByWxID(ctx context.Context, wxID int64) (*WxUserProfile, error) {
+	if wxID <= 0 {
+		return nil, ErrWxDeactivateWxIDInvalid
+	}
+	row, err := wxRowByWxID(ctx, wxID)
+	if err != nil {
+		return nil, err
+	}
+	if row == nil || row.Id == 0 {
+		return nil, ErrWxDeactivateNotFound
+	}
+	return &WxUserProfile{
+		IsWxBound: strings.TrimSpace(row.Unionid) != "",
+		Account:   strings.TrimSpace(row.Account),
+		DeviceNo:  strings.TrimSpace(row.DeviceNo),
+	}, nil
 }
 
 // WxDeviceNoByWxID 按 wx 主键返回已绑定 device_no。
