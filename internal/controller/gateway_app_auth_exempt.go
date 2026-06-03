@@ -37,6 +37,7 @@ var (
 		"/device/app/ws/history",
 		"/voice/chat/ws",
 		"/voice/asr/ws",
+		"/ucg/app/ws/chat",
 	}
 
 	// GET 或 HEAD：路径精确匹配。
@@ -51,6 +52,7 @@ var (
 		"/device/app/api/version/check",
 		"/device/app/api/version/admin/list",
 		"/device/app/api/version/admin/get",
+		"/ucg/app/api/feed/recommend",
 		"/device/app/version-admin.html",
 		"/device/app/integration-test.html",
 		"/user-agreement.html",

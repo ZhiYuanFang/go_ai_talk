@@ -1,0 +1,22 @@
+FROM golang:1.19-alpine AS builder
+
+ENV GOPROXY=https://goproxy.cn,https://goproxy.io,direct
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/ucg-service ./cmd/ucg-service
+
+FROM alpine:3.19
+
+ENV WORKDIR=/app
+ENV GF_GCFG_FILE=manifest/config/config.ucg-service.yaml
+WORKDIR ${WORKDIR}
+
+COPY --from=builder /out/ucg-service ${WORKDIR}/ucg-service
+COPY manifest/config/config.ucg-service.yaml ${WORKDIR}/manifest/config/config.ucg-service.yaml
+
+EXPOSE 9804
+HEALTHCHECK --interval=10s --timeout=3s --retries=6 CMD wget -q -O - http://127.0.0.1:9804/api.json > /dev/null || exit 1
+CMD ["./ucg-service"]

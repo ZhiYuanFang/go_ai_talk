@@ -63,6 +63,7 @@ func RegisterGatewayAppHTTP(s *ghttp.Server) {
 	installGatewayAppEventImageProxy(s)
 	installDomainProxyMiddlewares(s)
 	installVoiceWSProxyMiddleware(s)
+	installUcgWSProxyMiddleware(s)
 
 	s.BindHandler("/device/app/ws/history", gatewayAppHistoryWS)
 

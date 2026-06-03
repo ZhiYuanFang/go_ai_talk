@@ -1,5 +1,5 @@
 version: "3.9"
-# 业务库连接：history/device/voice/worker 见各服务 *_DB_LINK；gateway-app 另需 APP_DB_LINK（ai_voice_app），
+# 业务库连接：history/device/voice/worker/ucg 见各服务 *_DB_LINK；gateway-app 另需 APP_DB_LINK（ai_voice_app），
 # 与 manifest/docker/.env.example、docs/runbooks/release-deploy-and-run.md 一致，避免新栈漏配版本库。
 #
 # 宿主机静态资源（Linux 根目录持久化，与 config 默认路径一致）：
@@ -67,6 +67,9 @@ services:
       VOICE_WS_PROXY_URL: http://voice-service:9802
       DEVICE_API_ROUTE_MODE: proxy
       DEVICE_API_PROXY_URL: http://device-service:9803
+      UCG_SERVICE_BASE_URL: "http://ucg-service:9804"
+      UCG_WS_ROUTE_MODE: proxy
+      UCG_WS_PROXY_URL: http://ucg-service:9804
       MQ_CONSUMER_ENABLED: "false"
       OUTBOX_RELAY_ENABLED: "false"
       MQ_HTTP_API_BASE: "http://rabbitmq:15672/api"
@@ -86,6 +89,8 @@ services:
       voice-service:
         condition: service_healthy
       device-service:
+        condition: service_healthy
+      ucg-service:
         condition: service_healthy
     # APK 落盘目录与 gatewayApp.apkStorageDir 默认 /apk/ai_talk/ 一致，映射到宿主机根目录便于备份
     volumes:
@@ -215,6 +220,32 @@ services:
       - "9901:9901"
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:9901/healthz > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+    networks: [go-ai-talk-net]
+
+  ucg-service:
+    build:
+      context: ../..
+      dockerfile: manifest/docker/Dockerfile.ucg-service
+    image: go-ai-talk/ucg-service:local
+    container_name: go-ai-talk-ucg-service
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      GF_GCFG_FILE: manifest/config/config.ucg-service.yaml
+      UCG_DB_LINK: "${UCG_DB_LINK:-}"
+      UCG_SERVICE_ADDR: ":9804"
+      DEVICE_SERVICE_URL: "http://device-service:9803"
+      DEVICE_GATEWAY_INTERNAL_SECRET: "${DEVICE_GATEWAY_INTERNAL_SECRET:-gateway-internal-change-me}"
+      MQ_HTTP_API_BASE: "http://rabbitmq:15672/api"
+      MQ_USER: "guest"
+      MQ_PASSWORD: "guest"
+    ports:
+      - "9804:9804"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:9804/api.json > /dev/null || exit 1"]
       interval: 10s
       timeout: 3s
       retries: 6

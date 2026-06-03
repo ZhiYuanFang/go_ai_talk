@@ -27,10 +27,11 @@ type domainRouteProxyConfig struct {
 }
 
 func installDomainProxyMiddlewares(s *ghttp.Server) {
-	// 统一安装领域代理中间件；具体代理实现仍按 history/voice/device 分文件维护。
+	// 统一安装领域代理中间件；具体代理实现仍按 history/voice/device/ucg 分文件维护。
 	installHistoryProxyMiddleware(s)
 	installVoiceProxyMiddleware(s)
 	installDeviceProxyMiddleware(s)
+	installUcgProxyMiddleware(s)
 }
 
 func routeKeyForDomainRequest(r *ghttp.Request) string {

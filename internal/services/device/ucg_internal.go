@@ -1,0 +1,75 @@
+package device
+
+import (
+	"context"
+	"errors"
+	"strings"
+)
+
+// UcgWxDisplay device 域向 ucg 暴露的 wx 展示字段（不含 unionid 等敏感信息）。
+type UcgWxDisplay struct {
+	WxId     int64  `json:"wxId"`
+	Exists   bool   `json:"exists"`
+	DeviceNo string `json:"deviceNo"`
+	BabyName string `json:"babyName"`
+}
+
+var ErrUcgWxIDInvalid = errors.New("wxId 无效")
+
+// UcgWxValidate 校验 wx 主键是否存在并返回 babyName 等展示字段。
+func UcgWxValidate(ctx context.Context, wxID int64) (*UcgWxDisplay, error) {
+	if wxID <= 0 {
+		return nil, ErrUcgWxIDInvalid
+	}
+	row, err := wxRowByWxID(ctx, wxID)
+	if err != nil {
+		return nil, err
+	}
+	if row == nil || row.Id == 0 {
+		return &UcgWxDisplay{WxId: wxID, Exists: false}, nil
+	}
+	babyName, _ := ucgBabyNameByDeviceNo(ctx, row.DeviceNo)
+	return &UcgWxDisplay{
+		WxId:     row.Id,
+		Exists:   true,
+		DeviceNo: row.DeviceNo,
+		BabyName: babyName,
+	}, nil
+}
+
+// UcgWxBatch 批量查询 wx 展示字段；不存在的 wxId 返回 exists=false。
+func UcgWxBatch(ctx context.Context, wxIDs []int64) ([]UcgWxDisplay, error) {
+	out := make([]UcgWxDisplay, 0, len(wxIDs))
+	for _, id := range wxIDs {
+		item, err := UcgWxValidate(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *item)
+	}
+	return out, nil
+}
+
+// UcgWxBabyName 按 wx 主键返回 user 表 baby_name（无绑定设备时返回空字符串）。
+func UcgWxBabyName(ctx context.Context, wxID int64) (string, error) {
+	if wxID <= 0 {
+		return "", ErrUcgWxIDInvalid
+	}
+	dn, err := WxDeviceNoByWxID(ctx, wxID)
+	if err != nil {
+		return "", err
+	}
+	return ucgBabyNameByDeviceNo(ctx, dn)
+}
+
+func ucgBabyNameByDeviceNo(ctx context.Context, deviceNo string) (string, error) {
+	deviceNo = strings.TrimSpace(deviceNo)
+	if deviceNo == "" {
+		return "", nil
+	}
+	profile, err := DeviceProfile().GetProfile(ctx, deviceNo)
+	if err != nil {
+		return "", err
+	}
+	return profile.BabyName, nil
+}
