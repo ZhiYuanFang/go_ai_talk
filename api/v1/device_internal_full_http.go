@@ -56,6 +56,29 @@ type DeviceInternalUserListRes struct {
 	List []entity.User `json:"list"`
 }
 
+type DeviceInternalUserListPageReq struct {
+	g.Meta   `path:"/device/internal/api/user/list-page" method:"get" tags:"device" summary:"内部-设备分页列表"`
+	Page     int    `json:"page" p:"page"`
+	PageSize int    `json:"pageSize" p:"pageSize"`
+	Q        string `json:"q" p:"q"`
+}
+
+type DeviceInternalUserListPageRes struct {
+	List     []entity.User `json:"list"`
+	Total    int           `json:"total"`
+	Page     int           `json:"page"`
+	PageSize int           `json:"pageSize"`
+}
+
+type DeviceInternalUserTouchAPIAccessReq struct {
+	g.Meta   `path:"/device/internal/api/user/touch-api-access" method:"post" tags:"device" summary:"内部-记录最近 HTTP 接口访问"`
+	DeviceNo string `json:"deviceNo"`
+	ApiPath  string `json:"apiPath" dc:"METHOD /path"`
+	At       int64  `json:"at" dc:"Unix 秒，0 表示当前时间"`
+}
+
+type DeviceInternalUserTouchAPIAccessRes struct{}
+
 // --- 事件 ---
 
 type DeviceInternalEventAddReq struct {

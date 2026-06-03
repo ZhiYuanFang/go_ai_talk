@@ -141,6 +141,24 @@ func (c *httpDeviceAdminClient) List(ctx context.Context) ([]entity.User, error)
 	return out.List, err
 }
 
+func (c *httpDeviceAdminClient) ListUsersPage(ctx context.Context, page, pageSize int, q string) (contracts.UserPageResult, error) {
+	var out contracts.UserPageResult
+	err := c.doJSON(ctx, http.MethodGet, "/device/internal/api/user/list-page", map[string]string{
+		"page":     fmt.Sprintf("%d", page),
+		"pageSize": fmt.Sprintf("%d", pageSize),
+		"q":        strings.TrimSpace(q),
+	}, nil, &out)
+	return out, err
+}
+
+func (c *httpDeviceAdminClient) TouchLastAPIAccess(ctx context.Context, deviceNo, apiPath string, atUnixSec int64) error {
+	return c.doJSON(ctx, http.MethodPost, "/device/internal/api/user/touch-api-access", nil, map[string]interface{}{
+		"deviceNo": strings.TrimSpace(deviceNo),
+		"apiPath":  strings.TrimSpace(apiPath),
+		"at":       atUnixSec,
+	}, nil)
+}
+
 func (c *httpDeviceAdminClient) AddEvent(ctx context.Context, name string, eventType string, extraNames, color, logoPath string, parentID int64) (int64, error) {
 	err := c.doJSON(ctx, http.MethodPost, "/device/internal/api/event/add", nil, map[string]interface{}{
 		"name":       strings.TrimSpace(name),

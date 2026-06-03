@@ -37,6 +37,7 @@ func RegisterHTTP(s *ghttp.Server) {
 	installVoiceWSProxyMiddleware(s)
 	// 安装全局横切能力（如请求 ID 透传），确保委派前先补齐上下文。
 	installGatewayCrosscuttingMiddlewares(s)
+	installDeviceAPIAccessTouchMiddleware(s)
 
 	// 网关动态入口以静态页与 httputil.ReverseProxy 透传为主，不在此挂载 MiddlewareHandlerResponse：
 	// 下游若 Content-Length 未知（如 chunked/gzip 解压后），ReverseProxy 会对 ResponseWriter 触发 Flush，

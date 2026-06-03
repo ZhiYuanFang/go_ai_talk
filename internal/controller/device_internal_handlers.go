@@ -58,6 +58,30 @@ func (c *DeviceInternalCtrl) UserLastTalk(ctx context.Context, req *v1.DeviceInt
 	return &v1.DeviceInternalUserLastTalkRes{}, nil
 }
 
+// UserTouchAPIAccess 记录设备最近一次对外 HTTP API（网关边缘异步调用）。
+func (c *DeviceInternalCtrl) UserTouchAPIAccess(ctx context.Context, req *v1.DeviceInternalUserTouchAPIAccessReq) (res *v1.DeviceInternalUserTouchAPIAccessRes, err error) {
+	_ = c
+	if err := device.DeviceAdmin().TouchLastAPIAccess(ctx, strings.TrimSpace(req.DeviceNo), strings.TrimSpace(req.ApiPath), req.At); err != nil {
+		return nil, err
+	}
+	return &v1.DeviceInternalUserTouchAPIAccessRes{}, nil
+}
+
+// UserListPage 设备分页列表（供跨进程 HTTP 客户端，无管理口令）。
+func (c *DeviceInternalCtrl) UserListPage(ctx context.Context, req *v1.DeviceInternalUserListPageReq) (res *v1.DeviceInternalUserListPageRes, err error) {
+	_ = c
+	result, err := device.DeviceAdmin().ListUsersPage(ctx, req.Page, req.PageSize, req.Q)
+	if err != nil {
+		return nil, err
+	}
+	return &v1.DeviceInternalUserListPageRes{
+		List:     result.List,
+		Total:    result.Total,
+		Page:     result.Page,
+		PageSize: result.PageSize,
+	}, nil
+}
+
 // UserList 设备列表。
 func (c *DeviceInternalCtrl) UserList(ctx context.Context, req *v1.DeviceInternalUserListReq) (res *v1.DeviceInternalUserListRes, err error) {
 	_ = c

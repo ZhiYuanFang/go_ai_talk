@@ -59,6 +59,10 @@ type DeviceAdminContract interface {
 	EnsureRegistered(ctx context.Context, deviceNo string) error
 	UpdateLastTalk(ctx context.Context, deviceNo, ask, answer string) error
 	List(ctx context.Context) ([]entity.User, error)
+	// ListUsersPage 管理端设备分页（user 表，device_no 可模糊过滤）。
+	ListUsersPage(ctx context.Context, page, pageSize int, q string) (UserPageResult, error)
+	// TouchLastAPIAccess 记录设备最近一次对外 HTTP API（网关边缘或 internal 调用）。
+	TouchLastAPIAccess(ctx context.Context, deviceNo, apiPath string, atUnixSec int64) error
 	AddEvent(ctx context.Context, name string, eventType string, extraNames, color, logoPath string, parentID int64) (int64, error)
 	ListEvents(ctx context.Context) ([]entity.Event, error)
 	UpdateEvent(ctx context.Context, id int64, name string, eventType string, extraNames, color, logoPath string, parentID *int64) error
@@ -90,6 +94,14 @@ type HistoryPageResult struct {
 // QaPageResult 问答库分页列表（qa 表权威在 voice 库）。
 type QaPageResult struct {
 	List     []entity.Qa
+	Total    int
+	Page     int
+	PageSize int
+}
+
+// UserPageResult 管理端设备分页列表（user 表权威在 device 库）。
+type UserPageResult struct {
+	List     []entity.User
 	Total    int
 	Page     int
 	PageSize int

@@ -29,6 +29,8 @@ type UserColumns struct {
 	LastTalkTime   string // 最后对话时间戳
 	Birthday       string // 生日时间戳
 	BabyName       string // 宝宝名字
+	LastApiPath    string // 最近 HTTP 接口 METHOD /path
+	LastApiAt      string // 最近 HTTP 接口时间 Unix 秒
 }
 
 // userColumns holds the columns for table user.
@@ -42,6 +44,8 @@ var userColumns = UserColumns{
 	LastTalkTime:   "last_talk_time",
 	Birthday:       "birthday",
 	BabyName:       "baby_name",
+	LastApiPath:    "last_api_path",
+	LastApiAt:      "last_api_at",
 }
 
 // NewUserDao creates and returns a new DAO object for table data access.

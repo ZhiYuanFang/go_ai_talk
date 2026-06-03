@@ -5,83 +5,175 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1" />
 	<title>App 版本管理 — gateway-app</title>
 	<style>
-		body { font-family: system-ui, sans-serif; max-width: 960px; margin: 24px auto; padding: 0 12px; }
-		label { display: block; margin-top: 12px; font-weight: 600; }
-		input[type="text"], input[type="password"], input[type="number"], textarea { width: 100%; box-sizing: border-box; padding: 8px; }
-		button { margin-top: 8px; margin-right: 8px; padding: 8px 14px; cursor: pointer; }
-		#panel { margin-top: 24px; border-top: 1px solid #ddd; padding-top: 16px; }
-		.err { color: #b00020; }
-		.ok { color: #0a6; }
-		table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 14px; }
-		th, td { border: 1px solid #ddd; padding: 8px; text-align: left; vertical-align: top; }
-		th { background: #f4f4f4; }
-		.badge-latest { background: #0a6; color: #fff; font-size: 11px; padding: 2px 6px; border-radius: 4px; }
-		#editDlg { display: none; margin-top: 16px; padding: 12px; border: 1px solid #ccc; background: #fafafa; }
-		.actions button { margin-top: 0; }
-		code { word-break: break-all; }
+		:root{
+			--bg-1:#fdf2f8;
+			--bg-2:#e0f2fe;
+			--bg-3:#ede9fe;
+			--text:#1f2937;
+			--muted:#6b7280;
+			--line:rgba(255,255,255,.45);
+			--glass:rgba(255,255,255,.30);
+			--glass-strong:rgba(255,255,255,.52);
+			--shadow:0 24px 80px rgba(94, 84, 142, .18);
+			--err:#b91c1c;
+			--ok:#059669;
+		}
+		*{box-sizing:border-box}
+		body{
+			margin:0;
+			font-family:"Microsoft YaHei",system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+			color:var(--text);
+			background:
+				radial-gradient(circle at 10% 10%, rgba(236,72,153,.22), transparent 28%),
+				radial-gradient(circle at 88% 18%, rgba(56,189,248,.24), transparent 30%),
+				radial-gradient(circle at 55% 85%, rgba(168,85,247,.18), transparent 34%),
+				linear-gradient(135deg, var(--bg-1), var(--bg-2) 48%, var(--bg-3));
+			min-height:100vh;
+		}
+		.page{width:min(1040px, calc(100% - 32px));margin:0 auto;padding:24px 0 48px}
+		.glass{
+			background:var(--glass);
+			border:1px solid var(--line);
+			backdrop-filter:blur(18px);
+			-webkit-backdrop-filter:blur(18px);
+			box-shadow:var(--shadow);
+		}
+		.header{
+			display:flex;align-items:center;gap:14px;
+			padding:18px 22px;border-radius:24px;margin-bottom:20px;
+		}
+		.logo{
+			width:44px;height:44px;border-radius:14px;
+			background:linear-gradient(135deg, rgba(236,72,153,.95), rgba(56,189,248,.95));
+			color:#fff;font-weight:800;display:grid;place-items:center;font-size:14px;
+		}
+		.header h1{margin:0;font-size:22px;line-height:1.2}
+		.header p{margin:4px 0 0;color:var(--muted);font-size:13px;line-height:1.5}
+		.card{border-radius:28px;padding:24px 26px;margin-bottom:20px}
+		.card h2{margin:0 0 8px;font-size:20px}
+		.card .sub{margin:0 0 16px;color:var(--muted);font-size:14px;line-height:1.6}
+		label{display:block;margin-top:14px;font-weight:600;font-size:14px}
+		label:first-of-type{margin-top:0}
+		input[type="text"],input[type="password"],input[type="number"],textarea,input[type="file"]{
+			width:100%;margin-top:6px;padding:10px 12px;
+			border:1px solid rgba(255,255,255,.65);border-radius:14px;
+			background:rgba(255,255,255,.55);font:inherit;color:var(--text);
+		}
+		textarea{resize:vertical;min-height:72px}
+		input[type="file"]{padding:8px}
+		.check-row{margin-top:14px;font-weight:500;display:flex;align-items:center;gap:8px}
+		.check-row input{width:auto;margin:0}
+		.btn{
+			margin-top:16px;margin-right:10px;padding:10px 18px;cursor:pointer;
+			border-radius:999px;font-size:14px;font-weight:600;
+			border:1px solid rgba(255,255,255,.55);background:rgba(255,255,255,.45);
+		}
+		.btn-primary{
+			background:linear-gradient(135deg, rgba(236,72,153,.95), rgba(99,102,241,.95));
+			color:#fff;border:none;box-shadow:0 12px 28px rgba(236,72,153,.22);
+		}
+		.btn-ghost{background:rgba(255,255,255,.35)}
+		.msg{min-height:1.25em;margin-top:12px;font-size:14px;line-height:1.5}
+		.err{color:var(--err)}
+		.ok{color:var(--ok)}
+		.session-ok{color:var(--ok);font-size:14px;margin:0 0 12px}
+		.table-wrap{overflow-x:auto;margin-top:12px;border-radius:18px;background:rgba(255,255,255,.35);border:1px solid rgba(255,255,255,.5)}
+		table{width:100%;border-collapse:collapse;font-size:13px}
+		th,td{padding:10px 12px;text-align:left;vertical-align:top;border-bottom:1px solid rgba(255,255,255,.45)}
+		th{background:rgba(255,255,255,.4);font-weight:700;white-space:nowrap}
+		tr:last-child td{border-bottom:none}
+		.badge-latest{background:var(--ok);color:#fff;font-size:11px;padding:2px 8px;border-radius:999px;margin-left:6px}
+		#editDlg{display:none;margin-top:16px;padding:18px;border-radius:20px;background:var(--glass-strong);border:1px solid rgba(255,255,255,.55)}
+		#editDlg h3{margin:0 0 8px;font-size:17px}
+		.actions button{margin-top:0;padding:6px 12px;font-size:12px}
+		code{word-break:break-all;font-size:12px;background:rgba(255,255,255,.5);padding:2px 6px;border-radius:6px}
+		a{color:#6d28d9}
+		.toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:8px}
+		@media (max-width:600px){
+			.page{width:calc(100% - 20px)}
+			.card,.header{padding:18px}
+		}
 	</style>
 </head>
 <body>
-	<h1>App 版本管理</h1>
-	<p>先登录（口令由服务端 <code>GATEWAY_APP_VERSION_ADMIN_PASSWORD</code> 注入）。登录后可查看历史版本、编辑元数据、删除记录或上传新 APK。</p>
+	<div class="page">
+		<header class="header glass">
+			<div class="logo">APK</div>
+			<div>
+				<h1>App 版本管理</h1>
+				<p>gateway-app · 上传 APK、维护 <code>ai_voice_app.version</code></p>
+			</div>
+		</header>
 
-	<div id="loginBox">
-		<label for="password">管理员口令</label>
-		<input type="password" id="password" autocomplete="current-password" />
-		<button type="button" id="btnLogin">登录</button>
-		<p id="loginMsg" class="err"></p>
-	</div>
+		<section id="loginBox" class="card glass">
+			<h2>管理员登录</h2>
+			<p class="sub">口令由服务端 <code>GATEWAY_APP_VERSION_ADMIN_PASSWORD</code> 注入，与设备管理口令不同。</p>
+			<label for="password">管理员口令</label>
+			<input type="password" id="password" autocomplete="current-password" />
+			<button type="button" id="btnLogin" class="btn btn-primary">登录</button>
+			<p id="loginMsg" class="msg"></p>
+		</section>
 
-	<div id="panel" style="display:none;">
-		<p class="ok">已登录。Cookie 路径为 <code>/device/app</code>。</p>
-		<h2>历史版本</h2>
-		<p id="listHint" style="color:#64748b;font-size:14px;">登录后自动加载；若始终为空，请确认已重建 <code>gateway-app</code> 并强制刷新本页（Ctrl+F5）。</p>
-		<button type="button" id="btnRefresh">刷新列表</button>
-		<p id="listMsg"></p>
-		<table id="verTable">
-			<thead>
-				<tr>
-					<th>ID</th>
-					<th>版本号</th>
-					<th>上线时间</th>
-					<th>downloadUrl</th>
-					<th>强制</th>
-					<th>minVersion</th>
-					<th>备注</th>
-					<th>操作</th>
-				</tr>
-			</thead>
-			<tbody id="verBody"></tbody>
-		</table>
+		<div id="panel" style="display:none;">
+			<section class="card glass">
+				<p class="session-ok">已登录 · Cookie 路径 <code>/device/app</code></p>
+				<h2>历史版本</h2>
+				<p id="listHint" class="sub">登录后自动加载；若始终为空，请重建 <code>gateway-app</code> 并强制刷新（Ctrl+F5）。</p>
+				<div class="toolbar">
+					<button type="button" id="btnRefresh" class="btn btn-ghost">刷新列表</button>
+				</div>
+				<p id="listMsg" class="msg"></p>
+				<div class="table-wrap">
+					<table id="verTable">
+						<thead>
+							<tr>
+								<th>ID</th>
+								<th>版本号</th>
+								<th>上线时间</th>
+								<th>downloadUrl</th>
+								<th>强制</th>
+								<th>minVersion</th>
+								<th>备注</th>
+								<th>操作</th>
+							</tr>
+						</thead>
+						<tbody id="verBody"></tbody>
+					</table>
+				</div>
 
-		<div id="editDlg">
-			<h3>编辑版本 <span id="editIdLabel"></span></h3>
-			<label for="editLatest">latestVersion</label>
-			<input type="text" id="editLatest" />
-			<label for="editNotes">releaseNotes</label>
-			<textarea id="editNotes" rows="2"></textarea>
-			<label for="editMin">minVersion</label>
-			<input type="text" id="editMin" />
-			<label for="editDate">releaseDate（Unix 秒）</label>
-			<input type="number" id="editDate" min="0" step="1" />
-			<label><input type="checkbox" id="editForce" /> forceUpdate</label>
-			<button type="button" id="btnSaveEdit">保存</button>
-			<button type="button" id="btnCancelEdit">取消</button>
-			<p id="editMsg"></p>
+				<div id="editDlg">
+					<h3>编辑版本 <span id="editIdLabel"></span></h3>
+					<label for="editLatest">latestVersion</label>
+					<input type="text" id="editLatest" />
+					<label for="editNotes">releaseNotes</label>
+					<textarea id="editNotes" rows="2"></textarea>
+					<label for="editMin">minVersion</label>
+					<input type="text" id="editMin" />
+					<label for="editDate">releaseDate（Unix 秒）</label>
+					<input type="number" id="editDate" min="0" step="1" />
+					<label class="check-row"><input type="checkbox" id="editForce" /> forceUpdate</label>
+					<button type="button" id="btnSaveEdit" class="btn btn-primary">保存</button>
+					<button type="button" id="btnCancelEdit" class="btn btn-ghost">取消</button>
+					<p id="editMsg" class="msg"></p>
+				</div>
+			</section>
+
+			<section class="card glass">
+				<h2>上传新版本 APK</h2>
+				<p class="sub">单包上限由服务端 <code>gatewayApp.apkMaxBytes</code> 决定（默认 200MB）；须与 <code>server.clientMaxBodySize</code> 一致。</p>
+				<form id="upForm">
+					<label for="latestVersion">latestVersion（如 1.0.1）</label>
+					<input type="text" id="latestVersion" required />
+					<label for="releaseNotes">releaseNotes（可选）</label>
+					<textarea id="releaseNotes" rows="3"></textarea>
+					<label class="check-row"><input type="checkbox" id="forceUpdate" /> forceUpdate（强制更新）</label>
+					<label for="apk">APK 文件</label>
+					<input type="file" id="apk" accept=".apk" required />
+					<button type="submit" class="btn btn-primary">上传并写库</button>
+				</form>
+				<p id="upMsg" class="msg"></p>
+			</section>
 		</div>
-
-		<h2 style="margin-top:32px;">上传新版本 APK</h2>
-		<form id="upForm">
-			<label for="latestVersion">latestVersion（如 1.0.1）</label>
-			<input type="text" id="latestVersion" required />
-			<label for="releaseNotes">releaseNotes（可选）</label>
-			<textarea id="releaseNotes" rows="3"></textarea>
-			<label><input type="checkbox" id="forceUpdate" /> forceUpdate（强制更新）</label>
-			<label for="apk">APK 文件</label>
-			<input type="file" id="apk" accept=".apk" required />
-			<button type="submit">上传并写库</button>
-		</form>
-		<p id="upMsg"></p>
 	</div>
 
 	<script>
@@ -95,14 +187,23 @@
 		let editingId = 0;
 
 		function showErr(el, text) {
-			el.className = 'err';
+			el.className = 'msg err';
 			el.textContent = text || '';
 		}
 		function showOk(el, text) {
-			el.className = 'ok';
+			el.className = 'msg ok';
 			el.textContent = text || '';
 		}
-		function clearMsg(el) { el.textContent = ''; el.className = ''; }
+		function clearMsg(el) { el.textContent = ''; el.className = 'msg'; }
+
+		/** 将 fetch 网络层错误转为可排查的中文说明 */
+		function formatFetchError(e) {
+			const raw = (e && e.message) ? String(e.message) : String(e);
+			if (/failed to fetch|networkerror|load failed/i.test(raw)) {
+				return '网络请求失败（failed to fetch）：上传 APK 时常见原因是网关 clientMaxBodySize 过小（GoFrame 默认 8MB）或反代 body/超时限制。请确认 gateway-app 已配置 clientMaxBodySize ≥ 200MB 并已重启；大文件上传时检查 Nginx client_max_body_size。';
+			}
+			return raw;
+		}
 
 		function formatReleaseDate(ts) {
 			if (!ts) return '—';
@@ -112,7 +213,6 @@
 
 		function unwrapApiBody(data) {
 			if (!data || typeof data !== 'object') return data;
-			// 兼容少数场景下外层再包一层 data
 			if (data.items === undefined && data.data && typeof data.data === 'object') {
 				return data.data;
 			}
@@ -120,13 +220,23 @@
 		}
 
 		async function apiJson(url, opts) {
-			const res = await fetch(url, Object.assign({ credentials: 'same-origin' }, opts || {}));
+			let res;
+			try {
+				res = await fetch(url, Object.assign({ credentials: 'same-origin' }, opts || {}));
+			} catch (e) {
+				const err = new Error(formatFetchError(e));
+				err.network = true;
+				throw err;
+			}
 			const raw = await res.json().catch(function(){ return {}; });
 			const data = unwrapApiBody(raw);
 			if (!res.ok || (data.code !== undefined && data.code !== 0)) {
 				let msg = data.message || ('HTTP ' + res.status);
 				if (res.status === 404) {
 					msg += '（接口不存在：请重建并重启 gateway-app 服务）';
+				}
+				if (res.status === 413) {
+					msg += '（请求体过大：检查 server.clientMaxBodySize 与反代 client_max_body_size）';
 				}
 				const err = new Error(msg);
 				err.status = res.status;
@@ -170,10 +280,12 @@
 					const actions = tr.querySelector('.actions');
 					const btnEdit = document.createElement('button');
 					btnEdit.type = 'button';
+					btnEdit.className = 'btn btn-ghost';
 					btnEdit.textContent = '编辑';
 					btnEdit.addEventListener('click', function(){ openEdit(row); });
 					const btnDel = document.createElement('button');
 					btnDel.type = 'button';
+					btnDel.className = 'btn btn-ghost';
 					btnDel.textContent = '删除';
 					btnDel.addEventListener('click', function(){ deleteRow(row); });
 					actions.appendChild(btnEdit);
@@ -183,7 +295,7 @@
 				showOk(listMsg, '共 ' + (data.total != null ? data.total : items.length) + ' 条');
 			} catch (e) {
 				verBody.innerHTML = '';
-				showErr(listMsg, e.message || String(e));
+				showErr(listMsg, formatFetchError(e));
 			}
 		}
 
@@ -230,7 +342,7 @@
 				editDlg.style.display = 'none';
 				await refreshList();
 			} catch (e) {
-				showErr(editMsg, e.message || String(e));
+				showErr(editMsg, formatFetchError(e));
 			}
 		});
 
@@ -249,7 +361,7 @@
 				});
 				await refreshList();
 			} catch (e) {
-				showErr(listMsg, e.message || String(e));
+				showErr(listMsg, formatFetchError(e));
 			}
 		}
 
@@ -280,7 +392,7 @@
 				document.getElementById('panel').style.display = 'block';
 				await refreshList();
 			} catch (e) {
-				showErr(loginMsg, e.message || String(e));
+				showErr(loginMsg, formatFetchError(e));
 			}
 		});
 
@@ -302,7 +414,10 @@
 			fd.append('releaseNotes', releaseNotes);
 			fd.append('forceUpdate', forceUpdate);
 			fd.append('apk', fileInput.files[0]);
+			const submitBtn = ev.target.querySelector('button[type="submit"]');
+			if (submitBtn) submitBtn.disabled = true;
 			try {
+				showOk(upMsg, '上传中，请稍候…');
 				await apiJson('/device/app/api/version/admin/upload', {
 					method: 'POST',
 					body: fd
@@ -311,7 +426,9 @@
 				document.getElementById('upForm').reset();
 				await refreshList();
 			} catch (e) {
-				showErr(upMsg, e.message || String(e));
+				showErr(upMsg, formatFetchError(e));
+			} finally {
+				if (submitBtn) submitBtn.disabled = false;
 			}
 		});
 	})();

@@ -43,6 +43,10 @@
 		.event-form-logo-placeholder{display:inline-flex;align-items:center;justify-content:center;min-width:72px;min-height:48px;padding:6px 10px;border:1px dashed #cbd5e1;border-radius:6px;font-size:12px;color:#64748b;background:#fff}
 		.event-tree-indent{display:inline-block;color:#94a3b8;font-family:monospace;user-select:none}
 		.event-tree-name{font-weight:500}
+		.pager{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:12px;font-size:13px}
+		.pager span{color:#64748b}
+		td a.device-link{color:#1677ff;text-decoration:none}
+		td a.device-link:hover{text-decoration:underline}
 	</style>
 </head>
 <body>
@@ -61,12 +65,23 @@
 			<div class="card-actions">
 				<input id="deviceNo" placeholder="device_no" />
 				<button id="registerBtn" type="button">注册</button>
-				<button id="refreshBtn" type="button">刷新列表</button>
 				<a id="versionAdminLink" class="link-btn" href="#" target="_blank" rel="noopener">App 版本管理</a>
 			</div>
 		</div>
 		<p class="msg" style="color:#64748b;margin-top:0;">版本管理在 App 网关（:9702），需单独登录；与设备管理口令不同。</p>
 		<div id="mainMsg" class="msg"></div>
+	</div>
+
+	<div class="card hidden" id="deviceRecordCard">
+		<div class="card-head">
+			<h3>设备记录</h3>
+			<div class="card-actions">
+				<input id="deviceSearchQ" placeholder="搜索 device_no" />
+				<button id="deviceSearchBtn" type="button">搜索</button>
+				<button id="deviceRefreshBtn" type="button">刷新</button>
+			</div>
+		</div>
+		<div id="deviceRecordMsg" class="msg"></div>
 		<div class="table-wrap">
 			<table>
 				<thead>
@@ -76,10 +91,17 @@
 						<th>last_talk_time</th>
 						<th>last_talk_ask</th>
 						<th>last_talk_answer</th>
+						<th>最近接口</th>
+						<th>接口时间</th>
 					</tr>
 				</thead>
-				<tbody id="tbody"></tbody>
+				<tbody id="deviceRecordTbody"></tbody>
 			</table>
+		</div>
+		<div class="pager">
+			<button id="devicePrevBtn" type="button">上一页</button>
+			<button id="deviceNextBtn" type="button">下一页</button>
+			<span id="devicePagerInfo"></span>
 		</div>
 	</div>
 
@@ -531,19 +553,47 @@ function formatUnixLocal(sec){
 	try{ return new Date(n * 1000).toLocaleString(); }catch(_){ return String(sec); }
 }
 
-async function loadList(){
-	const data = asListPayload(await api('/device/admin/api/list'));
-	const tbody = document.getElementById('tbody');
+let deviceRecordPage = 1;
+const deviceRecordPageSize = 5;
+let deviceRecordQuery = '';
+
+function historyPageUrl(deviceNo){
+	const dn = String(deviceNo || '').trim();
+	if(!dn) return '#';
+	return '/device/history/' + encodeURIComponent(dn);
+}
+
+async function loadDeviceRecordList(page){
+	if(page != null && page > 0) deviceRecordPage = page;
+	const q = encodeURIComponent(deviceRecordQuery || '');
+	const path = '/device/admin/api/user/list?page=' + deviceRecordPage +
+		'&pageSize=' + deviceRecordPageSize + (q ? '&q=' + q : '');
+	const paged = asPagedListPayload(await api(path));
+	const tbody = document.getElementById('deviceRecordTbody');
+	const pagerInfo = document.getElementById('devicePagerInfo');
+	const prevBtn = document.getElementById('devicePrevBtn');
+	const nextBtn = document.getElementById('deviceNextBtn');
 	tbody.innerHTML = '';
-	(data || []).forEach(it => {
+	(paged.list || []).forEach(it => {
 		const tr = document.createElement('tr');
-		tr.innerHTML = '<td>'+ escapeHtml(it.deviceNo||'') +'</td>' +
+		const dn = it.deviceNo || '';
+		tr.innerHTML = '<td><a class="device-link" href="'+ escapeHtml(historyPageUrl(dn)) +'">'+ escapeHtml(dn) +'</a></td>' +
 			'<td>'+ escapeHtml(formatUnixLocal(it.activeTime)) +'</td>' +
 			'<td>'+ escapeHtml(formatUnixLocal(it.lastTalkTime)) +'</td>' +
 			'<td class="wrapcell">'+ escapeHtml(it.lastTalkAsk||'') +'</td>' +
-			'<td class="wrapcell">'+ escapeHtml(it.lastTalkAnswer||'') +'</td>';
+			'<td class="wrapcell">'+ escapeHtml(it.lastTalkAnswer||'') +'</td>' +
+			'<td class="wrapcell">'+ escapeHtml(it.lastApiPath||'') +'</td>' +
+			'<td>'+ escapeHtml(formatUnixLocal(it.lastApiAt)) +'</td>';
 		tbody.appendChild(tr);
 	});
+	const totalPages = paged.total > 0 ? Math.ceil(paged.total / paged.pageSize) : 0;
+	if(pagerInfo){
+		pagerInfo.textContent = totalPages > 0
+			? '共 ' + paged.total + ' 条，第 ' + paged.page + ' / ' + totalPages + ' 页'
+			: '共 0 条';
+	}
+	if(prevBtn) prevBtn.disabled = paged.page <= 1;
+	if(nextBtn) nextBtn.disabled = totalPages === 0 || paged.page >= totalPages;
 }
 
 function buildEventRowData(it){
@@ -923,12 +973,17 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
 	adminPwd = document.getElementById('pwd').value.trim();
 	if(!adminPwd){ setMsg(loginMsg, '请输入口令'); return; }
 	try {
-		await loadList();
+		deviceRecordPage = 1;
+		deviceRecordQuery = '';
+		const searchEl = document.getElementById('deviceSearchQ');
+		if(searchEl) searchEl.value = '';
+		await loadDeviceRecordList(1);
 		await loadEventList();
 		await loadQaList();
 		await loadActionList();
 		loginCard.classList.add('hidden');
 		mainCard.classList.remove('hidden');
+		document.getElementById('deviceRecordCard').classList.remove('hidden');
 		eventCard.classList.remove('hidden');
 		qaCard.classList.remove('hidden');
 		actionCard.classList.remove('hidden');
@@ -945,15 +1000,42 @@ document.getElementById('registerBtn').addEventListener('click', async () => {
 			await api('/device/admin/api/register', {method:'POST', body: JSON.stringify({deviceNo})});
 		setMsg(mainMsg, '注册成功', true);
 		document.getElementById('deviceNo').value = '';
-		await loadList();
+		deviceRecordPage = 1;
+		await loadDeviceRecordList(1);
 	} catch (e) {
 		setMsg(mainMsg, e.message || '注册失败');
 	}
 });
 
-document.getElementById('refreshBtn').addEventListener('click', async () => {
-	try { await loadList(); setMsg(mainMsg, '已刷新', true); }
-	catch (e) { setMsg(mainMsg, e.message || '刷新失败'); }
+const deviceRecordMsg = () => document.getElementById('deviceRecordMsg');
+
+document.getElementById('deviceRefreshBtn').addEventListener('click', async () => {
+	try { await loadDeviceRecordList(); setMsg(deviceRecordMsg(), '已刷新', true); }
+	catch (e) { setMsg(deviceRecordMsg(), e.message || '刷新失败'); }
+});
+
+document.getElementById('deviceSearchBtn').addEventListener('click', async () => {
+	deviceRecordQuery = (document.getElementById('deviceSearchQ').value || '').trim();
+	deviceRecordPage = 1;
+	try { await loadDeviceRecordList(1); setMsg(deviceRecordMsg(), '已搜索', true); }
+	catch (e) { setMsg(deviceRecordMsg(), e.message || '搜索失败'); }
+});
+
+document.getElementById('deviceSearchQ').addEventListener('keydown', async (ev) => {
+	if(ev.key !== 'Enter') return;
+	ev.preventDefault();
+	document.getElementById('deviceSearchBtn').click();
+});
+
+document.getElementById('devicePrevBtn').addEventListener('click', async () => {
+	if(deviceRecordPage <= 1) return;
+	try { await loadDeviceRecordList(deviceRecordPage - 1); }
+	catch (e) { setMsg(deviceRecordMsg(), e.message || '加载失败'); }
+});
+
+document.getElementById('deviceNextBtn').addEventListener('click', async () => {
+	try { await loadDeviceRecordList(deviceRecordPage + 1); }
+	catch (e) { setMsg(deviceRecordMsg(), e.message || '加载失败'); }
 });
 
 document.getElementById('refreshEventBtn').addEventListener('click', async () => {

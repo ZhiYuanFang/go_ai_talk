@@ -15,4 +15,6 @@ type User struct {
 	LastTalkTime   int64  `json:"lastTalkTime"   ` // 最后对话时间戳
 	Birthday       int64  `json:"birthday"       ` // 生日时间戳
 	BabyName       string `json:"babyName"       ` // 宝宝名字
+	LastApiPath    string `json:"lastApiPath"    ` // 最近 HTTP 接口 METHOD /path
+	LastApiAt      int64  `json:"lastApiAt"      ` // 最近 HTTP 接口时间 Unix 秒
 }

@@ -57,6 +57,23 @@ func (c *AdminCtrl) Register(ctx context.Context, req *v1.DeviceAdminRegisterReq
 	return &v1.DeviceAdminRegisterRes{DeviceNo: deviceNo, ActiveTime: activeTime}, nil
 }
 
+// UserList 设备记录分页列表。
+func (c *AdminCtrl) UserList(ctx context.Context, req *v1.DeviceAdminUserListReq) (res *v1.DeviceAdminUserListRes, err error) {
+	if err := c.requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	result, err := c.Admin.ListUsersPage(ctx, req.Page, req.PageSize, req.Q)
+	if err != nil {
+		return nil, err
+	}
+	return &v1.DeviceAdminUserListRes{
+		List:     result.List,
+		Total:    result.Total,
+		Page:     result.Page,
+		PageSize: result.PageSize,
+	}, nil
+}
+
 // List 设备列表。
 func (c *AdminCtrl) List(ctx context.Context, req *v1.DeviceAdminListReq) (res *v1.DeviceAdminListRes, err error) {
 	_ = req

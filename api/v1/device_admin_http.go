@@ -30,6 +30,22 @@ type DeviceAdminListRes struct {
 	List []entity.User `json:"list"`
 }
 
+// DeviceAdminUserListReq 设备记录分页列表（user 表）。
+type DeviceAdminUserListReq struct {
+	g.Meta   `path:"/device/admin/api/user/list" method:"get" tags:"admin" summary:"设备记录分页列表"`
+	Page     int    `json:"page" p:"page" dc:"页码，从 1 开始"`
+	PageSize int    `json:"pageSize" p:"pageSize" dc:"每页条数，默认 5，最大 100"`
+	Q        string `json:"q" p:"q" dc:"设备号模糊搜索"`
+}
+
+// DeviceAdminUserListRes 设备记录分页响应。
+type DeviceAdminUserListRes struct {
+	List     []entity.User `json:"list"`
+	Total    int           `json:"total"`
+	Page     int           `json:"page"`
+	PageSize int           `json:"pageSize"`
+}
+
 // DeviceAdminEventListReq 事件字典列表。
 type DeviceAdminEventListReq struct {
 	g.Meta `path:"/device/admin/api/event/list" method:"get" tags:"admin" summary:"事件列表"`

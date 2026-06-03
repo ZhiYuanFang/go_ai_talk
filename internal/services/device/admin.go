@@ -632,6 +632,8 @@ func listUsersWithRetry(ctx context.Context) ([]entity.User, error) {
 			dao.User.Columns().LastTalkTime,
 			dao.User.Columns().LastTalkAsk,
 			dao.User.Columns().LastTalkAnswer,
+			dao.User.Columns().LastApiPath,
+			dao.User.Columns().LastApiAt,
 		).OrderAsc(dao.User.Columns().Id).Scan(&rows)
 		if err == nil {
 			return rows, nil

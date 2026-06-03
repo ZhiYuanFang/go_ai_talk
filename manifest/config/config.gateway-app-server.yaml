@@ -11,6 +11,8 @@ server:
   address: ":9702"
   openapiPath: "/api.json"
   swaggerPath: "/swagger"
+  # GoFrame 默认 clientMaxBodySize 为 8MB；须 ≥ gatewayApp.apkMaxBytes，否则大 APK 上传会在进 handler 前断连（浏览器表现为 failed to fetch）。
+  clientMaxBodySize: "220MB"
 
 logger:
   level: "all"
