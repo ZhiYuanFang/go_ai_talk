@@ -122,6 +122,179 @@ RHEL/CentOS 等若遇容器无法写入，可在 compose 卷行尝试后缀 `:z`
 - device-service: `http://127.0.0.1:9803/api.json`
 - worker: `http://127.0.0.1:9901/healthz`
 
+### 2.5 Compose 与镜像版本控制
+
+微服务 Compose 分三层：
+
+| 文件 | 用途 |
+|------|------|
+| `manifest/docker/docker-compose.microservices.yml` | 拓扑基线；本机开发 `build` + `:local` |
+| `manifest/docker/docker-compose.microservices.prod.yml` | 生产 overlay；registry 镜像，`pull` + `--no-build` |
+| `manifest/docker/docker-compose.microservices.test.yml` | 测试 overlay；独立网络/端口/静态目录 |
+
+**镜像 tag 双轨**
+
+| 环境 | `.env` 文件 | `IMAGE_TAG` | 说明 |
+|------|-------------|-------------|------|
+| 本机开发 | `.env.example` / `.env` | （不用 registry） | `up -d --build`，`:local` |
+| 测试 | `.env.test`（自 `.env.test.example` 复制） | **`develop`**（CI 浮动） | 每次联调前 `pull` |
+| 生产 | `.env.prod`（自 `.env.prod.example` 复制） | **semver**（如 `v1.0.0`） | 发版人工改 tag；**禁止** `develop`/`latest`/`:local` |
+
+CI 应对每次构建同时 push 不可变 `:<git-sha>`，便于测试栈临时 pin 排错。
+
+**生产部署（registry）**
+
+```bash
+docker compose --env-file manifest/docker/.env.prod \
+  -f manifest/docker/docker-compose.microservices.yml \
+  -f manifest/docker/docker-compose.microservices.prod.yml \
+  pull
+
+docker compose --env-file manifest/docker/.env.prod \
+  -f manifest/docker/docker-compose.microservices.yml \
+  -f manifest/docker/docker-compose.microservices.prod.yml \
+  up -d --no-build
+```
+
+**测试部署（registry，默认 develop）**
+
+```bash
+COMPOSE_PROJECT_NAME=go-ai-talk-test \
+docker compose --env-file manifest/docker/.env.test \
+  -f manifest/docker/docker-compose.microservices.yml \
+  -f manifest/docker/docker-compose.microservices.test.yml \
+  pull && up -d --no-build
+```
+
+单服务更新示例（生产）：改 `IMAGE_TAG` 或 pull 新镜像后  
+`docker compose ... up -d --no-build --force-recreate voice-service`
+
+### 2.6 生产 / 测试双栈（同机完全隔离）
+
+生产（现有）与测试（新增）可在同一宿主机并存，须 **网络 / Redis / RabbitMQ / MySQL 库 / 静态目录 / 镜像 tag** 全隔离。
+
+**对照表**
+
+| 项 | 生产 | 测试 |
+|----|------|------|
+| Compose project | （默认或 `go-ai-talk-prod`） | **`go-ai-talk-test`** |
+| Docker 网络 | `go-ai-talk-net` | **`go-ai-talk-test-net`** |
+| Redis | `docker-compose.redis-cluster.yml`，宿主机 **7001–7006** | **`docker-compose.redis-cluster.test.yml`**，宿主机 **17001–17006** |
+| RabbitMQ | `docker-compose.rabbitmq.yml`，**5672 / 15672** | **`docker-compose.rabbitmq.test.yml`**，**5673 / 15673** |
+| gateway / gateway-app | **9701 / 9702** | **19701 / 19702** |
+| history / voice / device / ucg | **9801–9804** | **19801–19804** |
+| worker | **9901** | **19901** |
+| MySQL 库 | `ai_voice_*` | **`ai_voice_*_test`** |
+| 事件 logo | `/ai_talk_images` | **`/ai_talk_images_test`** |
+| APK | `/apk/ai_talk` | **`/apk/ai_talk_test`** |
+| 镜像 tag | semver（`.env.prod`） | **`develop`**（`.env.test`） |
+| 对外域名 | `www.pangbao.cuplay.top` | **`test.pangbao.cuplay.top`** |
+
+**测试栈启动顺序（首次）**
+
+```bash
+# 1) 网络
+docker network create go-ai-talk-test-net
+
+# 2) 测试 MySQL 库（在 mysqld 上执行一次）
+# CREATE DATABASE ai_voice_history_test; ...（各域库 + ai_voice_worker_test + ai_voice_app_test + ai_voice_ucg_test）
+
+# 3) 测试静态目录
+sudo mkdir -p /ai_talk_images_test /apk/ai_talk_test
+sudo chmod 755 /ai_talk_images_test /apk/ai_talk_test
+
+# 4) 脱敏种子（见 §2.8）
+MYSQL_PASS='***' ./hack/mask-seed-data.sh
+
+# 5) 测试 Redis cluster
+docker compose -f manifest/docker/docker-compose.redis-cluster.test.yml up -d --force-recreate
+docker compose -f manifest/docker/docker-compose.redis-cluster.test.yml exec -T redis-node-1 \
+  redis-cli --cluster create \
+  redis-node-1:7001 redis-node-2:7002 redis-node-3:7003 \
+  redis-node-4:7004 redis-node-5:7005 redis-node-6:7006 \
+  --cluster-replicas 1 --cluster-yes
+
+# 6) 测试 RabbitMQ + 拓扑
+docker compose -f manifest/docker/docker-compose.rabbitmq.test.yml up -d --force-recreate
+COMPOSE_FILE=manifest/docker/docker-compose.rabbitmq.test.yml \
+RABBIT_API_BASE=http://127.0.0.1:15673/api \
+./hack/rabbitmq-init.sh
+
+# 7) 测试微服务（develop）
+COMPOSE_PROJECT_NAME=go-ai-talk-test \
+docker compose --env-file manifest/docker/.env.test \
+  -f manifest/docker/docker-compose.microservices.yml \
+  -f manifest/docker/docker-compose.microservices.test.yml \
+  pull && up -d --no-build
+```
+
+部署后验收 DSN 未串环境：
+
+```bash
+docker exec go-ai-talk-history-service-test printenv HISTORY_DB_LINK
+# 应含 ai_voice_history_test，不得为 ai_voice_history（无 _test）
+```
+
+### 2.7 测试环境访问（test.pangbao.cuplay.top）
+
+测试对外 URL 形态与生产一致：**仅换域名**，客户端仍用 **9701 / 9702** 端口与相同 API 路径。Nginx（宝塔）将公网请求反代至测试后端 **19701 / 19702**。
+
+| 对外 listen | proxy_pass |
+|-------------|------------|
+| `test.pangbao.cuplay.top:9701` | `http://127.0.0.1:19701` |
+| `test.pangbao.cuplay.top:9702` | `http://127.0.0.1:19702` |
+
+`.env.test` 须设置 `GATEWAY_APP_PUBLIC_BASE_URL=https://test.pangbao.cuplay.top:9702`（APK / Universal Links 测链路）。
+
+Nginx 最小要点：
+
+- TLS 证书覆盖 `test.pangbao.cuplay.top`（或通配符 `*.pangbao.cuplay.top`）
+- `client_max_body_size` ≥ **220MB**（APK 上传，与 gateway-app `clientMaxBodySize` 一致）
+- WebSocket 路径与生产相同（history/voice/ucg WS 经 gateway-app 反代）
+
+**健康检查（测试，对外形态）**
+
+- gateway: `https://test.pangbao.cuplay.top:9701/api.json`
+- gateway-app: `https://test.pangbao.cuplay.top:9702/api.json`
+
+**健康检查（测试，宿主机直连后端）**
+
+- gateway: `http://127.0.0.1:19701/api.json`
+- gateway-app: `http://127.0.0.1:19702/api.json`
+- worker: `http://127.0.0.1:19901/healthz`
+
+### 2.8 脱敏种子刷新
+
+发版前建议在测试栈验收前执行一次种子刷新：
+
+```bash
+MYSQL_HOST=127.0.0.1 MYSQL_USER=root MYSQL_PASS='***' ./hack/mask-seed-data.sh
+```
+
+脚本流程：`mysqldump` 生产 `ai_voice_*` → 脱敏（`user`/`wx` 等设备号与微信标识）→ 导入 `ai_voice_*_test`；默认 **rsync/cp** 生产 `/ai_talk_images` → `/ai_talk_images_test`。跳过静态同步：`SKIP_STATIC_SYNC=1`。
+
+导入后建议：
+
+```bash
+COMPOSE_PROJECT_NAME=go-ai-talk-test \
+docker compose --env-file manifest/docker/.env.test \
+  -f manifest/docker/docker-compose.microservices.yml \
+  -f manifest/docker/docker-compose.microservices.test.yml \
+  up -d --no-build --force-recreate gateway-app history-service device-service worker
+```
+
+### 2.9 双栈验收（手工）
+
+同机 prod + test 同时运行后：
+
+1. **端口**：`curl -s http://127.0.0.1:9701/api.json` 与 `curl -s http://127.0.0.1:19701/api.json` 均 200。
+2. **对外测试域名**：`curl -sk https://test.pangbao.cuplay.top:9702/api.json` 可达。
+3. **MQ 隔离**：在测试栈触发一条会进 outbox/MQ 的操作；Rabbit **15673** 管理台可见消息被 **test worker**（`go-ai-talk-worker-test`）消费；生产 **15672** 队列深度不应因测试流量异常增长。
+4. **静态隔离**：测试环境上传 logo/APK 后，`/ai_talk_images_test` 与 `/apk/ai_talk_test` 有新文件，生产 `/ai_talk_images` 与 `/apk/ai_talk` 无变化。
+5. **DB 隔离**：测试写操作仅出现在 `*_test` 库（可查 binlog 或业务表 spot check）。
+
+> **发版闸门**：打 release tag 前记录测试通过的 **git sha**；CI 构建的 semver 镜像应基于同一 commit。可选在发 prod 前将测试栈临时 `IMAGE_TAG=v1.0.0` 做最后一轮 smoke。
+
 ### 3. Kubernetes 部署要点
 
 - 使用 `manifest/deploy/kustomize/overlays/develop`
@@ -136,13 +309,19 @@ RHEL/CentOS 等若遇容器无法写入，可在 compose 卷行尝试后缀 `:z`
 - 检查各服务 `GF_GCFG_FILE` 是否指向对应专属配置
 - 检查主网关 `gateway` 是否无 DB 访问路径；检查 **`gateway-app`** 是否已配置 **`APP_DB_LINK`** 或可连通的 `database.app.link`
 - 检查 worker outbox relay 的 `database.default` 是否指向目标库
+- **测试栈**：已用 `IMAGE_TAG=develop`（或指定 sha）在 `test.pangbao.cuplay.top` 完成 §2.9 全链路验收（含 MQ / 静态 / DB 隔离）
+- **生产发版**：`.env.prod` 中 `IMAGE_TAG` 与 git release tag 一致（semver），**不得**为 `develop`
+- **DSN 验收**：`docker exec ... printenv HISTORY_DB_LINK` 确认 test 库名含 `_test`、prod 不含 `_test`
+- 发版前若刷新测试种子，已执行 §2.8 并 recreate 依赖缓存的服务
 
 ### 5. 回滚步骤（按服务维度）
 
 1) 配置回滚：将目标服务 `GF_GCFG_FILE` 回切到上一个稳定配置文件。  
-2) 镜像回滚：回退对应 deployment / compose 镜像 tag。  
+2) **镜像回滚（Compose 生产）**：修改 `.env.prod` 中 `IMAGE_TAG` 为上一稳定 semver → `pull` → `up -d --no-build --force-recreate <service>`。**勿**依赖服务器 `--build` 或 `:local` 回滚。  
 3) DAO 模型回滚（应急）：如发现数据库路由问题，回滚到上一个稳定版本二进制与配置。  
 4) 验证恢复：健康探针、关键 API、outbox relay 状态恢复正常。
+
+**警告**：生产回滚与日常维护 **禁止** 执行 `docker system prune -a`（易误删未使用的 release 镜像层与数据卷关联上下文）。测试栈 `develop` 浮动 tag 与生产 semver 回滚互不影响。
 
 ### 6. 文档治理
 

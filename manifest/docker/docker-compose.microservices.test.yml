@@ -1,0 +1,87 @@
+# 测试 overlay：与基线 docker-compose.microservices.yml 组合使用。
+# 独立 Docker 网络 go-ai-talk-test-net；宿主机端口 197xx；静态资源目录 *_test。
+# 须先启动 docker-compose.redis-cluster.test.yml 与 docker-compose.rabbitmq.test.yml。
+#
+# 示例：
+#   COMPOSE_PROJECT_NAME=go-ai-talk-test \
+#   docker compose --env-file manifest/docker/.env.test \
+#     -f manifest/docker/docker-compose.microservices.yml \
+#     -f manifest/docker/docker-compose.microservices.test.yml \
+#     pull && up -d --no-build
+
+x-test-redis-env: &test-redis-env
+  GF_REDIS_DEFAULT_ADDRESS: "${GF_REDIS_DEFAULT_ADDRESS:-redis-node-1:7001,redis-node-2:7002,redis-node-3:7003}"
+
+services:
+  gateway:
+    image: ${REGISTRY}/go-ai-talk/gateway:${IMAGE_TAG}
+    container_name: go-ai-talk-gateway-test
+    environment:
+      <<: *test-redis-env
+    ports:
+      - "19701:9701"
+    networks: [go-ai-talk-test-net]
+
+  gateway-app:
+    image: ${REGISTRY}/go-ai-talk/gateway-app:${IMAGE_TAG}
+    container_name: go-ai-talk-gateway-app-test
+    environment:
+      <<: *test-redis-env
+      GATEWAY_APP_PUBLIC_BASE_URL: "${GATEWAY_APP_PUBLIC_BASE_URL:-https://test.pangbao.cuplay.top:9702}"
+    ports:
+      - "19702:9702"
+    volumes:
+      - /apk/ai_talk_test:/apk/ai_talk
+    networks: [go-ai-talk-test-net]
+
+  history-service:
+    image: ${REGISTRY}/go-ai-talk/history-service:${IMAGE_TAG}
+    container_name: go-ai-talk-history-service-test
+    environment:
+      <<: *test-redis-env
+    ports:
+      - "19801:9801"
+    networks: [go-ai-talk-test-net]
+
+  voice-service:
+    image: ${REGISTRY}/go-ai-talk/voice-service:${IMAGE_TAG}
+    container_name: go-ai-talk-voice-service-test
+    environment:
+      <<: *test-redis-env
+    ports:
+      - "19802:9802"
+    networks: [go-ai-talk-test-net]
+
+  device-service:
+    image: ${REGISTRY}/go-ai-talk/device-service:${IMAGE_TAG}
+    container_name: go-ai-talk-device-service-test
+    environment:
+      <<: *test-redis-env
+    ports:
+      - "19803:9803"
+    volumes:
+      - /ai_talk_images_test:/ai_talk_images
+    networks: [go-ai-talk-test-net]
+
+  worker:
+    image: ${REGISTRY}/go-ai-talk/worker:${IMAGE_TAG}
+    container_name: go-ai-talk-worker-test
+    environment:
+      <<: *test-redis-env
+    ports:
+      - "19901:9901"
+    networks: [go-ai-talk-test-net]
+
+  ucg-service:
+    image: ${REGISTRY}/go-ai-talk/ucg-service:${IMAGE_TAG}
+    container_name: go-ai-talk-ucg-service-test
+    environment:
+      <<: *test-redis-env
+    ports:
+      - "19804:9804"
+    networks: [go-ai-talk-test-net]
+
+networks:
+  go-ai-talk-test-net:
+    external: true
+    name: go-ai-talk-test-net

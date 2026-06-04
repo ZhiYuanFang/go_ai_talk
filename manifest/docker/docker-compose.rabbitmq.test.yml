@@ -1,0 +1,27 @@
+version: "3.9"
+# 测试 RabbitMQ：仅 go-ai-talk-test-net；宿主机 5673/15673，与生产 5672/15672 隔离。
+# 初始化：COMPOSE_FILE=manifest/docker/docker-compose.rabbitmq.test.yml \
+#   RABBIT_API_BASE=http://127.0.0.1:15673/api ./hack/rabbitmq-init.sh
+
+services:
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: go-ai-talk-rabbitmq-test
+    ports:
+      - "5673:5672"
+      - "15673:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq-test-data:/var/lib/rabbitmq
+    networks:
+      - go-ai-talk-test-net
+
+volumes:
+  rabbitmq-test-data:
+
+networks:
+  go-ai-talk-test-net:
+    external: true
+    name: go-ai-talk-test-net

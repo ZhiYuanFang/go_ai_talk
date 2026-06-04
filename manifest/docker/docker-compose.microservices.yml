@@ -1,4 +1,13 @@
 version: "3.9"
+# 本文件为微服务拓扑基线，面向本机开发：含 build 段与 go-ai-talk/*:local 镜像。
+#
+# 生产 / 测试部署 MUST 叠加 overlay 并从镜像仓库 pull（禁止在服务器上 --build 作为常态发布）：
+#   生产：-f docker-compose.microservices.yml -f docker-compose.microservices.prod.yml
+#         --env-file manifest/docker/.env.prod  →  IMAGE_TAG 钉死 semver（如 v1.0.0）
+#   测试：-f docker-compose.microservices.yml -f docker-compose.microservices.test.yml
+#         --env-file manifest/docker/.env.test  →  IMAGE_TAG=develop（CI 浮动 tag）
+# 详见 manifest/docker/.env.prod.example、.env.test.example 与 docs/runbooks/release-deploy-and-run.md。
+#
 # 业务库连接：history/device/voice/worker/ucg 见各服务 *_DB_LINK；gateway-app 另需 APP_DB_LINK（ai_voice_app），
 # 与 manifest/docker/.env.example、docs/runbooks/release-deploy-and-run.md 一致，避免新栈漏配版本库。
 #

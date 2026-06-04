@@ -1,0 +1,43 @@
+# 生产 overlay：与基线 docker-compose.microservices.yml 组合使用。
+# 镜像来自 registry；启动前 pull，且 MUST 使用 --no-build。
+# 网络默认沿用现有 go-ai-talk-net（与已运行生产栈兼容）；新装可按 runbook 迁为 go-ai-talk-prod-net。
+#
+# 示例：
+#   docker compose --env-file manifest/docker/.env.prod \
+#     -f manifest/docker/docker-compose.microservices.yml \
+#     -f manifest/docker/docker-compose.microservices.prod.yml \
+#     pull && up -d --no-build
+
+services:
+  gateway:
+    image: ${REGISTRY}/go-ai-talk/gateway:${IMAGE_TAG}
+    networks: [go-ai-talk-net]
+
+  gateway-app:
+    image: ${REGISTRY}/go-ai-talk/gateway-app:${IMAGE_TAG}
+    networks: [go-ai-talk-net]
+
+  history-service:
+    image: ${REGISTRY}/go-ai-talk/history-service:${IMAGE_TAG}
+    networks: [go-ai-talk-net]
+
+  voice-service:
+    image: ${REGISTRY}/go-ai-talk/voice-service:${IMAGE_TAG}
+    networks: [go-ai-talk-net]
+
+  device-service:
+    image: ${REGISTRY}/go-ai-talk/device-service:${IMAGE_TAG}
+    networks: [go-ai-talk-net]
+
+  worker:
+    image: ${REGISTRY}/go-ai-talk/worker:${IMAGE_TAG}
+    networks: [go-ai-talk-net]
+
+  ucg-service:
+    image: ${REGISTRY}/go-ai-talk/ucg-service:${IMAGE_TAG}
+    networks: [go-ai-talk-net]
+
+networks:
+  go-ai-talk-net:
+    external: true
+    name: go-ai-talk-net

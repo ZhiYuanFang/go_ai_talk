@@ -1,0 +1,128 @@
+version: "3.9"
+# 测试 Redis Cluster：仅加入 go-ai-talk-test-net，与生产 cluster（7001–7006）物理隔离。
+# 宿主机映射 17001–17006 → 容器内 7001–7006；业务容器内仍用 redis-node-1:7001 等（test 网络 DNS）。
+#
+# 启动后初始化（在仓库根目录）：
+#   docker compose -f manifest/docker/docker-compose.redis-cluster.test.yml exec -T redis-node-1 \
+#     redis-cli --cluster create \
+#     redis-node-1:7001 redis-node-2:7002 redis-node-3:7003 \
+#     redis-node-4:7004 redis-node-5:7005 redis-node-6:7006 \
+#     --cluster-replicas 1 --cluster-yes
+# 验收：docker compose -f manifest/docker/docker-compose.redis-cluster.test.yml exec -T redis-node-1 \
+#   redis-cli -p 7001 CLUSTER INFO  →  cluster_state:ok
+
+services:
+  redis-node-1:
+    image: redis:7.2-alpine
+    command: >
+      redis-server
+      --port 7001
+      --cluster-enabled yes
+      --cluster-config-file nodes.conf
+      --cluster-node-timeout 5000
+      --appendonly yes
+      --protected-mode no
+      --bind 0.0.0.0
+    ports:
+      - "17001:7001"
+    volumes:
+      - redis-test-node-1-data:/data
+    networks: [go-ai-talk-test-net]
+
+  redis-node-2:
+    image: redis:7.2-alpine
+    command: >
+      redis-server
+      --port 7002
+      --cluster-enabled yes
+      --cluster-config-file nodes.conf
+      --cluster-node-timeout 5000
+      --appendonly yes
+      --protected-mode no
+      --bind 0.0.0.0
+    ports:
+      - "17002:7002"
+    volumes:
+      - redis-test-node-2-data:/data
+    networks: [go-ai-talk-test-net]
+
+  redis-node-3:
+    image: redis:7.2-alpine
+    command: >
+      redis-server
+      --port 7003
+      --cluster-enabled yes
+      --cluster-config-file nodes.conf
+      --cluster-node-timeout 5000
+      --appendonly yes
+      --protected-mode no
+      --bind 0.0.0.0
+    ports:
+      - "17003:7003"
+    volumes:
+      - redis-test-node-3-data:/data
+    networks: [go-ai-talk-test-net]
+
+  redis-node-4:
+    image: redis:7.2-alpine
+    command: >
+      redis-server
+      --port 7004
+      --cluster-enabled yes
+      --cluster-config-file nodes.conf
+      --cluster-node-timeout 5000
+      --appendonly yes
+      --protected-mode no
+      --bind 0.0.0.0
+    ports:
+      - "17004:7004"
+    volumes:
+      - redis-test-node-4-data:/data
+    networks: [go-ai-talk-test-net]
+
+  redis-node-5:
+    image: redis:7.2-alpine
+    command: >
+      redis-server
+      --port 7005
+      --cluster-enabled yes
+      --cluster-config-file nodes.conf
+      --cluster-node-timeout 5000
+      --appendonly yes
+      --protected-mode no
+      --bind 0.0.0.0
+    ports:
+      - "17005:7005"
+    volumes:
+      - redis-test-node-5-data:/data
+    networks: [go-ai-talk-test-net]
+
+  redis-node-6:
+    image: redis:7.2-alpine
+    command: >
+      redis-server
+      --port 7006
+      --cluster-enabled yes
+      --cluster-config-file nodes.conf
+      --cluster-node-timeout 5000
+      --appendonly yes
+      --protected-mode no
+      --bind 0.0.0.0
+    ports:
+      - "17006:7006"
+    volumes:
+      - redis-test-node-6-data:/data
+    networks: [go-ai-talk-test-net]
+
+volumes:
+  redis-test-node-1-data:
+  redis-test-node-2-data:
+  redis-test-node-3-data:
+  redis-test-node-4-data:
+  redis-test-node-5-data:
+  redis-test-node-6-data:
+
+networks:
+  go-ai-talk-test-net:
+    external: true
+    name: go-ai-talk-test-net
