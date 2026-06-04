@@ -42,7 +42,7 @@
 | 文件 | 职责 |
 |------|------|
 | `docker-compose.microservices.yml` | 基线拓扑（保留 `build` + `:local` 供开发） |
-| `docker-compose.microservices.prod.yml` | 去 `build`；`image: ${REGISTRY}/go-ai-talk/<svc>:${IMAGE_TAG}`；prod 网络/卷/名 |
+| `docker-compose.microservices.prod.yml` | 去 `build`；`image: ${REGISTRY}/<svc>:${IMAGE_TAG}`；prod 网络/卷/名 |
 | `docker-compose.microservices.test.yml` | 同上；test 端口 197xx；test 卷；test 网络 |
 
 启动示例：

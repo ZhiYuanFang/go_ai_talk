@@ -1,4 +1,5 @@
 # 测试 overlay：与基线 docker-compose.microservices.yml 组合使用。
+# 镜像引用同 prod：${REGISTRY}/<服务名>:${IMAGE_TAG}（无 go-ai-talk/ 前缀）。
 # 独立 Docker 网络 go-ai-talk-test-net；宿主机端口 197xx；静态资源目录 *_test。
 # 须先启动 docker-compose.redis-cluster.test.yml 与 docker-compose.rabbitmq.test.yml。
 #
@@ -14,7 +15,7 @@ x-test-redis-env: &test-redis-env
 
 services:
   gateway:
-    image: ${REGISTRY}/go-ai-talk/gateway:${IMAGE_TAG}
+    image: ${REGISTRY}/gateway:${IMAGE_TAG}
     container_name: go-ai-talk-gateway-test
     environment:
       <<: *test-redis-env
@@ -23,7 +24,7 @@ services:
     networks: [go-ai-talk-test-net]
 
   gateway-app:
-    image: ${REGISTRY}/go-ai-talk/gateway-app:${IMAGE_TAG}
+    image: ${REGISTRY}/gateway-app:${IMAGE_TAG}
     container_name: go-ai-talk-gateway-app-test
     environment:
       <<: *test-redis-env
@@ -35,7 +36,7 @@ services:
     networks: [go-ai-talk-test-net]
 
   history-service:
-    image: ${REGISTRY}/go-ai-talk/history-service:${IMAGE_TAG}
+    image: ${REGISTRY}/history-service:${IMAGE_TAG}
     container_name: go-ai-talk-history-service-test
     environment:
       <<: *test-redis-env
@@ -44,7 +45,7 @@ services:
     networks: [go-ai-talk-test-net]
 
   voice-service:
-    image: ${REGISTRY}/go-ai-talk/voice-service:${IMAGE_TAG}
+    image: ${REGISTRY}/voice-service:${IMAGE_TAG}
     container_name: go-ai-talk-voice-service-test
     environment:
       <<: *test-redis-env
@@ -53,7 +54,7 @@ services:
     networks: [go-ai-talk-test-net]
 
   device-service:
-    image: ${REGISTRY}/go-ai-talk/device-service:${IMAGE_TAG}
+    image: ${REGISTRY}/device-service:${IMAGE_TAG}
     container_name: go-ai-talk-device-service-test
     environment:
       <<: *test-redis-env
@@ -64,7 +65,7 @@ services:
     networks: [go-ai-talk-test-net]
 
   worker:
-    image: ${REGISTRY}/go-ai-talk/worker:${IMAGE_TAG}
+    image: ${REGISTRY}/worker:${IMAGE_TAG}
     container_name: go-ai-talk-worker-test
     environment:
       <<: *test-redis-env
@@ -73,7 +74,7 @@ services:
     networks: [go-ai-talk-test-net]
 
   ucg-service:
-    image: ${REGISTRY}/go-ai-talk/ucg-service:${IMAGE_TAG}
+    image: ${REGISTRY}/ucg-service:${IMAGE_TAG}
     container_name: go-ai-talk-ucg-service-test
     environment:
       <<: *test-redis-env

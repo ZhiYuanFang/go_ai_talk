@@ -5,7 +5,7 @@
 ## What Changes
 
 - 新增生产/测试 Compose overlay 与中间件独立栈：独立 Docker 网络、Redis Cluster、RabbitMQ、MySQL `_test` 库、静态资源目录。
-- 微服务镜像改为从镜像仓库 pull（`${REGISTRY}/go-ai-talk/<service>:${IMAGE_TAG}`）；测试默认 `IMAGE_TAG=develop`，生产钉死 semver（如 `v1.0.0`）。
+- 微服务镜像改为从镜像仓库 pull（`${REGISTRY}/<service>:${IMAGE_TAG}`，如 `${REGISTRY}/gateway:${IMAGE_TAG}`）；测试默认 `IMAGE_TAG=develop`，生产钉死 semver（如 `v1.0.0`）。
 - 测试后端端口映射为 19701/19702/1980x/19901；对外经 Nginx 以 `test.pangbao.cuplay.top:9701/9702` 反代，与生产 URL 结构一致。
 - 补充 `manifest/docker/.env.prod.example`、`.env.test.example`；Redis 经 `GF_REDIS_DEFAULT_ADDRESS` 注入测试集群种子。
 - 新增脱敏种子数据运维剧本（dump → mask → import 至 `ai_voice_*_test`）。

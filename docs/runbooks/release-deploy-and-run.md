@@ -142,6 +142,12 @@ RHEL/CentOS 等若遇容器无法写入，可在 compose 卷行尝试后缀 `:z`
 
 CI 应对每次构建同时 push 不可变 `:<git-sha>`，便于测试栈临时 pin 排错。
 
+**镜像仓库命名（阿里云 ACR 等）**
+
+- `REGISTRY` = 注册表域名 + 命名空间，例如 `registry.cn-hangzhou.aliyuncs.com/my-ns`（**勿**再拼 `go-ai-talk/` 路径层级；ACR 仓库名不允许含 `/`）。
+- prod/test overlay 中镜像形如 **`${REGISTRY}/gateway:${IMAGE_TAG}`**、**`${REGISTRY}/history-service:${IMAGE_TAG}`** 等，与各服务在 ACR 中创建的**单段仓库名**一致。
+- 本机开发基线仍用 `go-ai-talk/gateway:local`（本地 build 标签，与 registry 无关）。
+
 **生产部署（registry）**
 
 ```bash

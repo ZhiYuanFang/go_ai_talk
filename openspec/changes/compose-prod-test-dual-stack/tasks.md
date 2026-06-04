@@ -1,7 +1,7 @@
 ## 1. Compose 基线与 prod/test overlay
 
 - [x] 1.1 在基线 `docker-compose.microservices.yml` 顶部注释中说明：生产/测试须叠加 `*.prod.yml` / `*.test.yml` 并从 registry pull
-- [x] 1.2 新增 `docker-compose.microservices.prod.yml`：`image: ${REGISTRY}/go-ai-talk/<svc>:${IMAGE_TAG}`、无 `build`、prod 网络 `go-ai-talk-prod-net`（或兼容现有 `go-ai-talk-net` 并文档化）、prod container_name/卷
+- [x] 1.2 新增 `docker-compose.microservices.prod.yml`：`image: ${REGISTRY}/<svc>:${IMAGE_TAG}`、无 `build`、prod 网络 `go-ai-talk-prod-net`（或兼容现有 `go-ai-talk-net` 并文档化）、prod container_name/卷
 - [x] 1.3 新增 `docker-compose.microservices.test.yml`：registry 镜像、test 网络 `go-ai-talk-test-net`、端口 19701/19702/19801–19804/19901、test container_name、`GF_REDIS_DEFAULT_ADDRESS`/`GATEWAY_APP_PUBLIC_BASE_URL` 等 test 环境变量、卷 `/ai_talk_images_test` 与 `/apk/ai_talk_test`
 
 ## 2. 测试中间件 Compose

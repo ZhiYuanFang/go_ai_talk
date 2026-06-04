@@ -1,5 +1,7 @@
 # 生产 overlay：与基线 docker-compose.microservices.yml 组合使用。
 # 镜像来自 registry；启动前 pull，且 MUST 使用 --no-build。
+# 镜像引用：${REGISTRY}/<服务名>:${IMAGE_TAG}（如 ${REGISTRY}/gateway:${IMAGE_TAG}）；
+# REGISTRY=注册表域名/命名空间（阿里云 ACR 仓库名无 go-ai-talk/ 前缀）。
 # 网络默认沿用现有 go-ai-talk-net（与已运行生产栈兼容）；新装可按 runbook 迁为 go-ai-talk-prod-net。
 #
 # 示例：
@@ -10,31 +12,31 @@
 
 services:
   gateway:
-    image: ${REGISTRY}/go-ai-talk/gateway:${IMAGE_TAG}
+    image: ${REGISTRY}/gateway:${IMAGE_TAG}
     networks: [go-ai-talk-net]
 
   gateway-app:
-    image: ${REGISTRY}/go-ai-talk/gateway-app:${IMAGE_TAG}
+    image: ${REGISTRY}/gateway-app:${IMAGE_TAG}
     networks: [go-ai-talk-net]
 
   history-service:
-    image: ${REGISTRY}/go-ai-talk/history-service:${IMAGE_TAG}
+    image: ${REGISTRY}/history-service:${IMAGE_TAG}
     networks: [go-ai-talk-net]
 
   voice-service:
-    image: ${REGISTRY}/go-ai-talk/voice-service:${IMAGE_TAG}
+    image: ${REGISTRY}/voice-service:${IMAGE_TAG}
     networks: [go-ai-talk-net]
 
   device-service:
-    image: ${REGISTRY}/go-ai-talk/device-service:${IMAGE_TAG}
+    image: ${REGISTRY}/device-service:${IMAGE_TAG}
     networks: [go-ai-talk-net]
 
   worker:
-    image: ${REGISTRY}/go-ai-talk/worker:${IMAGE_TAG}
+    image: ${REGISTRY}/worker:${IMAGE_TAG}
     networks: [go-ai-talk-net]
 
   ucg-service:
-    image: ${REGISTRY}/go-ai-talk/ucg-service:${IMAGE_TAG}
+    image: ${REGISTRY}/ucg-service:${IMAGE_TAG}
     networks: [go-ai-talk-net]
 
 networks:
