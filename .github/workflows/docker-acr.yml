@@ -1,6 +1,15 @@
 # 构建七微服务镜像并 push 至阿里云 ACR（不使用 ACR 控制台「构建规则」）。
-# 触发：develop 分支 → tag :develop + :<sha>；git tag v* → tag :<git-tag> + :<sha>
-# 所需 Secrets：ACR_REGISTRY、ACR_USERNAME、ACR_PASSWORD（见 docs/runbooks/release-deploy-and-run.md §2.5.1）
+# 触发：develop 分支 → push 至测试命名空间，tag :develop + :<sha>
+#       git tag v*   → push 至生产命名空间，tag :<git-tag> + :<sha>
+#
+# 所需 GitHub Secrets（个人版 ACR，测试/生产各一套命名空间）：
+#   ACR_REGISTRY_TEST = <公网域名>/<测试命名空间>
+#   ACR_REGISTRY_PROD = <公网域名>/<生产命名空间>
+#                       禁止 -vpc（GitHub 公网 runner 无法访问 VPC 专线）
+#   ACR_USERNAME      = ACR 控制台「访问凭证」登录用户名
+#   ACR_PASSWORD      = ACR 控制台「访问凭证」固定密码
+# 服务器 pull：.env.test / .env.prod 的 REGISTRY 可用 -vpc 域名，命名空间分别与上面对应。
+# 详见 docs/runbooks/release-deploy-and-run.md「ACR 与 GitHub Secrets」。
 
 name: docker-acr
 
@@ -38,18 +47,54 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: 选择并校验 ACR Registry
+        id: acr
+        shell: bash
+        env:
+          ACR_REGISTRY_TEST: ${{ secrets.ACR_REGISTRY_TEST }}
+          ACR_REGISTRY_PROD: ${{ secrets.ACR_REGISTRY_PROD }}
+        run: |
+          set -euo pipefail
+          validate_registry() {
+            local reg="$1"
+            local secret_name="$2"
+            if [[ -z "${reg}" ]]; then
+              echo "::error::缺少 GitHub Secret ${secret_name}" >&2
+              exit 1
+            fi
+            if [[ "${reg}" == *"-vpc."* ]]; then
+              echo "::error::${secret_name} 使用了 -vpc 域名，GitHub Actions 公网 runner 无法 push。" >&2
+              echo "::error::请改为公网域名，例如 crpi-xxx.cn-hangzhou.personal.cr.aliyuncs.com/<命名空间>" >&2
+              exit 1
+            fi
+            if [[ "${reg}" != *"/"* ]]; then
+              echo "::error::${secret_name} 缺少命名空间。个人版须为 <公网域名>/<命名空间>" >&2
+              exit 1
+            fi
+          }
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            validate_registry "${ACR_REGISTRY_PROD}" "ACR_REGISTRY_PROD"
+            selected="${ACR_REGISTRY_PROD}"
+            echo "env=prod" >> "${GITHUB_OUTPUT}"
+          elif [[ "${GITHUB_REF}" == refs/heads/develop ]]; then
+            validate_registry "${ACR_REGISTRY_TEST}" "ACR_REGISTRY_TEST"
+            selected="${ACR_REGISTRY_TEST}"
+            echo "env=test" >> "${GITHUB_OUTPUT}"
+          else
+            echo "::error::不支持的 ref: ${GITHUB_REF}（仅 develop 分支或 v* tag）" >&2
+            exit 1
+          fi
+          echo "registry=${selected}" >> "${GITHUB_OUTPUT}"
+          echo "host=${selected%%/*}" >> "${GITHUB_OUTPUT}"
+
       - name: 解析镜像 tag
         id: tags
         shell: bash
         env:
-          ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
+          ACR_REGISTRY: ${{ steps.acr.outputs.registry }}
           MATRIX_ID: ${{ matrix.id }}
         run: |
           set -euo pipefail
-          if [[ -z "${ACR_REGISTRY}" ]]; then
-            echo "缺少 GitHub Secret: ACR_REGISTRY" >&2
-            exit 1
-          fi
           image="${ACR_REGISTRY}/${MATRIX_ID}"
           if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
             version="${GITHUB_REF#refs/tags/}"
@@ -73,16 +118,10 @@ jobs:
             exit 1
           fi
 
-      - name: 解析 Registry 主机名
-        id: reg
-        env:
-          ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
-        run: echo "host=${ACR_REGISTRY%%/*}" >> "${GITHUB_OUTPUT}"
-
       - name: Login ACR
         uses: docker/login-action@v3
         with:
-          registry: ${{ steps.reg.outputs.host }}
+          registry: ${{ steps.acr.outputs.host }}
           username: ${{ secrets.ACR_USERNAME }}
           password: ${{ secrets.ACR_PASSWORD }}
 
@@ -97,4 +136,4 @@ jobs:
       - name: 构建摘要
         shell: bash
         run: |
-          echo "${{ matrix.id }} → primary tag: ${{ steps.tags.outputs.primary }} (+ ${GITHUB_SHA})"
+          echo "${{ matrix.id }} → [${{ steps.acr.outputs.env }}] ${{ steps.acr.outputs.registry }}:${{ steps.tags.outputs.primary }} (+ ${GITHUB_SHA})"

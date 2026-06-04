@@ -309,7 +309,41 @@ curl -s http://127.0.0.1:9901/healthz
 | `docker-compose.microservices.test.yml` | 测试 overlay + registry pull |
 | `docker-compose.microservices.prod.yml` | 生产 overlay + registry pull |
 
-镜像引用：`${REGISTRY}/gateway:${IMAGE_TAG}`（ACR 单段仓库名，无 `go-ai-talk/` 前缀）。
+镜像引用：`${REGISTRY}/gateway:${IMAGE_TAG}`。`REGISTRY` = `<ACR域名>/<命名空间>`；仓库名单段（`gateway`、`device-service` 等，无 `go-ai-talk/` 前缀）。
+
+### ACR 与 GitHub Secrets
+
+个人版 ACR 镜像完整路径：`域名/命名空间/仓库名:tag`。**测试与生产使用不同命名空间**，须分别配置。
+
+| 环境 | 服务器 `.env` 的 `REGISTRY` | GitHub Secret | CI 触发 |
+|------|------------------------------|---------------|---------|
+| **测试** | `crpi-xxx-vpc.../<测试命名空间>` | `ACR_REGISTRY_TEST` = `crpi-xxx.../<测试命名空间>`（公网，无 `-vpc`） | push `develop` |
+| **生产** | `crpi-xxx-vpc.../<生产命名空间>` | `ACR_REGISTRY_PROD` = `crpi-xxx.../<生产命名空间>`（公网，无 `-vpc`） | push tag `v*` |
+
+共用 Secrets（同一 ACR 实例）：
+
+| Secret | 取值 |
+|--------|------|
+| `ACR_USERNAME` | ACR 控制台 → 访问凭证 → 登录用户名 |
+| `ACR_PASSWORD` | 访问凭证 → 设置的**固定密码** |
+
+**填写示例**（命名空间名以控制台为准）：
+
+```text
+# GitHub Secrets（push 用公网域名）
+ACR_REGISTRY_TEST=crpi-lff3xynwzvqxxxjk.cn-hangzhou.personal.cr.aliyuncs.com/pangbao-test
+ACR_REGISTRY_PROD=crpi-lff3xynwzvqxxxjk.cn-hangzhou.personal.cr.aliyuncs.com/pangbao-prod
+
+# 服务器 .env.test（pull 可用 -vpc）
+REGISTRY=crpi-lff3xynwzvqxxxjk-vpc.cn-hangzhou.personal.cr.aliyuncs.com/pangbao-test
+
+# 服务器 .env.prod
+REGISTRY=crpi-lff3xynwzvqxxxjk-vpc.cn-hangzhou.personal.cr.aliyuncs.com/pangbao-prod
+```
+
+每个命名空间下须预先创建 7 个镜像仓库：`gateway`、`gateway-app`、`history-service`、`voice-service`、`device-service`、`worker`、`ucg-service`（或开启「自动创建仓库」）。
+
+push 报 `denied` 常见原因：① GitHub 用了 `-vpc` 域名；② 缺命名空间；③ 测试/生产 Secret 与 `.env` 命名空间不一致；④ 仓库未创建。
 
 ### 脱敏种子（测试库刷新）
 
