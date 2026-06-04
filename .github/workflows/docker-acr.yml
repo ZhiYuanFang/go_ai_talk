@@ -1,0 +1,100 @@
+# 构建七微服务镜像并 push 至阿里云 ACR（不使用 ACR 控制台「构建规则」）。
+# 触发：develop 分支 → tag :develop + :<sha>；git tag v* → tag :<git-tag> + :<sha>
+# 所需 Secrets：ACR_REGISTRY、ACR_USERNAME、ACR_PASSWORD（见 docs/runbooks/release-deploy-and-run.md §2.5.1）
+
+name: docker-acr
+
+on:
+  push:
+    branches:
+      - develop
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: gateway
+            dockerfile: manifest/docker/Dockerfile.gateway-service
+          - id: gateway-app
+            dockerfile: manifest/docker/Dockerfile.gateway-app-service
+          - id: history-service
+            dockerfile: manifest/docker/Dockerfile.history-service
+          - id: voice-service
+            dockerfile: manifest/docker/Dockerfile.voice-service
+          - id: device-service
+            dockerfile: manifest/docker/Dockerfile.device-service
+          - id: worker
+            dockerfile: manifest/docker/Dockerfile.worker-service
+          - id: ucg-service
+            dockerfile: manifest/docker/Dockerfile.ucg-service
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: 解析镜像 tag
+        id: tags
+        shell: bash
+        env:
+          ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
+          MATRIX_ID: ${{ matrix.id }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${ACR_REGISTRY}" ]]; then
+            echo "缺少 GitHub Secret: ACR_REGISTRY" >&2
+            exit 1
+          fi
+          image="${ACR_REGISTRY}/${MATRIX_ID}"
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            version="${GITHUB_REF#refs/tags/}"
+            {
+              echo "list<<EOF"
+              echo "${image}:${version}"
+              echo "${image}:${GITHUB_SHA}"
+              echo "EOF"
+            } >> "${GITHUB_OUTPUT}"
+            echo "primary=${version}" >> "${GITHUB_OUTPUT}"
+          elif [[ "${GITHUB_REF}" == refs/heads/develop ]]; then
+            {
+              echo "list<<EOF"
+              echo "${image}:develop"
+              echo "${image}:${GITHUB_SHA}"
+              echo "EOF"
+            } >> "${GITHUB_OUTPUT}"
+            echo "primary=develop" >> "${GITHUB_OUTPUT}"
+          else
+            echo "不支持的 ref: ${GITHUB_REF}" >&2
+            exit 1
+          fi
+
+      - name: 解析 Registry 主机名
+        id: reg
+        env:
+          ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
+        run: echo "host=${ACR_REGISTRY%%/*}" >> "${GITHUB_OUTPUT}"
+
+      - name: Login ACR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ steps.reg.outputs.host }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: ${{ steps.tags.outputs.list }}
+
+      - name: 构建摘要
+        shell: bash
+        run: |
+          echo "${{ matrix.id }} → primary tag: ${{ steps.tags.outputs.primary }} (+ ${GITHUB_SHA})"
