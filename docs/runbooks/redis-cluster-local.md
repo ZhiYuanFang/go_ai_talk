@@ -1,6 +1,6 @@
 ## Local Redis Cluster Topology
 
-用于 `Task 4.1` 的本地分布式 Redis 拓扑，采用 6 节点（3 主 + 3 从）集群。
+用于本地开发的 Redis Cluster 拓扑，与生产一致：**3 主 0 从**（7001–7003）。
 
 ### 文件位置
 
@@ -20,11 +20,8 @@
 - `127.0.0.1:7001`
 - `127.0.0.1:7002`
 - `127.0.0.1:7003`
-- `127.0.0.1:7004`
-- `127.0.0.1:7005`
-- `127.0.0.1:7006`
 
-应用侧（`manifest/config/config*.yaml` 的 `redis.default.address`）已默认写 **三主种子**：`redis-node-1:7001,redis-node-2:7002,redis-node-3:7003`（与 compose 服务名一致）；本机直连调试仍可用下表各 `127.0.0.1` 端口。
+应用侧（`manifest/config/config*.yaml` 的 `redis.default.address`）已默认写 **三主种子**：`redis-node-1:7001,redis-node-2:7002,redis-node-3:7003`（与 compose 服务名一致）。
 
 ### 停止与清理
 
@@ -36,6 +33,6 @@
 ### 迁移验收要点
 
 - [ ] 集群 `cluster_state:ok`
-- [ ] 3 主 3 从拓扑正常
+- [ ] 3 主 0 从拓扑正常
 - [ ] 任一节点重启后集群仍可读写
 - [ ] 可用作后续 `voice-session` 状态外置基础设施

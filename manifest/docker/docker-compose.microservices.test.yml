@@ -4,12 +4,13 @@
 # 本文件只改「测试与生产不同的部署项」：镜像、container_name、ports、networks、卷路径。
 # 不写 environment：与 prod overlay 一致，业务环境变量全部由基线 + --env-file .env.test 注入。
 # 宿主机端口 197xx 在此定义（基线无 ports，不会与生产 9701/980x 叠加）。
-# 须先启动 docker-compose.redis-cluster.test.yml 与 docker-compose.rabbitmq.test.yml。
+# 须先启动 docker-compose.redis-standalone.test.yml 与 docker-compose.rabbitmq.test.yml。
 #
 # 示例：
 #   docker compose --env-file manifest/docker/.env.test \
 #     -f manifest/docker/docker-compose.microservices.yml \
 #     -f manifest/docker/docker-compose.microservices.test.yml \
+#     -f manifest/docker/docker-compose.resources.test.yml \
 #     pull && up -d --no-build
 
 name: go-ai-talk-test

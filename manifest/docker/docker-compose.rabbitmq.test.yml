@@ -10,6 +10,8 @@ services:
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
     container_name: go-ai-talk-rabbitmq-test
+    mem_limit: 192m
+    cpus: "0.2"
     ports:
       - "5673:5672"
       - "15673:15672"

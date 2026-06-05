@@ -4,7 +4,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-Write-Host "Starting redis cluster nodes..."
+Write-Host "Starting redis cluster nodes (3 masters, 0 replicas)..."
 docker compose -f $ComposeFile up -d
 
 Write-Host "Waiting for nodes to become ready..."
@@ -13,21 +13,18 @@ Start-Sleep -Seconds 5
 $nodes = @(
     "redis-node-1:7001",
     "redis-node-2:7002",
-    "redis-node-3:7003",
-    "redis-node-4:7004",
-    "redis-node-5:7005",
-    "redis-node-6:7006"
+    "redis-node-3:7003"
 )
 
 $createCmd = @(
     "redis-cli",
     "--cluster", "create",
     $nodes,
-    "--cluster-replicas", "1",
+    "--cluster-replicas", "0",
     "--cluster-yes"
 )
 
-Write-Host "Creating redis cluster (3 masters + 3 replicas)..."
+Write-Host "Creating redis cluster (3 masters, 0 replicas)..."
 docker compose -f $ComposeFile exec -T redis-node-1 $createCmd
 
 Write-Host ""

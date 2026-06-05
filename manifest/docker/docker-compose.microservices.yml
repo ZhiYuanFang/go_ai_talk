@@ -41,6 +41,8 @@ services:
       MQ_HTTP_API_BASE: "http://rabbitmq:15672/api"
       MQ_USER: "guest"
       MQ_PASSWORD: "guest"
+      # 非空时覆盖 config yaml 的 redis cluster 地址（测试 standalone 用 redis-test:6379）
+      GF_REDIS_DEFAULT_ADDRESS: "${GF_REDIS_DEFAULT_ADDRESS:-}"
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:9701/api.json > /dev/null || exit 1"]
       interval: 10s
@@ -87,6 +89,7 @@ services:
       GATEWAY_APP_PUBLIC_BASE_URL: "${GATEWAY_APP_PUBLIC_BASE_URL:-}"
       GATEWAY_APP_CORS_ALLOWED_HOSTS: "${GATEWAY_APP_CORS_ALLOWED_HOSTS:-}"
       GATEWAY_APP_VERSION_ADMIN_PASSWORD: "${GATEWAY_APP_VERSION_ADMIN_PASSWORD:-}"
+      GF_REDIS_DEFAULT_ADDRESS: "${GF_REDIS_DEFAULT_ADDRESS:-}"
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:9702/api.json > /dev/null || exit 1"]
       interval: 10s
@@ -129,6 +132,7 @@ services:
       MQ_HTTP_API_BASE: "http://rabbitmq:15672/api"
       MQ_USER: "guest"
       MQ_PASSWORD: "guest"
+      GF_REDIS_DEFAULT_ADDRESS: "${GF_REDIS_DEFAULT_ADDRESS:-}"
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:9801/api.json > /dev/null || exit 1"]
       interval: 10s
@@ -161,6 +165,7 @@ services:
       MQ_HTTP_API_BASE: "http://rabbitmq:15672/api"
       MQ_USER: "guest"
       MQ_PASSWORD: "guest"
+      GF_REDIS_DEFAULT_ADDRESS: "${GF_REDIS_DEFAULT_ADDRESS:-}"
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:9802/api.json > /dev/null || exit 1"]
       interval: 10s
@@ -188,6 +193,7 @@ services:
       MQ_PASSWORD: "guest"
       # 与 gateway-app 配置 gatewayApp.deviceInternalSecret 保持一致，供 GET /device/app/api/user/internal/by-id 校验
       DEVICE_GATEWAY_INTERNAL_SECRET: "${DEVICE_GATEWAY_INTERNAL_SECRET:-gateway-internal-change-me}"
+      GF_REDIS_DEFAULT_ADDRESS: "${GF_REDIS_DEFAULT_ADDRESS:-}"
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:9803/api.json > /dev/null || exit 1"]
       interval: 10s
@@ -219,6 +225,7 @@ services:
       MQ_HTTP_API_BASE: "http://rabbitmq:15672/api"
       MQ_USER: "guest"
       MQ_PASSWORD: "guest"
+      GF_REDIS_DEFAULT_ADDRESS: "${GF_REDIS_DEFAULT_ADDRESS:-}"
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:9901/healthz > /dev/null || exit 1"]
       interval: 10s
@@ -243,6 +250,7 @@ services:
       MQ_HTTP_API_BASE: "http://rabbitmq:15672/api"
       MQ_USER: "guest"
       MQ_PASSWORD: "guest"
+      GF_REDIS_DEFAULT_ADDRESS: "${GF_REDIS_DEFAULT_ADDRESS:-}"
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:9804/api.json > /dev/null || exit 1"]
       interval: 10s

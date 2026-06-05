@@ -1,5 +1,9 @@
 version: "3.9"
-# 测试 Redis Cluster：仅加入 go-ai-talk-test-net，与生产 cluster（7001–7006）物理隔离。
+# DEPRECATED — 测试 Redis 已改为 standalone（见 docker-compose.redis-standalone.test.yml）。
+# 本文件保留仅供历史参考；runbook 与默认部署路径不再引用。
+# 迁移：down -v 本 stack → up redis-standalone.test.yml → .env.test 设 GF_REDIS_DEFAULT_ADDRESS=redis-test:6379
+#
+# 原 6 节点测试 Cluster（17001–17006）— 勿在新环境使用。
 # 项目名 go-ai-talk-redis-test。
 # 宿主机映射 17001–17006 → 容器内 7001–7006；业务容器内仍用 redis-node-1:7001 等（test 网络 DNS）。
 #
