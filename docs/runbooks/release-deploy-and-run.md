@@ -34,7 +34,79 @@ docker ps --format 'table {{.Names}}\t{{.Status}}' | grep -E 'go-ai-talk-(gatewa
 # 应同时看到生产（9701/9803…）与测试（-test 后缀 / 197xx）容器均为 Up
 ```
 
-**曾用默认 project 名 `go_ai_talk` 启动过生产？** 更新 compose 后首次 `up` 会新建 `go-ai-talk-prod` 项目；确认新栈健康后，再清理旧项目：`docker compose -p go_ai_talk -f manifest/docker/docker-compose.microservices.yml down`（**勿**加 `-v`，除非明确要删卷）。
+**曾用默认 project 名 `go_ai_talk` 启动过生产？** 更新 compose 后首次 `up` 会新建 `go-ai-talk-prod` 项目；确认新栈健康后，再清理旧项目（见 [D.1](#d1-生产--测试微服务互相把对方停掉)）。
+
+### 启动前清理（遇 Conflict / 端口占用）
+
+> **原则**：compose 固定了 `container_name`，用 **`docker rm -f <容器名>`** 一条命令即可删掉冲突容器（不管当初挂在哪个 project 下）。**不加 `-v`**，数据卷保留。  
+> 生产清理**只删无 `-test` 后缀的 7 个容器**，不会动测试栈。
+
+**工作目录**（以下所有命令前先执行）：
+
+```bash
+cd /www/wwwroot/go/go_ai_talk
+```
+
+#### ① 测试 Redis（1700x 端口占用 / redis-node Created）
+
+```bash
+# 删：旧 project「docker」+ 正式 project 的测试 Redis 共 12 个可能容器名
+docker rm -f \
+  docker-redis-node-1-1 docker-redis-node-2-1 docker-redis-node-3-1 \
+  docker-redis-node-4-1 docker-redis-node-5-1 docker-redis-node-6-1 \
+  go-ai-talk-redis-test-redis-node-1-1 go-ai-talk-redis-test-redis-node-2-1 \
+  go-ai-talk-redis-test-redis-node-3-1 go-ai-talk-redis-test-redis-node-4-1 \
+  go-ai-talk-redis-test-redis-node-5-1 go-ai-talk-redis-test-redis-node-6-1 \
+  2>/dev/null
+
+# 验：无输出 = 容器已空；无输出且下一行 OK = 端口已释放
+docker ps -a --format '{{.Names}}' | grep -E 'redis-node|go-ai-talk-redis-test' \
+  || echo 'OK: 测试 Redis 容器已清空'
+ss -tlnp | grep -E '1700[1-6]' || echo 'OK: 17001-17006 端口已释放'
+```
+
+#### ② 测试 RabbitMQ（go-ai-talk-rabbitmq-test 冲突）
+
+```bash
+# 删：固定容器名
+docker rm -f go-ai-talk-rabbitmq-test 2>/dev/null
+
+# 验：无输出 = 已删
+docker ps -a --filter name=go-ai-talk-rabbitmq-test --format '{{.Names}}' \
+  | grep . && echo '仍有残留' || echo 'OK: 测试 RabbitMQ 已删除'
+```
+
+#### ③ 测试微服务（go-ai-talk-*-test 冲突；**不影响生产**）
+
+```bash
+# 删：7 个测试微服务固定容器名
+docker rm -f \
+  go-ai-talk-gateway-test go-ai-talk-gateway-app-test \
+  go-ai-talk-history-service-test go-ai-talk-voice-service-test \
+  go-ai-talk-device-service-test go-ai-talk-worker-test \
+  go-ai-talk-ucg-service-test \
+  2>/dev/null
+
+# 验：只查 7 个微服务名（go-ai-talk-rabbitmq-test 等中间件不算残留）
+docker ps -a --format '{{.Names}}' \
+  | grep -E '^go-ai-talk-(gateway|gateway-app|history-service|voice-service|device-service|worker|ucg-service)-test$' \
+  && echo '仍有残留，见上表' || echo 'OK: 测试微服务容器已清空'
+```
+
+#### ④ 生产微服务（**勿删 -test 容器**）
+
+```bash
+# 删：7 个生产微服务固定容器名（无 -test 后缀）
+docker rm -f \
+  go-ai-talk-gateway go-ai-talk-gateway-app go-ai-talk-history-service \
+  go-ai-talk-voice-service go-ai-talk-device-service go-ai-talk-worker \
+  go-ai-talk-ucg-service \
+  2>/dev/null
+
+# 验：无输出 = 已删（不应出现 -test 行）
+docker ps -a --format '{{.Names}}' | grep -E '^go-ai-talk-(gateway|gateway-app|history-service|voice-service|device-service|worker|ucg-service)$' \
+  && echo '仍有残留' || echo 'OK: 生产微服务容器已清空'
+```
 
 ---
 
@@ -143,8 +215,10 @@ sudo mkdir -p /ai_talk_images_test /apk/ai_talk_test && sudo chmod 755 /ai_talk_
 # 4) 脱敏种子（可选，从生产导入测试数据）
 MYSQL_PASS='***' ./hack/mask-seed-data.sh
 
-# 5) 测试 Redis + RabbitMQ
+# 5) 测试 Redis + RabbitMQ（仓库根目录；Conflict 时先跑上文 ①②）
+
 docker compose -f manifest/docker/docker-compose.redis-cluster.test.yml up -d --force-recreate
+docker compose -f manifest/docker/docker-compose.redis-cluster.test.yml ps   # 6 节点均须 running
 docker compose -f manifest/docker/docker-compose.redis-cluster.test.yml exec -T redis-node-1 \
   redis-cli --cluster create \
   redis-node-1:7001 redis-node-2:7002 redis-node-3:7003 \
@@ -179,8 +253,18 @@ git push origin develop
 > 服务器只需保留 `manifest/docker/` 下 compose 与 `.env.test`，**无需**整仓源码。
 
 ```bash
-cd /path/to/deploy   # 含 manifest/docker/ 的目录即可
+cd /path/to/deploy   # 仓库根目录
 
+# ① 清理（Conflict 时必做）— 见上文「③ 测试微服务」
+docker rm -f go-ai-talk-gateway-test go-ai-talk-gateway-app-test \
+  go-ai-talk-history-service-test go-ai-talk-voice-service-test \
+  go-ai-talk-device-service-test go-ai-talk-worker-test \
+  go-ai-talk-ucg-service-test 2>/dev/null
+docker ps -a --format '{{.Names}}' \
+  | grep -E '^go-ai-talk-(gateway|gateway-app|history-service|voice-service|device-service|worker|ucg-service)-test$' \
+  && echo '仍有残留' || echo 'OK: 测试微服务容器已清空'
+
+# ② 拉镜像并启动
 docker compose --env-file manifest/docker/.env.test \
   -f manifest/docker/docker-compose.microservices.yml \
   -f manifest/docker/docker-compose.microservices.test.yml \
@@ -261,8 +345,16 @@ IMAGE_TAG=v1.0.0
 ```
 
 ```bash
-cd /path/to/deploy
+cd /path/to/deploy   # 仓库根目录
 
+# ① 清理（Conflict 时必做）— 见上文「④ 生产微服务」
+docker rm -f go-ai-talk-gateway go-ai-talk-gateway-app go-ai-talk-history-service \
+  go-ai-talk-voice-service go-ai-talk-device-service go-ai-talk-worker \
+  go-ai-talk-ucg-service 2>/dev/null
+docker ps -a --format '{{.Names}}' | grep -E '^go-ai-talk-(gateway|gateway-app|history-service|voice-service|device-service|worker|ucg-service)$' \
+  && echo '仍有残留' || echo 'OK: 生产微服务容器已清空'
+
+# ② 拉镜像并启动
 docker compose --env-file manifest/docker/.env.prod \
   -f manifest/docker/docker-compose.microservices.yml \
   -f manifest/docker/docker-compose.microservices.prod.yml \
@@ -287,6 +379,252 @@ curl -s http://127.0.0.1:9901/healthz
 1. 将 `.env.prod` 中 `IMAGE_TAG` 改回上一稳定版本（如 `v0.9.0`）。
 2. `pull` + `up -d --no-build --force-recreate`（可按单服务）。
 3. **禁止**对生产执行 `docker system prune -a`。
+
+---
+
+## D. 常见问题与排错（同机双栈部署）
+
+> **工作目录**：所有 `docker compose` 命令须在**仓库根目录**执行（如 `/www/wwwroot/go/go_ai_talk`）。  
+> 若 `cd manifest/docker` 后再跑 compose，project 名会变成 **`docker`**，留下 `docker-redis-node-*` 等孤儿容器，与正式 project（`go-ai-talk-redis-test` 等）冲突。
+
+### D.1 生产 / 测试微服务互相把对方停掉
+
+**现象**：执行 prod 或 test 的 `up -d --no-build` 后，另一环境容器消失或重启。
+
+**原因**：两环境共用默认 Compose project 名（目录名 `go_ai_talk`），service 名相同（`gateway`、`device-service` …），后执行的 `up` 会接管同一 project。
+
+**解决**：
+
+- 生产必须叠加 `microservices.prod.yml`（project **`go-ai-talk-prod`**）。
+- 测试必须叠加 `microservices.test.yml`（project **`go-ai-talk-test`**）。
+- 验收：`docker ps | grep go-ai-talk` 应同时存在 `go-ai-talk-gateway` 与 `go-ai-talk-gateway-test` 等。
+
+**清理旧默认 project**（确认新栈健康后）：
+
+```bash
+docker compose -p go_ai_talk \
+  -f manifest/docker/docker-compose.microservices.yml down
+# 勿加 -v，除非明确要删卷
+```
+
+---
+
+### D.2 ACR 拉镜像 `pull access denied`
+
+**现象**：
+
+```text
+pull access denied for crpi-xxx-vpc.../pangbao-test/gateway:develop
+repository does not exist or may require 'docker login'
+```
+
+**原因（按优先级）**：
+
+1. ECS 未 `docker login`
+2. GitHub Actions 尚未成功 push 到对应命名空间
+3. `.env` 中 `REGISTRY` / `IMAGE_TAG` 与 ACR 控制台不一致
+4. 测试/生产命名空间混用
+
+**解决**：
+
+```bash
+# 1) 登录（VPC 域名，与 .env REGISTRY 主机一致）
+docker login crpi-xxx-vpc.cn-hangzhou.personal.cr.aliyuncs.com \
+  -u '<ACR_USERNAME>' -p '<ACR_PASSWORD>'
+
+# 2) 单镜像试拉
+docker pull crpi-xxx-vpc.cn-hangzhou.personal.cr.aliyuncs.com/pangbao-test/gateway:develop
+
+# 3) 核对 .env.test
+grep -E '^REGISTRY=|^IMAGE_TAG=' manifest/docker/.env.test
+```
+
+**GitHub Actions push 侧**（与 pull 分离）：
+
+| 配置项 | 要求 |
+|--------|------|
+| `ACR_REGISTRY_TEST` / `ACR_REGISTRY_PROD` | **公网域名**，**禁止** `-vpc` |
+| 命名空间 | 与 `.env.test` / `.env.prod` 的 `REGISTRY` 中 `/pangbao-test` 等一致 |
+| ACR 控制台 | 对应命名空间下已有 7 个仓库且存在 `:develop` 或 `:v*` tag |
+
+---
+
+### D.3 微服务启动报 Redis `no such host`（redis-node-1 / redis-node-3）
+
+**现象**：
+
+```text
+lookup redis-node-3 on 127.0.0.11:53: no such host
+dependency check failed: redis dependency check failed
+```
+
+**原因**：业务容器在 `go-ai-talk-test-net`（或 `go-ai-talk-net`），但对应环境的 Redis 未启动，或不在同一 Docker 网络。
+
+**解决**：
+
+```bash
+# 测试栈：先起 Redis，再起微服务
+docker network create go-ai-talk-test-net 2>/dev/null || true
+docker compose -f manifest/docker/docker-compose.redis-cluster.test.yml up -d
+docker compose -f manifest/docker/docker-compose.redis-cluster.test.yml ps
+
+# 容器内 DNS 验收（测试 device-service）
+docker exec go-ai-talk-device-service-test getent hosts redis-node-1
+```
+
+测试微服务须带 **`microservices.test.yml`** overlay，否则仍在 `go-ai-talk-net`，解析不到测试 Redis。
+
+---
+
+### D.4 测试 Redis：`service "redis-node-1" is not running`
+
+**现象**：未 `up` 或 `up` 失败时直接 `exec … cluster create`。
+
+**解决**：
+
+```bash
+docker compose -f manifest/docker/docker-compose.redis-cluster.test.yml up -d --force-recreate
+docker compose -f manifest/docker/docker-compose.redis-cluster.test.yml ps -a
+# 6 行均为 running 后再 cluster create
+```
+
+`logs` 无输出且 `ps` 为空 → 容器从未创建，检查 `up` 报错（网络、端口）。
+
+---
+
+### D.5b 生产 `9804` / `9701` 等端口被测试栈占用
+
+**现象**：
+
+```text
+Bind for 0.0.0.0:9804 failed: port is already allocated
+```
+
+**排查**：
+
+```bash
+docker ps --filter 'publish=9804' --format '{{.Names}} {{.Ports}}'
+```
+
+若看到 **`go-ai-talk-ucg-service-test` 同时有 `9804` 和 `19804`**，原因是 compose 合并时 test overlay 的 `ports` 与基线 **叠加**（未 `!reset`），测试容器误占生产端口。
+
+**解决**：
+
+```bash
+# 1) 删测试微服务（③ 清理块）
+docker rm -f go-ai-talk-gateway-test go-ai-talk-gateway-app-test \
+  go-ai-talk-history-service-test go-ai-talk-voice-service-test \
+  go-ai-talk-device-service-test go-ai-talk-worker-test \
+  go-ai-talk-ucg-service-test 2>/dev/null
+
+# 2) 拉最新 compose（microservices.test.yml 已对 ports 使用 !reset）后重建测试栈
+docker compose --env-file manifest/docker/.env.test \
+  -f manifest/docker/docker-compose.microservices.yml \
+  -f manifest/docker/docker-compose.microservices.test.yml \
+  up -d --no-build --force-recreate
+
+# 3) 验：test ucg 仅 19804，无 9804
+docker ps --filter name=go-ai-talk-ucg-service-test --format '{{.Ports}}'
+
+# 4) 再启生产
+docker compose --env-file manifest/docker/.env.prod \
+  -f manifest/docker/docker-compose.microservices.yml \
+  -f manifest/docker/docker-compose.microservices.prod.yml \
+  up -d --no-build
+```
+
+---
+
+### D.5 测试 Redis：端口 `1700x already allocated`
+
+**现象**：
+
+```text
+Bind for 0.0.0.0:17004 failed: port is already allocated
+```
+
+**原因**：宿主机 **17001–17006** 已被占用。常见为旧 project **`docker`** 留下的容器（在 `manifest/docker/` 目录误跑 compose 时产生）：
+
+```text
+docker-redis-node-1-1   0.0.0.0:17001->7001/tcp
+docker-redis-node-4-1   0.0.0.0:17004->7004/tcp
+…
+```
+
+与新 project `go-ai-talk-redis-test-redis-node-*`（状态 `Created` 无法启动）并存。
+
+**排查**：
+
+```bash
+docker ps -a --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' | grep -E '1700[1-6]|redis-node'
+ss -tlnp | grep -E '1700[1-6]'
+```
+
+**解决**：执行上文 **[① 测试 Redis](#-测试-redis1700x-端口占用--redis-node-created)**，看到 `OK` 后再 `up`：
+
+```bash
+docker compose -f manifest/docker/docker-compose.redis-cluster.test.yml up -d --force-recreate
+```
+
+**说明**：测试微服务走 Docker 网内 `redis-node-1:7001`，不依赖宿主机 1700x；1700x 仅用于宿主机调试。生产 Redis 用 **7001–7006**，与 1700x 无关。
+
+**cluster create**（集群已存在时会提示 already knows other nodes，可改查 `CLUSTER INFO`）：
+
+```bash
+docker compose -f manifest/docker/docker-compose.redis-cluster.test.yml exec -T redis-node-1 \
+  redis-cli --cluster create \
+  redis-node-1:7001 redis-node-2:7002 redis-node-3:7003 \
+  redis-node-4:7004 redis-node-5:7005 redis-node-6:7006 \
+  --cluster-replicas 1 --cluster-yes
+
+docker compose -f manifest/docker/docker-compose.redis-cluster.test.yml exec -T redis-node-1 \
+  redis-cli -p 7001 CLUSTER INFO | grep cluster_state
+# 期望 cluster_state:ok
+```
+
+---
+
+### D.6 测试 RabbitMQ / 微服务：容器名冲突
+
+**现象**：
+
+```text
+The container name "/go-ai-talk-rabbitmq-test" is already in use
+The container name "/go-ai-talk-history-service-test" is already in use
+```
+
+**原因**：旧 compose project（`docker`、`go_ai_talk`）留下的同名容器。
+
+**解决**：RabbitMQ 用 **[②](#-测试-rabbitmqgo-ai-talk-rabbitmq-test-冲突)**，微服务用 **[③](#-测试微服务go-ai-talk--test-冲突不影响生产)**，验收到 `OK` 后再 `up`。
+
+---
+
+### D.7 反复试错后一键清空测试栈容器
+
+按顺序执行 **① → ② → ③**（见 [启动前清理](#启动前清理遇-conflict--端口占用)），再按 B.1 / D.8 启动。
+
+**总览**（仍存活时排查）：
+
+```bash
+docker ps -a --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' \
+  | grep -E 'go-ai-talk|docker-redis-node'
+```
+
+---
+
+### D.8 推荐启动顺序（测试栈首次 / 重建）
+
+```bash
+cd /www/wwwroot/go/go_ai_talk
+docker network create go-ai-talk-test-net 2>/dev/null || true
+
+# 清理：依次 ① Redis → ② RabbitMQ → ③ 微服务（各块见「启动前清理」）
+# … 复制 ①②③ 的 docker rm + 验收命令 …
+
+# 启动 Redis → cluster create → RabbitMQ → init → 微服务（见 B.1 步骤 5–6 与 B.2 步骤 3）
+```
+
+完整命令见 **B.1**；Conflict 时仅在对应 `up` 前插入 **① / ② / ③** 各 2 行（删 + 验）。
 
 ---
 
@@ -365,7 +703,7 @@ REGISTRY=crpi-lff3xynwzvqxxxjk-vpc.cn-hangzhou.personal.cr.aliyuncs.com/pangbao-
 
 每个命名空间下须预先创建 7 个镜像仓库：`gateway`、`gateway-app`、`history-service`、`voice-service`、`device-service`、`worker`、`ucg-service`（或开启「自动创建仓库」）。
 
-push 报 `denied` 常见原因：① GitHub 用了 `-vpc` 域名；② 缺命名空间；③ 测试/生产 Secret 与 `.env` 命名空间不一致；④ 仓库未创建。
+push 报 `denied` 常见原因：① GitHub 用了 `-vpc` 域名；② 缺命名空间；③ 测试/生产 Secret 与 `.env` 命名空间不一致；④ 仓库未创建；⑤ ECS 未 `docker login`。详见 [D.2](#d2-acr-拉镜像-pull-access-denied)。
 
 ### 脱敏种子（测试库刷新）
 

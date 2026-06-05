@@ -2,6 +2,7 @@
 # 项目名 go-ai-talk-test（与生产 go-ai-talk-prod 隔离；勿省略 overlay 或与 prod 共用默认 project 名）。
 # 镜像引用同 prod：${REGISTRY}/<服务名>:${IMAGE_TAG}（无 go-ai-talk/ 前缀）。
 # 独立 Docker 网络 go-ai-talk-test-net；宿主机端口 197xx；静态资源目录 *_test。
+# ports 使用 !reset：覆盖基线 9701/980x，避免与生产端口叠加绑定（否则 test 容器会同时占 9804 与 19804）。
 # 须先启动 docker-compose.redis-cluster.test.yml 与 docker-compose.rabbitmq.test.yml。
 #
 # 示例：
@@ -22,7 +23,7 @@ services:
     container_name: go-ai-talk-gateway-test
     environment:
       <<: *test-redis-env
-    ports:
+    ports: !reset
       - "19701:9701"
     networks: [go-ai-talk-test-net]
 
@@ -32,7 +33,7 @@ services:
     environment:
       <<: *test-redis-env
       GATEWAY_APP_PUBLIC_BASE_URL: "${GATEWAY_APP_PUBLIC_BASE_URL:-https://test.pangbao.cuplay.top:9702}"
-    ports:
+    ports: !reset
       - "19702:9702"
     volumes:
       - /apk/ai_talk_test:/apk/ai_talk
@@ -43,7 +44,7 @@ services:
     container_name: go-ai-talk-history-service-test
     environment:
       <<: *test-redis-env
-    ports:
+    ports: !reset
       - "19801:9801"
     networks: [go-ai-talk-test-net]
 
@@ -52,7 +53,7 @@ services:
     container_name: go-ai-talk-voice-service-test
     environment:
       <<: *test-redis-env
-    ports:
+    ports: !reset
       - "19802:9802"
     networks: [go-ai-talk-test-net]
 
@@ -61,7 +62,7 @@ services:
     container_name: go-ai-talk-device-service-test
     environment:
       <<: *test-redis-env
-    ports:
+    ports: !reset
       - "19803:9803"
     volumes:
       - /ai_talk_images_test:/ai_talk_images
@@ -72,7 +73,7 @@ services:
     container_name: go-ai-talk-worker-test
     environment:
       <<: *test-redis-env
-    ports:
+    ports: !reset
       - "19901:9901"
     networks: [go-ai-talk-test-net]
 
@@ -81,7 +82,7 @@ services:
     container_name: go-ai-talk-ucg-service-test
     environment:
       <<: *test-redis-env
-    ports:
+    ports: !reset
       - "19804:9804"
     networks: [go-ai-talk-test-net]
 
