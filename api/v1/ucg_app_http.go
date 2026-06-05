@@ -79,6 +79,16 @@ type UcgPostDeleteReq struct {
 
 type UcgPostDeleteRes struct{}
 
+// UcgPostCreateRes 创建帖子响应（字段与 UcgPostItem 一致）。
+type UcgPostCreateRes struct {
+	UcgPostItem
+}
+
+// UcgPostUpdateRes 更新帖子响应。
+type UcgPostUpdateRes struct {
+	UcgPostItem
+}
+
 type UcgPostsMineReq struct {
 	g.Meta   `path:"/ucg/app/api/posts/mine" method:"get" tags:"ucg" summary:"我的动态"`
 	Page     int `json:"page" in:"query" d:"1"`
@@ -187,6 +197,11 @@ type UcgPostCommentPostReq struct {
 	Content string `json:"content" v:"required"`
 }
 
+// UcgPostCommentPostRes 发表评论响应。
+type UcgPostCommentPostRes struct {
+	UcgCommentItem
+}
+
 type UcgCommentItem struct {
 	Id         uint64         `json:"id"`
 	PostId     uint64         `json:"postId"`
@@ -219,6 +234,11 @@ type UcgConversationsGetReq struct {
 type UcgConversationCreateReq struct {
 	g.Meta      `path:"/ucg/app/api/conversations" method:"post" tags:"ucg" summary:"创建或获取 1:1 会话"`
 	TargetWxId  int64 `json:"targetWxId" v:"required|min:1"`
+}
+
+// UcgConversationCreateRes 创建会话响应。
+type UcgConversationCreateRes struct {
+	UcgConversationItem
 }
 
 type UcgConversationItem struct {
@@ -273,6 +293,8 @@ type UcgConversationPinPutReq struct {
 	Id     uint64 `json:"id" in:"path" v:"required|min:1"`
 	Pinned bool   `json:"pinned"`
 }
+
+type UcgConversationPinPutRes struct{}
 
 type UcgConversationDeleteReq struct {
 	g.Meta `path:"/ucg/app/api/conversations/{id}" method:"delete" tags:"ucg" summary:"删除会话（软删）"`

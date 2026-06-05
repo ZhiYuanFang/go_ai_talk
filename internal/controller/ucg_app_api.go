@@ -81,7 +81,7 @@ func (c *UcgAppCtrl) ProfilePublicGet(ctx context.Context, req *v1.UcgProfilePub
 	return profileDTOToRes(p), nil
 }
 
-func (c *UcgAppCtrl) PostCreate(ctx context.Context, req *v1.UcgPostCreateReq) (res *v1.UcgPostItem, err error) {
+func (c *UcgAppCtrl) PostCreate(ctx context.Context, req *v1.UcgPostCreateReq) (res *v1.UcgPostCreateRes, err error) {
 	_ = c
 	wxID, err := wxIDFromUcgHeader(ghttp.RequestFromCtx(ctx))
 	if err != nil {
@@ -91,11 +91,10 @@ func (c *UcgAppCtrl) PostCreate(ctx context.Context, req *v1.UcgPostCreateReq) (
 	if err != nil {
 		return nil, err
 	}
-	item := postDTOToItem(post)
-	return &item, nil
+	return &v1.UcgPostCreateRes{UcgPostItem: postDTOToItem(post)}, nil
 }
 
-func (c *UcgAppCtrl) PostUpdate(ctx context.Context, req *v1.UcgPostUpdateReq) (res *v1.UcgPostItem, err error) {
+func (c *UcgAppCtrl) PostUpdate(ctx context.Context, req *v1.UcgPostUpdateReq) (res *v1.UcgPostUpdateRes, err error) {
 	_ = c
 	wxID, err := wxIDFromUcgHeader(ghttp.RequestFromCtx(ctx))
 	if err != nil {
@@ -105,8 +104,7 @@ func (c *UcgAppCtrl) PostUpdate(ctx context.Context, req *v1.UcgPostUpdateReq) (
 	if err != nil {
 		return nil, err
 	}
-	item := postDTOToItem(post)
-	return &item, nil
+	return &v1.UcgPostUpdateRes{UcgPostItem: postDTOToItem(post)}, nil
 }
 
 func (c *UcgAppCtrl) PostDelete(ctx context.Context, req *v1.UcgPostDeleteReq) (res *v1.UcgPostDeleteRes, err error) {
@@ -233,7 +231,7 @@ func (c *UcgAppCtrl) PostCommentsGet(ctx context.Context, req *v1.UcgPostComment
 	return commentsPageToRes(page), nil
 }
 
-func (c *UcgAppCtrl) PostCommentPost(ctx context.Context, req *v1.UcgPostCommentPostReq) (res *v1.UcgCommentItem, err error) {
+func (c *UcgAppCtrl) PostCommentPost(ctx context.Context, req *v1.UcgPostCommentPostReq) (res *v1.UcgPostCommentPostRes, err error) {
 	_ = c
 	wxID, err := wxIDFromUcgHeader(ghttp.RequestFromCtx(ctx))
 	if err != nil {
@@ -243,8 +241,7 @@ func (c *UcgAppCtrl) PostCommentPost(ctx context.Context, req *v1.UcgPostComment
 	if err != nil {
 		return nil, err
 	}
-	item := commentDTOToItem(cmt)
-	return &item, nil
+	return &v1.UcgPostCommentPostRes{UcgCommentItem: commentDTOToItem(cmt)}, nil
 }
 
 func (c *UcgAppCtrl) CommentDelete(ctx context.Context, req *v1.UcgCommentDeleteReq) (res *v1.UcgCommentDeleteRes, err error) {
@@ -272,7 +269,7 @@ func (c *UcgAppCtrl) ConversationsGet(ctx context.Context, req *v1.UcgConversati
 	return conversationsPageToRes(page), nil
 }
 
-func (c *UcgAppCtrl) ConversationCreate(ctx context.Context, req *v1.UcgConversationCreateReq) (res *v1.UcgConversationItem, err error) {
+func (c *UcgAppCtrl) ConversationCreate(ctx context.Context, req *v1.UcgConversationCreateReq) (res *v1.UcgConversationCreateRes, err error) {
 	_ = c
 	wxID, err := wxIDFromUcgHeader(ghttp.RequestFromCtx(ctx))
 	if err != nil {
@@ -282,8 +279,7 @@ func (c *UcgAppCtrl) ConversationCreate(ctx context.Context, req *v1.UcgConversa
 	if err != nil {
 		return nil, err
 	}
-	item := conversationDTOToItem(conv)
-	return &item, nil
+	return &v1.UcgConversationCreateRes{UcgConversationItem: conversationDTOToItem(conv)}, nil
 }
 
 func (c *UcgAppCtrl) ConversationMessagesGet(ctx context.Context, req *v1.UcgConversationMessagesGetReq) (res *v1.UcgChatMessagesPageRes, err error) {
@@ -311,7 +307,7 @@ func (c *UcgAppCtrl) ConversationReadPost(ctx context.Context, req *v1.UcgConver
 	return &v1.UcgConversationReadPostRes{}, nil
 }
 
-func (c *UcgAppCtrl) ConversationPinPut(ctx context.Context, req *v1.UcgConversationPinPutReq) (res *v1.UcgConversationReadPostRes, err error) {
+func (c *UcgAppCtrl) ConversationPinPut(ctx context.Context, req *v1.UcgConversationPinPutReq) (res *v1.UcgConversationPinPutRes, err error) {
 	_ = c
 	wxID, err := wxIDFromUcgHeader(ghttp.RequestFromCtx(ctx))
 	if err != nil {
@@ -320,7 +316,7 @@ func (c *UcgAppCtrl) ConversationPinPut(ctx context.Context, req *v1.UcgConversa
 	if err = ucgsvc.SetConversationPinned(ctx, wxID, req.Id, req.Pinned); err != nil {
 		return nil, err
 	}
-	return &v1.UcgConversationReadPostRes{}, nil
+	return &v1.UcgConversationPinPutRes{}, nil
 }
 
 func (c *UcgAppCtrl) ConversationDelete(ctx context.Context, req *v1.UcgConversationDeleteReq) (res *v1.UcgConversationDeleteRes, err error) {
