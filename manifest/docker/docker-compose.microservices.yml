@@ -105,8 +105,10 @@ services:
       ucg-service:
         condition: service_healthy
     # APK 落盘目录与 gatewayApp.apkStorageDir 默认 /apk/ai_talk/ 一致，映射到宿主机根目录便于备份
+    # resource/public 挂载使 git pull 后官网静态页/内联脚本即时生效，无需重建镜像
     volumes:
       - /apk/ai_talk:/apk/ai_talk
+      - ../../resource/public:/app/resource/public:ro
     networks: [go-ai-talk-net]
 
   history-service:

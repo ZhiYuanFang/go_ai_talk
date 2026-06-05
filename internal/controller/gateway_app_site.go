@@ -26,6 +26,7 @@ func (c *GatewayAppCtrl) SiteHome(ctx context.Context, req *v1.GatewayAppSiteHom
 		HeroTitle:      "专注母婴喂养服务，让照顾孩子更轻松",
 		HeroSubtitle:   "围绕喂奶、睡眠、换尿布等关键喂养场景，帮助家庭更便捷、更轻松地照顾孩子。",
 		ServiceSummary: "胖宝专注母婴喂养服务，通过更清晰的事件记录与下载体验，让日常照护更省心。",
+		PublicBaseUrl:  publicBaseURL,
 		Events:         events,
 		Android:        android,
 		IOS: v1.GatewayAppSiteIOSDownload{

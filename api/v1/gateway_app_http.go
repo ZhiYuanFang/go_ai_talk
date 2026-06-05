@@ -115,6 +115,7 @@ type GatewayAppSiteHomeRes struct {
 	HeroTitle      string                        `json:"heroTitle"`
 	HeroSubtitle   string                        `json:"heroSubtitle"`
 	ServiceSummary string                        `json:"serviceSummary"`
+	PublicBaseUrl  string                        `json:"publicBaseUrl,omitempty"`
 	Events         []GatewayAppSiteEventItem     `json:"events"`
 	Android        GatewayAppSiteAndroidDownload `json:"android"`
 	IOS            GatewayAppSiteIOSDownload     `json:"ios"`

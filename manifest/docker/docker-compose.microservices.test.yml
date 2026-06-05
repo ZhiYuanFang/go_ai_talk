@@ -30,6 +30,7 @@ services:
       - "19702:9702"
     volumes:
       - /apk/ai_talk_test:/apk/ai_talk
+      - ../../resource/public:/app/resource/public:ro
     networks: [go-ai-talk-test-net]
 
   history-service:

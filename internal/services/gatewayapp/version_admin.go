@@ -22,13 +22,20 @@ const (
 	RedisKeyAppVersionLatestCache = "gw:app:version:latest"
 )
 
-// AppVersionLatestCacheKey 按 APK 存储目录区分 prod/test，避免双栈共用 Redis 时版本缓存串环境。
+// AppVersionLatestCacheKey 按对外基址或 APP 库名区分 prod/test。
+// 注意：test 卷将 /apk/ai_talk_test 挂载到容器内 /apk/ai_talk，不可用 ApkStorageDir 区分环境。
 func AppVersionLatestCacheKey(ctx context.Context) string {
-	dir := strings.TrimSpace(ApkStorageDir(ctx))
-	if dir == "" {
-		return RedisKeyAppVersionLatestCache
+	if base := strings.TrimSpace(PublicBaseURL(ctx)); base != "" {
+		return RedisKeyAppVersionLatestCache + ":" + base
 	}
-	return RedisKeyAppVersionLatestCache + ":" + dir
+	if link := strings.TrimSpace(os.Getenv("APP_DB_LINK")); link != "" {
+		if i := strings.LastIndex(link, "/"); i >= 0 && i < len(link)-1 {
+			if dbName := strings.TrimSpace(link[i+1:]); dbName != "" {
+				return RedisKeyAppVersionLatestCache + ":" + dbName
+			}
+		}
+	}
+	return RedisKeyAppVersionLatestCache
 }
 
 // VersionAdminPassword 管理员口令：优先环境变量 GATEWAY_APP_VERSION_ADMIN_PASSWORD，否则读配置 gatewayApp.versionAdmin.password（生产勿将真口令写入仓库 yaml）。
@@ -113,8 +120,16 @@ func RedisSessionKey(sessionID string) string {
 
 // InvalidateAppVersionLatestCache 删除版本检查用的最新行缓存，避免上传后仍返回旧 downloadUrl。
 func InvalidateAppVersionLatestCache(ctx context.Context) {
-	key := AppVersionLatestCacheKey(ctx)
-	if _, err := g.Redis().Do(ctx, "DEL", key); err != nil {
-		glog.Warningf(ctx, "[gateway-app-version-admin] 删除版本缓存失败 key=%s err=%v", key, err)
+	keys := []string{
+		AppVersionLatestCacheKey(ctx),
+		RedisKeyAppVersionLatestCache,
+	}
+	if dir := strings.TrimSpace(ApkStorageDir(ctx)); dir != "" {
+		keys = append(keys, RedisKeyAppVersionLatestCache+":"+dir)
+	}
+	for _, key := range keys {
+		if _, err := g.Redis().Do(ctx, "DEL", key); err != nil {
+			glog.Warningf(ctx, "[gateway-app-version-admin] 删除版本缓存失败 key=%s err=%v", key, err)
+		}
 	}
 }
