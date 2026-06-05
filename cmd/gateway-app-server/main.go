@@ -36,9 +36,8 @@ func prepareGatewayAppRuntime() {
 	if strings.TrimSpace(os.Getenv("GF_GCFG_FILE")) == "" {
 		_ = os.Setenv("GF_GCFG_FILE", "manifest/config/config.gateway-app-server.yaml")
 	}
-	if link := strings.TrimSpace(os.Getenv("APP_DB_LINK")); link != "" {
-		_ = os.Setenv("GF_DATABASE_APP_LINK", link)
-	}
+	// MUST 在任意 g.DB("app") 之前调用；见 gatewayapp.ApplyAppDatabaseLinkFromEnv 注释。
+	gatewayapp.ApplyAppDatabaseLinkFromEnv()
 }
 
 func applyGatewayAppAddress(s interface{ SetAddr(address string) }) {

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"hello/internal/controller"
+	"hello/internal/platform/dbcfg"
 	"hello/internal/platform/runtimecheck"
 	_ "hello/internal/shared/runtime"
 
@@ -33,10 +34,7 @@ func prepareVoiceServiceRuntime() {
 	if strings.TrimSpace(os.Getenv("GF_GCFG_FILE")) == "" {
 		_ = os.Setenv("GF_GCFG_FILE", "manifest/config/config.voice-service.yaml")
 	}
-	// 仅允许覆盖 voice-service 自身数据库连接，避免跨服务配置串用。
-	if link := strings.TrimSpace(os.Getenv("VOICE_DB_LINK")); link != "" {
-		_ = os.Setenv("GF_DATABASE_DEFAULT_LINK", link)
-	}
+	dbcfg.ApplyGroupFromEnv("voice-service", "default", "VOICE_DB_LINK", "GF_DATABASE_DEFAULT_LINK")
 }
 
 func applyVoiceServiceAddress(s interface{ SetAddr(address string) }) {

@@ -18,7 +18,7 @@
 
 - [ ] 3.1 手工验证：访问 `gateway-app-server` 的 `/` 返回胖宝官网，而不是“智能语音 App 网关”纯文本
 - [ ] 3.2 手工验证：官网匿名聚合接口可读，返回事件列表、Android 下载信息和 iOS 提示，且不暴露用户态或管理态数据
-- [x] 3.3 修复 Android 二维码与 test/prod 版本串读：`qrcode` 内联进 `pangbao-home.html`；Redis 缓存键改按 `GATEWAY_APP_PUBLIC_BASE_URL`/`APP_DB_LINK` 库名区分；compose 挂载 `resource/public` 使静态页 git pull 即生效；API 返回 `publicBaseUrl` 便于验收
+- [x] 3.3 修复 Android 二维码与 test/prod 版本串读：qrcode 内联；Redis 缓存按 publicBaseUrl 分环境；**全服务 `*_DB_LINK` 须 gdb.SetConfigGroup 覆盖 yaml**（`internal/platform/dbcfg`）；API 返回 `appDatabase` 验收
 - [ ] 3.4 手工验证：官网中的事件 logo 可正常加载；Android 二维码扫码后可命中有效下载地址或正确降级提示
 - [ ] 3.5 手工验证：`/device/app/api/version/check`、`/device/app/apk/*`、`/ai_talk_images/*` 等既有能力保持可用
 - [ ] 3.6 手工验证：主网关根路径、代理能力与其他服务入口不受本次官网变更影响

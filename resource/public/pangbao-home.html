@@ -286,10 +286,13 @@ var QRCode=function(t){"use strict";var r,e=function(){return"function"==typeof 
 			}).join('');
 		}
 
-		function renderAndroid(android, siteBaseUrl){
+		function renderAndroid(android, siteBaseUrl, appDatabase){
 			const info = android || {};
 			androidStatus.textContent = info.statusText || 'Android 下载信息准备中';
 			var versionLine = info.latestVersion ? ('最新版本：' + info.latestVersion) : '';
+			if(appDatabase){
+				versionLine += (versionLine ? ' · ' : '') + '库：' + appDatabase;
+			}
 			if(siteBaseUrl){
 				versionLine += (versionLine ? ' · ' : '') + '下载域：' + siteBaseUrl;
 			}
@@ -354,7 +357,7 @@ var QRCode=function(t){"use strict";var r,e=function(){return"function"==typeof 
 				heroSubtitle.textContent = data.heroSubtitle || heroSubtitle.textContent;
 				serviceSummary.textContent = data.serviceSummary || serviceSummary.textContent;
 				renderEvents(data.events || []);
-				renderAndroid(data.android || {}, data.publicBaseUrl || '');
+				renderAndroid(data.android || {}, data.publicBaseUrl || '', data.appDatabase || '');
 				if(data.ios && data.ios.instruction){
 					iosInstruction.textContent = data.ios.instruction;
 				}

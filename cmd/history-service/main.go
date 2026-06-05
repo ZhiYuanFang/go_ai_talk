@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"hello/internal/controller"
+	"hello/internal/platform/dbcfg"
 	"hello/internal/platform/runtimecheck"
 	_ "hello/internal/shared/runtime"
 
@@ -33,10 +34,8 @@ func prepareHistoryServiceRuntime() {
 	if strings.TrimSpace(os.Getenv("GF_GCFG_FILE")) == "" {
 		_ = os.Setenv("GF_GCFG_FILE", "manifest/config/config.history-service.yaml")
 	}
-	// 允许通过环境变量覆盖数据库连接，支持独立部署时按服务拆分存储。
-	if link := strings.TrimSpace(os.Getenv("HISTORY_DB_LINK")); link != "" {
-		_ = os.Setenv("GF_DATABASE_DEFAULT_LINK", link)
-	}
+	// MUST 在任意 g.DB 之前调用；见 internal/platform/dbcfg.ApplyGroupFromEnv。
+	dbcfg.ApplyGroupFromEnv("history-service", "default", "HISTORY_DB_LINK", "GF_DATABASE_DEFAULT_LINK")
 }
 
 func applyHistoryServiceAddress(s interface{ SetAddr(address string) }) {

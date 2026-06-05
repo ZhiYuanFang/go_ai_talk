@@ -322,9 +322,20 @@ docker compose --env-file manifest/docker/.env.test \
 ```bash
 curl -sk https://test.pangbao.cuplay.top:9702/api.json
 curl -s http://127.0.0.1:19701/api.json
+
+# 环境变量：须含 _test 库名
 docker exec go-ai-talk-history-service-test printenv HISTORY_DB_LINK
-# 须含 _test 库名
+docker exec go-ai-talk-gateway-app-test printenv APP_DB_LINK
+
+# 启动日志：须出现 dbcfg 覆盖行（新镜像；仅 printenv 不够——旧镜像仍会读 yaml 占位生产库）
+docker logs go-ai-talk-history-service-test 2>&1 | grep "database.default 已用 HISTORY_DB_LINK"
+docker logs go-ai-talk-gateway-app-test 2>&1 | grep "database.app 已用 APP_DB_LINK"
+
+# 官网聚合：appDatabase 须为 ai_voice_app_test（非 ai_voice_app）
+curl -sk https://test.pangbao.cuplay.top:9702/device/app/api/site/home | grep appDatabase
 ```
+
+> **重要**：`*_DB_LINK` 生效依赖 **含 `internal/platform/dbcfg` 的新镜像**。仅 `git pull` + `up --no-build` 不会修复 test 误连生产库；须 CI 打预发布 tag 或本地 `--build` 后 `--force-recreate` 全量微服务。
 
 **排错：pin 某次构建** — 将 `.env.test` 中 `IMAGE_TAG` 改为 Actions 推送的 **git 完整 sha**，再 `pull` + `up --no-build --force-recreate`。
 
@@ -851,6 +862,38 @@ docker network create go-ai-talk-test-net 2>/dev/null || true
 - 每服务独立库；跨域走 HTTP，禁止跨库直查（见 `AGENTS.md`）。
 - gateway-app：`GATEWAY_APP_PUBLIC_BASE_URL`（APK 下载绝对 URL + CORS 白名单 hostname）、APK 上传需 Nginx `client_max_body_size` ≥ 220MB。
 
+### 数据库环境隔离（test / prod）
+
+各微服务 yaml（`manifest/config/config.*-service.yaml`）内 `database.*.link` 为开发占位 DSN。**Compose 注入的 `*_DB_LINK` 必须在进程启动时通过 `gdb.SetConfigGroup` 覆盖 yaml**（实现见 `internal/platform/dbcfg`）；仅 `Setenv("GF_DATABASE_*")` 在 yaml 已有 link 时 **不会** 生效，会导致测试栈读写生产库。
+
+| 服务 | 环境变量 | gdb 分组 |
+|------|----------|----------|
+| history-service | `HISTORY_DB_LINK` | `default` |
+| device-service | `DEVICE_DB_LINK` | `default` |
+| voice-service | `VOICE_DB_LINK` | `default` |
+| ucg-service | `UCG_DB_LINK` | `default` |
+| worker | `WORKER_OUTBOX_DB_LINK` | `outbox` |
+| gateway-app | `APP_DB_LINK` | `app` |
+
+**验收**（测试栈示例）：
+
+```bash
+# 1) printenv 含 _test
+for c in go-ai-talk-history-service-test go-ai-talk-device-service-test go-ai-talk-voice-service-test \
+         go-ai-talk-worker-test go-ai-talk-ucg-service-test go-ai-talk-gateway-app-test; do
+  echo "== $c =="; docker exec "$c" printenv | grep -E '_DB_LINK|APP_DB_LINK' || true
+done
+
+# 2) 启动日志含覆盖行（须新镜像）
+docker logs go-ai-talk-gateway-app-test 2>&1 | tail -50 | grep -E 'database\.(app|default)|APP_DB_LINK'
+
+# 3) 官网 API
+curl -sk https://test.pangbao.cuplay.top:9702/device/app/api/site/home
+# 期望 JSON 含 "appDatabase":"ai_voice_app_test"
+```
+
+变更 `*_DB_LINK` 或升级含 dbcfg 的代码后，须 **rebuild 并 force-recreate 对应容器**，不能只做 `docker compose up -d --no-build`。
+
 ### Web 管理页与环境隔离
 
 静态页在 `resource/public/`，经主网关（`:9701` / 测试 `:19701`）或 App 网关提供。**业务 API 须与当前页面同源或配对端口**，域名由宝塔 Nginx + 服务器 `.env` 配置，**不写入 compose/代码**。
@@ -1025,6 +1068,7 @@ MYSQL_HOST=127.0.0.1 MYSQL_USER=root MYSQL_PASS='***' ./hack/mask-seed-data.sh
 - 测试栈预发布 tag 验收通过（B.2 步骤 4）
 - 生产 `.env.prod` 的 `IMAGE_TAG` 与 git 正式 tag 一致（如 `v1.0.0`）
 - `printenv *_DB_LINK` 确认 test/prod 库未串
+- 各微服务启动日志含 `database.* 已用 *_DB_LINK 覆盖`（见「数据库环境隔离」）
 
 ### 宝塔面板无响应
 

@@ -3,7 +3,7 @@
 #
 # 【新建实例 / 新环境必检 — 数据库】本进程会读 ai_voice_app.version（版本检查），必须能连上 ai_voice_app：
 #   - 二选一即可：① 本文件 database.app.link 改为该环境真实 DSN；② 或部署时设置环境变量 APP_DB_LINK
-#    （cmd/gateway-app-server 会写入 GF_DATABASE_APP_LINK，与 Compose/K8s 的 manifest/docker/.env.example 中 APP_DB_LINK 对齐）。
+#    （cmd/*-service 启动时 gdb.SetConfigGroup 覆盖 yaml，见 internal/platform/dbcfg）。
 #   若既不改 yaml 又不设 APP_DB_LINK，易沿用占位 IP，新实例上版本接口会连库失败。
 # 配置组为 database.app（非 default）；语义上同 history-service 用 HISTORY_DB_LINK 覆盖 default，此处覆盖的是 app 分组。
 

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"hello/internal/controller"
+	"hello/internal/platform/dbcfg"
 	"hello/internal/platform/runtimecheck"
 	ucgsvc "hello/internal/services/ucg"
 	_ "hello/internal/shared/runtime"
@@ -35,9 +36,7 @@ func prepareUcgServiceRuntime() {
 	if strings.TrimSpace(os.Getenv("GF_GCFG_FILE")) == "" {
 		_ = os.Setenv("GF_GCFG_FILE", "manifest/config/config.ucg-service.yaml")
 	}
-	if link := strings.TrimSpace(os.Getenv("UCG_DB_LINK")); link != "" {
-		_ = os.Setenv("GF_DATABASE_DEFAULT_LINK", link)
-	}
+	dbcfg.ApplyGroupFromEnv("ucg-service", "default", "UCG_DB_LINK", "GF_DATABASE_DEFAULT_LINK")
 }
 
 func applyUcgServiceAddress(s interface{ SetAddr(address string) }) {

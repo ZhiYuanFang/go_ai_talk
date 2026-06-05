@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"hello/internal/platform/dbcfg"
 	"hello/internal/platform/runtimecheck"
 	_ "hello/internal/shared/runtime"
 	async "hello/internal/services/async"
@@ -36,10 +37,7 @@ func prepareWorkerServiceRuntime() {
 	if strings.TrimSpace(os.Getenv("GF_GCFG_FILE")) == "" {
 		_ = os.Setenv("GF_GCFG_FILE", "manifest/config/config.worker-service.yaml")
 	}
-	// domain_outbox 在 worker 专用库 ai_voice_worker，通过 database.outbox 分组（见 config.worker-service.yaml）。
-	if link := strings.TrimSpace(os.Getenv("WORKER_OUTBOX_DB_LINK")); link != "" {
-		_ = os.Setenv("GF_DATABASE_OUTBOX_LINK", link)
-	}
+	dbcfg.ApplyGroupFromEnv("worker-service", "outbox", "WORKER_OUTBOX_DB_LINK", "GF_DATABASE_OUTBOX_LINK")
 }
 
 var workerOnce sync.Once

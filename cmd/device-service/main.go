@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"hello/internal/controller"
+	"hello/internal/platform/dbcfg"
 	"hello/internal/platform/runtimecheck"
 	_ "hello/internal/shared/runtime"
 
@@ -33,10 +34,7 @@ func prepareDeviceServiceRuntime() {
 	if strings.TrimSpace(os.Getenv("GF_GCFG_FILE")) == "" {
 		_ = os.Setenv("GF_GCFG_FILE", "manifest/config/config.device-service.yaml")
 	}
-	// 仅覆盖本服务默认数据库连接，防止误改其他服务 DB 配置。
-	if link := strings.TrimSpace(os.Getenv("DEVICE_DB_LINK")); link != "" {
-		_ = os.Setenv("GF_DATABASE_DEFAULT_LINK", link)
-	}
+	dbcfg.ApplyGroupFromEnv("device-service", "default", "DEVICE_DB_LINK", "GF_DATABASE_DEFAULT_LINK")
 }
 
 func applyDeviceServiceAddress(s interface{ SetAddr(address string) }) {

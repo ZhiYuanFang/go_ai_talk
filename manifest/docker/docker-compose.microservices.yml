@@ -8,8 +8,9 @@ version: "3.9"
 # 基线不含 ports，避免 prod/test overlay 合并时端口叠加。
 # 详见 manifest/docker/.env.prod.example、.env.test.example 与 docs/runbooks/release-deploy-and-run.md。
 #
-# 业务库连接：history/device/voice/worker/ucg 见各服务 *_DB_LINK；gateway-app 另需 APP_DB_LINK（ai_voice_app），
-# 与 manifest/docker/.env.example、docs/runbooks/release-deploy-and-run.md 一致，避免新栈漏配版本库。
+# 业务库连接：history/device/voice/worker/ucg 见各服务 *_DB_LINK；gateway-app 另需 APP_DB_LINK（ai_voice_app）。
+# Compose 注入 DSN 后，各 cmd/*/main.go 在启动最早阶段 gdb.SetConfigGroup 覆盖 yaml（见 internal/platform/dbcfg）；
+# 仅 Setenv GF_DATABASE_* 在 yaml 已有 link 时无效，会导致 test 栈误连生产库。
 #
 # 宿主机静态资源（Linux 根目录持久化，与 config 默认路径一致）：
 #   device-service  → /ai_talk_images  （event.eventImageStorageDir）
