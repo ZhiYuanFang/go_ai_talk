@@ -49,11 +49,13 @@ var ErrWxDeactivateWxIDInvalid = errors.New("wxId 无效")
 // ErrWxDeactivateNotFound 注销目标不存在（已注销或记录不存在）。
 var ErrWxDeactivateNotFound = errors.New("账号不存在或已注销")
 
-// WxUserProfile 当前账号 profile 读模型（不含 unionid/password 等敏感字段）。
+// WxUserProfile 当前账号 profile 读模型（不含 unionid/apple_sub/password 等敏感字段）。
 type WxUserProfile struct {
-	IsWxBound bool
-	Account   string
-	DeviceNo  string
+	IsWxBound     bool
+	IsAppleBound  bool
+	AuthProviders []string
+	Account       string
+	DeviceNo      string
 }
 
 // WxDeviceLoginByDeviceNo 仅校验 user 表已注册该 device_no；若 wx 已绑定同号则返回对应 wxId，否则 wxId=0（网关仍凭 device_no 签发 access）。
@@ -232,9 +234,11 @@ func WxUserProfileByWxID(ctx context.Context, wxID int64) (*WxUserProfile, error
 		return nil, ErrWxDeactivateNotFound
 	}
 	return &WxUserProfile{
-		IsWxBound: strings.TrimSpace(row.Unionid) != "",
-		Account:   strings.TrimSpace(row.Account),
-		DeviceNo:  strings.TrimSpace(row.DeviceNo),
+		IsWxBound:     strings.TrimSpace(row.Unionid) != "",
+		IsAppleBound:  strings.TrimSpace(row.AppleSub) != "",
+		AuthProviders: deriveAuthProviders(row),
+		Account:       strings.TrimSpace(row.Account),
+		DeviceNo:      strings.TrimSpace(row.DeviceNo),
 	}, nil
 }
 

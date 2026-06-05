@@ -157,6 +157,52 @@ func (c *GatewayAppCtrl) UsernameLogin(ctx context.Context, req *v1.GatewayAppUs
 	}, nil
 }
 
+// AppleLogin POST /device/app/api/apple_login：Apple 聚合登录，device 完成业务校验后由 gateway 签发 access/refresh。
+func (c *GatewayAppCtrl) AppleLogin(ctx context.Context, req *v1.GatewayAppAppleLoginReq) (res *v1.GatewayAppAppleLoginRes, err error) {
+	base := deviceServiceBase(ctx)
+	if base == "" {
+		return nil, gerror.NewCode(gcode.CodeInvalidConfiguration, "DEVICE_SERVICE_URL 未配置")
+	}
+	url := strings.TrimRight(base, "/") + "/device/app/api/user/apple/login"
+	body := g.Map{
+		"identityToken": strings.TrimSpace(req.IdentityToken),
+		"platform":      strings.TrimSpace(req.Platform),
+	}
+	if code := strings.TrimSpace(req.AuthorizationCode); code != "" {
+		body["authorizationCode"] = code
+	}
+	resp, err := gclient.New().ContentJson().Post(ctx, url, body)
+	if err != nil {
+		return nil, err
+	}
+	j := gjson.New(resp.ReadAllString())
+	if j.Get("code").Int() != 0 {
+		return nil, gerror.NewCodef(gcode.CodeBusinessValidationFailed, "Apple 登录失败: %s", j.Get("message").String())
+	}
+	data := j.GetJson("data")
+	wxID := data.Get("wxId").Int64()
+	deviceNo := strings.TrimSpace(data.Get("deviceNo").String())
+	isNew := data.Get("isNewUser").Bool()
+	if wxID <= 0 {
+		return nil, gerror.NewCode(gcode.CodeInternalError, "device 返回 wxId 无效")
+	}
+	access, err := gatewayapp.SignAccess(ctx, wxID, deviceNo)
+	if err != nil {
+		return nil, err
+	}
+	refresh, err := gatewayapp.IssueRefreshToken(ctx, wxID, deviceNo)
+	if err != nil {
+		return nil, err
+	}
+	return &v1.GatewayAppAppleLoginRes{
+		WxId:         wxID,
+		DeviceNo:     deviceNo,
+		IsNewUser:    isNew,
+		AccessToken:  access,
+		RefreshToken: refresh,
+	}, nil
+}
+
 // TokenRefresh POST /device/app/api/token/refresh（单次旋转 refresh）。
 func (c *GatewayAppCtrl) TokenRefresh(ctx context.Context, req *v1.GatewayAppTokenRefreshReq) (res *v1.GatewayAppTokenRefreshRes, err error) {
 	wxID, rtDeviceNo, err := gatewayapp.ConsumeRefreshToken(ctx, req.RefreshToken, true)

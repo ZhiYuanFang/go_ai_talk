@@ -162,29 +162,7 @@ func WxUsernameBindWxByCode(ctx context.Context, wxID int64, jsCode, platform st
 	if strings.TrimSpace(row.Unionid) != "" {
 		return ErrWxAlreadyBoundUnionID
 	}
-	oauth, err := exchangeAuthCodeForUnionID(ctx, platform, jsCode)
-	if err != nil {
-		return err
-	}
-	unionID := strings.TrimSpace(oauth.UnionID)
-	if unionID == "" {
-		return ErrWxUnionIDRequired
-	}
-	if one, err := dao.Wx.Ctx(ctx).Where(dao.Wx.Columns().Unionid, unionID).One(); err != nil {
-		return err
-	} else if !one.IsEmpty() && one[dao.Wx.Columns().Id].Int64() != wxID {
-		return ErrWxUnionIDTakenByOther
-	}
-	_, err = dao.Wx.Ctx(ctx).Where(dao.Wx.Columns().Id, wxID).Data(g.Map{
-		dao.Wx.Columns().Unionid:  unionID,
-		dao.Wx.Columns().Platform: strings.TrimSpace(platform),
-	}).Update()
-	if err != nil {
-		return err
-	}
-	_ = invalidateWxCaches(ctx, wxID, unionID)
-	glog.Infof(ctx, "[wx-username] bind wx success wxId=%d", wxID)
-	return nil
+	return WxBindWxByCode(ctx, wxID, jsCode, platform)
 }
 
 // WxUsernameBindDevice 用户名账号绑定设备号。

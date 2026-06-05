@@ -49,6 +49,23 @@ type GatewayAppUsernameLoginRes struct {
 	RefreshToken string `json:"refreshToken"`
 }
 
+// GatewayAppAppleLoginReq Apple 聚合登录：转发 device Apple 登录后签发 access/refresh。
+type GatewayAppAppleLoginReq struct {
+	g.Meta            `path:"/device/app/api/apple_login" method:"post" tags:"gateway-app" summary:"Apple 聚合登录"`
+	IdentityToken     string `json:"identityToken" dc:"Apple identityToken（JWT），禁止持久化"`
+	Platform          string `json:"platform" dc:"客户端平台，如 ios"`
+	AuthorizationCode string `json:"authorizationCode,omitempty" dc:"可选；本变更不强制服务端换票"`
+}
+
+// GatewayAppAppleLoginRes 与 GatewayAppLoginRes 字段对齐。
+type GatewayAppAppleLoginRes struct {
+	WxId         int64  `json:"wxId"`
+	DeviceNo     string `json:"deviceNo"`
+	IsNewUser    bool   `json:"isNewUser"`
+	AccessToken  string `json:"accessToken"`
+	RefreshToken string `json:"refreshToken"`
+}
+
 // GatewayAppTokenRefreshReq 刷新 access。
 type GatewayAppTokenRefreshReq struct {
 	g.Meta       `path:"/device/app/api/token/refresh" method:"post" tags:"gateway-app" summary:"刷新 access_token"`

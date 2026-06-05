@@ -107,6 +107,66 @@ func (c *DeviceAppUserCtrl) Login(ctx context.Context, req *v1.DeviceWxLoginReq)
 	}, nil
 }
 
+// AppleLogin POST /device/app/api/user/apple/login（纯业务 Apple 登录，无 JWT）。
+func (c *DeviceAppUserCtrl) AppleLogin(ctx context.Context, req *v1.DeviceAppleLoginReq) (res *v1.DeviceAppleLoginRes, err error) {
+	out, err := device.WxAppleLogin(ctx, req.IdentityToken, req.Platform)
+	if err != nil {
+		if errors.Is(err, device.ErrAppleIdentityTokenEmpty) {
+			return nil, gerror.NewCode(gcode.CodeInvalidParameter, err.Error())
+		}
+		if errors.Is(err, device.ErrAppleIdentityTokenInvalid) {
+			return nil, gerror.NewCode(gcode.CodeBusinessValidationFailed, err.Error())
+		}
+		return nil, err
+	}
+	return &v1.DeviceAppleLoginRes{
+		WxId:      out.WxId,
+		DeviceNo:  out.DeviceNo,
+		IsNewUser: out.IsNewUser,
+	}, nil
+}
+
+// AppleBind POST /device/app/api/user/apple/bind（当前账号由 Header X-Internal-Wx-Id 指定）。
+func (c *DeviceAppUserCtrl) AppleBind(ctx context.Context, req *v1.DeviceAppleBindReq) (res *v1.DeviceAppleBindRes, err error) {
+	r := ghttp.RequestFromCtx(ctx)
+	wxID, err := wxIDFromAppUserHeader(r)
+	if err != nil {
+		return nil, err
+	}
+	if err = device.WxBindApple(ctx, wxID, req.IdentityToken, req.Platform); err != nil {
+		if errors.Is(err, device.ErrWxIDInvalid) || errors.Is(err, device.ErrAppleIdentityTokenEmpty) {
+			return nil, gerror.NewCode(gcode.CodeInvalidParameter, err.Error())
+		}
+		if errors.Is(err, device.ErrAppleIdentityTokenInvalid) {
+			return nil, gerror.NewCode(gcode.CodeBusinessValidationFailed, err.Error())
+		}
+		if errors.Is(err, device.ErrAppleAlreadyBound) || errors.Is(err, device.ErrAppleSubTakenByOther) || errors.Is(err, device.ErrAccountMergeConflict) {
+			return nil, gerror.NewCode(gcode.CodeBusinessValidationFailed, err.Error())
+		}
+		return nil, err
+	}
+	return &v1.DeviceAppleBindRes{}, nil
+}
+
+// WxBindWx POST /device/app/api/user/wx/bindwx（当前账号由 Header X-Internal-Wx-Id 指定）。
+func (c *DeviceAppUserCtrl) WxBindWx(ctx context.Context, req *v1.DeviceWxBindWxReq) (res *v1.DeviceWxBindWxRes, err error) {
+	r := ghttp.RequestFromCtx(ctx)
+	wxID, err := wxIDFromAppUserHeader(r)
+	if err != nil {
+		return nil, err
+	}
+	if err = device.WxBindWxByCode(ctx, wxID, req.JsCode, req.Platform); err != nil {
+		if errors.Is(err, device.ErrWxIDInvalid) {
+			return nil, gerror.NewCode(gcode.CodeInvalidParameter, err.Error())
+		}
+		if errors.Is(err, device.ErrWxAlreadyBoundUnionID) || errors.Is(err, device.ErrWxUnionIDTakenByOther) || errors.Is(err, device.ErrAccountMergeConflict) {
+			return nil, gerror.NewCode(gcode.CodeBusinessValidationFailed, err.Error())
+		}
+		return nil, err
+	}
+	return &v1.DeviceWxBindWxRes{}, nil
+}
+
 // UsernameRegister POST /device/app/api/user/username/register（纯业务，无 JWT）。
 func (c *DeviceAppUserCtrl) UsernameRegister(ctx context.Context, req *v1.DeviceUsernameRegisterReq) (res *v1.DeviceUsernameRegisterRes, err error) {
 	_ = c
@@ -151,7 +211,7 @@ func (c *DeviceAppUserCtrl) UsernameBindWx(ctx context.Context, req *v1.DeviceUs
 		if errors.Is(err, device.ErrWxUsernameNotSet) || errors.Is(err, device.ErrWxIDInvalid) {
 			return nil, gerror.NewCode(gcode.CodeInvalidParameter, err.Error())
 		}
-		if errors.Is(err, device.ErrWxAlreadyBoundUnionID) || errors.Is(err, device.ErrWxUnionIDTakenByOther) {
+		if errors.Is(err, device.ErrWxAlreadyBoundUnionID) || errors.Is(err, device.ErrWxUnionIDTakenByOther) || errors.Is(err, device.ErrAccountMergeConflict) {
 			return nil, gerror.NewCode(gcode.CodeBusinessValidationFailed, err.Error())
 		}
 		return nil, err
@@ -257,9 +317,11 @@ func (c *DeviceAppUserCtrl) Profile(ctx context.Context, req *v1.DeviceUserProfi
 		return nil, err
 	}
 	return &v1.DeviceUserProfileRes{
-		IsWxBound: out.IsWxBound,
-		Account:   out.Account,
-		DeviceNo:  out.DeviceNo,
+		IsWxBound:     out.IsWxBound,
+		IsAppleBound:  out.IsAppleBound,
+		AuthProviders: out.AuthProviders,
+		Account:       out.Account,
+		DeviceNo:      out.DeviceNo,
 	}, nil
 }
 

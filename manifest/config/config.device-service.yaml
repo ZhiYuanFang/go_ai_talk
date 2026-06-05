@@ -29,3 +29,8 @@ wechat:
     web:
       appId: "wxe713de83c921f341"
       appSecret: "74dd30876697b02bea9fbabd13bfb6fc"
+
+# Apple Sign in with Apple：identityToken JWT aud 校验用 iOS Bundle ID（须与客户端一致）。
+apple:
+  ios:
+    bundleId: "com.fzy.pangbao"

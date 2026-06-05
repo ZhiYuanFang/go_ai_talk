@@ -1261,6 +1261,23 @@ MYSQL_HOST=127.0.0.1 MYSQL_USER=root MYSQL_PASS='***' ./hack/mask-seed-data.sh
 
 见 `manifest/deploy/kustomize/overlays/develop`；Compose 发版路径以本文 A/B/C 为准。
 
+### Apple Sign in with Apple（`wx.apple_sub` 迁移）
+
+本变更**不新增** `*_DB_LINK`；DDL 在 **device-service 默认库**（`DEVICE_DB_LINK` / `database.default`，如 `ai_voice_device`）执行。
+
+**部署顺序（须严格按序）：**
+
+1. **DDL**（低峰/维护窗口）：在 `DEVICE_DB_LINK` 对应库执行 `docs/migrations/wx_apple_sub.sql`  
+   - `ALTER TABLE wx ADD COLUMN apple_sub ...`  
+   - `CREATE UNIQUE INDEX uk_wx_apple_sub ON wx (apple_sub)`  
+   - 执行后确认既有微信/用户名行 `apple_sub` 均为 NULL，无唯一索引冲突。
+2. **配置**：`manifest/config/config.device-service.yaml` 中 `apple.ios.bundleId` 须与 iOS 客户端 Bundle ID 一致（`com.fzy.pangbao`）；生产通过 overlay/Secret 覆盖时须核对。
+3. **滚动 device-service**（含 `apple_auth.go`、绑定 API、profile 扩展）。
+4. **滚动 gateway-app-server**（`apple_login` 聚合路由与白名单）。
+5. **联调**：打开 `/device/app/integration-test.html`，用真机 `identityToken` 验证 `apple_login`、Bearer 下 `apple/bind` 与 `wx/bindwx`。
+
+**回滚**：下线新路由即可；`apple_sub` 列可保留，已创建的 Apple 账号行不受影响。
+
 ### 文档治理
 
 运行、部署、配置边界变更须同步更新本文与 `docs/runbooks/dao-sync-by-domain.md`。

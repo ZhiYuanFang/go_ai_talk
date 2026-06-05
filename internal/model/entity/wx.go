@@ -9,6 +9,7 @@ type Wx struct {
 	Id       int64  `json:"id"       ` //
 	DeviceNo string `json:"deviceNo" ` //
 	Unionid  string `json:"unionid"  ` //
+	AppleSub string `json:"appleSub" ` // Apple JWT sub
 	Platform string `json:"platform" ` // 平台来源
 	Account  string `json:"account"  ` // 账户
 	Password string `json:"password" ` // 密码哈希（bcrypt，不可逆）

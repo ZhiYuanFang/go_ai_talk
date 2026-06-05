@@ -23,6 +23,7 @@ type WxColumns struct {
 	Id       string //
 	DeviceNo string //
 	Unionid  string //
+	AppleSub string // Apple JWT sub
 	Platform string // 平台来源
 	Account  string // 账户
 	Password string // 密码哈希（bcrypt，不可逆）
@@ -33,6 +34,7 @@ var wxColumns = WxColumns{
 	Id:       "id",
 	DeviceNo: "device_no",
 	Unionid:  "unionid",
+	AppleSub: "apple_sub",
 	Platform: "platform",
 	Account:  "account",
 	Password: "password",

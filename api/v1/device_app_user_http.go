@@ -68,6 +68,41 @@ type DeviceWxLoginRes struct {
 	IsNewUser bool   `json:"isNewUser"`
 }
 
+// DeviceAppleLoginReq Apple 登录（仅业务，不返回 JWT）。
+type DeviceAppleLoginReq struct {
+	g.Meta              `path:"/device/app/api/user/apple/login" method:"post" tags:"device" summary:"Apple 登录业务"`
+	IdentityToken       string `json:"identityToken" dc:"Apple Sign in with Apple 返回的 identityToken（JWT）"`
+	Platform            string `json:"platform" dc:"客户端平台，如 ios"`
+	AuthorizationCode   string `json:"authorizationCode,omitempty" dc:"可选；本变更不强制服务端换票"`
+}
+
+// DeviceAppleLoginRes Apple 登录业务响应。
+type DeviceAppleLoginRes struct {
+	WxId      int64  `json:"wxId"`
+	DeviceNo  string `json:"deviceNo"`
+	IsNewUser bool   `json:"isNewUser"`
+}
+
+// DeviceAppleBindReq 将 Apple 身份绑定到当前 wx 行（Header X-Internal-Wx-Id）。
+type DeviceAppleBindReq struct {
+	g.Meta        `path:"/device/app/api/user/apple/bind" method:"post" tags:"device" summary:"绑定 Apple 到当前账号"`
+	IdentityToken string `json:"identityToken" dc:"Apple identityToken（JWT）"`
+	Platform      string `json:"platform" dc:"客户端平台，如 ios"`
+}
+
+// DeviceAppleBindRes 绑定 Apple 成功。
+type DeviceAppleBindRes struct{}
+
+// DeviceWxBindWxReq 将微信身份绑定到当前 wx 行（不限于用户名账号）。
+type DeviceWxBindWxReq struct {
+	g.Meta   `path:"/device/app/api/user/wx/bindwx" method:"post" tags:"device" summary:"绑定微信到当前账号"`
+	JsCode   string `json:"jsCode" dc:"微信开放平台授权临时 code"`
+	Platform string `json:"platform" dc:"平台标识（ios/android/web）"`
+}
+
+// DeviceWxBindWxRes 绑定微信成功。
+type DeviceWxBindWxRes struct{}
+
 // DeviceUsernameRegisterReq 用户名注册（仅业务，不返回 JWT）。
 type DeviceUsernameRegisterReq struct {
 	g.Meta   `path:"/device/app/api/user/username/register" method:"post" tags:"device" summary:"用户名注册业务"`
@@ -153,9 +188,11 @@ type DeviceUserProfileReq struct {
 
 // DeviceUserProfileRes 当前账号 profile（不含 unionid/password）。
 type DeviceUserProfileRes struct {
-	IsWxBound bool   `json:"isWxBound" dc:"是否已绑定微信（unionid 非空）"`
-	Account   string `json:"account,omitempty" dc:"用户名账号，未设置时省略"`
-	DeviceNo  string `json:"deviceNo" dc:"已绑定设备号，未绑定时为空字符串"`
+	IsWxBound     bool     `json:"isWxBound" dc:"是否已绑定微信（unionid 非空）"`
+	IsAppleBound  bool     `json:"isAppleBound" dc:"是否已绑定 Apple（apple_sub 非空）"`
+	AuthProviders []string `json:"authProviders" dc:"已配置身份提供方，如 apple/wechat/username"`
+	Account       string   `json:"account,omitempty" dc:"用户名账号，未设置时省略"`
+	DeviceNo      string   `json:"deviceNo" dc:"已绑定设备号，未绑定时为空字符串"`
 }
 
 // DeviceWxDetailReq 按 wx 查询已绑定设备号（wx 主键来自 Header X-Internal-Wx-Id）。

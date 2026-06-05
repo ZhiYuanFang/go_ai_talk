@@ -20,9 +20,11 @@ var (
 	gatewayAppAuthExemptExactPOST = []string{
 		"/device/app/api/login",
 		"/device/app/api/username_login",
+		"/device/app/api/apple_login",
 		"/device/app/api/device_login",
 		"/device/app/api/token/refresh",
 		"/device/app/api/user/login",
+		"/device/app/api/user/apple/login",
 		"/device/app/api/user/username/register",
 		"/device/app/api/user/username/login",
 		"/device/app/api/user/device_login",
