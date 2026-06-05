@@ -3,6 +3,7 @@ package gatewayapp
 import (
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 )
 
@@ -13,13 +14,45 @@ const (
 	GatewayAppCORSMaxAge       = "86400"
 )
 
-// 联调阶段允许通过 CORS 回显 Origin 的主机（任意端口、http/https），与 openspec change gateway-app-cors-ip-allowlist 对齐。
-// localhost / 127.0.0.1：Flutter Web、Vite 等本地开发页跨域请求线上/局域网网关时使用。
-var gatewayAppCORSAllowedHosts = map[string]struct{}{
-	"www.pangbao.cuplay.top": {},
-	"pangbao.cuplay.top":     {},
-	"localhost":              {},
-	"127.0.0.1":              {},
+// gatewayAppCORSAllowedHostSet 构建 CORS 允许的主机名集合。
+// 始终含 localhost/127.0.0.1；另从 GATEWAY_APP_PUBLIC_BASE_URL 解析 hostname，
+// 及 GATEWAY_APP_CORS_ALLOWED_HOSTS（逗号分隔）。不在代码中写死生产/测试域名。
+func gatewayAppCORSAllowedHostSet() map[string]struct{} {
+	m := map[string]struct{}{
+		"localhost": {},
+		"127.0.0.1": {},
+	}
+	if h := hostnameFromBaseURL(os.Getenv("GATEWAY_APP_PUBLIC_BASE_URL")); h != "" {
+		m[h] = struct{}{}
+	}
+	for _, part := range strings.Split(os.Getenv("GATEWAY_APP_CORS_ALLOWED_HOSTS"), ",") {
+		h := strings.ToLower(strings.TrimSpace(part))
+		if h != "" {
+			m[h] = struct{}{}
+		}
+	}
+	return m
+}
+
+func hostnameFromBaseURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	return strings.ToLower(strings.TrimSpace(u.Hostname()))
+}
+
+func isGatewayAppCORSAllowedHost(host string) bool {
+	host = strings.ToLower(strings.TrimSpace(host))
+	if host == "" {
+		return false
+	}
+	_, ok := gatewayAppCORSAllowedHostSet()[host]
+	return ok
 }
 
 // ReflectGatewayAppCORSOrigin 解析并校验浏览器发来的 Origin 头。
@@ -41,7 +74,7 @@ func ReflectGatewayAppCORSOrigin(originHeader string) (echo string, ok bool) {
 	if host == "" {
 		return "", false
 	}
-	if _, allowed := gatewayAppCORSAllowedHosts[host]; !allowed {
+	if !isGatewayAppCORSAllowedHost(host) {
 		return "", false
 	}
 	return raw, true

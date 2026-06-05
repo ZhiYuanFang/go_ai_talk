@@ -85,6 +85,7 @@ services:
       DEVICE_GATEWAY_INTERNAL_SECRET: "${DEVICE_GATEWAY_INTERNAL_SECRET:-gateway-internal-change-me}"
       # 以下由 .env.prod / .env.test 注入；publicBaseUrl 用于 APK 下载绝对 URL，versionAdmin 口令用于版本管理页
       GATEWAY_APP_PUBLIC_BASE_URL: "${GATEWAY_APP_PUBLIC_BASE_URL:-}"
+      GATEWAY_APP_CORS_ALLOWED_HOSTS: "${GATEWAY_APP_CORS_ALLOWED_HOSTS:-}"
       GATEWAY_APP_VERSION_ADMIN_PASSWORD: "${GATEWAY_APP_VERSION_ADMIN_PASSWORD:-}"
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:9702/api.json > /dev/null || exit 1"]

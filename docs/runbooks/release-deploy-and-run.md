@@ -750,7 +750,31 @@ docker network create go-ai-talk-test-net 2>/dev/null || true
 关键原则：
 
 - 每服务独立库；跨域走 HTTP，禁止跨库直查（见 `AGENTS.md`）。
-- gateway-app：`GATEWAY_APP_PUBLIC_BASE_URL`、APK 上传需 Nginx `client_max_body_size` ≥ 220MB。
+- gateway-app：`GATEWAY_APP_PUBLIC_BASE_URL`（APK 下载绝对 URL + CORS 白名单 hostname）、APK 上传需 Nginx `client_max_body_size` ≥ 220MB。
+
+### Web 管理页与环境隔离
+
+静态页在 `resource/public/`，经主网关（`:9701` / 测试 `:19701`）或 App 网关提供。**业务 API 须与当前页面同源或配对端口**，域名由宝塔 Nginx + 服务器 `.env` 配置，**不写入 compose/代码**。
+
+| 页面 | 路径 | API 请求方式 |
+|------|------|----------------|
+| 设备管理 | `/device/admin` | 同源相对路径 `/device/admin/api/*` |
+| 历史记录 | `/device/history/{deviceNo}` | 同源 `/device/history/api/*` |
+| 问答库 | `/device/admin/qa-records` | 同源 `/device/admin/api/qa/*` |
+| 版本管理 | `/device/app/version-admin.html` | 同源 `/device/app/api/version/admin/*` |
+| App 联调 | `/device/app/integration-test.html` | 默认 `window.location.origin`（可手改 baseUrl） |
+
+**易错点**：设备管理页跳转「App 版本管理」时，须打开**同环境** App 网关（9701→9702、19701→19702），已在 `admin.html` 按当前端口配对。
+
+**验收**（测试环境示例）：
+
+```bash
+# 1) 浏览器打开测试设备管理（Nginx 或直连 19701）
+# 2) 开发者工具 → 网络：/device/admin/api/* 的 Host 须为测试域名或 :19701，不得出现 :9702（生产直连端口）
+# 3) 点击「App 版本管理」：地址栏应为 :19702 或测试域名 :9702（Nginx 反代），不得为生产宿主机 9702
+# 4) gateway-app CORS：.env.test 中 GATEWAY_APP_PUBLIC_BASE_URL 填测试对外 HTTPS 基址
+docker exec go-ai-talk-gateway-app-test printenv GATEWAY_APP_PUBLIC_BASE_URL
+```
 - device logo：`/ai_talk_images`；测试栈用 `/ai_talk_images_test`。
 
 ### 生产/测试对照
