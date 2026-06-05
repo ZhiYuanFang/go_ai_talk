@@ -338,7 +338,13 @@ IMAGE_TAG=v1.0.0-rc.1
 > 服务器只需保留 `manifest/docker/` 下 compose 与 `.env.test`，**无需**整仓源码。
 
 ```bash
-cd /path/to/deploy   # 仓库根目录
+# 强制删除悬空镜像
+docker image prune -f
+
+# 强制删除所有无用镜像
+docker image prune -a -f
+
+cd /www/wwwroot/go/go_ai_talk/   # 仓库根目录
 
 # ① 清理（Conflict 时必做）— 见上文「③ 测试微服务」
 docker rm -f go-ai-talk-gateway-test go-ai-talk-gateway-app-test \

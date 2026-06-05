@@ -1,7 +1,8 @@
 # ucg-service：社交 UGC 域（ai_voice_ucg）。Docker/K8s 部署时设置 DEVICE_SERVICE_URL 与 DEVICE_GATEWAY_INTERNAL_SECRET。
 # OSS 凭证可按环境变量 UCG_OSS_ACCESS_KEY_ID / UCG_OSS_ACCESS_KEY_SECRET 覆盖（生产建议 env 注入）。
 # MySQL：UCG_DB_LINK + MYSQL_TCP_HOST；JWT 校验用 GATEWAY_APP_JWT_SECRET（与 gateway-app 同值）。
-server:  address: ":9804"
+server:
+  address: ":9804"
   openapiPath: "/api.json"
   swaggerPath: "/swagger"
 
@@ -9,7 +10,8 @@ logger:
   level: "all"
   stdout: true
 
-ucg:  deviceServiceUrl: ""
+ucg:
+  deviceServiceUrl: ""
   deviceInternalSecret: ""
   oss:
     bucket: "pang-bao"
@@ -26,7 +28,8 @@ ucg:  deviceServiceUrl: ""
     accessKeyId: ""
     accessKeySecret: ""
     auditIntervalSeconds: 5
-  # 推荐算法参数（score = wNew*exp(-age/tau) + wLike*log(1+likes) + wComment*log(1+comments)，见 design.md）  recommend:
+  # 推荐算法参数（score = wNew*exp(-age/tau) + wLike*log(1+likes) + wComment*log(1+comments)，见 design.md）
+  recommend:
     wNew: 1.0          # 新鲜度权重
     tauHours: 72       # 时间衰减常数（小时）
     wLike: 0.3         # 点赞对数项权重

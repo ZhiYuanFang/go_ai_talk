@@ -2,7 +2,8 @@
 # 部署时 MUST 设置 DEVICE_SERVICE_URL、HISTORY_SERVICE_URL 指向可达下游；JWT 与内部密钥禁止提交默认值到生产。
 # MySQL：APP_DB_LINK + MYSQL_TCP_HOST；JWT：GATEWAY_APP_JWT_SECRET（ucg 须同值）。
 
-server:  address: ":9702"
+server:
+  address: ":9702"
   openapiPath: "/api.json"
   swaggerPath: "/swagger"
   # GoFrame 默认 clientMaxBodySize 为 8MB；须 ≥ gatewayApp.apkMaxBytes，否则大 APK 上传会在进 handler 前断连（浏览器表现为 failed to fetch）。
@@ -13,8 +14,8 @@ logger:
   stdout: true
 
 gatewayApp:
-  accessTtlSeconds: 1800  refreshTtlSeconds: 604800
-  # 调用 device 内部 HTTP（如 internal/device-no-by-wx-id）时携带，须与 device 环境 DEVICE_GATEWAY_INTERNAL_SECRET 一致
+  accessTtlSeconds: 1800
+  refreshTtlSeconds: 604800  # 调用 device 内部 HTTP（如 internal/device-no-by-wx-id）时携带，须与 device 环境 DEVICE_GATEWAY_INTERNAL_SECRET 一致
   deviceInternalSecret: "gateway-internal-change-me"
   # 以下缓存项曾为 id→unionid 热路径保留；当前 Bearer 仅从 JWT 注入 Wx-Id/Device-No，可删除整段或保留作占位兼容
   wxIdUnionCacheSeconds: 120
