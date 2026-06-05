@@ -270,7 +270,8 @@ curl -s http://127.0.0.1:3000/api/health       # Grafana
 ## B. 发布测试环境
 
 对外：`https://test.pangbao.cuplay.top:9701` / `:9702`（Nginx 反代至宿主机 **19701 / 19702**）。  
-镜像 tag：**与 git 预发布 tag 一致**（如 **`v1.0.0-rc.1`**，写在 `.env.test` 的 **`IMAGE_TAG`**）。
+镜像 tag：**与 git 预发布 tag 一致**（如 **`v1.0.0-rc.1`**，写在 `.env.test` 的 **`IMAGE_TAG`**）。  
+**停/启全栈**（给生产腾资源）：见 [B.3](#b3-日常停启测试全栈给生产腾资源)。
 
 ### B.1 首次搭建测试栈（一次性，与生产同机且完全隔离）
 
@@ -406,6 +407,104 @@ curl -sk https://test.pangbao.cuplay.top:9702/device/app/api/site/home | grep ap
 > **重要**：`*_DB_LINK` 生效依赖 **含 `internal/platform/dbcfg` 的新镜像**。仅 `git pull` + `up --no-build` 不会修复 test 误连生产库；须 CI 打预发布 tag 或本地 `--build` 后 `--force-recreate` 全量微服务。
 
 **排错：pin 某次构建** — 将 `.env.test` 中 `IMAGE_TAG` 改为 Actions 推送的 **git 完整 sha**，再 `pull` + `up --no-build --force-recreate`。
+
+### B.3 日常：停/启测试全栈（给生产腾资源）
+
+> **适用**：同机双栈时，暂时不用 test 域名验收、只想给 **生产** 腾内存/CPU；或发版前暂停 test 避免 ASR 与 prod 争抢。  
+> **原则**：只动 **test** 三个 Compose project（`go-ai-talk-test` / `go-ai-talk-redis-test` / `go-ai-talk-rabbitmq-test`），**勿**对生产 project 执行 `down`。  
+> **数据**：下列 `down` **均不加 `-v`**，Redis/RabbitMQ/MySQL `_test` 数据保留。
+
+**工作目录**（以下命令前先执行）：
+
+```bash
+cd /www/wwwroot/go/go_ai_talk
+```
+
+#### 停止测试环境（推荐顺序：微服务 → RabbitMQ → Redis）
+
+先停依赖中间件的 7 个微服务，再停中间件，避免 worker 仍在消费时出现大量连接错误。
+
+```bash
+# 1) 测试微服务（project=go-ai-talk-test）
+docker compose --env-file manifest/docker/.env.test \
+  -f manifest/docker/docker-compose.microservices.yml \
+  -f manifest/docker/docker-compose.microservices.test.yml \
+  -f manifest/docker/docker-compose.resources.test.yml \
+  down
+
+# 2) 测试 RabbitMQ（project=go-ai-talk-rabbitmq-test）
+docker compose -f manifest/docker/docker-compose.rabbitmq.test.yml down
+
+# 3) 测试 Redis（project=go-ai-talk-redis-test）
+docker compose -f manifest/docker/docker-compose.redis-standalone.test.yml down
+```
+
+**验收（应无 test 容器在跑；生产不受影响）**：
+
+```bash
+docker ps --format 'table {{.Names}}\t{{.Status}}' | grep -E 'test|1970|1980|19901|16379|5673' \
+  && echo '仍有 test 容器' || echo 'OK: 测试栈已停止'
+
+docker ps --format 'table {{.Names}}\t{{.Status}}' | grep -E '^go-ai-talk-(gateway|gateway-app|history-service|voice-service|device-service|worker|ucg-service)$' \
+  | head -7
+# 应仍看到 7 个生产微服务 Up（无 -test 后缀）
+```
+
+#### 恢复测试环境（推荐顺序：网络 → Redis → RabbitMQ → 微服务）
+
+与 [B.1](#b1-首次搭建测试栈一次性与生产同机且完全隔离) 启动顺序一致；中间件卷未删时 **无需** 再 `cluster create`，Rabbit **通常无需** 重跑 init（仅新 volume 或管理台缺队列时执行 init）。
+
+```bash
+# 0) 网络（down 不会删 external network，重复 create 无害）
+docker network create go-ai-talk-test-net 2>/dev/null || true
+
+# 1) Redis standalone
+docker compose -f manifest/docker/docker-compose.redis-standalone.test.yml up -d --force-recreate
+docker compose -f manifest/docker/docker-compose.redis-standalone.test.yml exec -T redis-test redis-cli PING
+# 期望 PONG
+
+# 2) RabbitMQ
+docker compose -f manifest/docker/docker-compose.rabbitmq.test.yml up -d --force-recreate
+# 仅首次或 down -v 后需要：
+# COMPOSE_FILE=manifest/docker/docker-compose.rabbitmq.test.yml \
+#   RABBIT_API_BASE=http://127.0.0.1:15673/api ./hack/rabbitmq-init.sh
+
+# 3) 测试微服务（须 .env.test 中 IMAGE_TAG 等与上次一致）
+docker compose --env-file manifest/docker/.env.test \
+  -f manifest/docker/docker-compose.microservices.yml \
+  -f manifest/docker/docker-compose.microservices.test.yml \
+  -f manifest/docker/docker-compose.resources.test.yml \
+  pull
+
+docker compose --env-file manifest/docker/.env.test \
+  -f manifest/docker/docker-compose.microservices.yml \
+  -f manifest/docker/docker-compose.microservices.test.yml \
+  -f manifest/docker/docker-compose.resources.test.yml \
+  up -d --no-build --force-recreate
+```
+
+**验收**：
+
+```bash
+docker ps --format 'table {{.Names}}\t{{.Status}}' \
+  | grep -E 'go-ai-talk-.*-test|go-ai-talk-redis-test|go-ai-talk-rabbitmq-test'
+
+curl -sk https://test.pangbao.cuplay.top:9702/api.json
+curl -sk https://test.pangbao.cuplay.top:9701/api.json
+```
+
+#### 仅停/启测试微服务（中间件常开）
+
+若只需短暂释放 voice/gateway 等占用的内存，**Redis + RabbitMQ 保持 Up**，只 down/up 微服务 project 即可（命令同上 **停止** 第 1 步与 **恢复** 第 3 步）。
+
+#### 勿用 / 注意
+
+| 操作 | 说明 |
+|------|------|
+| `down -v` | **会删** test Redis/Rabbit 数据卷；除非刻意重置 test 中间件，否则禁止 |
+| `docker rm -f …-test` | 仅 [Conflict 清理](#启动前清理遇-conflict--端口占用) 时用；正常停栈用 `compose down` |
+| 生产 compose | 勿对 `redis-cluster.yml` / `rabbitmq.yml` / `microservices.prod.yml` 执行 test 停栈时的 `down` |
+| MySQL `_test` 库 | 停容器 **不删库**；数据仍在 ECS 上 MySQL |
 
 ---
 
@@ -899,6 +998,8 @@ docker ps -a --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' \
 ---
 
 ### D.8 推荐启动顺序（测试栈首次 / 重建）
+
+日常 **停/启全栈** 见 [B.3](#b3-日常停启测试全栈给生产腾资源)；本节适用于 Conflict 后 **首次搭建或重建**。
 
 ```bash
 cd /www/wwwroot/go/go_ai_talk
