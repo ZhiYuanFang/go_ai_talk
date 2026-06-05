@@ -217,7 +217,7 @@ func buildVersionRes(current string, row entity.AppVersion) *v1.GatewayAppVersio
 
 // loadLatestAppVersionRow 读取最新版本行；失败或无可用版本时返回 ok=false，由调用方决定降级语义。
 func loadLatestAppVersionRow(ctx context.Context) (row entity.AppVersion, ok bool) {
-	cacheKey := gatewayapp.RedisKeyAppVersionLatestCache
+	cacheKey := gatewayapp.AppVersionLatestCacheKey(ctx)
 	if raw, err := g.Redis().Do(ctx, "GET", cacheKey); err == nil && raw != nil {
 		s := strings.TrimSpace(raw.String())
 		if s != "" {

@@ -107,6 +107,10 @@ func buildGatewayAppSiteAndroidDownload(ctx context.Context, publicBaseURL strin
 }
 
 func gatewayAppPublicBaseURL(ctx context.Context) string {
+	// 优先使用部署配置的对外基址，确保 test/prod 二维码与下载链指向各自域名（不依赖反代 Host 头）。
+	if configured := strings.TrimSpace(gatewayapp.PublicBaseURL(ctx)); configured != "" {
+		return configured
+	}
 	r := ghttp.RequestFromCtx(ctx)
 	if r == nil {
 		return ""

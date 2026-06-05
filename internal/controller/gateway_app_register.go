@@ -14,6 +14,10 @@ func RegisterGatewayAppHTTP(s *ghttp.Server) {
 	s.BindHandler("/.well-known/apple-app-site-association", gatewayAppAppleAppSiteAssociation)
 	// 浏览器直接打开 Universal Links 前缀时回退到官网壳页，避免出现 404。
 	s.BindHandler("/wx/ulink/*", gatewayAppUniversalLinksLanding)
+	s.BindHandler("/vendor/qrcode.min.js", func(r *ghttp.Request) {
+		r.Response.Header().Set("Cache-Control", "public, max-age=604800")
+		r.Response.ServeFile("resource/public/vendor/qrcode.min.js")
+	})
 	s.BindHandler("/", func(r *ghttp.Request) {
 		r.Response.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
 		r.Response.ServeFile("resource/public/pangbao-home.html")

@@ -18,7 +18,8 @@
 
 - [ ] 3.1 手工验证：访问 `gateway-app-server` 的 `/` 返回胖宝官网，而不是“智能语音 App 网关”纯文本
 - [ ] 3.2 手工验证：官网匿名聚合接口可读，返回事件列表、Android 下载信息和 iOS 提示，且不暴露用户态或管理态数据
-- [ ] 3.3 手工验证：官网中的事件 logo 可正常加载；Android 二维码扫码后可命中有效下载地址或正确降级提示
-- [ ] 3.4 手工验证：`/device/app/api/version/check`、`/device/app/apk/*`、`/ai_talk_images/*` 等既有能力保持可用
-- [ ] 3.5 手工验证：主网关根路径、代理能力与其他服务入口不受本次官网变更影响
-- [x] 3.6 执行 `openspec validate pangbao-official-site-homepage --strict` 并确保通过
+- [x] 3.3 修复 Android 二维码：`qrcode@1.5.4` CDN 无 browser build（404），改为同源 `/vendor/qrcode.min.js`；`SiteHome` 优先 `GATEWAY_APP_PUBLIC_BASE_URL` 拼接下载链；版本 Redis 缓存按 `apkStorageDir` 分环境
+- [ ] 3.4 手工验证：官网中的事件 logo 可正常加载；Android 二维码扫码后可命中有效下载地址或正确降级提示
+- [ ] 3.5 手工验证：`/device/app/api/version/check`、`/device/app/apk/*`、`/ai_talk_images/*` 等既有能力保持可用
+- [ ] 3.6 手工验证：主网关根路径、代理能力与其他服务入口不受本次官网变更影响
+- [x] 3.7 执行 `openspec validate pangbao-official-site-homepage --strict` 并确保通过
