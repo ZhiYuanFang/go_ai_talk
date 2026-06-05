@@ -2,11 +2,10 @@ version: "3.9"
 # 本文件为微服务拓扑基线，面向本机开发：含 build 段与 go-ai-talk/*:local 镜像。
 #
 # 生产 / 测试部署 MUST 叠加 overlay 并从镜像仓库 pull（禁止在服务器上 --build 作为常态发布）：
-#   生产：-f docker-compose.microservices.yml -f docker-compose.microservices.prod.yml
-#         --env-file manifest/docker/.env.prod  →  project go-ai-talk-prod
-#   测试：-f docker-compose.microservices.yml -f docker-compose.microservices.test.yml
-#         --env-file manifest/docker/.env.test  →  project go-ai-talk-test
-# 同机双栈：prod/test overlay 已内置独立 name，禁止两环境共用默认 project 名（否则会互相覆盖）。
+#   生产：… + microservices.prod.yml  →  project go-ai-talk-prod，宿主机端口 9701/980x
+#   测试：… + microservices.test.yml  →  project go-ai-talk-test，宿主机端口 197xx
+#   本地：… + microservices.local.yml →  宿主机端口 9701/980x（与 prod 相同，仅 image 为 :local）
+# 基线不含 ports，避免 prod/test overlay 合并时端口叠加。
 # 详见 manifest/docker/.env.prod.example、.env.test.example 与 docs/runbooks/release-deploy-and-run.md。
 #
 # 业务库连接：history/device/voice/worker/ucg 见各服务 *_DB_LINK；gateway-app 另需 APP_DB_LINK（ai_voice_app），
@@ -42,8 +41,6 @@ services:
       MQ_HTTP_API_BASE: "http://rabbitmq:15672/api"
       MQ_USER: "guest"
       MQ_PASSWORD: "guest"
-    ports:
-      - "9701:9701"
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:9701/api.json > /dev/null || exit 1"]
       interval: 10s
@@ -89,8 +86,6 @@ services:
       # 以下由 .env.prod / .env.test 注入；publicBaseUrl 用于 APK 下载绝对 URL，versionAdmin 口令用于版本管理页
       GATEWAY_APP_PUBLIC_BASE_URL: "${GATEWAY_APP_PUBLIC_BASE_URL:-}"
       GATEWAY_APP_VERSION_ADMIN_PASSWORD: "${GATEWAY_APP_VERSION_ADMIN_PASSWORD:-}"
-    ports:
-      - "9702:9702"
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:9702/api.json > /dev/null || exit 1"]
       interval: 10s
@@ -133,8 +128,6 @@ services:
       MQ_HTTP_API_BASE: "http://rabbitmq:15672/api"
       MQ_USER: "guest"
       MQ_PASSWORD: "guest"
-    ports:
-      - "9801:9801"
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:9801/api.json > /dev/null || exit 1"]
       interval: 10s
@@ -167,8 +160,6 @@ services:
       MQ_HTTP_API_BASE: "http://rabbitmq:15672/api"
       MQ_USER: "guest"
       MQ_PASSWORD: "guest"
-    ports:
-      - "9802:9802"
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:9802/api.json > /dev/null || exit 1"]
       interval: 10s
@@ -196,8 +187,6 @@ services:
       MQ_PASSWORD: "guest"
       # 与 gateway-app 配置 gatewayApp.deviceInternalSecret 保持一致，供 GET /device/app/api/user/internal/by-id 校验
       DEVICE_GATEWAY_INTERNAL_SECRET: "${DEVICE_GATEWAY_INTERNAL_SECRET:-gateway-internal-change-me}"
-    ports:
-      - "9803:9803"
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:9803/api.json > /dev/null || exit 1"]
       interval: 10s
@@ -229,8 +218,6 @@ services:
       MQ_HTTP_API_BASE: "http://rabbitmq:15672/api"
       MQ_USER: "guest"
       MQ_PASSWORD: "guest"
-    ports:
-      - "9901:9901"
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:9901/healthz > /dev/null || exit 1"]
       interval: 10s
@@ -255,8 +242,6 @@ services:
       MQ_HTTP_API_BASE: "http://rabbitmq:15672/api"
       MQ_USER: "guest"
       MQ_PASSWORD: "guest"
-    ports:
-      - "9804:9804"
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:9804/api.json > /dev/null || exit 1"]
       interval: 10s

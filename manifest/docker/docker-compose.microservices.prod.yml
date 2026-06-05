@@ -1,45 +1,51 @@
 # 生产 overlay：与基线 docker-compose.microservices.yml 组合使用。
 # 项目名 go-ai-talk-prod（与测试栈 go-ai-talk-test 隔离，同机双栈 MUST 各自独立 project）。
 # 镜像来自 registry；启动前 pull，且 MUST 使用 --no-build。
-# 镜像引用：${REGISTRY}/<服务名>:${IMAGE_TAG}（如 ${REGISTRY}/gateway:${IMAGE_TAG}）；
-# REGISTRY=注册表域名/命名空间（阿里云 ACR 仓库名无 go-ai-talk/ 前缀）。
-# 网络默认沿用现有 go-ai-talk-net（与已运行生产栈兼容）；新装可按 runbook 迁为 go-ai-talk-prod-net。
-#
-# 示例：
-#   docker compose --env-file manifest/docker/.env.prod \
-#     -f manifest/docker/docker-compose.microservices.yml \
-#     -f manifest/docker/docker-compose.microservices.prod.yml \
-#     pull && up -d --no-build
+# 宿主机端口在此定义（基线无 ports，避免与 test overlay 合并叠加）。
 
 name: go-ai-talk-prod
 
 services:
   gateway:
     image: ${REGISTRY}/gateway:${IMAGE_TAG}
+    ports:
+      - "9701:9701"
     networks: [go-ai-talk-net]
 
   gateway-app:
     image: ${REGISTRY}/gateway-app:${IMAGE_TAG}
+    ports:
+      - "9702:9702"
     networks: [go-ai-talk-net]
 
   history-service:
     image: ${REGISTRY}/history-service:${IMAGE_TAG}
+    ports:
+      - "9801:9801"
     networks: [go-ai-talk-net]
 
   voice-service:
     image: ${REGISTRY}/voice-service:${IMAGE_TAG}
+    ports:
+      - "9802:9802"
     networks: [go-ai-talk-net]
 
   device-service:
     image: ${REGISTRY}/device-service:${IMAGE_TAG}
+    ports:
+      - "9803:9803"
     networks: [go-ai-talk-net]
 
   worker:
     image: ${REGISTRY}/worker:${IMAGE_TAG}
+    ports:
+      - "9901:9901"
     networks: [go-ai-talk-net]
 
   ucg-service:
     image: ${REGISTRY}/ucg-service:${IMAGE_TAG}
+    ports:
+      - "9804:9804"
     networks: [go-ai-talk-net]
 
 networks:

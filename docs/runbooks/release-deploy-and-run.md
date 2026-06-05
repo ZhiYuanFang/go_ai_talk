@@ -161,6 +161,7 @@ sudo mkdir -p /ai_talk_images /apk/ai_talk && sudo chmod 755 /ai_talk_images /ap
 ```bash
 docker compose --env-file manifest/docker/.env \
   -f manifest/docker/docker-compose.microservices.yml \
+  -f manifest/docker/docker-compose.microservices.local.yml \
   up -d --build
 ```
 
@@ -169,6 +170,7 @@ docker compose --env-file manifest/docker/.env \
 ```bash
 docker compose --env-file manifest/docker/.env \
   -f manifest/docker/docker-compose.microservices.yml \
+  -f manifest/docker/docker-compose.microservices.local.yml \
   up -d --build voice-service
 # 同理：gateway / gateway-app / history-service / device-service / worker / ucg-service
 ```
@@ -178,6 +180,7 @@ docker compose --env-file manifest/docker/.env \
 ```bash
 docker compose --env-file manifest/docker/.env \
   -f manifest/docker/docker-compose.microservices.yml \
+  -f manifest/docker/docker-compose.microservices.local.yml \
   up -d --force-recreate
 ```
 
@@ -500,37 +503,54 @@ docker compose -f manifest/docker/docker-compose.redis-cluster.test.yml ps -a
 Bind for 0.0.0.0:9804 failed: port is already allocated
 ```
 
+或 test ucg 显示 **同时** `9804` 与 `19804` 映射。
+
+**原因（已修复）**：旧版基线含 `9804:9804`，test overlay 再写 `19804:9804` 会**叠加**。现改为：**基线无 ports**，prod/test 各自 overlay 单独定义端口。
+
 **排查**：
 
 ```bash
 docker ps --filter 'publish=9804' --format '{{.Names}} {{.Ports}}'
 ```
 
-若看到 **`go-ai-talk-ucg-service-test` 同时有 `9804` 和 `19804`**，原因是 compose 合并时 test overlay 的 `ports` 与基线 **叠加**（未 `!reset`），测试容器误占生产端口。
+- `0.0.0.0:9804->9804` 且容器名含 **-test** → 仍用旧 compose，需 `git pull` 后重建 test 栈  
+- 仅 `9804/tcp`（无 `0.0.0.0:`）→ **未占宿主机 9804**，可直接启生产；但 test 需重建以绑定 **19804**
 
-**解决**：
+**解决**（拉最新 compose 后）：
 
 ```bash
-# 1) 删测试微服务（③ 清理块）
+git pull
+
+# 删测试微服务（③ 清理块）后重建
 docker rm -f go-ai-talk-gateway-test go-ai-talk-gateway-app-test \
   go-ai-talk-history-service-test go-ai-talk-voice-service-test \
   go-ai-talk-device-service-test go-ai-talk-worker-test \
   go-ai-talk-ucg-service-test 2>/dev/null
 
-# 2) 拉最新 compose（microservices.test.yml 已对 ports 使用 !reset）后重建测试栈
 docker compose --env-file manifest/docker/.env.test \
   -f manifest/docker/docker-compose.microservices.yml \
   -f manifest/docker/docker-compose.microservices.test.yml \
   up -d --no-build --force-recreate
 
-# 3) 验：test ucg 仅 19804，无 9804
+# 验：仅 19804，无 9804
 docker ps --filter name=go-ai-talk-ucg-service-test --format '{{.Ports}}'
+# 期望：0.0.0.0:19804->9804/tcp
 
-# 4) 再启生产
+# 启生产
 docker compose --env-file manifest/docker/.env.prod \
   -f manifest/docker/docker-compose.microservices.yml \
   -f manifest/docker/docker-compose.microservices.prod.yml \
   up -d --no-build
+```
+
+**合并结果自检**（可选）：
+
+```bash
+docker compose --env-file manifest/docker/.env.test \
+  -f manifest/docker/docker-compose.microservices.yml \
+  -f manifest/docker/docker-compose.microservices.test.yml \
+  config | grep -A2 'ucg-service:' | grep published
+# 期望只有 published: 19804
 ```
 
 ---
@@ -665,9 +685,10 @@ docker network create go-ai-talk-test-net 2>/dev/null || true
 
 | 文件 | 用途 |
 |------|------|
-| `docker-compose.microservices.yml` | 基线拓扑；本地 `--build` |
-| `docker-compose.microservices.test.yml` | 测试 overlay + registry pull |
-| `docker-compose.microservices.prod.yml` | 生产 overlay + registry pull |
+| `docker-compose.microservices.yml` | 基线拓扑（无宿主机 ports）；本地 `--build` |
+| `docker-compose.microservices.local.yml` | 本地端口 9701/980x |
+| `docker-compose.microservices.test.yml` | 测试 overlay + 端口 197xx |
+| `docker-compose.microservices.prod.yml` | 生产 overlay + 端口 9701/980x |
 
 镜像引用：`${REGISTRY}/gateway:${IMAGE_TAG}`。`REGISTRY` = `<ACR域名>/<命名空间>`；仓库名单段（`gateway`、`device-service` 等，无 `go-ai-talk/` 前缀）。
 
