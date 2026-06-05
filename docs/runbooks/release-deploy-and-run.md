@@ -122,14 +122,22 @@ docker ps -a --format '{{.Names}}' | grep -E '^go-ai-talk-(gateway|gateway-app|h
 docker network create go-ai-talk-net
 
 docker compose -f manifest/docker/docker-compose.redis-cluster.yml up -d --force-recreate
+docker compose -f manifest/docker/docker-compose.redis-cluster.yml ps   # 6 节点均须 running
+
+# 先验收集群是否已可用（见附录「Redis Cluster 验收」）；cluster_state:ok 则跳过 cluster create
+docker compose -f manifest/docker/docker-compose.redis-cluster.yml exec -T redis-node-1 \
+  redis-cli -p 7001 CLUSTER INFO | grep cluster_state
+
+# 仅当上一步非 cluster_state:ok（首次初始化或 down -v 重置卷后）才执行：
 docker compose -f manifest/docker/docker-compose.redis-cluster.yml exec -T redis-node-1 \
   redis-cli --cluster create \
   redis-node-1:7001 redis-node-2:7002 redis-node-3:7003 \
   redis-node-4:7004 redis-node-5:7005 redis-node-6:7006 \
   --cluster-replicas 1 --cluster-yes
-# 验收：cluster_state:ok
+
 docker compose -f manifest/docker/docker-compose.redis-cluster.yml exec -T redis-node-1 \
-  redis-cli -p 7001 CLUSTER INFO
+  redis-cli -p 7001 CLUSTER INFO | grep cluster_state
+# 期望 cluster_state:ok
 
 docker compose -f manifest/docker/docker-compose.rabbitmq.yml up -d --force-recreate
 chmod +x hack/rabbitmq-init.sh && ./hack/rabbitmq-init.sh
@@ -222,11 +230,21 @@ MYSQL_PASS='***' ./hack/mask-seed-data.sh
 
 docker compose -f manifest/docker/docker-compose.redis-cluster.test.yml up -d --force-recreate
 docker compose -f manifest/docker/docker-compose.redis-cluster.test.yml ps   # 6 节点均须 running
+
+# 先验收集群是否已可用（见附录「Redis Cluster 验收」）；cluster_state:ok 则跳过 cluster create
+docker compose -f manifest/docker/docker-compose.redis-cluster.test.yml exec -T redis-node-1 \
+  redis-cli -p 7001 CLUSTER INFO | grep cluster_state
+
+# 仅当上一步非 cluster_state:ok（首次初始化或 down -v 重置卷后）才执行：
 docker compose -f manifest/docker/docker-compose.redis-cluster.test.yml exec -T redis-node-1 \
   redis-cli --cluster create \
   redis-node-1:7001 redis-node-2:7002 redis-node-3:7003 \
   redis-node-4:7004 redis-node-5:7005 redis-node-6:7006 \
   --cluster-replicas 1 --cluster-yes
+
+docker compose -f manifest/docker/docker-compose.redis-cluster.test.yml exec -T redis-node-1 \
+  redis-cli -p 7001 CLUSTER INFO | grep cluster_state
+# 期望 cluster_state:ok
 
 docker compose -f manifest/docker/docker-compose.rabbitmq.test.yml up -d --force-recreate
 COMPOSE_FILE=manifest/docker/docker-compose.rabbitmq.test.yml \
@@ -313,15 +331,63 @@ docker exec go-ai-talk-history-service-test printenv HISTORY_DB_LINK
 
 ### C.1 首次搭建生产栈（一次性）
 
+> 与测试栈同机时，生产使用 `go-ai-talk-net`、端口 **7001–7006**（Redis）、**5672/15672**（RabbitMQ）、**9701/980x**（微服务）；勿与测试 1700x/5673/197xx 混淆。对照表见 [附录：生产/测试对照](#附录生产测试对照)。
+
 ```bash
+cd /www/wwwroot/go/go_ai_talk   # 部署目录（仓库根；勿 cd manifest/docker）
+
+# 1) 网络（Redis / RabbitMQ / 生产微服务共用）
 docker network create go-ai-talk-net
 
-# Redis / RabbitMQ（生产端口 7001–7006、5672/15672）— 见 A.1 同类命令，用非 .test 的 compose 文件
+# 2) MySQL：创建各 ai_voice_* 生产库（history / device / voice / worker / app / ucg 等）
 
+# 3) 静态目录
 sudo mkdir -p /ai_talk_images /apk/ai_talk && sudo chmod 755 /ai_talk_images /apk/ai_talk
 
+# 4) 生产 Redis Cluster（compose project：go-ai-talk-redis；宿主机 7001–7006）
+docker compose -f manifest/docker/docker-compose.redis-cluster.yml up -d --force-recreate
+docker compose -f manifest/docker/docker-compose.redis-cluster.yml ps   # 6 节点均须 running
+
+# 先验收集群是否已可用（见附录「Redis Cluster 验收」）；cluster_state:ok 则跳过 cluster create
+docker compose -f manifest/docker/docker-compose.redis-cluster.yml exec -T redis-node-1 \
+  redis-cli -p 7001 CLUSTER INFO | grep cluster_state
+
+# 仅当上一步非 cluster_state:ok（首次初始化或 down -v 重置卷后）才执行：
+docker compose -f manifest/docker/docker-compose.redis-cluster.yml exec -T redis-node-1 \
+  redis-cli --cluster create \
+  redis-node-1:7001 redis-node-2:7002 redis-node-3:7003 \
+  redis-node-4:7004 redis-node-5:7005 redis-node-6:7006 \
+  --cluster-replicas 1 --cluster-yes
+
+docker compose -f manifest/docker/docker-compose.redis-cluster.yml exec -T redis-node-1 \
+  redis-cli -p 7001 CLUSTER INFO | grep cluster_state
+# 期望 cluster_state:ok
+
+# 5) 生产 RabbitMQ（compose project：go-ai-talk-rabbitmq；5672 AMQP / 15672 管理台）
+docker compose -f manifest/docker/docker-compose.rabbitmq.yml up -d --force-recreate
+chmod +x hack/rabbitmq-init.sh && ./hack/rabbitmq-init.sh
+# 管理台 http://127.0.0.1:15672  默认 guest/guest
+# 容器已起、仅补 exchange/队列拓扑：SKIP_UP=1 ./hack/rabbitmq-init.sh
+
+# 6) 环境文件
 cp manifest/docker/.env.prod.example manifest/docker/.env.prod
 # 填写 REGISTRY、IMAGE_TAG、各 *_DB_LINK、生产密钥（勿提交 git）
+
+# 7) 首次启动生产微服务 — 见 C.2 步骤 4（docker login ACR → pull → up --no-build）
+```
+
+**日常：仅重启生产中间件**（不删 volume；Redis **不要**再 cluster create）
+
+```bash
+cd /www/wwwroot/go/go_ai_talk
+
+docker compose -f manifest/docker/docker-compose.redis-cluster.yml up -d --force-recreate
+docker compose -f manifest/docker/docker-compose.redis-cluster.yml exec -T redis-node-1 \
+  redis-cli -p 7001 CLUSTER INFO | grep cluster_state
+# cluster_state:ok 即可
+
+docker compose -f manifest/docker/docker-compose.rabbitmq.yml up -d --force-recreate
+# rabbitmq-init 仅在新数据卷或管理台缺 voice.events 时执行
 ```
 
 ### C.2 日常：把改动发布到生产（逐步）
@@ -488,10 +554,32 @@ docker exec go-ai-talk-device-service-test getent hosts redis-node-1
 ```bash
 docker compose -f manifest/docker/docker-compose.redis-cluster.test.yml up -d --force-recreate
 docker compose -f manifest/docker/docker-compose.redis-cluster.test.yml ps -a
-# 6 行均为 running 后再 cluster create
+# 6 行均为 running 后再验收集群（见附录）；非 ok 才 cluster create
 ```
 
 `logs` 无输出且 `ps` 为空 → 容器从未创建，检查 `up` 报错（网络、端口）。
+
+---
+
+### D.4b 测试/生产 Redis：`Node … is not empty`（重复 cluster create）
+
+**现象**：
+
+```text
+[ERR] Node redis-node-1:7001 is not empty. Either the node already knows other nodes … or contains some key in database 0.
+```
+
+**原因**：数据卷里**已有集群元数据或 key**。`cluster create` 只对**空节点**执行一次；`up --force-recreate` **不会**清空 volume，日常重启后**不应**再跑 create。
+
+**解决**：**先查集群是否已可用**（见 [附录：Redis Cluster 验收](#redis-cluster-验收与-cluster-create)）：
+
+```bash
+docker compose -f manifest/docker/docker-compose.redis-cluster.test.yml exec -T redis-node-1 \
+  redis-cli -p 7001 CLUSTER INFO | grep cluster_state
+```
+
+- **`cluster_state:ok`** → **忽略上述报错，不要 cluster create**，直接继续 RabbitMQ / 微服务。
+- **非 ok** 且确需重建 → 测试环境可 `down -v` 清空卷后重新 `up` + `cluster create`（见附录）。
 
 ---
 
@@ -588,18 +676,18 @@ docker compose -f manifest/docker/docker-compose.redis-cluster.test.yml up -d --
 
 **说明**：测试微服务走 Docker 网内 `redis-node-1:7001`，不依赖宿主机 1700x；1700x 仅用于宿主机调试。生产 Redis 用 **7001–7006**，与 1700x 无关。
 
-**cluster create**（集群已存在时会提示 already knows other nodes，可改查 `CLUSTER INFO`）：
+节点 **running** 后，**先验收集群**（[附录：Redis Cluster 验收](#redis-cluster-验收与-cluster-create)）。**若 `cluster_state:ok`，不要执行 cluster create**；仅首次或 `down -v` 重置卷后才 create：
 
 ```bash
+docker compose -f manifest/docker/docker-compose.redis-cluster.test.yml exec -T redis-node-1 \
+  redis-cli -p 7001 CLUSTER INFO | grep cluster_state
+# cluster_state:ok → 跳过 create
+
 docker compose -f manifest/docker/docker-compose.redis-cluster.test.yml exec -T redis-node-1 \
   redis-cli --cluster create \
   redis-node-1:7001 redis-node-2:7002 redis-node-3:7003 \
   redis-node-4:7004 redis-node-5:7005 redis-node-6:7006 \
   --cluster-replicas 1 --cluster-yes
-
-docker compose -f manifest/docker/docker-compose.redis-cluster.test.yml exec -T redis-node-1 \
-  redis-cli -p 7001 CLUSTER INFO | grep cluster_state
-# 期望 cluster_state:ok
 ```
 
 ---
@@ -641,7 +729,7 @@ docker network create go-ai-talk-test-net 2>/dev/null || true
 # 清理：依次 ① Redis → ② RabbitMQ → ③ 微服务（各块见「启动前清理」）
 # … 复制 ①②③ 的 docker rm + 验收命令 …
 
-# 启动 Redis → cluster create → RabbitMQ → init → 微服务（见 B.1 步骤 5–6 与 B.2 步骤 3）
+# 启动 Redis → 验收集群（ok 则跳过 create）→ RabbitMQ → init → 微服务（见 B.1 步骤 5–6 与 B.2 步骤 3）
 ```
 
 完整命令见 **B.1**；Conflict 时仅在对应 `up` 前插入 **① / ② / ③** 各 2 行（删 + 验）。
@@ -691,6 +779,79 @@ docker network create go-ai-talk-test-net 2>/dev/null || true
 | `docker-compose.microservices.prod.yml` | 生产 overlay + 端口 9701/980x |
 
 镜像引用：`${REGISTRY}/gateway:${IMAGE_TAG}`。`REGISTRY` = `<ACR域名>/<命名空间>`；仓库名单段（`gateway`、`device-service` 等，无 `go-ai-talk/` 前缀）。
+
+### Redis Cluster 验收与 cluster create
+
+> **`cluster create` 仅对空节点执行一次。** 数据卷保留时，重复执行会报 `Node … is not empty` 或 `already knows other nodes`——这通常表示**集群已初始化**，不是故障。
+
+**MUST 先检查**；若已可用则 **不要** 再跑 `cluster create`，直接继续 RabbitMQ / 微服务。日常 `up --force-recreate` 只重建容器，**不**清空 volume，**无需**重新 create。
+
+#### 1. 查看集群是否已可用
+
+**生产**（`docker-compose.redis-cluster.yml`）：
+
+```bash
+docker compose -f manifest/docker/docker-compose.redis-cluster.yml exec -T redis-node-1 \
+  redis-cli -p 7001 CLUSTER INFO | grep cluster_state
+# cluster_state:ok → 已就绪，跳过 cluster create
+
+docker compose -f manifest/docker/docker-compose.redis-cluster.yml exec -T redis-node-1 \
+  redis-cli -p 7001 CLUSTER NODES
+# 期望 6 个节点（3 主 3 从）
+```
+
+**测试**（`docker-compose.redis-cluster.test.yml`）：
+
+```bash
+docker compose -f manifest/docker/docker-compose.redis-cluster.test.yml exec -T redis-node-1 \
+  redis-cli -p 7001 CLUSTER INFO | grep cluster_state
+# cluster_state:ok → 已就绪，跳过 cluster create
+
+docker compose -f manifest/docker/docker-compose.redis-cluster.test.yml exec -T redis-node-1 \
+  redis-cli -p 7001 CLUSTER NODES
+# 期望 6 个节点
+```
+
+#### 2. 仅当 `cluster_state` 非 ok 时：首次 cluster create
+
+6 节点均为 **running** 且上一步**不是** `cluster_state:ok` 时（全新 volume 或重置后）才执行：
+
+```bash
+# 生产
+docker compose -f manifest/docker/docker-compose.redis-cluster.yml exec -T redis-node-1 \
+  redis-cli --cluster create \
+  redis-node-1:7001 redis-node-2:7002 redis-node-3:7003 \
+  redis-node-4:7004 redis-node-5:7005 redis-node-6:7006 \
+  --cluster-replicas 1 --cluster-yes
+
+# 测试（compose 文件换 .test.yml）
+docker compose -f manifest/docker/docker-compose.redis-cluster.test.yml exec -T redis-node-1 \
+  redis-cli --cluster create \
+  redis-node-1:7001 redis-node-2:7002 redis-node-3:7003 \
+  redis-node-4:7004 redis-node-5:7005 redis-node-6:7006 \
+  --cluster-replicas 1 --cluster-yes
+```
+
+create 后再验：
+
+```bash
+docker compose -f manifest/docker/docker-compose.redis-cluster.test.yml exec -T redis-node-1 \
+  redis-cli -p 7001 CLUSTER INFO | grep cluster_state
+# 期望 cluster_state:ok
+```
+
+#### 3. 重置集群（会清空 Redis 数据，仅测试环境或明确维护窗口）
+
+```bash
+# 测试示例
+docker compose -f manifest/docker/docker-compose.redis-cluster.test.yml down -v
+docker compose -f manifest/docker/docker-compose.redis-cluster.test.yml up -d --force-recreate
+# 再按「2. 首次 cluster create」执行
+```
+
+生产重置同理，换 `docker-compose.redis-cluster.yml`；**须评估业务影响**。
+
+相关排错：[D.4b](#d4b-测试生产-redisnode--is-not-empty重复-cluster-create)。
 
 ### ACR 与 GitHub Secrets
 

@@ -1,6 +1,9 @@
 # 生产 overlay：与基线 docker-compose.microservices.yml 组合使用。
 # 项目名 go-ai-talk-prod（与测试栈 go-ai-talk-test 隔离，同机双栈 MUST 各自独立 project）。
 # 镜像来自 registry；启动前 pull，且 MUST 使用 --no-build。
+#
+# 本文件只改「生产部署项」：镜像、ports、networks。
+# 不写 environment：业务环境变量全部由基线 + --env-file .env.prod 注入。
 # 宿主机端口在此定义（基线无 ports，避免与 test overlay 合并叠加）。
 
 name: go-ai-talk-prod
