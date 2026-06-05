@@ -37,7 +37,7 @@
 
 ## 7. CI（GitHub Actions → ACR）
 
-- [x] 7.1 新增 `.github/workflows/docker-acr.yml`：develop → `:develop`+`:sha`；git tag `v*` → `:tag`+`:sha`
+- [x] 7.1 新增 `.github/workflows/docker-acr.yml`：预发布 tag → 测试 ACR；正式 tag `vMAJOR.MINOR.PATCH` → 生产 ACR（均附带 `:<sha>`）
 - [x] 7.2 runbook §2.5.1 改为 GitHub Actions 说明，停用 ACR 控制台构建规则
 - [x] 7.4 runbook 重构为 A 本地 / B 测试 / C 生产 分步发布流程，精简 ACR 配置说明
 
@@ -46,3 +46,9 @@
 - [x] 8.1 `admin.html`：`gatewayAppBase` 按 9701↔9702 / 19701↔19702 配对，避免测试页跳转生产 App 网关
 - [x] 8.2 gateway-app CORS 白名单由 `.env` 的 `GATEWAY_APP_PUBLIC_BASE_URL` hostname + 可选 `GATEWAY_APP_CORS_ALLOWED_HOSTS` 注入，移除代码内固定域名
 - [x] 8.3 runbook 补充 Web 页验收（admin 版本管理链接、各页 API 同源）
+
+## 9. CI：仅 tag 触发构建
+
+- [x] 9.1 移除 `docker-acr.yml` 对 develop 分支 push 的触发；测试/生产均仅 tag 构建
+- [x] 9.2 预发布 tag（`v1.0.0-rc.1` 等）→ 测试 ACR；正式 tag（`v1.0.0`）→ 生产 ACR
+- [x] 9.3 更新 runbook B.2 与 `.env.test.example`：IMAGE_TAG 改为预发布 semver，不再使用 `:develop`

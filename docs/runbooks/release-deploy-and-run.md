@@ -7,7 +7,7 @@
 | 方式 | 何时用 | 镜像来源 | 服务器是否需要完整源码 |
 |------|--------|----------|------------------------|
 | **A. 本地开发** | 本机改代码联调 | 本机 `docker compose --build`（`:local`） | 要（整仓） |
-| **B. 测试环境** | 合并 `develop` 后在 test 域名验收 | ACR `:develop`（GitHub Actions 构建） | **不要**（仅需 compose + `.env.test`） |
+| **B. 测试环境** | 打预发布 tag 后在 test 域名验收 | ACR `:v*-rc.*` 等（GitHub Actions 构建） | **不要**（仅需 compose + `.env.test`） |
 | **C. 生产环境** | 发版 semver tag 后上线 | ACR `:v*`（GitHub Actions 构建） | **不要**（仅需 compose + `.env.prod`） |
 
 镜像由 `.github/workflows/docker-acr.yml` 构建 push；服务器 **`pull` + `--no-build`**，不在服务器编译 Go 源码。
@@ -208,7 +208,7 @@ curl -s http://127.0.0.1:9901/healthz     # worker
 ## B. 发布测试环境
 
 对外：`https://test.pangbao.cuplay.top:9701` / `:9702`（Nginx 反代至宿主机 **19701 / 19702**）。  
-镜像 tag：**`develop`**（`.env.test` 中 `IMAGE_TAG=develop`）。
+镜像 tag：**与 git 预发布 tag 一致**（如 **`v1.0.0-rc.1`**，写在 `.env.test` 的 **`IMAGE_TAG`**）。
 
 ### B.1 首次搭建测试栈（一次性，与生产同机且完全隔离）
 
@@ -257,19 +257,31 @@ cp manifest/docker/.env.test.example manifest/docker/.env.test
 
 ### B.2 日常：把改动发布到测试（逐步）
 
-**步骤 1 — 开发机：提交并推送**
+**步骤 1 — 开发机：提交、打预发布 tag 并推送**
 
 ```bash
 git checkout develop
 git add … && git commit -m "…"
 git push origin develop
+
+# 测试镜像仅由 tag 触发 CI（develop push 不再构建）
+git tag v1.0.0-rc.1    # 或 v1.0.0-beta.1 等（须含 - 后缀，push 至测试 ACR）
+git push origin v1.0.0-rc.1
 ```
 
 **步骤 2 — 等待 CI**
 
-打开 GitHub → Actions → `docker-acr` 工作流，确认 **develop** 推送的构建全部成功（七服务镜像 tag `:develop`）。
+打开 GitHub → Actions → `docker-acr` 工作流，确认 **tag `v1.0.0-rc.1`** 构建全部成功（七服务镜像 push 至**测试**命名空间）。
 
-**步骤 3 — 测试服务器：拉镜像并更新**
+> **路由规则**：`vMAJOR.MINOR.PATCH`（如 `v1.0.0`）→ 生产 ACR；`v1.0.0-rc.1` 等预发布 tag → 测试 ACR。
+
+**步骤 3 — 测试服务器：改 tag、拉镜像并更新**
+
+编辑 `manifest/docker/.env.test`：
+
+```bash
+IMAGE_TAG=v1.0.0-rc.1
+```
 
 > 服务器只需保留 `manifest/docker/` 下 compose 与 `.env.test`，**无需**整仓源码。
 
@@ -483,7 +495,7 @@ docker compose -p go_ai_talk \
 **现象**：
 
 ```text
-pull access denied for crpi-xxx-vpc.../pangbao-test/gateway:develop
+pull access denied for crpi-xxx-vpc.../pangbao-test/gateway:v1.0.0-rc.1
 repository does not exist or may require 'docker login'
 ```
 
@@ -502,7 +514,7 @@ docker login crpi-xxx-vpc.cn-hangzhou.personal.cr.aliyuncs.com \
   -u '<ACR_USERNAME>' -p '<ACR_PASSWORD>'
 
 # 2) 单镜像试拉
-docker pull crpi-xxx-vpc.cn-hangzhou.personal.cr.aliyuncs.com/pangbao-test/gateway:develop
+docker pull crpi-xxx-vpc.cn-hangzhou.personal.cr.aliyuncs.com/pangbao-test/gateway:v1.0.0-rc.1
 
 # 3) 核对 .env.test
 grep -E '^REGISTRY=|^IMAGE_TAG=' manifest/docker/.env.test
@@ -514,7 +526,7 @@ grep -E '^REGISTRY=|^IMAGE_TAG=' manifest/docker/.env.test
 |--------|------|
 | `ACR_REGISTRY_TEST` / `ACR_REGISTRY_PROD` | **公网域名**，**禁止** `-vpc` |
 | 命名空间 | 与 `.env.test` / `.env.prod` 的 `REGISTRY` 中 `/pangbao-test` 等一致 |
-| ACR 控制台 | 对应命名空间下已有 7 个仓库且存在 `:develop` 或 `:v*` tag |
+| ACR 控制台 | 对应命名空间下已有 7 个仓库且存在预发布/正式 tag（如 `:v1.0.0-rc.1`、`:v1.0.0`） |
 
 ---
 
@@ -790,7 +802,7 @@ docker exec go-ai-talk-gateway-app-test printenv GATEWAY_APP_PUBLIC_BASE_URL
 | gateway / gateway-app | 9701 / 9702 | 19701 / 19702 |
 | MySQL | `ai_voice_*` | `ai_voice_*_test` |
 | 静态目录 | `/ai_talk_images`、`/apk/ai_talk` | `*_test` 后缀 |
-| `IMAGE_TAG` | semver（`.env.prod`） | `develop`（`.env.test`） |
+| `IMAGE_TAG` | semver（`.env.prod`，如 `v1.0.0`） | 预发布 semver（`.env.test`，如 `v1.0.0-rc.1`） |
 | 域名 | www.pangbao.cuplay.top | test.pangbao.cuplay.top |
 
 ### Compose 文件说明
@@ -883,8 +895,8 @@ docker compose -f manifest/docker/docker-compose.redis-cluster.test.yml up -d --
 
 | 环境 | 服务器 `.env` 的 `REGISTRY` | GitHub Secret | CI 触发 |
 |------|------------------------------|---------------|---------|
-| **测试** | `crpi-xxx-vpc.../<测试命名空间>` | `ACR_REGISTRY_TEST` = `crpi-xxx.../<测试命名空间>`（公网，无 `-vpc`） | push `develop` |
-| **生产** | `crpi-xxx-vpc.../<生产命名空间>` | `ACR_REGISTRY_PROD` = `crpi-xxx.../<生产命名空间>`（公网，无 `-vpc`） | push tag `v*` |
+| **测试** | `crpi-xxx-vpc.../<测试命名空间>` | `ACR_REGISTRY_TEST` = `crpi-xxx.../<测试命名空间>`（公网，无 `-vpc`） | push tag `v*-*`（预发布，如 `v1.0.0-rc.1`） |
+| **生产** | `crpi-xxx-vpc.../<生产命名空间>` | `ACR_REGISTRY_PROD` = `crpi-xxx.../<生产命名空间>`（公网，无 `-vpc`） | push tag `vMAJOR.MINOR.PATCH`（如 `v1.0.0`） |
 
 共用 Secrets（同一 ACR 实例）：
 
@@ -922,8 +934,8 @@ MYSQL_HOST=127.0.0.1 MYSQL_USER=root MYSQL_PASS='***' ./hack/mask-seed-data.sh
 ### 发布前检查
 
 - `go test ./cmd/... ./internal/...`
-- 测试栈 `develop` 验收通过（B.2 步骤 4）
-- 生产 `.env.prod` 的 `IMAGE_TAG` 与 git tag 一致，且不为 `develop`
+- 测试栈预发布 tag 验收通过（B.2 步骤 4）
+- 生产 `.env.prod` 的 `IMAGE_TAG` 与 git 正式 tag 一致（如 `v1.0.0`）
 - `printenv *_DB_LINK` 确认 test/prod 库未串
 
 ### 宝塔面板无响应
