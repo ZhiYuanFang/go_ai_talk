@@ -402,6 +402,9 @@ docker logs go-ai-talk-gateway-app-test 2>&1 | grep "database.app 已用 APP_DB_
 
 # 官网聚合：appDatabase 须为 ai_voice_app_test（非 ai_voice_app）
 curl -sk https://test.pangbao.cuplay.top:9702/device/app/api/site/home | grep appDatabase
+
+# 环境隔离一键验收（Redis/MySQL/对外入口，只读）
+chmod +x hack/env-isolation-check.sh && ./hack/env-isolation-check.sh
 ```
 
 > **重要**：`*_DB_LINK` 生效依赖 **含 `internal/platform/dbcfg` 的新镜像**。仅 `git pull` + `up --no-build` 不会修复 test 误连生产库；须 CI 打预发布 tag 或本地 `--build` 后 `--force-recreate` 全量微服务。
@@ -835,6 +838,37 @@ docker exec go-ai-talk-device-service getent hosts redis-node-1
 
 测试微服务须带 **`microservices.test.yml`** overlay，否则仍在 `go-ai-talk-net`，解析不到测试 Redis。
 
+**一键只读验收**（Redis + MySQL 环境变量 + 对外 `appDatabase` + Redis run_id / 关键 key 抽样）：
+
+```bash
+chmod +x hack/env-isolation-check.sh
+./hack/env-isolation-check.sh
+```
+
+出问题时带上 JWT 中的 `sub`（wxId）与 `device_no` 定点对照：
+
+```bash
+INCIDENT_WX_ID=42 INCIDENT_DEVICE_NO=ABCDEF \
+MYSQL_CLI_USER=root MYSQL_CLI_PASS='***' MYSQL_HOST=120.55.50.105 \
+./hack/env-isolation-check.sh
+```
+
+脚本只读、不改数据；`FAIL` 项优先处理（尤其 `GF_REDIS_DEFAULT_ADDRESS` 含 `redis-node`、库名无 `_test`、`run_id` 相同、测试 URL 返回 `appDatabase=ai_voice_app`）。
+
+---
+
+### D.3b 测试服偶现正式数据 / 注销成功但库无变化
+
+**现象**：客户端连测试域名，偶现宝宝/历史像正式服；注销接口 200，但观测的 MySQL 无变化。
+
+**常见根因**：
+
+1. **观测库错位**：注销删的是 `ai_voice_device_test.wx`，查的是 `ai_voice_device.wx`。
+2. **Redis 串线**：测试微服务 `GF_REDIS_DEFAULT_ADDRESS` 误指正式 Cluster；Redis key 无环境前缀，`dev:wx:id2dev:` / `history:record:list:` 会互踩。
+3. **客户端/反代串线**：`test.pangbao` 偶发打到正式 gateway（`site/home` 的 `appDatabase` 为 `ai_voice_app` 而非 `ai_voice_app_test`）。
+
+**排查**：先跑 `./hack/env-isolation-check.sh`；复现时记录 JWT `sub` 与 `device_no`，对照两库 `wx` 表与两侧 Redis 同名 key。
+
 ---
 
 ### D.4 测试 Redis：`redis-test` 未 running
@@ -1247,7 +1281,7 @@ MYSQL_HOST=127.0.0.1 MYSQL_USER=root MYSQL_PASS='***' ./hack/mask-seed-data.sh
 - `go test ./cmd/... ./internal/...`
 - 测试栈预发布 tag 验收通过（B.2 步骤 4）
 - 生产 `.env.prod` 的 `IMAGE_TAG` 与 git 正式 tag 一致（如 `v1.0.0`）
-- `printenv MYSQL_TCP_HOST GF_REDIS_DEFAULT_ADDRESS GATEWAY_APP_JWT_SECRET *_DB_LINK` 确认 test/prod 未串
+- `./hack/env-isolation-check.sh` 无 `FAIL`（或等价 `printenv`：`MYSQL_TCP_HOST GF_REDIS_DEFAULT_ADDRESS GATEWAY_APP_JWT_SECRET *_DB_LINK` 确认 test/prod 未串）
 - 各微服务启动日志含 `database.* 已用 *_DB_LINK 覆盖`（见「数据库环境隔离」）
 
 ### 宝塔面板无响应
