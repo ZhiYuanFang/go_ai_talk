@@ -2,6 +2,7 @@
 # VOICE_SERVICE_URL、DEVICE_SERVICE_URL，指向可达的 voice-service、device-service 基址；
 # OUTBOX_RELAY 开启时另需 WORKER_SERVICE_URL，将 domain_outbox 入队写入 worker 专用库 ai_voice_worker（见 history/local.go）。
 # 未设置时 Go 侧默认回退 http://127.0.0.1:9802/9803/9901，仅适用于本机同命名空间多进程联调。
+# MySQL：HISTORY_DB_LINK + MYSQL_TCP_HOST；Redis：GF_REDIS_DEFAULT_ADDRESS。
 server:
   address: ":9801"
   openapiPath: "/api.json"
@@ -10,15 +11,3 @@ server:
 logger:
   level: "all"
   stdout: true
-
-database:
-  default:
-    # 运行时请通过环境变量 HISTORY_DB_LINK 覆盖（cmd 启动时 gdb.SetConfigGroup 覆盖 yaml，见 internal/platform/dbcfg）
-    link: "mysql:root:Fang930927@tcp(120.55.50.105:3306)/ai_voice_history"
-    debug: false
-
-redis:
-  default:
-    # Redis Cluster：三主种子逗号分隔（与 docker-compose.redis-cluster 拓扑一致）。
-    address: "redis-node-1:7001,redis-node-2:7002,redis-node-3:7003"
-    db: 0

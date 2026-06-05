@@ -7,6 +7,7 @@ import (
 
 	"hello/internal/controller"
 	"hello/internal/platform/dbcfg"
+	"hello/internal/platform/rediscfg"
 	"hello/internal/platform/runtimecheck"
 	ucgsvc "hello/internal/services/ucg"
 	_ "hello/internal/shared/runtime"
@@ -37,6 +38,7 @@ func prepareUcgServiceRuntime() {
 		_ = os.Setenv("GF_GCFG_FILE", "manifest/config/config.ucg-service.yaml")
 	}
 	dbcfg.ApplyGroupFromEnv("ucg-service", "default", "UCG_DB_LINK", "GF_DATABASE_DEFAULT_LINK")
+	rediscfg.ApplyDefaultFromEnv("ucg-service")
 }
 
 func applyUcgServiceAddress(s interface{ SetAddr(address string) }) {

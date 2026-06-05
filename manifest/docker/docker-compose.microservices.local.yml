@@ -1,11 +1,10 @@
 # 本地开发端口 overlay：与 microservices.yml 组合，宿主机映射与生产一致（9701/980x）。
 #
 # 示例：
-#   docker compose --env-file manifest/docker/.env \
+#   docker compose --env-file manifest/docker/.env.local \
 #     -f manifest/docker/docker-compose.microservices.yml \
 #     -f manifest/docker/docker-compose.microservices.local.yml \
 #     up -d --build
-
 services:
   gateway:
     ports:

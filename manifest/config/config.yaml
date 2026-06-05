@@ -1,6 +1,5 @@
-# 主网关 gateway-service（:9701）：无业务库；勿在此文件添加 database 段。
-# App 专用网关为独立进程 gateway-app-server，主配置见 config.gateway-app-server.yaml；
-# 该进程读 ai_voice_app，新建实例须在 yaml 的 database.app.link 或环境变量 APP_DB_LINK 中配置库连接（见 docs/runbooks/release-deploy-and-run.md）。
+# 主网关 gateway-service（:9701）：无业务库。
+# Redis：Compose 注入 GF_REDIS_DEFAULT_ADDRESS（见 manifest/docker/.env.*）。
 server:
   address:     ":9701"
   openapiPath: "/api.json"
@@ -9,9 +8,3 @@ server:
 logger:
   level : "all"
   stdout: true
-
-redis:
-  default:
-    # Redis Cluster：三主种子逗号分隔（与 docker-compose.redis-cluster 拓扑一致），供 gredis 发现全集群。
-    address: "redis-node-1:7001,redis-node-2:7002,redis-node-3:7003"
-    db: 0

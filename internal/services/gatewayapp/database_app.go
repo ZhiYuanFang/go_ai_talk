@@ -4,8 +4,6 @@ import (
 	"os"
 
 	"hello/internal/platform/dbcfg"
-
-	"github.com/gogf/gf/v2/database/gdb"
 )
 
 // ApplyAppDatabaseLinkFromEnv 在进程启动最早阶段将 APP_DB_LINK 写入 gdb「app」分组。
@@ -18,13 +16,11 @@ func AppDatabaseNameFromLink(link string) string {
 	return dbcfg.DatabaseNameFromLink(link)
 }
 
-// ResolvedAppDatabaseName 返回当前进程 app 库名（优先 APP_DB_LINK）。
+// ResolvedAppDatabaseName 返回当前进程 app 库名（来自 APP_DB_LINK，经 MYSQL_TCP_HOST 解析后仍取库名段）。
 func ResolvedAppDatabaseName() string {
-	if name := dbcfg.DatabaseNameFromLink(os.Getenv("APP_DB_LINK")); name != "" {
-		return name
+	link := os.Getenv("APP_DB_LINK")
+	if host := os.Getenv("MYSQL_TCP_HOST"); host != "" {
+		link = dbcfg.RewriteLinkHost(link, host)
 	}
-	if cg := gdb.GetConfig("app"); len(cg) > 0 {
-		return dbcfg.DatabaseNameFromLink(cg[0].Link)
-	}
-	return ""
+	return dbcfg.DatabaseNameFromLink(link)
 }

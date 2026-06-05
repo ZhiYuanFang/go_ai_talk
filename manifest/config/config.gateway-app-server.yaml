@@ -1,14 +1,8 @@
 # gateway-app-server：App 专用入口（JWT、登录/刷新、版本库、历史 WS、下游代理）。
 # 部署时 MUST 设置 DEVICE_SERVICE_URL、HISTORY_SERVICE_URL 指向可达下游；JWT 与内部密钥禁止提交默认值到生产。
-#
-# 【新建实例 / 新环境必检 — 数据库】本进程会读 ai_voice_app.version（版本检查），必须能连上 ai_voice_app：
-#   - 二选一即可：① 本文件 database.app.link 改为该环境真实 DSN；② 或部署时设置环境变量 APP_DB_LINK
-#    （cmd/*-service 启动时 gdb.SetConfigGroup 覆盖 yaml，见 internal/platform/dbcfg）。
-#   若既不改 yaml 又不设 APP_DB_LINK，易沿用占位 IP，新实例上版本接口会连库失败。
-# 配置组为 database.app（非 default）；语义上同 history-service 用 HISTORY_DB_LINK 覆盖 default，此处覆盖的是 app 分组。
+# MySQL：APP_DB_LINK + MYSQL_TCP_HOST；JWT：GATEWAY_APP_JWT_SECRET（ucg 须同值）。
 
-server:
-  address: ":9702"
+server:  address: ":9702"
   openapiPath: "/api.json"
   swaggerPath: "/swagger"
   # GoFrame 默认 clientMaxBodySize 为 8MB；须 ≥ gatewayApp.apkMaxBytes，否则大 APK 上传会在进 handler 前断连（浏览器表现为 failed to fetch）。
@@ -18,22 +12,8 @@ logger:
   level: "all"
   stdout: true
 
-redis:
-  default:
-    address: "redis-node-1:7001,redis-node-2:7002,redis-node-3:7003"
-    db: 0
-
-database:
-  app:
-    # 新环境请改为可达 DSN，或改用环境变量 APP_DB_LINK 覆盖（勿依赖占位地址）
-    link: "mysql:root:Fang930927@tcp(120.55.50.105:3306)/ai_voice_app"
-    debug: false
-
 gatewayApp:
-  # HS256 签名密钥（生产务必覆盖）
-  jwtSecret: "gateway-app-change-me-in-production"
-  accessTtlSeconds: 1800
-  refreshTtlSeconds: 604800
+  accessTtlSeconds: 1800  refreshTtlSeconds: 604800
   # 调用 device 内部 HTTP（如 internal/device-no-by-wx-id）时携带，须与 device 环境 DEVICE_GATEWAY_INTERNAL_SECRET 一致
   deviceInternalSecret: "gateway-internal-change-me"
   # 以下缓存项曾为 id→unionid 热路径保留；当前 Bearer 仅从 JWT 注入 Wx-Id/Device-No，可删除整段或保留作占位兼容

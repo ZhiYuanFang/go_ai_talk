@@ -1,5 +1,4 @@
-# domain_outbox 表在 worker 专用库 ai_voice_worker（database.outbox）；部署 MUST 设置 WORKER_OUTBOX_DB_LINK 或等价 GF_DATABASE_OUTBOX_LINK。
-# 开启 CACHE_PROJECTION_REPAIR 时另需 HISTORY_SERVICE_URL、DEVICE_SERVICE_URL，供 worker 经 HTTP 触发各域投影修复。
+# MySQL：WORKER_OUTBOX_DB_LINK + MYSQL_TCP_HOST；Redis：GF_REDIS_DEFAULT_ADDRESS。
 server:
   address: ":9901"
   openapiPath: "/api.json"
@@ -8,15 +7,3 @@ server:
 logger:
   level: "all"
   stdout: true
-
-database:
-  outbox:
-    # 运行时请通过环境变量 WORKER_OUTBOX_DB_LINK 覆盖（cmd 启动时 gdb.SetConfigGroup 覆盖 yaml）
-    link: "mysql:root:Fang930927@tcp(120.55.50.105:3306)/ai_voice_worker"
-    debug: false
-
-redis:
-  default:
-    # Redis Cluster：三主种子逗号分隔（与 docker-compose.redis-cluster 拓扑一致）。
-    address: "redis-node-1:7001,redis-node-2:7002,redis-node-3:7003"
-    db: 0

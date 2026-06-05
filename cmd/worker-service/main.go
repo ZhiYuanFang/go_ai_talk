@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"hello/internal/platform/dbcfg"
+	"hello/internal/platform/rediscfg"
 	"hello/internal/platform/runtimecheck"
 	_ "hello/internal/shared/runtime"
 	async "hello/internal/services/async"
@@ -38,6 +39,7 @@ func prepareWorkerServiceRuntime() {
 		_ = os.Setenv("GF_GCFG_FILE", "manifest/config/config.worker-service.yaml")
 	}
 	dbcfg.ApplyGroupFromEnv("worker-service", "outbox", "WORKER_OUTBOX_DB_LINK", "GF_DATABASE_OUTBOX_LINK")
+	rediscfg.ApplyDefaultFromEnv("worker-service")
 }
 
 var workerOnce sync.Once

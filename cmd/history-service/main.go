@@ -7,6 +7,7 @@ import (
 
 	"hello/internal/controller"
 	"hello/internal/platform/dbcfg"
+	"hello/internal/platform/rediscfg"
 	"hello/internal/platform/runtimecheck"
 	_ "hello/internal/shared/runtime"
 
@@ -36,6 +37,7 @@ func prepareHistoryServiceRuntime() {
 	}
 	// MUST 在任意 g.DB 之前调用；见 internal/platform/dbcfg.ApplyGroupFromEnv。
 	dbcfg.ApplyGroupFromEnv("history-service", "default", "HISTORY_DB_LINK", "GF_DATABASE_DEFAULT_LINK")
+	rediscfg.ApplyDefaultFromEnv("history-service")
 }
 
 func applyHistoryServiceAddress(s interface{ SetAddr(address string) }) {

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"hello/internal/controller"
+	"hello/internal/platform/rediscfg"
 	"hello/internal/platform/runtimecheck"
 	_ "hello/internal/shared/runtime"
 
@@ -18,6 +19,7 @@ var Main = gcmd.Command{
 	Brief: "start http server",
 
 	Func: func(ctx context.Context, parser *gcmd.Parser) (err error) {
+		rediscfg.ApplyDefaultFromEnv("gateway")
 		// 网关仍做依赖探活，避免将不可用流量放入下游链路。
 		if err = runtimecheck.CheckDependencies(ctx); err != nil {
 			return err

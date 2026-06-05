@@ -7,7 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/gogf/gf/v2/frame/g"
+	"hello/internal/platform/jwtcfg"
+
 	"github.com/golang-jwt/jwt/v4"
 )
 
@@ -22,7 +23,7 @@ type ucgAccessClaims struct {
 func ParseWSAccessToken(ctx context.Context, tokenString string) (wxID int64, err error) {
 	secret := wsJWTSecret(ctx)
 	if secret == "" {
-		return 0, fmt.Errorf("ucg jwtSecret 未配置")
+		return 0, fmt.Errorf("GATEWAY_APP_JWT_SECRET 未配置")
 	}
 	token, err := jwt.ParseWithClaims(tokenString, &ucgAccessClaims{}, func(t *jwt.Token) (interface{}, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -47,12 +48,12 @@ func ParseWSAccessToken(ctx context.Context, tokenString string) (wxID int64, er
 	return wxID, nil
 }
 
-func wsJWTSecret(ctx context.Context) string {
+func wsJWTSecret(_ context.Context) string {
+	if v := jwtcfg.GatewayAppSecret(); v != "" {
+		return v
+	}
 	if v := strings.TrimSpace(os.Getenv("UCG_JWT_SECRET")); v != "" {
 		return v
 	}
-	if v := strings.TrimSpace(os.Getenv("GATEWAY_APP_JWT_SECRET")); v != "" {
-		return v
-	}
-	return strings.TrimSpace(g.Cfg().MustGet(ctx, "ucg.jwtSecret").String())
+	return ""
 }

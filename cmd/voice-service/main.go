@@ -7,6 +7,7 @@ import (
 
 	"hello/internal/controller"
 	"hello/internal/platform/dbcfg"
+	"hello/internal/platform/rediscfg"
 	"hello/internal/platform/runtimecheck"
 	_ "hello/internal/shared/runtime"
 
@@ -35,6 +36,7 @@ func prepareVoiceServiceRuntime() {
 		_ = os.Setenv("GF_GCFG_FILE", "manifest/config/config.voice-service.yaml")
 	}
 	dbcfg.ApplyGroupFromEnv("voice-service", "default", "VOICE_DB_LINK", "GF_DATABASE_DEFAULT_LINK")
+	rediscfg.ApplyDefaultFromEnv("voice-service")
 }
 
 func applyVoiceServiceAddress(s interface{ SetAddr(address string) }) {

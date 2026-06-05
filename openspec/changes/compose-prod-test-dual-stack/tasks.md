@@ -58,4 +58,5 @@
 - [x] 10.1 新增 `internal/platform/dbcfg.ApplyGroupFromEnv`：yaml 已有 `database.*.link` 时，须 `gdb.SetConfigGroup` 才能用 Compose 注入的 DSN
 - [x] 10.2 各微服务 cmd 启动最早阶段接入：`HISTORY_DB_LINK` / `DEVICE_DB_LINK` / `VOICE_DB_LINK` / `UCG_DB_LINK` / `WORKER_OUTBOX_DB_LINK` / `APP_DB_LINK`
 - [x] 10.3 更新 config yaml 注释、`.env.example` 与 runbook「数据库环境隔离验收」
+- [x] 10.5 修复 v1.0.2 升级后全服务连库失败：`*_DB_LINK` 生效后 host 从 yaml IP 变为 host.docker.internal；增加 `MYSQL_TCP_HOST` 覆盖与 gateway-app extra_hosts
 - [ ] 10.4 服务器 rebuild 全量微服务镜像后验收：各容器启动日志含 `database.* 已用 *_DB_LINK 覆盖，库名=ai_voice_*_test`；官网 API `appDatabase` 为 `ai_voice_app_test`

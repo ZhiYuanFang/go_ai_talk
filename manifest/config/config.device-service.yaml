@@ -1,5 +1,6 @@
 # 容器/K8s 部署 MUST 设置 VOICE_SERVICE_URL（如 http://voice-service:9802），供管理后台「问答库」列表 HTTP 委派到 voice-service；
 # OUTBOX 开启时 MUST 设置 WORKER_SERVICE_URL（如 http://worker:9901），经 HTTP 将 domain_outbox 入队到 worker 专用库 ai_voice_worker（见 enqueueDomainOutboxToHistoryRelay）。
+# MySQL：DEVICE_DB_LINK + MYSQL_TCP_HOST；Redis：GF_REDIS_DEFAULT_ADDRESS。
 
 server:
   address: ":9803"
@@ -9,18 +10,6 @@ server:
 logger:
   level: "all"
   stdout: true
-
-database:
-  default:
-    # 运行时请通过环境变量 DEVICE_DB_LINK 覆盖（cmd 启动时 gdb.SetConfigGroup 覆盖 yaml）
-    link: "mysql:root:Fang930927@tcp(120.55.50.105:3306)/ai_voice_device"
-    debug: false
-
-redis:
-  default:
-    # Redis Cluster：三主种子逗号分隔（与 docker-compose.redis-cluster 拓扑一致）。
-    address: "redis-node-1:7001,redis-node-2:7002,redis-node-3:7003"
-    db: 0
 
 # 微信开放平台 OAuth（sns/oauth2/access_token）：platform 与客户端 POST /device/app/api/user/login 的 platform 一致。
 # ios/android 须配置为同一移动应用 appId/secret；web 为网站应用独立凭据。生产务必覆盖 appSecret，勿提交真实密钥。

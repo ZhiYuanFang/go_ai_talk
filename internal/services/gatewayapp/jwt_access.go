@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"hello/internal/platform/jwtcfg"
+
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/golang-jwt/jwt/v4"
 )
@@ -27,9 +29,9 @@ func SignAccess(ctx context.Context, wxID int64, deviceNo string) (string, error
 	if wxID < 0 {
 		return "", fmt.Errorf("wxId 无效")
 	}
-	secret := strings.TrimSpace(g.Cfg().MustGet(ctx, "gatewayApp.jwtSecret").String())
+	secret := jwtcfg.GatewayAppSecret()
 	if secret == "" {
-		return "", fmt.Errorf("gatewayApp.jwtSecret 未配置")
+		return "", fmt.Errorf("GATEWAY_APP_JWT_SECRET 未配置")
 	}
 	ttl := g.Cfg().MustGet(ctx, "gatewayApp.accessTtlSeconds").Int64()
 	if ttl <= 0 {
@@ -54,9 +56,9 @@ func SignAccess(ctx context.Context, wxID int64, deviceNo string) (string, error
 
 // ParseAccessClaims 校验 access JWT，返回 wx 主键 id 与声明中的 device_no（旧 token 无 device_no 时为空串）。
 func ParseAccessClaims(ctx context.Context, tokenString string) (wxID int64, deviceNo string, err error) {
-	secret := strings.TrimSpace(g.Cfg().MustGet(ctx, "gatewayApp.jwtSecret").String())
+	secret := jwtcfg.GatewayAppSecret()
 	if secret == "" {
-		return 0, "", fmt.Errorf("gatewayApp.jwtSecret 未配置")
+		return 0, "", fmt.Errorf("GATEWAY_APP_JWT_SECRET 未配置")
 	}
 	token, err := jwt.ParseWithClaims(tokenString, &accessClaims{}, func(t *jwt.Token) (interface{}, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {

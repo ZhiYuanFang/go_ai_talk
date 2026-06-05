@@ -151,10 +151,12 @@ systemctl start mysql-local   # 或你的 mysqld 服务名
 
 **3. 环境变量**
 
-复制并填写 `manifest/docker/.env.example` → `manifest/docker/.env`（或直接用 `.env.example`）：
+编辑 `manifest/docker/.env.local`（本机开发专用，与 `.env.prod` / `.env.test` 隔离）：
 
-- `HISTORY_DB_LINK`、`DEVICE_DB_LINK`、`VOICE_DB_LINK`、`WORKER_OUTBOX_DB_LINK`、`APP_DB_LINK`、`UCG_DB_LINK`
-- MySQL 与 Docker 同机时主机用 `host.docker.internal`
+- **`MYSQL_TCP_HOST`**：MySQL 主机 IP
+- **`*_DB_LINK`**：6 条 DSN，host 写占位符 `mysql-host`
+- **`GF_REDIS_DEFAULT_ADDRESS`**：本机 Redis（Cluster 三主种子或 standalone 单地址）
+- **`GATEWAY_APP_JWT_SECRET`**：App JWT 签名密钥（gateway-app 签发、ucg 校验须同值）
 
 **4. 静态资源目录**
 
@@ -162,12 +164,16 @@ systemctl start mysql-local   # 或你的 mysqld 服务名
 sudo mkdir -p /ai_talk_images /apk/ai_talk && sudo chmod 755 /ai_talk_images /apk/ai_talk
 ```
 
+**5. 可观测性（可选）**
+
+微服务跑通后，可按 [A.4](#a4-可观测性栈可选) 启动 Prometheus / Grafana 等，用于本地看指标与排查。
+
 ### A.2 日常：改了代码要跑起来
 
 **全量重建并启动**
 
 ```bash
-docker compose --env-file manifest/docker/.env \
+docker compose --env-file manifest/docker/.env.local \
   -f manifest/docker/docker-compose.microservices.yml \
   -f manifest/docker/docker-compose.microservices.local.yml \
   up -d --build
@@ -176,7 +182,7 @@ docker compose --env-file manifest/docker/.env \
 **只改某一个服务**（更快）
 
 ```bash
-docker compose --env-file manifest/docker/.env \
+docker compose --env-file manifest/docker/.env.local \
   -f manifest/docker/docker-compose.microservices.yml \
   -f manifest/docker/docker-compose.microservices.local.yml \
   up -d --build voice-service
@@ -186,7 +192,7 @@ docker compose --env-file manifest/docker/.env \
 **只改了 compose 环境变量、未改代码**
 
 ```bash
-docker compose --env-file manifest/docker/.env \
+docker compose --env-file manifest/docker/.env.local \
   -f manifest/docker/docker-compose.microservices.yml \
   -f manifest/docker/docker-compose.microservices.local.yml \
   up -d --force-recreate
@@ -201,6 +207,62 @@ curl -s http://127.0.0.1:9801/api.json    # history
 curl -s http://127.0.0.1:9802/api.json    # voice
 curl -s http://127.0.0.1:9803/api.json    # device
 curl -s http://127.0.0.1:9901/healthz     # worker
+```
+
+### A.4 可观测性栈（可选）
+
+> **仅本地开发调试用**；生产/测试 ECS 栈不依赖此 compose。与微服务独立 project，可随时 `up`/`down`，不影响业务容器。
+
+**用途**：Prometheus 抓指标、Loki 收日志、Tempo 收链路、Grafana 统一查看。配置文件在 `manifest/docker/observability/`（Prometheus 已预配 gateway / history / worker 三个 scrape target）。
+
+**前提**：须先按 [A.2](#a2-日常改了代码要跑起来) 启动微服务并暴露宿主机端口（`microservices.local.yml` 的 9701 / 9801 / 9901 等），Prometheus 经 `host.docker.internal` 抓取。
+
+**启动**
+
+```bash
+docker compose -f manifest/docker/docker-compose.observability.yml up -d
+docker compose -f manifest/docker/docker-compose.observability.yml ps
+```
+
+**停止**
+
+```bash
+docker compose -f manifest/docker/docker-compose.observability.yml down
+# 保留数据卷（Tempo 容器内 /tmp/tempo）无需 -v；完全重置时自行删容器即可
+```
+
+**访问**
+
+| 组件 | 地址 | 说明 |
+|------|------|------|
+| Grafana | http://127.0.0.1:3000 | 默认账号 `admin` / `admin` |
+| Prometheus | http://127.0.0.1:9090 | Targets 页确认 gateway / history / worker 为 UP |
+| Loki | http://127.0.0.1:3100 | 需在 Grafana 添加数据源 `http://loki:3100` |
+| Tempo | http://127.0.0.1:3200 | OTLP gRPC 宿主机 **4317**；Grafana 数据源 `http://tempo:3200` |
+
+**Grafana 首次配置（一次性）**
+
+1. 登录 Grafana → **Connections → Data sources**。
+2. 添加 **Prometheus**，URL 填 `http://prometheus:9090`（同 compose 网内服务名）。
+3. 可选：添加 **Loki** `http://loki:3100`、**Tempo** `http://tempo:3200`（Explore 查 trace）。
+
+**链路追踪（可选）**
+
+本地微服务默认未注入 `OTEL_EXPORTER_OTLP_ENDPOINT`。若需把 trace 写入 Tempo，可在 `docker-compose.microservices.local.yml` 或 `.env.local` 为对应服务设置：
+
+```bash
+OTEL_EXPORTER_OTLP_ENDPOINT=http://host.docker.internal:4317
+OTEL_EXPORTER_OTLP_INSECURE=true
+```
+
+（与 K8s develop overlay 中 `otel-collector:4317` 等价，本地改为宿主机映射的 Tempo 端口。）
+
+**验收**
+
+```bash
+curl -s http://127.0.0.1:9090/-/healthy          # Prometheus
+curl -s http://127.0.0.1:3000/api/health       # Grafana
+# 浏览器打开 Prometheus → Status → Targets，确认 9701/9801/9901 为 UP
 ```
 
 ---
@@ -241,7 +303,7 @@ COMPOSE_FILE=manifest/docker/docker-compose.rabbitmq.test.yml \
 RABBIT_API_BASE=http://127.0.0.1:15673/api ./hack/rabbitmq-init.sh
 
 # 6) 环境文件
-cp manifest/docker/.env.test.example manifest/docker/.env.test
+cp manifest/docker/.env.test manifest/docker/.env.test.bak   # 首次可从仓库 .env.test 复制后改口令
 # 填写 REGISTRY、*_DB_LINK（指向 *_test 库）、GF_REDIS_DEFAULT_ADDRESS、密钥等
 ```
 
@@ -327,7 +389,7 @@ curl -s http://127.0.0.1:19701/api.json
 docker exec go-ai-talk-history-service-test printenv HISTORY_DB_LINK
 docker exec go-ai-talk-gateway-app-test printenv APP_DB_LINK
 
-# 启动日志：须出现 dbcfg 覆盖行（新镜像；仅 printenv 不够——旧镜像仍会读 yaml 占位生产库）
+# 启动日志：须出现 dbcfg 配置行（未设置 *_DB_LINK 时进程无法连库）
 docker logs go-ai-talk-history-service-test 2>&1 | grep "database.default 已用 HISTORY_DB_LINK"
 docker logs go-ai-talk-gateway-app-test 2>&1 | grep "database.app 已用 APP_DB_LINK"
 
@@ -386,7 +448,7 @@ chmod +x hack/rabbitmq-init.sh && ./hack/rabbitmq-init.sh
 # 容器已起、仅补 exchange/队列拓扑：SKIP_UP=1 ./hack/rabbitmq-init.sh
 
 # 6) 环境文件
-cp manifest/docker/.env.prod.example manifest/docker/.env.prod
+cp manifest/docker/.env.prod manifest/docker/.env.prod.bak   # 首次可从仓库 .env.prod 复制后改口令
 # 填写 REGISTRY、IMAGE_TAG、各 *_DB_LINK、生产密钥（勿提交 git）
 
 # 7) 首次启动生产微服务 — 见 C.2 步骤 4（docker login ACR → pull → up --no-build；须叠加 resources.prod.yml）
@@ -415,7 +477,7 @@ docker compose -f manifest/docker/docker-compose.redis-cluster.yml exec -T redis
 **从旧 6 节点测试 Redis Cluster 迁移至 standalone**：
 
 ```bash
-docker compose -f manifest/docker/docker-compose.redis-cluster.test.yml down -v 2>/dev/null || true
+docker compose -f manifest/docker/docker-compose.redis-standalone.test.yml down -v 2>/dev/null || true
 # 执行上文 ① 清理块，释放 1700x / 旧容器
 
 docker compose -f manifest/docker/docker-compose.redis-standalone.test.yml up -d --force-recreate
@@ -853,8 +915,8 @@ docker network create go-ai-talk-test-net 2>/dev/null || true
 | 服务 | 配置文件 | 要点 |
 |------|----------|------|
 | gateway | `manifest/config/config.yaml` | 无数据库 |
-| gateway-app | `config.gateway-app-server.yaml` | 须 `APP_DB_LINK` 或 `database.app`；APK `/apk/ai_talk`；版本管理页 |
-| voice / device / history / worker / ucg | 各 `config.*-service.yaml` | `database.default`；history+voice 共用 `voice-chat.shared.yaml` |
+| gateway-app | `config.gateway-app-server.yaml` | `APP_DB_LINK`、`GF_REDIS_DEFAULT_ADDRESS`、`GATEWAY_APP_JWT_SECRET` |
+| voice / device / history / worker / ucg | 各 `config.*-service.yaml` | `*_DB_LINK`、`GF_REDIS_DEFAULT_ADDRESS`（ucg 另需 `GATEWAY_APP_JWT_SECRET`） |
 | 跨服务 | Compose 环境变量 | 容器内勿用 `127.0.0.1` 访问他域；用服务名 |
 
 关键原则：
@@ -862,9 +924,18 @@ docker network create go-ai-talk-test-net 2>/dev/null || true
 - 每服务独立库；跨域走 HTTP，禁止跨库直查（见 `AGENTS.md`）。
 - gateway-app：`GATEWAY_APP_PUBLIC_BASE_URL`（APK 下载绝对 URL + CORS 白名单 hostname）、APK 上传需 Nginx `client_max_body_size` ≥ 220MB。
 
-### 数据库环境隔离（test / prod）
+### 环境隔离（MySQL / Redis / JWT）
 
-各微服务 yaml（`manifest/config/config.*-service.yaml`）内 `database.*.link` 为开发占位 DSN。**Compose 注入的 `*_DB_LINK` 必须在进程启动时通过 `gdb.SetConfigGroup` 覆盖 yaml**（实现见 `internal/platform/dbcfg`）；仅 `Setenv("GF_DATABASE_*")` 在 yaml 已有 link 时 **不会** 生效，会导致测试栈读写生产库。
+各微服务 **不在** `manifest/config/*.yaml` 中配置 MySQL 与 Redis；**`.env.prod` / `.env.test` / `.env.local` 为唯一来源**。
+
+| 变量 | 作用 |
+|------|------|
+| `MYSQL_TCP_HOST` | MySQL 主机；改库地址只改此行 |
+| `*_DB_LINK` | 6 条 DSN，host 写 `mysql-host`；库名区分 test/prod |
+| `GF_REDIS_DEFAULT_ADDRESS` | Redis 地址；生产多地址逗号分隔（Cluster），测试 `redis-test:6379` |
+| `GATEWAY_APP_JWT_SECRET` | App access JWT 密钥；**prod/test 必须不同**；ucg 与 gateway-app 同值 |
+
+MySQL 经 `internal/platform/dbcfg`；Redis 经 `internal/platform/rediscfg`；启动日志应含 `database.* 已用` 与 `redis.default 已用`。
 
 | 服务 | 环境变量 | gdb 分组 |
 |------|----------|----------|
@@ -884,8 +955,9 @@ for c in go-ai-talk-history-service-test go-ai-talk-device-service-test go-ai-ta
   echo "== $c =="; docker exec "$c" printenv | grep -E '_DB_LINK|APP_DB_LINK' || true
 done
 
-# 2) 启动日志含覆盖行（须新镜像）
-docker logs go-ai-talk-gateway-app-test 2>&1 | tail -50 | grep -E 'database\.(app|default)|APP_DB_LINK'
+# 2) 启动日志：须含 MYSQL_TCP_HOST 解析后的主机与 _test 库名
+docker logs go-ai-talk-history-service-test 2>&1 | grep "database.default 已用 HISTORY_DB_LINK"
+docker exec go-ai-talk-history-service-test printenv MYSQL_TCP_HOST
 
 # 3) 官网 API
 curl -sk https://test.pangbao.cuplay.top:9702/device/app/api/site/home
@@ -949,6 +1021,7 @@ docker exec go-ai-talk-gateway-app-test printenv GATEWAY_APP_PUBLIC_BASE_URL
 | `docker-compose.redis-cluster.yml` | 生产 Redis Cluster（3 主 0 从）+ limits |
 | `docker-compose.redis-standalone.test.yml` | 测试 Redis standalone |
 | `docker-compose.rabbitmq.yml` / `.test.yml` | RabbitMQ + limits |
+| `docker-compose.observability.yml` | 本地可选：Prometheus / Loki / Tempo / Grafana（见 [A.4](#a4-可观测性栈可选)） |
 
 镜像引用：`${REGISTRY}/gateway:${IMAGE_TAG}`。`REGISTRY` = `<ACR域名>/<命名空间>`；仓库名单段（`gateway`、`device-service` 等，无 `go-ai-talk/` 前缀）。
 
@@ -1018,7 +1091,7 @@ docker compose -f manifest/docker/docker-compose.redis-cluster.yml up -d --force
 
 相关排错：[D.4b](#d4b-生产-redisnode--is-not-empty重复-cluster-create)。
 
-> 已废弃的 `docker-compose.redis-cluster.test.yml`（6 节点）勿在新环境使用；迁移见 [C.1](#c1-首次搭建生产栈一次性)。
+> 测试 Redis 默认使用 `docker-compose.redis-standalone.test.yml`（`redis-test:6379`），勿再使用已删除的六节点 cluster test compose。
 
 ### ACR 与 GitHub Secrets
 
@@ -1067,7 +1140,7 @@ MYSQL_HOST=127.0.0.1 MYSQL_USER=root MYSQL_PASS='***' ./hack/mask-seed-data.sh
 - `go test ./cmd/... ./internal/...`
 - 测试栈预发布 tag 验收通过（B.2 步骤 4）
 - 生产 `.env.prod` 的 `IMAGE_TAG` 与 git 正式 tag 一致（如 `v1.0.0`）
-- `printenv *_DB_LINK` 确认 test/prod 库未串
+- `printenv MYSQL_TCP_HOST GF_REDIS_DEFAULT_ADDRESS GATEWAY_APP_JWT_SECRET *_DB_LINK` 确认 test/prod 未串
 - 各微服务启动日志含 `database.* 已用 *_DB_LINK 覆盖`（见「数据库环境隔离」）
 
 ### 宝塔面板无响应

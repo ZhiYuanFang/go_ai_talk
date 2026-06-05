@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"hello/internal/controller"
+	"hello/internal/platform/rediscfg"
 	"hello/internal/platform/runtimecheck"
 	"hello/internal/services/gatewayapp"
 	_ "hello/internal/shared/runtime"
@@ -38,6 +39,7 @@ func prepareGatewayAppRuntime() {
 	}
 	// MUST 在任意 g.DB("app") 之前调用；见 gatewayapp.ApplyAppDatabaseLinkFromEnv 注释。
 	gatewayapp.ApplyAppDatabaseLinkFromEnv()
+	rediscfg.ApplyDefaultFromEnv("gateway-app")
 }
 
 func applyGatewayAppAddress(s interface{ SetAddr(address string) }) {

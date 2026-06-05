@@ -7,6 +7,7 @@ import (
 
 	"hello/internal/controller"
 	"hello/internal/platform/dbcfg"
+	"hello/internal/platform/rediscfg"
 	"hello/internal/platform/runtimecheck"
 	_ "hello/internal/shared/runtime"
 
@@ -35,6 +36,7 @@ func prepareDeviceServiceRuntime() {
 		_ = os.Setenv("GF_GCFG_FILE", "manifest/config/config.device-service.yaml")
 	}
 	dbcfg.ApplyGroupFromEnv("device-service", "default", "DEVICE_DB_LINK", "GF_DATABASE_DEFAULT_LINK")
+	rediscfg.ApplyDefaultFromEnv("device-service")
 }
 
 func applyDeviceServiceAddress(s interface{ SetAddr(address string) }) {

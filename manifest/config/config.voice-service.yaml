@@ -1,5 +1,6 @@
 # voice-service 仅连接本域库（qa/suggest）；访问 user/event/action 等 MUST 经 HTTP 访问 device-service。
 # 运行时请设置：DEVICE_SERVICE_URL（默认可回退 http://127.0.0.1:9803）、DEVICE_PROFILE_SERVICE_MODE=remote（推荐）。
+# MySQL：VOICE_DB_LINK + MYSQL_TCP_HOST；Redis：GF_REDIS_DEFAULT_ADDRESS。
 
 server:
   address: ":9802"
@@ -9,17 +10,5 @@ server:
 logger:
   level: "all"
   stdout: true
-
-database:
-  default:
-    # 运行时请通过环境变量 VOICE_DB_LINK 覆盖（cmd 启动时 gdb.SetConfigGroup 覆盖 yaml）
-    link: "mysql:root:Fang930927@tcp(120.55.50.105:3306)/ai_voice_voice"
-    debug: false
-
-redis:
-  default:
-    # Redis Cluster：三主种子逗号分隔（与 docker-compose.redis-cluster 拓扑一致）。
-    address: "redis-node-1:7001,redis-node-2:7002,redis-node-3:7003"
-    db: 0
 
 # voiceChat 已迁至 manifest/config/voice-chat.shared.yaml（与 history-service 共用，避免重复维护）。
