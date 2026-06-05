@@ -177,13 +177,13 @@ COMPOSE_PROJECT_NAME=go-ai-talk-test \
 docker compose --env-file manifest/docker/.env.test \
   -f manifest/docker/docker-compose.microservices.yml \
   -f manifest/docker/docker-compose.microservices.test.yml \
-  pull voice-service
+  pull ucg-service
 
 COMPOSE_PROJECT_NAME=go-ai-talk-test \
 docker compose --env-file manifest/docker/.env.test \
   -f manifest/docker/docker-compose.microservices.yml \
   -f manifest/docker/docker-compose.microservices.test.yml \
-  up -d --no-build --force-recreate voice-service
+  up -d --no-build --force-recreate ucg-service
 ```
 
 **步骤 4 — 验收**
