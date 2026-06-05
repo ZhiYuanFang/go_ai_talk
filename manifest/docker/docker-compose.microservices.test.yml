@@ -1,4 +1,5 @@
 # 测试 overlay：与基线 docker-compose.microservices.yml 组合使用。
+# 项目名 go-ai-talk-test（与生产 go-ai-talk-prod 隔离；勿省略 overlay 或与 prod 共用默认 project 名）。
 # 镜像引用同 prod：${REGISTRY}/<服务名>:${IMAGE_TAG}（无 go-ai-talk/ 前缀）。
 # 独立 Docker 网络 go-ai-talk-test-net；宿主机端口 197xx；静态资源目录 *_test。
 # 须先启动 docker-compose.redis-cluster.test.yml 与 docker-compose.rabbitmq.test.yml。
@@ -9,6 +10,8 @@
 #     -f manifest/docker/docker-compose.microservices.yml \
 #     -f manifest/docker/docker-compose.microservices.test.yml \
 #     pull && up -d --no-build
+
+name: go-ai-talk-test
 
 x-test-redis-env: &test-redis-env
   GF_REDIS_DEFAULT_ADDRESS: "${GF_REDIS_DEFAULT_ADDRESS:-redis-node-1:7001,redis-node-2:7002,redis-node-3:7003}"

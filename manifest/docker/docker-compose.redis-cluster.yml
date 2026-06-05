@@ -1,4 +1,7 @@
 version: "3.9"
+# 生产 Redis Cluster：项目名 go-ai-talk-redis（与测试 redis 栈隔离）。
+
+name: go-ai-talk-redis
 
 services:
   redis-node-1:

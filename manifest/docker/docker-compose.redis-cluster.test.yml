@@ -1,5 +1,6 @@
 version: "3.9"
 # 测试 Redis Cluster：仅加入 go-ai-talk-test-net，与生产 cluster（7001–7006）物理隔离。
+# 项目名 go-ai-talk-redis-test。
 # 宿主机映射 17001–17006 → 容器内 7001–7006；业务容器内仍用 redis-node-1:7001 等（test 网络 DNS）。
 #
 # 启动后初始化（在仓库根目录）：
@@ -10,6 +11,8 @@ version: "3.9"
 #     --cluster-replicas 1 --cluster-yes
 # 验收：docker compose -f manifest/docker/docker-compose.redis-cluster.test.yml exec -T redis-node-1 \
 #   redis-cli -p 7001 CLUSTER INFO  →  cluster_state:ok
+
+name: go-ai-talk-redis-test
 
 services:
   redis-node-1:

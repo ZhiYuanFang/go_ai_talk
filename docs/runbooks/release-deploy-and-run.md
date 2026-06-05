@@ -12,6 +12,30 @@
 
 镜像由 `.github/workflows/docker-acr.yml` 构建 push；服务器 **`pull` + `--no-build`**，不在服务器编译 Go 源码。
 
+### 同机生产 + 测试：Compose 项目名隔离（必读）
+
+生产与测试 **必须** 使用 **不同的 Compose project**，否则后执行的 `up` 会接管同一套 service 名（`gateway`、`device-service` 等），**把另一环境容器停掉**。
+
+overlay 文件已内置 `name`（无需再手填 `COMPOSE_PROJECT_NAME`，除非你要覆盖）：
+
+| 栈 | Compose 文件 | Project 名 |
+|----|--------------|------------|
+| 生产微服务 | `microservices.yml` + `microservices.prod.yml` | `go-ai-talk-prod` |
+| 测试微服务 | `microservices.yml` + `microservices.test.yml` | `go-ai-talk-test` |
+| 生产 Redis | `docker-compose.redis-cluster.yml` | `go-ai-talk-redis` |
+| 测试 Redis | `docker-compose.redis-cluster.test.yml` | `go-ai-talk-redis-test` |
+| 生产 RabbitMQ | `docker-compose.rabbitmq.yml` | `go-ai-talk-rabbitmq` |
+| 测试 RabbitMQ | `docker-compose.rabbitmq.test.yml` | `go-ai-talk-rabbitmq-test` |
+
+验收双栈并存：
+
+```bash
+docker ps --format 'table {{.Names}}\t{{.Status}}' | grep -E 'go-ai-talk-(gateway|device|redis|rabbitmq)'
+# 应同时看到生产（9701/9803…）与测试（-test 后缀 / 197xx）容器均为 Up
+```
+
+**曾用默认 project 名 `go_ai_talk` 启动过生产？** 更新 compose 后首次 `up` 会新建 `go-ai-talk-prod` 项目；确认新栈健康后，再清理旧项目：`docker compose -p go_ai_talk -f manifest/docker/docker-compose.microservices.yml down`（**勿**加 `-v`，除非明确要删卷）。
+
 ---
 
 ## A. 本地开发运行
@@ -157,13 +181,11 @@ git push origin develop
 ```bash
 cd /path/to/deploy   # 含 manifest/docker/ 的目录即可
 
-COMPOSE_PROJECT_NAME=go-ai-talk-test \
 docker compose --env-file manifest/docker/.env.test \
   -f manifest/docker/docker-compose.microservices.yml \
   -f manifest/docker/docker-compose.microservices.test.yml \
   pull
 
-COMPOSE_PROJECT_NAME=go-ai-talk-test \
 docker compose --env-file manifest/docker/.env.test \
   -f manifest/docker/docker-compose.microservices.yml \
   -f manifest/docker/docker-compose.microservices.test.yml \
@@ -173,13 +195,11 @@ docker compose --env-file manifest/docker/.env.test \
 **只更新单个服务**
 
 ```bash
-COMPOSE_PROJECT_NAME=go-ai-talk-test \
 docker compose --env-file manifest/docker/.env.test \
   -f manifest/docker/docker-compose.microservices.yml \
   -f manifest/docker/docker-compose.microservices.test.yml \
   pull ucg-service
 
-COMPOSE_PROJECT_NAME=go-ai-talk-test \
 docker compose --env-file manifest/docker/.env.test \
   -f manifest/docker/docker-compose.microservices.yml \
   -f manifest/docker/docker-compose.microservices.test.yml \
@@ -291,7 +311,9 @@ curl -s http://127.0.0.1:9901/healthz
 
 | 项 | 生产 | 测试 |
 |----|------|------|
-| Compose project | 默认 | `go-ai-talk-test` |
+| Compose project（微服务） | `go-ai-talk-prod` | `go-ai-talk-test` |
+| Compose project（Redis） | `go-ai-talk-redis` | `go-ai-talk-redis-test` |
+| Compose project（RabbitMQ） | `go-ai-talk-rabbitmq` | `go-ai-talk-rabbitmq-test` |
 | Docker 网络 | `go-ai-talk-net` | `go-ai-talk-test-net` |
 | Redis 宿主机端口 | 7001–7006 | 17001–17006 |
 | RabbitMQ | 5672 / 15672 | 5673 / 15673 |

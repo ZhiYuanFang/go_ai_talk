@@ -1,4 +1,7 @@
 version: "3.9"
+# 生产 RabbitMQ：项目名 go-ai-talk-rabbitmq。
+
+name: go-ai-talk-rabbitmq
 
 services:
   rabbitmq:

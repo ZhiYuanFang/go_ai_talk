@@ -1,7 +1,10 @@
 version: "3.9"
 # 测试 RabbitMQ：仅 go-ai-talk-test-net；宿主机 5673/15673，与生产 5672/15672 隔离。
+# 项目名 go-ai-talk-rabbitmq-test。
 # 初始化：COMPOSE_FILE=manifest/docker/docker-compose.rabbitmq.test.yml \
 #   RABBIT_API_BASE=http://127.0.0.1:15673/api ./hack/rabbitmq-init.sh
+
+name: go-ai-talk-rabbitmq-test
 
 services:
   rabbitmq:
