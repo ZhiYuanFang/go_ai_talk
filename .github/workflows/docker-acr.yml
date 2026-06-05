@@ -53,25 +53,99 @@ jobs:
         env:
           ACR_REGISTRY_TEST: ${{ secrets.ACR_REGISTRY_TEST }}
           ACR_REGISTRY_PROD: ${{ secrets.ACR_REGISTRY_PROD }}
+          ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
+          ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+          # 兼容检测：旧版单 Secret 名称，便于提示迁移
+          ACR_REGISTRY_LEGACY: ${{ secrets.ACR_REGISTRY }}
         run: |
           set -euo pipefail
+
+          echo "GitHub Secrets 配置路径: Settings → Secrets and variables → Actions → Repository secrets"
+          echo "本 workflow 要求的 Secret Name（区分大小写，须完全一致）:"
+          echo "  - ACR_REGISTRY_TEST  （push develop → 测试命名空间）"
+          echo "  - ACR_REGISTRY_PROD  （push tag v* → 生产命名空间）"
+          echo "  - ACR_USERNAME       （ACR 访问凭证登录名）"
+          echo "  - ACR_PASSWORD       （ACR 访问凭证固定密码）"
+          echo ""
+
+          # 列出各 Secret 是否已配置（不打印 Secret 值）
+          for name in ACR_REGISTRY_TEST ACR_REGISTRY_PROD ACR_USERNAME ACR_PASSWORD; do
+            case "${name}" in
+              ACR_REGISTRY_TEST) val="${ACR_REGISTRY_TEST}" ;;
+              ACR_REGISTRY_PROD) val="${ACR_REGISTRY_PROD}" ;;
+              ACR_USERNAME) val="${ACR_USERNAME}" ;;
+              ACR_PASSWORD) val="${ACR_PASSWORD}" ;;
+            esac
+            if [[ -n "${val}" ]]; then
+              echo "✓ Secret 已配置: ${name}"
+            else
+              echo "✗ Secret 未配置: ${name}"
+            fi
+          done
+          if [[ -z "${ACR_REGISTRY_TEST}" && -z "${ACR_REGISTRY_PROD}" && -n "${ACR_REGISTRY_LEGACY}" ]]; then
+            echo ""
+            echo "::warning::检测到旧 Secret Name「ACR_REGISTRY」有值，但当前 workflow 已拆分为 ACR_REGISTRY_TEST / ACR_REGISTRY_PROD。"
+            echo "::warning::请新建 Secret Name「ACR_REGISTRY_TEST」并填入测试命名空间地址（公网域名，无 -vpc）。"
+          fi
+          echo ""
+
           validate_registry() {
             local reg="$1"
             local secret_name="$2"
+            local host ns suggested
+
+            echo "--- 校验 Secret Name: ${secret_name} ---"
+
             if [[ -z "${reg}" ]]; then
-              echo "::error::缺少 GitHub Secret ${secret_name}" >&2
+              echo "::error title=缺少 Secret ${secret_name}::请在 GitHub 创建 Repository secret，Name 必须为「${secret_name}」"
+              echo "本次 CI 触发需要使用的 Secret Name: ${secret_name}"
+              if [[ "${secret_name}" == "ACR_REGISTRY_TEST" ]]; then
+                echo "示例 Value: crpi-xxx.cn-hangzhou.personal.cr.aliyuncs.com/<测试命名空间>"
+              else
+                echo "示例 Value: crpi-xxx.cn-hangzhou.personal.cr.aliyuncs.com/<生产命名空间>"
+              fi
               exit 1
             fi
+
+            host="${reg%%/*}"
+            if [[ "${host}" == "${reg}" ]]; then
+              ns="(缺失)"
+            else
+              ns="${reg#*/}"
+            fi
+
+            echo "Secret Name: ${secret_name}（已读取到值）"
+            echo "当前 host: ${host}"
+            echo "当前 namespace: ${ns}"
+
             if [[ "${reg}" == *"-vpc."* ]]; then
-              echo "::error::${secret_name} 使用了 -vpc 域名，GitHub Actions 公网 runner 无法 push。" >&2
-              echo "::error::请改为公网域名，例如 crpi-xxx.cn-hangzhou.personal.cr.aliyuncs.com/<命名空间>" >&2
+              suggested="${host/-vpc./.}"
+              if [[ "${ns}" != "(缺失)" ]]; then
+                suggested="${suggested}/${ns}"
+              fi
+              echo ""
+              echo "::error title=${secret_name} 误用了 -vpc 域名::GitHub Actions 公网 runner 无法 push VPC 专线地址"
+              echo "::error::请编辑 Secret Name「${secret_name}」，将 Value 改为公网域名（去掉 host 中的 -vpc）"
+              echo "::error::你当前 host: ${host}"
+              echo "::error::建议改为: ${suggested}"
+              echo ""
+              echo "注意: 服务器 .env.test / .env.prod 的 REGISTRY 可以继续用 -vpc 域名 pull；"
+              echo "      仅 GitHub Secret「${secret_name}」须用公网域名，命名空间与 .env 保持一致。"
               exit 1
             fi
+
             if [[ "${reg}" != *"/"* ]]; then
-              echo "::error::${secret_name} 缺少命名空间。个人版须为 <公网域名>/<命名空间>" >&2
+              echo "::error title=${secret_name} 缺少命名空间::Value 格式须为 <公网域名>/<命名空间>"
+              echo "::error::Secret Name: ${secret_name}"
+              echo "::error::你当前 Value: ${reg}"
+              echo "::error::正确示例: crpi-xxx.cn-hangzhou.personal.cr.aliyuncs.com/your-namespace"
               exit 1
             fi
+
+            echo "✓ ${secret_name} 格式校验通过"
+            echo ""
           }
+
           if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
             validate_registry "${ACR_REGISTRY_PROD}" "ACR_REGISTRY_PROD"
             selected="${ACR_REGISTRY_PROD}"
@@ -84,6 +158,12 @@ jobs:
             echo "::error::不支持的 ref: ${GITHUB_REF}（仅 develop 分支或 v* tag）" >&2
             exit 1
           fi
+
+          if [[ -z "${ACR_USERNAME}" || -z "${ACR_PASSWORD}" ]]; then
+            echo "::error title=缺少 ACR 登录凭证::请配置 Secret Name「ACR_USERNAME」与「ACR_PASSWORD」"
+            exit 1
+          fi
+
           echo "registry=${selected}" >> "${GITHUB_OUTPUT}"
           echo "host=${selected%%/*}" >> "${GITHUB_OUTPUT}"
 
