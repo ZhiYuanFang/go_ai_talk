@@ -141,6 +141,7 @@ func WxBindDevice(ctx context.Context, wxID int64, deviceNo string) error {
 		return errors.New("wxId 或 deviceNo 不能为空")
 	}
 	svc := DeviceAdmin()
+	// 确保设备已注册
 	if err := svc.EnsureRegistered(ctx, deviceNo); err != nil {
 		return err
 	}
