@@ -5,6 +5,8 @@ server:
   address: ":9804"
   openapiPath: "/api.json"
   swaggerPath: "/swagger"
+  # 视频上传上限 20MB；须大于 Flutter maxUcgVideoBytes，默认 GoFrame 8MB 会导致 Web 代理上传失败。
+  clientMaxBodySize: "25MB"
 
 logger:
   level: "all"

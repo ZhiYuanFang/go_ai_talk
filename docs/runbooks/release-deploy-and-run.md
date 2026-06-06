@@ -139,8 +139,6 @@ docker compose -f manifest/docker/docker-compose.redis-cluster.yml exec -T redis
   redis-cli -p 7001 CLUSTER INFO | grep cluster_state
 # 期望 cluster_state:ok
 
-docker compose -f manifest/docker/docker-compose.rabbitmq.yml up -d --force-recreate
-chmod +x hack/rabbitmq-init.sh && ./hack/rabbitmq-init.sh
 ```
 
 **2. MySQL**（宿主机上）
@@ -169,6 +167,13 @@ sudo mkdir -p /ai_talk_images /apk/ai_talk && sudo chmod 755 /ai_talk_images /ap
 微服务跑通后，可按 [A.4](#a4-可观测性栈可选) 启动 Prometheus / Grafana 等，用于本地看指标与排查。
 
 ### A.2 日常：改了代码要跑起来
+
+**清理docker内存***
+```bash
+docker system prune -a 清理无用数据
+# 强制删除所有无用镜像
+docker image prune -a -f
+```
 
 **全量重建并启动**
 

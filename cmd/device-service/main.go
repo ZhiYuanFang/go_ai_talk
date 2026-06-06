@@ -20,7 +20,7 @@ func main() {
 	prepareDeviceServiceRuntime()
 	ctx := gctx.New()
 	// device-service 与其他领域服务保持一致的 fail-fast 启动语义。
-	if err := runtimecheck.CheckDependencies(ctx); err != nil {
+	if err := runtimecheck.CheckDependencies(ctx, runtimecheck.DependencyOptions{RequireRabbitMQ: false}); err != nil {
 		glog.Fatalf(ctx, "dependency check failed: %v", err)
 		return
 	}

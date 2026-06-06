@@ -20,7 +20,7 @@ import (
 func main() {
 	prepareGatewayAppRuntime()
 	ctx := gctx.New()
-	if err := runtimecheck.CheckDependencies(ctx); err != nil {
+	if err := runtimecheck.CheckDependencies(ctx, runtimecheck.DependencyOptions{RequireRabbitMQ: false}); err != nil {
 		glog.Fatalf(ctx, "dependency check failed: %v", err)
 		return
 	}

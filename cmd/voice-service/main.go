@@ -20,7 +20,7 @@ func main() {
 	prepareVoiceServiceRuntime()
 	ctx := gctx.New()
 	// voice-service 启动前强制检查 Redis/MQ，保证会话缓存与事件发布链路可用。
-	if err := runtimecheck.CheckDependencies(ctx); err != nil {
+	if err := runtimecheck.CheckDependencies(ctx, runtimecheck.DependencyOptions{RequireRabbitMQ: false}); err != nil {
 		glog.Fatalf(ctx, "dependency check failed: %v", err)
 		return
 	}

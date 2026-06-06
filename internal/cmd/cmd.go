@@ -21,7 +21,7 @@ var Main = gcmd.Command{
 	Func: func(ctx context.Context, parser *gcmd.Parser) (err error) {
 		rediscfg.ApplyDefaultFromEnv("gateway")
 		// 网关仍做依赖探活，避免将不可用流量放入下游链路。
-		if err = runtimecheck.CheckDependencies(ctx); err != nil {
+		if err = runtimecheck.CheckDependencies(ctx, runtimecheck.DependencyOptions{RequireRabbitMQ: false}); err != nil {
 			return err
 		}
 		// 角色边界：gateway 仅承载入口与策略，不启动业务后台任务（由 worker 独占）。

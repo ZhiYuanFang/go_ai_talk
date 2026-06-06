@@ -735,8 +735,9 @@ func (s *VoiceService) TextChat(ctx context.Context, deviceNo, transcript string
 		return "", err
 	}
 	if s.taskProducer != nil {
+		// voice.task.requested 为审计/异步任务：MQ 不可达时 best-effort，不阻断文本对话（生产容灾）。
 		if err := s.taskProducer.publishTaskRequested(ctx, deviceNo, transcript, "text-chat"); err != nil {
-			return "", StageError{Stage: "event_publish", Detail: fmt.Sprintf("发布事件失败: %v", err)}
+			glog.Warningf(ctx, "metric=voice_task_publish_degraded deviceNo=%s source=text-chat err=%v", deviceNo, err)
 		}
 	}
 	return s.chat(ctx, deviceNo, transcript)

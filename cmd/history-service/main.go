@@ -20,7 +20,7 @@ func main() {
 	prepareHistoryServiceRuntime()
 	ctx := gctx.New()
 	// 统一 fail-fast：关键依赖不可用时 history-service 不进入监听态。
-	if err := runtimecheck.CheckDependencies(ctx); err != nil {
+	if err := runtimecheck.CheckDependencies(ctx, runtimecheck.DependencyOptions{RequireRabbitMQ: false}); err != nil {
 		glog.Fatalf(ctx, "dependency check failed: %v", err)
 		return
 	}

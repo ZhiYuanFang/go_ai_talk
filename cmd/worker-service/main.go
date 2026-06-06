@@ -22,8 +22,8 @@ import (
 func main() {
 	prepareWorkerServiceRuntime()
 	ctx := gctx.New()
-	// worker 同样依赖 Redis/MQ，启动前即校验，避免任务处理中途大面积失败。
-	if err := runtimecheck.CheckDependencies(ctx); err != nil {
+	// worker 依赖 Redis/MQ 消费与 relay，启动前仍校验 RabbitMQ（fail-fast）。
+	if err := runtimecheck.CheckDependencies(ctx, runtimecheck.DependencyOptions{RequireRabbitMQ: true}); err != nil {
 		glog.Fatalf(ctx, "dependency check failed: %v", err)
 		return
 	}

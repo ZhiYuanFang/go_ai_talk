@@ -20,8 +20,8 @@ import (
 func main() {
 	prepareUcgServiceRuntime()
 	ctx := gctx.New()
-	// 与 history/voice 一致：Redis、RabbitMQ 不可用时 fail-fast，避免半启动态。
-	if err := runtimecheck.CheckDependencies(ctx); err != nil {
+	// 与 history/voice 一致：Redis 不可用时 fail-fast；RabbitMQ 探活失败不阻断启动（容灾）。
+	if err := runtimecheck.CheckDependencies(ctx, runtimecheck.DependencyOptions{RequireRabbitMQ: false}); err != nil {
 		glog.Fatalf(ctx, "dependency check failed: %v", err)
 		return
 	}

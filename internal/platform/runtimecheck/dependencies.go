@@ -9,6 +9,8 @@ import (
 
 	"hello/internal/platform/cachekit"
 	"hello/internal/platform/eventkit"
+
+	"github.com/gogf/gf/v2/os/glog"
 )
 
 const (
@@ -17,26 +19,50 @@ const (
 	mqPassEnv = "MQ_PASSWORD"
 )
 
+// DependencyOptions 启动探活选项。生产容灾下 API 进程可将 RequireRabbitMQ 设为 false，
+// 使 RabbitMQ 短暂不可达时仍可启动；worker 等消费者进程应保持 true。
+type DependencyOptions struct {
+	RequireRabbitMQ bool
+}
+
 // CheckDependencies 在服务启动前执行关键依赖探测。
-// 任一依赖失败都返回错误，调用方应直接终止启动（fail-fast）。
-func CheckDependencies(ctx context.Context) error {
+// Redis 始终 fail-fast；RabbitMQ 是否阻断启动由 opts.RequireRabbitMQ 决定。
+func CheckDependencies(ctx context.Context, opts DependencyOptions) error {
 	cache := cachekit.WithObserver(cachekit.NewRedisCache(), cachekit.LoggingObserver{})
 	if err := pingRedisSafe(ctx, cache); err != nil {
 		return fmt.Errorf("redis dependency check failed: %w", err)
 	}
+	return checkRabbitMQ(ctx, opts.RequireRabbitMQ)
+}
 
-	// RabbitMQ 通过管理 API 做连通性探测，确保后续发布路径可用。
+func checkRabbitMQ(ctx context.Context, required bool) error {
+	apiBase := strings.TrimSpace(os.Getenv(mqAPIEnv))
+	if apiBase == "" {
+		if required {
+			return fmt.Errorf("rabbitmq dependency check failed: %w", eventkit.ErrEmptyAPIBase)
+		}
+		glog.Warning(ctx, "metric=rabbitmq_startup_degraded reason=MQ_HTTP_API_BASE_empty startup_check=skipped")
+		return nil
+	}
 	publisher, err := eventkit.NewHTTPPublisher(eventkit.HTTPPublisherConfig{
-		APIBase:  strings.TrimSpace(os.Getenv(mqAPIEnv)),
+		APIBase:  apiBase,
 		User:     strings.TrimSpace(os.Getenv(mqUserEnv)),
 		Password: strings.TrimSpace(os.Getenv(mqPassEnv)),
 		Exchange: eventkit.DefaultExchange,
 	})
 	if err != nil {
-		return fmt.Errorf("rabbitmq dependency check failed: %w", err)
+		if required {
+			return fmt.Errorf("rabbitmq dependency check failed: %w", err)
+		}
+		glog.Warningf(ctx, "metric=rabbitmq_startup_degraded reason=publisher_init err=%v", err)
+		return nil
 	}
 	if err = eventkit.WithObserver(publisher, eventkit.LoggingObserver{}).CheckDependency(ctx); err != nil {
-		return fmt.Errorf("rabbitmq dependency check failed: %w", err)
+		if required {
+			return fmt.Errorf("rabbitmq dependency check failed: %w", err)
+		}
+		glog.Warningf(ctx, "metric=rabbitmq_startup_degraded reason=connectivity_check err=%v", err)
+		return nil
 	}
 	return nil
 }
@@ -50,4 +76,3 @@ func pingRedisSafe(ctx context.Context, cache cachekit.Cache) (err error) {
 	}()
 	return cache.Ping(ctx)
 }
-

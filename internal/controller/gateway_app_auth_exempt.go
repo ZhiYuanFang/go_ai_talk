@@ -80,6 +80,7 @@ type gatewayAppAuthPrefixExcept struct {
 
 var gatewayAppAuthExemptPrefixGETHEADExcept = []gatewayAppAuthPrefixExcept{
 	{Prefix: "/device/history/", ExcludePrefix: "/device/history/api/"},
+	{Prefix: "/ucg/app/api/profile/", ExcludePrefix: "/ucg/app/api/profile/me"},
 }
 
 func gatewayAppPathAuthExempt(r *ghttp.Request) bool {
