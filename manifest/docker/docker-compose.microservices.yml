@@ -54,7 +54,7 @@ services:
         condition: service_healthy
       device-service:
         condition: service_healthy
-    networks: [go-ai-talk-net]
+    
 
   gateway-app:
     build:
@@ -112,7 +112,7 @@ services:
       - ../../resource/public:/app/resource/public:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    networks: [go-ai-talk-net]
+    
 
   history-service:
     build:
@@ -144,7 +144,7 @@ services:
       interval: 10s
       timeout: 3s
       retries: 6
-    networks: [go-ai-talk-net]
+    
 
   voice-service:
     build:
@@ -178,7 +178,7 @@ services:
       interval: 10s
       timeout: 3s
       retries: 6
-    networks: [go-ai-talk-net]
+    
 
   device-service:
     build:
@@ -210,7 +210,7 @@ services:
     # 事件 logo 与 device.eventImageStorageDir 默认 /ai_talk_images/ 一致，映射到宿主机根目录
     volumes:
       - /ai_talk_images:/ai_talk_images
-    networks: [go-ai-talk-net]
+    
 
   worker:
     build:
@@ -240,7 +240,7 @@ services:
       interval: 10s
       timeout: 3s
       retries: 6
-    networks: [go-ai-talk-net]
+    
 
   ucg-service:
     build:
@@ -267,9 +267,3 @@ services:
       interval: 10s
       timeout: 3s
       retries: 6
-    networks: [go-ai-talk-net]
-
-networks:
-  go-ai-talk-net:
-    external: true
-    name: go-ai-talk-net
