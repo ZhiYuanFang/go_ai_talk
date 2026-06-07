@@ -3,6 +3,7 @@ package ucg
 import (
 	"context"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -20,7 +21,8 @@ const (
 	NotificationTypeMentionInComment = "mention_in_comment"
 )
 
-var mentionPattern = regexp.MustCompile(`@([\p{Han}\w]+)`)
+// @nickname、@nickname#wxId、@wxId（纯数字）— 与客户端长按评论预填格式一致。
+var mentionPattern = regexp.MustCompile(`@([^\s@]+?)(?:#(\d+))?`)
 
 // NotificationDTO inbox 通知视图。
 type NotificationDTO struct {
@@ -164,6 +166,11 @@ func MarkNotificationsRead(ctx context.Context, recipientWxID int64, ids []uint6
 	return err
 }
 
+type mentionTarget struct {
+	nickname string
+	wxID     uint64
+}
+
 // resolveNicknameToWxID 按昵称查 profile；重名时返回 0（跳过）。
 func resolveNicknameToWxID(ctx context.Context, nickname string) uint64 {
 	nickname = strings.TrimSpace(nickname)
@@ -184,11 +191,40 @@ func resolveNicknameToWxID(ctx context.Context, nickname string) uint64 {
 	return p.WxId
 }
 
-// parseMentionNicknames 解析 @昵称 列表（去重保序）。
-func parseMentionNicknames(content string) []string {
+func verifyProfileWxID(ctx context.Context, wxID uint64) uint64 {
+	if wxID == 0 {
+		return 0
+	}
+	if _, err := GetPublicProfile(ctx, wxID); err != nil {
+		return 0
+	}
+	return wxID
+}
+
+func resolveMentionWxID(ctx context.Context, target mentionTarget) uint64 {
+	if target.wxID > 0 {
+		if id := verifyProfileWxID(ctx, target.wxID); id > 0 {
+			return id
+		}
+	}
+	nick := strings.TrimSpace(target.nickname)
+	if nick == "" {
+		return 0
+	}
+	if id, err := strconv.ParseUint(nick, 10, 64); err == nil && id > 0 {
+		if verified := verifyProfileWxID(ctx, id); verified > 0 {
+			return verified
+		}
+	}
+	return resolveNicknameToWxID(ctx, nick)
+}
+
+// parseMentionTargets 解析 @昵称 / @昵称#wxId / @wxId 列表（去重保序）。
+func parseMentionTargets(content string) []mentionTarget {
 	matches := mentionPattern.FindAllStringSubmatch(content, -1)
-	seen := make(map[string]struct{})
-	out := make([]string, 0, len(matches))
+	seen := make(map[uint64]struct{})
+	seenNick := make(map[string]struct{})
+	out := make([]mentionTarget, 0, len(matches))
 	for _, m := range matches {
 		if len(m) < 2 {
 			continue
@@ -197,11 +233,25 @@ func parseMentionNicknames(content string) []string {
 		if nick == "" {
 			continue
 		}
-		if _, ok := seen[nick]; ok {
+		var wxID uint64
+		if len(m) >= 3 && strings.TrimSpace(m[2]) != "" {
+			if id, err := strconv.ParseUint(strings.TrimSpace(m[2]), 10, 64); err == nil {
+				wxID = id
+			}
+		}
+		if wxID > 0 {
+			if _, ok := seen[wxID]; ok {
+				continue
+			}
+			seen[wxID] = struct{}{}
+			out = append(out, mentionTarget{nickname: nick, wxID: wxID})
 			continue
 		}
-		seen[nick] = struct{}{}
-		out = append(out, nick)
+		if _, ok := seenNick[nick]; ok {
+			continue
+		}
+		seenNick[nick] = struct{}{}
+		out = append(out, mentionTarget{nickname: nick})
 	}
 	return out
 }
@@ -223,8 +273,8 @@ func NotifyOnComment(ctx context.Context, commenterWxID int64, postAuthorWxID ui
 	}
 	notified[commenterWxID] = struct{}{}
 
-	for _, nick := range parseMentionNicknames(content) {
-		wxID := resolveNicknameToWxID(ctx, nick)
+	for _, target := range parseMentionTargets(content) {
+		wxID := resolveMentionWxID(ctx, target)
 		if wxID == 0 {
 			continue
 		}
