@@ -369,6 +369,7 @@ func conversationDTOToItem(c *ucgsvc.ConversationDTO) v1.UcgConversationItem {
 	return v1.UcgConversationItem{
 		Id: c.Id, PeerWxId: c.PeerWxId, Pinned: c.Pinned,
 		UnreadCount: c.UnreadCount, UpdatedAt: c.UpdatedAt, LastPreview: c.LastPreview,
+		PeerNickname: c.PeerNickname, PeerAvatarKey: c.PeerAvatarKey, PeerAvatarUrl: c.PeerAvatarUrl,
 	}
 }
 

@@ -270,12 +270,15 @@ type UcgConversationCreateRes struct {
 }
 
 type UcgConversationItem struct {
-	Id          uint64 `json:"id"`
-	PeerWxId    uint64 `json:"peerWxId"`
-	Pinned      int    `json:"pinned"`
-	UnreadCount int    `json:"unreadCount"`
-	UpdatedAt   int64  `json:"updatedAt"`
-	LastPreview string `json:"lastPreview,omitempty"`
+	Id            uint64 `json:"id"`
+	PeerWxId      uint64 `json:"peerWxId"`
+	PeerNickname  string `json:"peerNickname,omitempty"`
+	PeerAvatarKey string `json:"peerAvatarKey,omitempty"`
+	PeerAvatarUrl string `json:"peerAvatarUrl,omitempty"`
+	Pinned        int    `json:"pinned"`
+	UnreadCount   int    `json:"unreadCount"`
+	UpdatedAt     int64  `json:"updatedAt"`
+	LastPreview   string `json:"lastPreview,omitempty"`
 }
 
 type UcgConversationsPageRes struct {
