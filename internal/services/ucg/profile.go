@@ -32,7 +32,7 @@ func GetOrCreateMyProfile(ctx context.Context, wxID int64) (*ProfileDTO, error) 
 	if wxID <= 0 {
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "wxId 无效")
 	}
-	exists, _, err := Device().ValidateWx(ctx, wxID)
+	exists, babyName, err := Device().ValidateWx(ctx, wxID)
 	if err != nil {
 		return nil, err
 	}
@@ -49,10 +49,6 @@ func GetOrCreateMyProfile(ctx context.Context, wxID int64) (*ProfileDTO, error) 
 			return nil, err
 		}
 		return mergeProfileForAuthor(ctx, p)
-	}
-	babyName, err := Device().BabyName(ctx, wxID)
-	if err != nil {
-		return nil, err
 	}
 	nickname := defaultNickname(babyName)
 	now := time.Now().Unix()
@@ -144,12 +140,14 @@ func mergeProfileForAuthor(ctx context.Context, p entity.UcgProfile) (*ProfileDT
 	dto := profileToDTO(p)
 	reason, err := LoadProfileRejectReason(ctx, int64(p.WxId))
 	if err != nil {
-		return nil, err
+		g.Log().Warningf(ctx, "[ucg-profile] 读取资料审核拒绝原因失败 wxId=%d err=%v", p.WxId, err)
+	} else {
+		dto.RejectReason = reason
 	}
-	dto.RejectReason = reason
 	patch, ok, err := LoadProfilePending(ctx, int64(p.WxId))
 	if err != nil {
-		return nil, err
+		g.Log().Warningf(ctx, "[ucg-profile] 读取待审资料失败 wxId=%d err=%v", p.WxId, err)
+		return dto, nil
 	}
 	if !ok {
 		return dto, nil

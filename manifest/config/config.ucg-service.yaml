@@ -22,7 +22,8 @@ ucg:
     accessKeyId: "LTAI5t6tomJZp4im2H32FSMT"
     accessKeySecret: "LVCECT4exrGkkhI85HmyD4P2e6wJZW"
     objectKeyPrefix: "social/"
-    cdnBaseUrl: "https://resorce.cuplay.top/"
+    # 展示 URL：CDN 域名（API cdnUrl / 客户端 objectKeyToCdn 均基于此）
+    cdnBaseUrl: "https://resorce.cuplay.top"
   green:
     enabled: false
     endpoint: "green-cip.cn-beijing.aliyuncs.com"

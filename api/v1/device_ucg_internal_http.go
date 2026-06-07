@@ -35,7 +35,7 @@ type DeviceUcgWxBatchRes struct {
 // DeviceUcgWxBabyNameReq 按 wx 主键取 baby_name（默认昵称 `{babyName}的家长`）。
 type DeviceUcgWxBabyNameReq struct {
 	g.Meta `path:"/device/internal/api/ucg/wx/{wxId}/baby-name" method:"get" tags:"device" summary:"内部-UCG 取 baby_name"`
-	WxId   int64 `json:"wxId" in:"path" v:"required|min:1"`
+	WxId   int64 `json:"wxId" in:"path" p:"wxId" v:"required|min:1"`
 }
 
 type DeviceUcgWxBabyNameRes struct {

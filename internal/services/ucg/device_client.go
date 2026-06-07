@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -14,6 +15,8 @@ import (
 	"hello/internal/services/contracts"
 	"hello/internal/services/device"
 
+	"github.com/gogf/gf/v2/errors/gcode"
+	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/frame/g"
 )
 
@@ -32,14 +35,24 @@ var (
 // Device 返回单例 device internal 客户端。
 func Device() *DeviceClient {
 	deviceClientOnce.Do(func() {
-		t := contracts.ResolveHTTPTargets()
 		deviceClientIns = &DeviceClient{
-			base:   strings.TrimRight(t.DeviceBaseURL, "/"),
+			base:   resolveDeviceServiceBaseURL(),
 			secret: resolveDeviceInternalSecret(),
 			client: &http.Client{Timeout: 8 * time.Second},
 		}
 	})
 	return deviceClientIns
+}
+
+func resolveDeviceServiceBaseURL() string {
+	if v := strings.TrimSpace(os.Getenv("DEVICE_SERVICE_URL")); v != "" {
+		return strings.TrimRight(v, "/")
+	}
+	ctx := context.Background()
+	if v := strings.TrimSpace(g.Cfg().MustGet(ctx, "ucg.deviceServiceUrl").String()); v != "" {
+		return strings.TrimRight(v, "/")
+	}
+	return strings.TrimRight(contracts.ResolveHTTPTargets().DeviceBaseURL, "/")
 }
 
 func resolveDeviceInternalSecret() string {
@@ -101,10 +114,10 @@ func (c *DeviceClient) BatchWx(ctx context.Context, wxIDs []int64) (map[int64]de
 
 func (c *DeviceClient) doJSON(ctx context.Context, method, path string, query map[string]string, body interface{}, out interface{}) error {
 	if c.base == "" {
-		return fmt.Errorf("ucg device client: DEVICE_SERVICE_URL 未配置")
+		return deviceClientErr("DEVICE_SERVICE_URL 未配置")
 	}
 	if strings.TrimSpace(c.secret) == "" {
-		return fmt.Errorf("ucg device client: DEVICE_GATEWAY_INTERNAL_SECRET 未配置")
+		return deviceClientErr("DEVICE_GATEWAY_INTERNAL_SECRET 未配置")
 	}
 	u, err := url.Parse(c.base + path)
 	if err != nil {
@@ -137,23 +150,48 @@ func (c *DeviceClient) doJSON(ctx context.Context, method, path string, query ma
 	}
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return err
+		return deviceClientErr(fmt.Sprintf("device-service 不可达: %v", err))
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusForbidden {
-		return fmt.Errorf("device internal ucg: forbidden")
+	rawBody, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+	if err != nil {
+		return deviceClientErr(fmt.Sprintf("读取 device 响应失败: %v", err))
 	}
 	var env gfEnvelope
-	if err = json.NewDecoder(resp.Body).Decode(&env); err != nil {
-		return err
+	if len(rawBody) > 0 {
+		if err = json.Unmarshal(rawBody, &env); err != nil {
+			snippet := strings.TrimSpace(string(rawBody))
+			if len(snippet) > 160 {
+				snippet = snippet[:160] + "..."
+			}
+			return deviceClientErr(fmt.Sprintf("device 响应非 JSON（HTTP %d）: %s", resp.StatusCode, snippet))
+		}
+	}
+	if resp.StatusCode == http.StatusForbidden || env.Code == 403 {
+		return deviceClientErr("device 内部接口鉴权失败，请检查 DEVICE_GATEWAY_INTERNAL_SECRET")
+	}
+	if resp.StatusCode >= 400 {
+		msg := strings.TrimSpace(env.Message)
+		if msg == "" {
+			msg = fmt.Sprintf("HTTP %d", resp.StatusCode)
+		}
+		return deviceClientErr(msg)
 	}
 	if env.Code != 0 {
-		return fmt.Errorf("device internal ucg: %s", env.Message)
+		msg := strings.TrimSpace(env.Message)
+		if msg == "" {
+			msg = fmt.Sprintf("code=%d", env.Code)
+		}
+		return deviceClientErr(msg)
 	}
 	if out != nil && len(env.Data) > 0 && string(env.Data) != "null" {
 		if err = json.Unmarshal(env.Data, out); err != nil {
-			return err
+			return deviceClientErr(fmt.Sprintf("解析 device 响应失败: %v", err))
 		}
 	}
 	return nil
+}
+
+func deviceClientErr(detail string) error {
+	return gerror.NewCode(gcode.CodeInternalError, "device internal ucg: "+detail)
 }

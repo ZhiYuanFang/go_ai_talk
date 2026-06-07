@@ -55,6 +55,7 @@ var (
 		"/device/app/api/version/admin/list",
 		"/device/app/api/version/admin/get",
 		"/ucg/app/api/feed/recommend",
+		"/ucg/app/api/health",
 		"/device/app/version-admin.html",
 		"/device/app/integration-test.html",
 		"/user-agreement.html",
