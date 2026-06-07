@@ -199,8 +199,10 @@ type UcgPostLikesGetReq struct {
 }
 
 type UcgLikerItem struct {
-	WxId     uint64 `json:"wxId"`
-	Nickname string `json:"nickname"`
+	WxId      uint64 `json:"wxId"`
+	Nickname  string `json:"nickname"`
+	AvatarKey string `json:"avatarKey,omitempty"`
+	AvatarUrl string `json:"avatarUrl,omitempty"`
 }
 
 type UcgLikesPageRes struct {

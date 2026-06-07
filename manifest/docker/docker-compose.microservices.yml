@@ -23,6 +23,7 @@ services:
     image: go-ai-talk/gateway:local
     container_name: go-ai-talk-gateway
     environment:
+      TZ: Asia/Shanghai
       GF_GCFG_FILE: manifest/config/config.yaml
       HISTORY_API_ROUTE_MODE: proxy
       HISTORY_API_PROXY_URL: http://history-service:9801
@@ -63,6 +64,7 @@ services:
     image: go-ai-talk/gateway-app:local
     container_name: go-ai-talk-gateway-app
     environment:
+      TZ: Asia/Shanghai
       GF_GCFG_FILE: manifest/config/config.gateway-app-server.yaml
       # 非空时覆盖 ai_voice_app 连接（对应 GF_DATABASE_APP_LINK），与 HISTORY_DB_LINK 同理便于 compose 注入
       APP_DB_LINK: "${APP_DB_LINK:-}"
@@ -124,6 +126,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
+      TZ: Asia/Shanghai
       GF_GCFG_FILE: manifest/config/config.history-service.yaml
       # cmd/history-service 读取 HISTORY_DB_LINK；DSN 含多个「:」，compose 须整段加引号避免 YAML 截断。
       HISTORY_DB_LINK: "${HISTORY_DB_LINK:-}"
@@ -155,6 +158,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
+      TZ: Asia/Shanghai
       GF_GCFG_FILE: manifest/config/config.voice-service.yaml
       VOICE_DB_LINK: "${VOICE_DB_LINK:-}"
       MYSQL_TCP_HOST: "${MYSQL_TCP_HOST:-}"
@@ -189,6 +193,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
+      TZ: Asia/Shanghai
       GF_GCFG_FILE: manifest/config/config.device-service.yaml
       DEVICE_DB_LINK: "${DEVICE_DB_LINK:-}"
       MYSQL_TCP_HOST: "${MYSQL_TCP_HOST:-}"
@@ -221,6 +226,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
+      TZ: Asia/Shanghai
       GF_GCFG_FILE: manifest/config/config.worker-service.yaml
       # 非空时由 cmd/worker-service 写入 GF_DATABASE_OUTBOX_LINK，指向仅含 domain_outbox 的库。
       WORKER_OUTBOX_DB_LINK: "${WORKER_OUTBOX_DB_LINK:-}"
@@ -251,6 +257,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
+      TZ: Asia/Shanghai
       GF_GCFG_FILE: manifest/config/config.ucg-service.yaml
       UCG_DB_LINK: "${UCG_DB_LINK:-}"
       MYSQL_TCP_HOST: "${MYSQL_TCP_HOST:-}"

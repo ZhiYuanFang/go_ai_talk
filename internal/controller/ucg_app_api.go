@@ -400,6 +400,7 @@ func likesPageToRes(page *ucgsvc.PageResult) *v1.UcgLikesPageRes {
 			}
 			res.List = append(res.List, v1.UcgLikerItem{
 				WxId: l.WxId, Nickname: l.Nickname,
+				AvatarKey: l.AvatarKey, AvatarUrl: l.AvatarUrl,
 			})
 		}
 	}

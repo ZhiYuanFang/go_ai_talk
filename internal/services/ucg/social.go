@@ -125,10 +125,12 @@ func LikePost(ctx context.Context, wxID int64, postID uint64) error {
 	return err
 }
 
-// LikerDTO 点赞用户视图（昵称经 GetPublicProfile 填充）。
+// LikerDTO 点赞用户视图（昵称与头像经 GetPublicProfile 填充）。
 type LikerDTO struct {
-	WxId     uint64 `json:"wxId"`
-	Nickname string `json:"nickname"`
+	WxId       uint64 `json:"wxId"`
+	Nickname   string `json:"nickname"`
+	AvatarKey  string `json:"avatarKey,omitempty"`
+	AvatarUrl  string `json:"avatarUrl,omitempty"`
 }
 
 // ListPostLikes 帖子点赞用户分页（按点赞时间升序）。
@@ -158,6 +160,8 @@ func ListPostLikes(ctx context.Context, postID uint64, page, pageSize int) (*Pag
 		dto := &LikerDTO{WxId: like.WxId}
 		if prof, pErr := GetPublicProfile(ctx, like.WxId); pErr == nil && prof != nil {
 			dto.Nickname = prof.Nickname
+			dto.AvatarKey = prof.AvatarKey
+			dto.AvatarUrl = prof.AvatarUrl
 		}
 		list = append(list, dto)
 	}
