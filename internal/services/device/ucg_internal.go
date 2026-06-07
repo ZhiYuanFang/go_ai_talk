@@ -4,14 +4,19 @@ import (
 	"context"
 	"errors"
 	"strings"
+
+	"hello/internal/dao"
+
+	"github.com/gogf/gf/v2/frame/g"
 )
 
 // UcgWxDisplay device 域向 ucg 暴露的 wx 展示字段（不含 unionid 等敏感信息）。
 type UcgWxDisplay struct {
-	WxId     int64  `json:"wxId"`
-	Exists   bool   `json:"exists"`
-	DeviceNo string `json:"deviceNo"`
-	BabyName string `json:"babyName"`
+	WxId       int64  `json:"wxId"`
+	Exists     bool   `json:"exists"`
+	DeviceNo   string `json:"deviceNo"`
+	BabyName   string `json:"babyName"`
+	IpLocation string `json:"ipLocation,omitempty"`
 }
 
 var ErrUcgWxIDInvalid = errors.New("wxId 无效")
@@ -30,11 +35,38 @@ func UcgWxValidate(ctx context.Context, wxID int64) (*UcgWxDisplay, error) {
 	}
 	babyName, _ := ucgBabyNameByDeviceNo(ctx, row.DeviceNo)
 	return &UcgWxDisplay{
-		WxId:     row.Id,
-		Exists:   true,
-		DeviceNo: row.DeviceNo,
-		BabyName: babyName,
+		WxId:       row.Id,
+		Exists:     true,
+		DeviceNo:   row.DeviceNo,
+		BabyName:   babyName,
+		IpLocation: strings.TrimSpace(row.IpLocation),
 	}, nil
+}
+
+// UcgWxUpdateIpLocation 更新 wx 行 IP 属地（由 ucg-service 经网关解析后写入）。
+func UcgWxUpdateIpLocation(ctx context.Context, wxID int64, ipLocation string) error {
+	if wxID <= 0 {
+		return ErrUcgWxIDInvalid
+	}
+	ipLocation = strings.TrimSpace(ipLocation)
+	if ipLocation == "" {
+		return nil
+	}
+	row, err := wxRowByWxID(ctx, wxID)
+	if err != nil {
+		return err
+	}
+	if row == nil || row.Id == 0 {
+		return ErrUcgWxIDInvalid
+	}
+	if strings.TrimSpace(row.IpLocation) == ipLocation {
+		return nil
+	}
+	_, err = dao.Wx.Ctx(ctx).
+		Where(dao.Wx.Columns().Id, wxID).
+		Data(g.Map{dao.Wx.Columns().IpLocation: ipLocation}).
+		Update()
+	return err
 }
 
 // UcgWxBatch 批量查询 wx 展示字段；不存在的 wxId 返回 exists=false。

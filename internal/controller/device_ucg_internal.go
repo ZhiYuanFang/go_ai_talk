@@ -44,13 +44,25 @@ func (c *DeviceUcgInternalCtrl) WxBatch(ctx context.Context, req *v1.DeviceUcgWx
 	items := make([]v1.DeviceUcgWxBatchItem, 0, len(list))
 	for _, row := range list {
 		items = append(items, v1.DeviceUcgWxBatchItem{
-			WxId:     row.WxId,
-			Exists:   row.Exists,
-			DeviceNo: row.DeviceNo,
-			BabyName: row.BabyName,
+			WxId:       row.WxId,
+			Exists:     row.Exists,
+			DeviceNo:   row.DeviceNo,
+			BabyName:   row.BabyName,
+			IpLocation: row.IpLocation,
 		})
 	}
 	return &v1.DeviceUcgWxBatchRes{List: items}, nil
+}
+
+func (c *DeviceUcgInternalCtrl) WxIpLocationPut(ctx context.Context, req *v1.DeviceUcgWxIpLocationPutReq) (res *v1.DeviceUcgWxIpLocationPutRes, err error) {
+	_ = c
+	if err = device.UcgWxUpdateIpLocation(ctx, req.WxId, req.IpLocation); err != nil {
+		if err == device.ErrUcgWxIDInvalid {
+			return nil, gerror.NewCode(gcode.CodeInvalidParameter, err.Error())
+		}
+		return nil, err
+	}
+	return &v1.DeviceUcgWxIpLocationPutRes{}, nil
 }
 
 func (c *DeviceUcgInternalCtrl) WxBabyName(ctx context.Context, req *v1.DeviceUcgWxBabyNameReq) (res *v1.DeviceUcgWxBabyNameRes, err error) {

@@ -52,7 +52,8 @@ func (c *UcgAppCtrl) ProfileMeGet(ctx context.Context, req *v1.UcgProfileMeGetRe
 	if err != nil {
 		return nil, err
 	}
-	p, err := ucgsvc.GetOrCreateMyProfile(ctx, wxID)
+	clientIP := ucgsvc.ClientIPFromRequest(ghttp.RequestFromCtx(ctx))
+	p, err := ucgsvc.GetOrCreateMyProfile(ctx, wxID, clientIP)
 	if err != nil {
 		return nil, err
 	}
@@ -78,7 +79,13 @@ func (c *UcgAppCtrl) ProfilePublicGet(ctx context.Context, req *v1.UcgProfilePub
 	if err != nil {
 		return nil, err
 	}
-	return profileDTOToRes(p), nil
+	res = profileDTOToRes(p)
+	if viewerWxID, ok := wxIDFromUcgHeaderOptional(ghttp.RequestFromCtx(ctx)); ok && viewerWxID != int64(req.WxId) {
+		if following, fErr := ucgsvc.IsFollowing(ctx, viewerWxID, int64(req.WxId)); fErr == nil {
+			res.IsFollowing = following
+		}
+	}
+	return res, nil
 }
 
 func (c *UcgAppCtrl) PostCreate(ctx context.Context, req *v1.UcgPostCreateReq) (res *v1.UcgPostCreateRes, err error) {
@@ -87,7 +94,8 @@ func (c *UcgAppCtrl) PostCreate(ctx context.Context, req *v1.UcgPostCreateReq) (
 	if err != nil {
 		return nil, err
 	}
-	post, err := ucgsvc.CreatePost(ctx, wxID, req.Content, req.MediaType, req.Submit, toPostMediaInput(req.Media))
+	clientIP := ucgsvc.ClientIPFromRequest(ghttp.RequestFromCtx(ctx))
+	post, err := ucgsvc.CreatePost(ctx, wxID, req.Content, req.MediaType, req.Submit, toPostMediaInput(req.Media), clientIP)
 	if err != nil {
 		return nil, err
 	}
@@ -454,15 +462,19 @@ func profileDTOToRes(p *ucgsvc.ProfileDTO) *v1.UcgProfileRes {
 		return nil
 	}
 	return &v1.UcgProfileRes{
-		WxId:         p.WxId,
-		Nickname:     p.Nickname,
-		AvatarKey:    p.AvatarKey,
-		AvatarUrl:    p.AvatarUrl,
-		Bio:          p.Bio,
-		CreatedAt:    p.CreatedAt,
-		UpdatedAt:    p.UpdatedAt,
-		AuditPending: p.AuditPending,
-		RejectReason: p.RejectReason,
+		WxId:           p.WxId,
+		Nickname:       p.Nickname,
+		AvatarKey:      p.AvatarKey,
+		AvatarUrl:      p.AvatarUrl,
+		Bio:            p.Bio,
+		FollowerCount:  p.FollowerCount,
+		FollowingCount: p.FollowingCount,
+		PostCount:      p.PostCount,
+		IpLocation:     p.IpLocation,
+		CreatedAt:      p.CreatedAt,
+		UpdatedAt:      p.UpdatedAt,
+		AuditPending:   p.AuditPending,
+		RejectReason:   p.RejectReason,
 	}
 }
 
@@ -506,6 +518,7 @@ func postDTOToItem(p *ucgsvc.PostDTO) v1.UcgPostItem {
 		CreatedAt:    p.CreatedAt,
 		UpdatedAt:    p.UpdatedAt,
 		PublishedAt:  p.PublishedAt,
+		IpLocation:   p.IpLocation,
 		Media:        media,
 	}
 	if p.Author != nil {

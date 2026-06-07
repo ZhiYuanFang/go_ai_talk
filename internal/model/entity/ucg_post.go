@@ -9,6 +9,7 @@ type UcgPost struct {
 	Id           uint64 `json:"id"           ` //
 	AuthorWxId   uint64 `json:"authorWxId"   ` //
 	Content      string `json:"content"      ` //
+	IpLocation   string `json:"ipLocation"   ` // 发帖IP属地快照
 	Status       int    `json:"status"       ` // 0 draft 1 pending_audit 2 published 3 rejected
 	RejectReason string `json:"rejectReason" ` //
 	MediaType    int    `json:"mediaType"    ` // 0 none 1 images 2 video

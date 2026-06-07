@@ -14,6 +14,8 @@ import (
 // 无需在各 *_route_proxy 中重复鉴权。参见 ghttp.Server.ServeHTTP：BeforeServe 先于 Middleware.Next()。
 func installGatewayAppBearerMiddleware(s *ghttp.Server) {
 	s.BindHookHandler("/*", ghttp.HookBeforeServe, func(r *ghttp.Request) {
+		gatewayapp.StripSpoofedInternalHeaders(r)
+		gatewayapp.InjectClientIPHeader(r)
 		if gatewayAppPathAuthExempt(r) {
 			// 匿名白名单路径仍可在客户端附带 Bearer 时注入身份（如推荐 Feed 的 likedByMe）。
 			auth := strings.TrimSpace(r.Header.Get("Authorization"))

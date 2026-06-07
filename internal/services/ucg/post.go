@@ -37,6 +37,7 @@ type PostDTO struct {
 	CreatedAt    int64          `json:"createdAt"`
 	UpdatedAt    int64          `json:"updatedAt"`
 	PublishedAt  int64          `json:"publishedAt,omitempty"`
+	IpLocation   string         `json:"ipLocation,omitempty"`
 	Media        []PostMediaDTO `json:"media,omitempty"`
 	Author       *ProfileDTO    `json:"author,omitempty"`
 }
@@ -49,8 +50,8 @@ type PostMediaDTO struct {
 	SortOrder int    `json:"sortOrder"`
 }
 
-// CreatePost 创建帖子；submit=true 时进入 pending_audit。
-func CreatePost(ctx context.Context, wxID int64, content string, mediaType int, submit bool, media []PostMediaInput) (*PostDTO, error) {
+// CreatePost 创建帖子；submit=true 时进入 pending_audit。clientIP 用于服务端快照 ip_location。
+func CreatePost(ctx context.Context, wxID int64, content string, mediaType int, submit bool, media []PostMediaInput, clientIP string) (*PostDTO, error) {
 	if wxID <= 0 {
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "wxId 无效")
 	}
@@ -59,14 +60,19 @@ func CreatePost(ctx context.Context, wxID int64, content string, mediaType int, 
 		status = PostStatusPendingAudit
 	}
 	now := time.Now().Unix()
-	res, err := dao.UcgPost.Ctx(ctx).Data(g.Map{
+	ipLoc := SnapshotPostIpLocation(ctx, clientIP)
+	data := g.Map{
 		dao.UcgPost.Columns().AuthorWxId: wxID,
 		dao.UcgPost.Columns().Content:    strings.TrimSpace(content),
 		dao.UcgPost.Columns().Status:     status,
 		dao.UcgPost.Columns().MediaType:  mediaType,
 		dao.UcgPost.Columns().CreatedAt:  now,
 		dao.UcgPost.Columns().UpdatedAt:  now,
-	}).Insert()
+	}
+	if ipLoc != "" {
+		data[dao.UcgPost.Columns().IpLocation] = ipLoc
+	}
+	res, err := dao.UcgPost.Ctx(ctx).Data(data).Insert()
 	if err != nil {
 		return nil, err
 	}
@@ -269,6 +275,7 @@ func postToDTO(ctx context.Context, post entity.UcgPost) (*PostDTO, error) {
 		CreatedAt:    post.CreatedAt,
 		UpdatedAt:    post.UpdatedAt,
 		PublishedAt:  post.PublishedAt,
+		IpLocation:   strings.TrimSpace(post.IpLocation),
 		Media:        media,
 		Author:       author,
 	}

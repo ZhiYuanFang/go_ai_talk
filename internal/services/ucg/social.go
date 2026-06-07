@@ -46,6 +46,21 @@ func Follow(ctx context.Context, followerWxID, followeeWxID int64) error {
 	return err
 }
 
+// IsFollowing 当前用户是否已关注目标用户。
+func IsFollowing(ctx context.Context, followerWxID, followeeWxID int64) (bool, error) {
+	if followerWxID <= 0 || followeeWxID <= 0 {
+		return false, nil
+	}
+	cnt, err := dao.UcgFollow.Ctx(ctx).
+		Where(dao.UcgFollow.Columns().FollowerWxId, followerWxID).
+		Where(dao.UcgFollow.Columns().FolloweeWxId, followeeWxID).
+		Count()
+	if err != nil {
+		return false, err
+	}
+	return cnt > 0, nil
+}
+
 // Unfollow 取消关注。
 func Unfollow(ctx context.Context, followerWxID, followeeWxID int64) error {
 	if followerWxID <= 0 || followeeWxID <= 0 {

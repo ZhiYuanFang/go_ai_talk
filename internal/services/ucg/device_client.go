@@ -95,6 +95,14 @@ func (c *DeviceClient) BabyName(ctx context.Context, wxID int64) (string, error)
 	return data.BabyName, nil
 }
 
+// UpdateIpLocation 写入 wx IP 属地。
+func (c *DeviceClient) UpdateIpLocation(ctx context.Context, wxID int64, ipLocation string) error {
+	path := fmt.Sprintf("/device/internal/api/ucg/wx/%d/ip-location", wxID)
+	return c.doJSON(ctx, http.MethodPut, path, nil, map[string]interface{}{
+		"ipLocation": ipLocation,
+	}, nil)
+}
+
 // BatchWx 批量拉取展示字段。
 func (c *DeviceClient) BatchWx(ctx context.Context, wxIDs []int64) (map[int64]device.UcgWxDisplay, error) {
 	var data struct {

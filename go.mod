@@ -32,6 +32,7 @@ require (
 	github.com/go-sql-driver/mysql v1.7.1 // indirect
 	github.com/grokify/html-strip-tags-go v0.1.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
+	github.com/lionsoul2014/ip2region/binding/golang v0.0.0-20260530042244-d638015592ac // indirect
 	github.com/magiconair/properties v1.8.10 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect

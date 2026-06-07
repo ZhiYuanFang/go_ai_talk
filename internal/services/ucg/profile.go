@@ -28,10 +28,12 @@ type ProfileDTO struct {
 	UpdatedAt      int64  `json:"updatedAt"`
 	AuditPending   bool   `json:"auditPending,omitempty"`
 	RejectReason   string `json:"rejectReason,omitempty"`
+	IpLocation     string `json:"ipLocation,omitempty"`
 }
 
 // GetOrCreateMyProfile 获取当前用户 profile；不存在时经 device internal API 创建默认昵称。
-func GetOrCreateMyProfile(ctx context.Context, wxID int64) (*ProfileDTO, error) {
+// clientIP 为网关注入的真实 IP，用于解析并节流更新 wx IP 属地。
+func GetOrCreateMyProfile(ctx context.Context, wxID int64, clientIP string) (*ProfileDTO, error) {
 	if wxID <= 0 {
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "wxId 无效")
 	}
@@ -54,7 +56,18 @@ func GetOrCreateMyProfile(ctx context.Context, wxID int64) (*ProfileDTO, error) 
 		if err = refreshDefaultNicknameIfNeeded(ctx, wxID, &p); err != nil {
 			g.Log().Warningf(ctx, "[ucg-profile] 刷新默认昵称失败 wxId=%d err=%v", wxID, err)
 		}
-		return mergeProfileForAuthor(ctx, p)
+		dto, err := mergeProfileForAuthor(ctx, p)
+		if err != nil {
+			return nil, err
+		}
+		if loc, locErr := MaybeUpdateWxIpLocation(ctx, wxID, clientIP); locErr == nil && loc != "" {
+			dto.IpLocation = loc
+		} else if loc == "" {
+			if stored, _ := loadWxIpLocation(ctx, wxID); stored != "" {
+				dto.IpLocation = stored
+			}
+		}
+		return dto, nil
 	}
 	nickname := defaultNickname(babyName)
 	now := time.Now().Unix()
@@ -68,18 +81,22 @@ func GetOrCreateMyProfile(ctx context.Context, wxID int64) (*ProfileDTO, error) 
 		return nil, err
 	}
 	id, _ := res.LastInsertId()
-	return profileToDTO(entity.UcgProfile{
+	dto := profileToDTO(entity.UcgProfile{
 		Id:        uint64(id),
 		WxId:      uint64(wxID),
 		Nickname:  nickname,
 		CreatedAt: now,
 		UpdatedAt: now,
-	}), nil
+	})
+	if loc, locErr := MaybeUpdateWxIpLocation(ctx, wxID, clientIP); locErr == nil && loc != "" {
+		dto.IpLocation = loc
+	}
+	return dto, nil
 }
 
 // UpdateMyProfile 提交资料变更至 Green 待审队列；公开 profile 在通过前保持旧值。
 func UpdateMyProfile(ctx context.Context, wxID int64, nickname, avatarKey, bio string) (*ProfileDTO, error) {
-	base, err := GetOrCreateMyProfile(ctx, wxID)
+	base, err := GetOrCreateMyProfile(ctx, wxID, "")
 	if err != nil {
 		return nil, err
 	}
@@ -127,7 +144,13 @@ func GetPublicProfile(ctx context.Context, wxID uint64) (*ProfileDTO, error) {
 	if err = refreshDefaultNicknameIfNeeded(ctx, int64(wxID), &p); err != nil {
 		g.Log().Warningf(ctx, "[ucg-profile] 刷新默认昵称失败 wxId=%d err=%v", wxID, err)
 	}
-	return profileToDTO(p), nil
+	dto := profileToDTO(p)
+	if locMap, locErr := IpLocationForWxIDs(ctx, []int64{int64(wxID)}); locErr == nil {
+		if loc, ok := locMap[int64(wxID)]; ok {
+			dto.IpLocation = loc
+		}
+	}
+	return dto, nil
 }
 
 func isStoredDefaultNickname(nickname string) bool {

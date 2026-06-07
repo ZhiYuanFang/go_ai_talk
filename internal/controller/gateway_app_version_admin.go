@@ -48,7 +48,7 @@ func gatewayAppVersionAdminLogin(r *ghttp.Request) {
 		return
 	}
 	ctx := r.Context()
-	remote := clientIP(r)
+	remote := gatewayapp.ClientIP(r)
 	versionAdminLoginBurst.Lock()
 	if t, ok := versionAdminLastLoginIP[remote]; ok && time.Since(t) < versionAdminLoginMinInterval {
 		versionAdminLoginBurst.Unlock()
@@ -647,10 +647,3 @@ func constantTimeStringEqual(a, b string) bool {
 	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }
 
-func clientIP(r *ghttp.Request) string {
-	if xff := strings.TrimSpace(r.Header.Get("X-Forwarded-For")); xff != "" {
-		parts := strings.Split(xff, ",")
-		return strings.TrimSpace(parts[0])
-	}
-	return strings.TrimSpace(r.RemoteAddr)
-}

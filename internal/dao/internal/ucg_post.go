@@ -23,6 +23,7 @@ type UcgPostColumns struct {
 	Id           string //
 	AuthorWxId   string //
 	Content      string //
+	IpLocation   string // 发帖IP属地快照
 	Status       string // 0 draft 1 pending_audit 2 published 3 rejected
 	RejectReason string //
 	MediaType    string // 0 none 1 images 2 video
@@ -38,6 +39,7 @@ var ucgPostColumns = UcgPostColumns{
 	Id:           "id",
 	AuthorWxId:   "author_wx_id",
 	Content:      "content",
+	IpLocation:   "ip_location",
 	Status:       "status",
 	RejectReason: "reject_reason",
 	MediaType:    "media_type",

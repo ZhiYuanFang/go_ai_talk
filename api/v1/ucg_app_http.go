@@ -44,15 +44,20 @@ type UcgProfilePublicGetReq struct {
 }
 
 type UcgProfileRes struct {
-	WxId         uint64 `json:"wxId"`
-	Nickname     string `json:"nickname"`
-	AvatarKey    string `json:"avatarKey"`
-	AvatarUrl    string `json:"avatarUrl"`
-	Bio          string `json:"bio"`
-	CreatedAt    int64  `json:"createdAt"`
-	UpdatedAt    int64  `json:"updatedAt"`
-	AuditPending bool   `json:"auditPending,omitempty"`
-	RejectReason string `json:"rejectReason,omitempty"`
+	WxId           uint64 `json:"wxId"`
+	Nickname       string `json:"nickname"`
+	AvatarKey      string `json:"avatarKey"`
+	AvatarUrl      string `json:"avatarUrl"`
+	Bio            string `json:"bio"`
+	FollowerCount  int    `json:"followerCount,omitempty"`
+	FollowingCount int    `json:"followingCount,omitempty"`
+	PostCount      int    `json:"postCount,omitempty"`
+	IpLocation     string `json:"ipLocation,omitempty"`
+	IsFollowing    bool   `json:"isFollowing,omitempty"`
+	CreatedAt      int64  `json:"createdAt"`
+	UpdatedAt      int64  `json:"updatedAt"`
+	AuditPending   bool   `json:"auditPending,omitempty"`
+	RejectReason   string `json:"rejectReason,omitempty"`
 }
 
 type UcgPostCreateReq struct {
@@ -128,6 +133,7 @@ type UcgPostItem struct {
 	CreatedAt    int64             `json:"createdAt"`
 	UpdatedAt    int64             `json:"updatedAt"`
 	PublishedAt  int64             `json:"publishedAt,omitempty"`
+	IpLocation   string            `json:"ipLocation,omitempty"`
 	Media        []UcgPostMediaOut `json:"media,omitempty"`
 	Author       *UcgProfileRes    `json:"author,omitempty"`
 }
