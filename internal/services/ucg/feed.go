@@ -11,7 +11,8 @@ import (
 )
 
 // ListRecommendFeed 推荐 Feed：优先按 ucg_post_recommend.score 排序，无 score 时回退 published_at。
-func ListRecommendFeed(ctx context.Context, page, pageSize int) (*PageResult, error) {
+// viewerWxID>0 时填充 likedByMe。
+func ListRecommendFeed(ctx context.Context, viewerWxID int64, page, pageSize int) (*PageResult, error) {
 	p := NormalizePage(page, pageSize)
 	// 联结推荐分；仅 published
 	model := dao.UcgPost.Ctx(ctx).As("p").
@@ -30,7 +31,7 @@ func ListRecommendFeed(ctx context.Context, page, pageSize int) (*PageResult, er
 	if err != nil {
 		return nil, err
 	}
-	list, err := postsFromResult(ctx, rows)
+	list, err := postsFromResult(ctx, rows, viewerWxID)
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +73,7 @@ func ListFollowingFeed(ctx context.Context, wxID int64, page, pageSize int) (*Pa
 	if err != nil {
 		return nil, err
 	}
-	list, err := postsFromResult(ctx, rows)
+	list, err := postsFromResult(ctx, rows, wxID)
 	if err != nil {
 		return nil, err
 	}

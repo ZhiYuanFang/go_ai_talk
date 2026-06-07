@@ -1,6 +1,8 @@
 package controller
 
 import (
+	"strings"
+
 	"hello/internal/services/gatewayapp"
 
 	"github.com/gogf/gf/v2/frame/g"
@@ -13,6 +15,12 @@ import (
 func installGatewayAppBearerMiddleware(s *ghttp.Server) {
 	s.BindHookHandler("/*", ghttp.HookBeforeServe, func(r *ghttp.Request) {
 		if gatewayAppPathAuthExempt(r) {
+			// 匿名白名单路径仍可在客户端附带 Bearer 时注入身份（如推荐 Feed 的 likedByMe）。
+			auth := strings.TrimSpace(r.Header.Get("Authorization"))
+			const pfx = "Bearer "
+			if len(auth) >= len(pfx) && strings.EqualFold(auth[:len(pfx)], pfx) {
+				_ = gatewayapp.InjectAccessHeadersFromBearer(r)
+			}
 			return
 		}
 		if err := gatewayapp.InjectAccessHeadersFromBearer(r); err != nil {

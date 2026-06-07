@@ -16,6 +16,9 @@ type ChatMessage struct {
 	ClientMsgID string `json:"clientMsgId,omitempty"`
 	SenderWxID  int64  `json:"senderWxId"`
 	Content     string `json:"content"`
+	ImageKey    string `json:"imageKey,omitempty"`
+	VideoKey    string `json:"videoKey,omitempty"`
+	MediaCdnUrl string `json:"mediaCdnUrl,omitempty"`
 	CreatedAt   int64  `json:"createdAt"`
 	Status      string `json:"status"` // pending | delivered
 }

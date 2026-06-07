@@ -17,6 +17,9 @@ import (
 type ConversationDTO struct {
 	Id             uint64 `json:"id"`
 	PeerWxId       uint64 `json:"peerWxId"`
+	PeerNickname   string `json:"peerNickname,omitempty"`
+	PeerAvatarKey  string `json:"peerAvatarKey,omitempty"`
+	PeerAvatarUrl  string `json:"peerAvatarUrl,omitempty"`
 	Pinned         int    `json:"pinned"`
 	UnreadCount    int    `json:"unreadCount"`
 	UpdatedAt      int64  `json:"updatedAt"`
@@ -156,7 +159,7 @@ func loadConversationDTO(ctx context.Context, convID uint64, wxID int64) (*Conve
 		unread = int(self.UnreadCount)
 	}
 	preview := lastMessagePreview(ctx, convID)
-	return &ConversationDTO{
+	dto := &ConversationDTO{
 		Id:          convID,
 		PeerWxId:    peerID,
 		Pinned:      self.Pinned,
@@ -164,7 +167,13 @@ func loadConversationDTO(ctx context.Context, convID uint64, wxID int64) (*Conve
 		UpdatedAt:   self.UpdatedAt,
 		LastPreview: preview,
 		Deleted:     self.DeletedAt > 0,
-	}, nil
+	}
+	if prof, pErr := GetPublicProfile(ctx, peerID); pErr == nil && prof != nil {
+		dto.PeerNickname = prof.Nickname
+		dto.PeerAvatarKey = prof.AvatarKey
+		dto.PeerAvatarUrl = prof.AvatarUrl
+	}
+	return dto, nil
 }
 
 func peerWxID(ctx context.Context, convID uint64, wxID int64) (uint64, error) {
@@ -189,9 +198,26 @@ func lastMessagePreview(ctx context.Context, convID uint64) string {
 	if err != nil || len(msgs) == 0 {
 		return ""
 	}
-	s := strings.TrimSpace(msgs[len(msgs)-1].Content)
-	if len([]rune(s)) > 64 {
-		s = string([]rune(s)[:64])
+	last := msgs[len(msgs)-1]
+	if strings.TrimSpace(last.VideoKey) != "" {
+		if t := strings.TrimSpace(last.Content); t != "" {
+			return "[视频] " + previewTrim(t, 48)
+		}
+		return "[视频]"
+	}
+	if strings.TrimSpace(last.ImageKey) != "" {
+		if t := strings.TrimSpace(last.Content); t != "" {
+			return "[图片] " + previewTrim(t, 48)
+		}
+		return "[图片]"
+	}
+	return previewTrim(last.Content, 64)
+}
+
+func previewTrim(s string, maxRunes int) string {
+	s = strings.TrimSpace(s)
+	if len([]rune(s)) > maxRunes {
+		return string([]rune(s)[:maxRunes])
 	}
 	return s
 }
@@ -289,11 +315,14 @@ func bumpMemberActivity(ctx context.Context, convID uint64, wxIDs ...int64) {
 }
 
 // DeliverChatMessage Green 通过后持久化并推送（Option C 投递阶段）。
-func DeliverChatMessage(ctx context.Context, convID uint64, senderWxID, recipientWxID int64, clientMsgID, content string) (ChatMessage, error) {
+func DeliverChatMessage(ctx context.Context, convID uint64, senderWxID, recipientWxID int64, clientMsgID, content, imageKey, videoKey, mediaCdnURL string) (ChatMessage, error) {
 	msg, err := appendChatMessage(ctx, convID, ChatMessage{
 		ClientMsgID: clientMsgID,
 		SenderWxID:  senderWxID,
 		Content:     content,
+		ImageKey:    imageKey,
+		VideoKey:    videoKey,
+		MediaCdnUrl: mediaCdnURL,
 		Status:      "delivered",
 	})
 	if err != nil {
@@ -315,7 +344,16 @@ func DeliverChatMessage(ctx context.Context, convID uint64, senderWxID, recipien
 }
 
 // ProcessOutboundChatMessage 发送消息：先 ACK，再 Green，通过后投递。
-func ProcessOutboundChatMessage(ctx context.Context, senderWxID int64, convID uint64, clientMsgID, content string) error {
+func ProcessOutboundChatMessage(ctx context.Context, senderWxID int64, convID uint64, clientMsgID, content, imageKey, videoKey string) error {
+	content = strings.TrimSpace(content)
+	imageKey = strings.TrimSpace(imageKey)
+	videoKey = strings.TrimSpace(videoKey)
+	if content == "" && imageKey == "" && videoKey == "" {
+		return gerror.NewCode(gcode.CodeInvalidParameter, "content 或媒体 attachment 必填")
+	}
+	if imageKey != "" && videoKey != "" {
+		return gerror.NewCode(gcode.CodeInvalidParameter, "imageKey 与 videoKey 不可同时存在")
+	}
 	if err := ensureConversationMember(ctx, convID, senderWxID); err != nil {
 		return err
 	}
@@ -327,22 +365,48 @@ func ProcessOutboundChatMessage(ctx context.Context, senderWxID int64, convID ui
 		"type":        "message_ack",
 		"clientMsgId": clientMsgID,
 	})
-	verdict, err := EffectiveGreen().ModerateText(ctx, "comment_detection", content)
-	if err != nil {
-		return err
-	}
-	if !verdict.Pass {
-		reason := verdict.Reason
-		if reason == "" {
-			reason = rejectReasonDefault
+	moderator := EffectiveGreen()
+	if content != "" {
+		verdict, mErr := moderator.ModerateText(ctx, "comment_detection", content)
+		if mErr != nil {
+			return mErr
 		}
-		ChatWSHub().SendJSON(senderWxID, map[string]interface{}{
-			"type":        "audit_failed",
-			"clientMsgId": clientMsgID,
-			"reason":      reason,
-		})
-		return nil
+		if !verdict.Pass {
+			sendChatAuditFailed(senderWxID, clientMsgID, verdict.Reason)
+			return nil
+		}
 	}
-	_, err = DeliverChatMessage(ctx, convID, senderWxID, int64(recipient), clientMsgID, content)
+	cfg := LoadOSSConfig(ctx)
+	var mediaCdnURL string
+	if imageKey != "" {
+		mediaCdnURL = cfg.CdnBaseURL + "/" + strings.TrimPrefix(imageKey, "/")
+		if verdict, mErr := moderator.ModerateImageURL(ctx, mediaCdnURL); mErr != nil {
+			return mErr
+		} else if !verdict.Pass {
+			sendChatAuditFailed(senderWxID, clientMsgID, verdict.Reason)
+			return nil
+		}
+	}
+	if videoKey != "" {
+		mediaCdnURL = cfg.CdnBaseURL + "/" + strings.TrimPrefix(videoKey, "/")
+		if verdict, mErr := moderator.ModerateVideoURL(ctx, mediaCdnURL); mErr != nil {
+			return mErr
+		} else if !verdict.Pass {
+			sendChatAuditFailed(senderWxID, clientMsgID, verdict.Reason)
+			return nil
+		}
+	}
+	_, err = DeliverChatMessage(ctx, convID, senderWxID, int64(recipient), clientMsgID, content, imageKey, videoKey, mediaCdnURL)
 	return err
+}
+
+func sendChatAuditFailed(wxID int64, clientMsgID, reason string) {
+	if reason == "" {
+		reason = rejectReasonDefault
+	}
+	ChatWSHub().SendJSON(wxID, map[string]interface{}{
+		"type":        "audit_failed",
+		"clientMsgId": clientMsgID,
+		"reason":      reason,
+	})
 }

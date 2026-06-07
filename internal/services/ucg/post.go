@@ -33,6 +33,7 @@ type PostDTO struct {
 	MediaType    int            `json:"mediaType"`
 	LikeCount    uint           `json:"likeCount"`
 	CommentCount uint           `json:"commentCount"`
+	LikedByMe    bool           `json:"likedByMe"`
 	CreatedAt    int64          `json:"createdAt"`
 	UpdatedAt    int64          `json:"updatedAt"`
 	PublishedAt  int64          `json:"publishedAt,omitempty"`
@@ -126,7 +127,7 @@ func ListMyPosts(ctx context.Context, wxID int64, page, pageSize int) (*PageResu
 	if err != nil {
 		return nil, err
 	}
-	list, err := postsFromResult(ctx, rows)
+	list, err := postsFromResult(ctx, rows, wxID)
 	if err != nil {
 		return nil, err
 	}
@@ -197,8 +198,9 @@ func replacePostMedia(ctx context.Context, postID uint64, media []PostMediaInput
 	return nil
 }
 
-func postsFromResult(ctx context.Context, rows gdb.Result) ([]*PostDTO, error) {
+func postsFromResult(ctx context.Context, rows gdb.Result, viewerWxID int64) ([]*PostDTO, error) {
 	out := make([]*PostDTO, 0, len(rows))
+	postIDs := make([]uint64, 0, len(rows))
 	for _, row := range rows {
 		var post entity.UcgPost
 		if err := row.Struct(&post); err != nil {
@@ -209,6 +211,39 @@ func postsFromResult(ctx context.Context, rows gdb.Result) ([]*PostDTO, error) {
 			return nil, err
 		}
 		out = append(out, dto)
+		postIDs = append(postIDs, post.Id)
+	}
+	if viewerWxID > 0 && len(postIDs) > 0 {
+		liked, err := likedPostIDSet(ctx, viewerWxID, postIDs)
+		if err != nil {
+			return nil, err
+		}
+		for _, dto := range out {
+			_, dto.LikedByMe = liked[dto.Id]
+		}
+	}
+	return out, nil
+}
+
+func likedPostIDSet(ctx context.Context, viewerWxID int64, postIDs []uint64) (map[uint64]struct{}, error) {
+	out := make(map[uint64]struct{}, len(postIDs))
+	if viewerWxID <= 0 || len(postIDs) == 0 {
+		return out, nil
+	}
+	rows, err := dao.UcgPostLike.Ctx(ctx).
+		Where(dao.UcgPostLike.Columns().WxId, viewerWxID).
+		WhereIn(dao.UcgPostLike.Columns().PostId, postIDs).
+		Fields(dao.UcgPostLike.Columns().PostId).
+		All()
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		var like entity.UcgPostLike
+		if err = row.Struct(&like); err != nil {
+			return nil, err
+		}
+		out[like.PostId] = struct{}{}
 	}
 	return out, nil
 }

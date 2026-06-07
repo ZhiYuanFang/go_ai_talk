@@ -124,6 +124,7 @@ type UcgPostItem struct {
 	MediaType    int               `json:"mediaType"`
 	LikeCount    uint              `json:"likeCount"`
 	CommentCount uint              `json:"commentCount"`
+	LikedByMe    bool              `json:"likedByMe"`
 	CreatedAt    int64             `json:"createdAt"`
 	UpdatedAt    int64             `json:"updatedAt"`
 	PublishedAt  int64             `json:"publishedAt,omitempty"`
@@ -183,6 +184,25 @@ type UcgPostLikeDeleteReq struct {
 }
 
 type UcgPostLikeDeleteRes struct{}
+
+type UcgPostLikesGetReq struct {
+	g.Meta   `path:"/ucg/app/api/posts/{id}/likes" method:"get" tags:"ucg" summary:"点赞用户列表"`
+	Id       uint64 `json:"id" in:"path" v:"required|min:1"`
+	Page     int    `json:"page" in:"query" d:"1"`
+	PageSize int    `json:"pageSize" in:"query" d:"20"`
+}
+
+type UcgLikerItem struct {
+	WxId     uint64 `json:"wxId"`
+	Nickname string `json:"nickname"`
+}
+
+type UcgLikesPageRes struct {
+	List     []UcgLikerItem `json:"list"`
+	Total    int            `json:"total"`
+	Page     int            `json:"page"`
+	PageSize int            `json:"pageSize"`
+}
 
 type UcgPostCommentsGetReq struct {
 	g.Meta   `path:"/ucg/app/api/posts/{id}/comments" method:"get" tags:"ucg" summary:"评论列表"`

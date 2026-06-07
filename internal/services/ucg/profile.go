@@ -16,15 +16,18 @@ import (
 
 // ProfileDTO App 侧 profile 视图。
 type ProfileDTO struct {
-	WxId         uint64 `json:"wxId"`
-	Nickname     string `json:"nickname"`
-	AvatarKey    string `json:"avatarKey"`
-	AvatarUrl    string `json:"avatarUrl"`
-	Bio          string `json:"bio"`
-	CreatedAt    int64  `json:"createdAt"`
-	UpdatedAt    int64  `json:"updatedAt"`
-	AuditPending bool   `json:"auditPending,omitempty"`
-	RejectReason string `json:"rejectReason,omitempty"`
+	WxId           uint64 `json:"wxId"`
+	Nickname       string `json:"nickname"`
+	AvatarKey      string `json:"avatarKey"`
+	AvatarUrl      string `json:"avatarUrl"`
+	Bio            string `json:"bio"`
+	FollowerCount  int    `json:"followerCount,omitempty"`
+	FollowingCount int    `json:"followingCount,omitempty"`
+	PostCount      int    `json:"postCount,omitempty"`
+	CreatedAt      int64  `json:"createdAt"`
+	UpdatedAt      int64  `json:"updatedAt"`
+	AuditPending   bool   `json:"auditPending,omitempty"`
+	RejectReason   string `json:"rejectReason,omitempty"`
 }
 
 // GetOrCreateMyProfile 获取当前用户 profile；不存在时经 device internal API 创建默认昵称。
@@ -85,7 +88,17 @@ func UpdateMyProfile(ctx context.Context, wxID int64, nickname, avatarKey, bio s
 		return base, nil
 	}
 	if err = EnqueueProfileAudit(ctx, wxID, nickname, avatarKey, bio); err != nil {
-		return nil, err
+		g.Log().Warningf(ctx, "[ucg-profile] 待审队列写入失败 wxId=%d err=%v，降级直写 profile", wxID, err)
+		patch := ProfilePendingPatch{
+			WxId:      wxID,
+			Nickname:  strings.TrimSpace(nickname),
+			AvatarKey: strings.TrimSpace(avatarKey),
+			Bio:       strings.TrimSpace(bio),
+			UpdatedAt: time.Now().Unix(),
+		}
+		if applyErr := applyProfilePending(ctx, patch); applyErr != nil {
+			return nil, applyErr
+		}
 	}
 	row, err := dao.UcgProfile.Ctx(ctx).Where(dao.UcgProfile.Columns().WxId, wxID).One()
 	if err != nil {
@@ -175,8 +188,30 @@ func profileToDTO(p entity.UcgProfile) *ProfileDTO {
 	}
 }
 
+func enrichProfileStats(ctx context.Context, wxID uint64, dto *ProfileDTO) {
+	if dto == nil || wxID == 0 {
+		return
+	}
+	if n, err := dao.UcgFollow.Ctx(ctx).
+		Where(dao.UcgFollow.Columns().FollowerWxId, wxID).
+		Count(); err == nil {
+		dto.FollowingCount = int(n)
+	}
+	if n, err := dao.UcgFollow.Ctx(ctx).
+		Where(dao.UcgFollow.Columns().FolloweeWxId, wxID).
+		Count(); err == nil {
+		dto.FollowerCount = int(n)
+	}
+	if n, err := dao.UcgPost.Ctx(ctx).
+		Where(dao.UcgPost.Columns().AuthorWxId, wxID).
+		Count(); err == nil {
+		dto.PostCount = int(n)
+	}
+}
+
 func mergeProfileForAuthor(ctx context.Context, p entity.UcgProfile) (*ProfileDTO, error) {
 	dto := profileToDTO(p)
+	enrichProfileStats(ctx, p.WxId, dto)
 	reason, err := LoadProfileRejectReason(ctx, int64(p.WxId))
 	if err != nil {
 		g.Log().Warningf(ctx, "[ucg-profile] 读取资料审核拒绝原因失败 wxId=%d err=%v", p.WxId, err)

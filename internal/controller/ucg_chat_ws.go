@@ -17,6 +17,8 @@ type ucgWSInFrame struct {
 	ClientMsgID    string `json:"clientMsgId"`
 	ConversationID uint64 `json:"conversationId"`
 	Content        string `json:"content"`
+	ImageKey       string `json:"imageKey"`
+	VideoKey       string `json:"videoKey"`
 }
 
 func registerUcgChatWS(s *ghttp.Server) {
@@ -75,11 +77,14 @@ func ucgChatWS(r *ghttp.Request) {
 				_ = ws.WriteJSON(map[string]interface{}{"type": "error", "stage": "auth", "message": "auth required"})
 				continue
 			}
-			if frame.ConversationID == 0 || strings.TrimSpace(frame.Content) == "" {
-				_ = ws.WriteJSON(map[string]interface{}{"type": "error", "message": "conversationId/content required"})
+			content := strings.TrimSpace(frame.Content)
+			imageKey := strings.TrimSpace(frame.ImageKey)
+			videoKey := strings.TrimSpace(frame.VideoKey)
+			if frame.ConversationID == 0 || (content == "" && imageKey == "" && videoKey == "") {
+				_ = ws.WriteJSON(map[string]interface{}{"type": "error", "message": "conversationId/content or media required"})
 				continue
 			}
-			if pErr := ucgsvc.ProcessOutboundChatMessage(ctx, wxID, frame.ConversationID, strings.TrimSpace(frame.ClientMsgID), strings.TrimSpace(frame.Content)); pErr != nil {
+			if pErr := ucgsvc.ProcessOutboundChatMessage(ctx, wxID, frame.ConversationID, strings.TrimSpace(frame.ClientMsgID), content, imageKey, videoKey); pErr != nil {
 				glog.Warningf(ctx, "ucg chat message failed wxId=%d conv=%d: %v", wxID, frame.ConversationID, pErr)
 				_ = ws.WriteJSON(map[string]interface{}{"type": "error", "message": pErr.Error()})
 			}

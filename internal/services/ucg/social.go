@@ -110,6 +110,45 @@ func LikePost(ctx context.Context, wxID int64, postID uint64) error {
 	return err
 }
 
+// LikerDTO 点赞用户视图（昵称经 GetPublicProfile 填充）。
+type LikerDTO struct {
+	WxId     uint64 `json:"wxId"`
+	Nickname string `json:"nickname"`
+}
+
+// ListPostLikes 帖子点赞用户分页（按点赞时间升序）。
+func ListPostLikes(ctx context.Context, postID uint64, page, pageSize int) (*PageResult, error) {
+	if postID == 0 {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "postId 无效")
+	}
+	if err := ensurePublishedPost(ctx, postID); err != nil {
+		return nil, err
+	}
+	p := NormalizePage(page, pageSize)
+	model := dao.UcgPostLike.Ctx(ctx).Where(dao.UcgPostLike.Columns().PostId, postID)
+	total, err := model.Count()
+	if err != nil {
+		return nil, err
+	}
+	rows, err := model.OrderAsc(dao.UcgPostLike.Columns().CreatedAt).Limit(p.PageSize).Offset(pageOffset(p)).All()
+	if err != nil {
+		return nil, err
+	}
+	list := make([]*LikerDTO, 0, len(rows))
+	for _, row := range rows {
+		var like entity.UcgPostLike
+		if err = row.Struct(&like); err != nil {
+			return nil, err
+		}
+		dto := &LikerDTO{WxId: like.WxId}
+		if prof, pErr := GetPublicProfile(ctx, like.WxId); pErr == nil && prof != nil {
+			dto.Nickname = prof.Nickname
+		}
+		list = append(list, dto)
+	}
+	return &PageResult{List: list, Total: total, Page: p.Page, PageSize: p.PageSize}, nil
+}
+
 // UnlikePost 取消赞。
 func UnlikePost(ctx context.Context, wxID int64, postID uint64) error {
 	if wxID <= 0 || postID == 0 {

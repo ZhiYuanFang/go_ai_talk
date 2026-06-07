@@ -9,7 +9,7 @@ import (
 
 // App 网关 CORS 固定响应头（与浏览器预检及带 Authorization 的 JSON 请求对齐）。
 const (
-	GatewayAppCORSAllowMethods = "GET, POST, OPTIONS"
+	GatewayAppCORSAllowMethods = "GET, POST, PUT, DELETE, OPTIONS"
 	GatewayAppCORSAllowHeaders = "Content-Type, Authorization"
 	GatewayAppCORSMaxAge       = "86400"
 )

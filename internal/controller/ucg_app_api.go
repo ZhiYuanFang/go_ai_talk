@@ -134,7 +134,8 @@ func (c *UcgAppCtrl) PostsMine(ctx context.Context, req *v1.UcgPostsMineReq) (re
 
 func (c *UcgAppCtrl) FeedRecommend(ctx context.Context, req *v1.UcgFeedRecommendReq) (res *v1.UcgPageRes, err error) {
 	_ = c
-	page, err := ucgsvc.ListRecommendFeed(ctx, req.Page, req.PageSize)
+	viewerWxID, _ := wxIDFromUcgHeaderOptional(ghttp.RequestFromCtx(ctx))
+	page, err := ucgsvc.ListRecommendFeed(ctx, viewerWxID, req.Page, req.PageSize)
 	if err != nil {
 		return nil, err
 	}
@@ -220,6 +221,15 @@ func (c *UcgAppCtrl) PostLikeDelete(ctx context.Context, req *v1.UcgPostLikeDele
 		return nil, err
 	}
 	return &v1.UcgPostLikeDeleteRes{}, nil
+}
+
+func (c *UcgAppCtrl) PostLikesGet(ctx context.Context, req *v1.UcgPostLikesGetReq) (res *v1.UcgLikesPageRes, err error) {
+	_ = c
+	page, err := ucgsvc.ListPostLikes(ctx, req.Id, req.Page, req.PageSize)
+	if err != nil {
+		return nil, err
+	}
+	return likesPageToRes(page), nil
 }
 
 func (c *UcgAppCtrl) PostCommentsGet(ctx context.Context, req *v1.UcgPostCommentsGetReq) (res *v1.UcgCommentsPageRes, err error) {
@@ -370,6 +380,24 @@ func chatMessagesPageToRes(page *ucgsvc.PageResult) *v1.UcgChatMessagesPageRes {
 	return res
 }
 
+func likesPageToRes(page *ucgsvc.PageResult) *v1.UcgLikesPageRes {
+	res := &v1.UcgLikesPageRes{
+		Total: page.Total, Page: page.Page, PageSize: page.PageSize,
+		List: []v1.UcgLikerItem{},
+	}
+	if likers, ok := page.List.([]*ucgsvc.LikerDTO); ok {
+		for _, l := range likers {
+			if l == nil {
+				continue
+			}
+			res.List = append(res.List, v1.UcgLikerItem{
+				WxId: l.WxId, Nickname: l.Nickname,
+			})
+		}
+	}
+	return res
+}
+
 func commentsPageToRes(page *ucgsvc.PageResult) *v1.UcgCommentsPageRes {
 	res := &v1.UcgCommentsPageRes{
 		Total: page.Total, Page: page.Page, PageSize: page.PageSize,
@@ -398,18 +426,27 @@ func commentDTOToItem(c *ucgsvc.CommentDTO) v1.UcgCommentItem {
 }
 
 func wxIDFromUcgHeader(r *ghttp.Request) (int64, error) {
-	if r == nil {
+	wxID, ok := wxIDFromUcgHeaderOptional(r)
+	if !ok {
 		return 0, gerror.NewCode(gcode.CodeInvalidParameter, "缺少 X-Internal-Wx-Id")
+	}
+	return wxID, nil
+}
+
+// wxIDFromUcgHeaderOptional 解析网关注入的 wxId；缺失或无效时返回 (0, false)，供匿名可读接口可选身份。
+func wxIDFromUcgHeaderOptional(r *ghttp.Request) (int64, bool) {
+	if r == nil {
+		return 0, false
 	}
 	s := strings.TrimSpace(r.GetHeader(gatewayapp.HeaderInternalWxId))
 	if s == "" {
-		return 0, gerror.NewCode(gcode.CodeInvalidParameter, "缺少 X-Internal-Wx-Id")
+		return 0, false
 	}
 	wxID, err := strconv.ParseInt(s, 10, 64)
 	if err != nil || wxID <= 0 {
-		return 0, gerror.NewCode(gcode.CodeInvalidParameter, "X-Internal-Wx-Id 无效")
+		return 0, false
 	}
-	return wxID, nil
+	return wxID, true
 }
 
 func profileDTOToRes(p *ucgsvc.ProfileDTO) *v1.UcgProfileRes {
@@ -465,6 +502,7 @@ func postDTOToItem(p *ucgsvc.PostDTO) v1.UcgPostItem {
 		MediaType:    p.MediaType,
 		LikeCount:    p.LikeCount,
 		CommentCount: p.CommentCount,
+		LikedByMe:    p.LikedByMe,
 		CreatedAt:    p.CreatedAt,
 		UpdatedAt:    p.UpdatedAt,
 		PublishedAt:  p.PublishedAt,
