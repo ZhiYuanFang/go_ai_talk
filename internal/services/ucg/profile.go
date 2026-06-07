@@ -48,6 +48,9 @@ func GetOrCreateMyProfile(ctx context.Context, wxID int64) (*ProfileDTO, error) 
 		if err = row.Struct(&p); err != nil {
 			return nil, err
 		}
+		if err = refreshDefaultNicknameIfNeeded(ctx, wxID, &p); err != nil {
+			g.Log().Warningf(ctx, "[ucg-profile] 刷新默认昵称失败 wxId=%d err=%v", wxID, err)
+		}
 		return mergeProfileForAuthor(ctx, p)
 	}
 	nickname := defaultNickname(babyName)
@@ -108,7 +111,43 @@ func GetPublicProfile(ctx context.Context, wxID uint64) (*ProfileDTO, error) {
 	if err = row.Struct(&p); err != nil {
 		return nil, err
 	}
+	if err = refreshDefaultNicknameIfNeeded(ctx, int64(wxID), &p); err != nil {
+		g.Log().Warningf(ctx, "[ucg-profile] 刷新默认昵称失败 wxId=%d err=%v", wxID, err)
+	}
 	return profileToDTO(p), nil
+}
+
+func isStoredDefaultNickname(nickname string) bool {
+	nickname = strings.TrimSpace(nickname)
+	return nickname == "" || nickname == "家长"
+}
+
+// refreshDefaultNicknameIfNeeded 当库内昵称为空或默认「家长」时，经 ValidateWx 取 babyName 并回写。
+func refreshDefaultNicknameIfNeeded(ctx context.Context, wxID int64, p *entity.UcgProfile) error {
+	if p == nil || wxID <= 0 || !isStoredDefaultNickname(p.Nickname) {
+		return nil
+	}
+	_, babyName, err := Device().ValidateWx(ctx, wxID)
+	if err != nil {
+		return err
+	}
+	newNick := defaultNickname(babyName)
+	if newNick == strings.TrimSpace(p.Nickname) {
+		return nil
+	}
+	now := time.Now().Unix()
+	_, err = dao.UcgProfile.Ctx(ctx).
+		Where(dao.UcgProfile.Columns().WxId, wxID).
+		Data(g.Map{
+			dao.UcgProfile.Columns().Nickname:  newNick,
+			dao.UcgProfile.Columns().UpdatedAt: now,
+		}).Update()
+	if err != nil {
+		return err
+	}
+	p.Nickname = newNick
+	p.UpdatedAt = now
+	return nil
 }
 
 func defaultNickname(babyName string) string {
