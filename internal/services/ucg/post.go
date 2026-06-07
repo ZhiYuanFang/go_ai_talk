@@ -44,10 +44,11 @@ type PostDTO struct {
 
 // PostMediaDTO 帖子媒体展示。
 type PostMediaDTO struct {
-	ObjectKey string `json:"objectKey"`
-	CdnUrl    string `json:"cdnUrl"`
-	MediaKind int    `json:"mediaKind"`
-	SortOrder int    `json:"sortOrder"`
+	ObjectKey    string `json:"objectKey"`
+	CdnUrl       string `json:"cdnUrl"`
+	ThumbnailUrl string `json:"thumbnailUrl,omitempty"`
+	MediaKind    int    `json:"mediaKind"`
+	SortOrder    int    `json:"sortOrder"`
 }
 
 // CreatePost 创建帖子；submit=true 时进入 pending_audit。clientIP 用于服务端快照 ip_location。
@@ -140,7 +141,7 @@ func ListMyPosts(ctx context.Context, wxID int64, page, pageSize int) (*PageResu
 	return &PageResult{List: list, Total: total, Page: p.Page, PageSize: p.PageSize}, nil
 }
 
-// GetPostByID 获取单帖；非 published 仅作者可见。
+// GetPostByID 获取单帖；非 published 仅作者可见；enrich likedByMe。
 func GetPostByID(ctx context.Context, postID uint64, viewerWxID int64) (*PostDTO, error) {
 	row, err := dao.UcgPost.Ctx(ctx).Where(dao.UcgPost.Columns().Id, postID).One()
 	if err != nil {
@@ -156,7 +157,17 @@ func GetPostByID(ctx context.Context, postID uint64, viewerWxID int64) (*PostDTO
 	if post.Status != PostStatusPublished && int64(post.AuthorWxId) != viewerWxID {
 		return nil, gerror.NewCode(gcode.CodeNotFound, "帖子不存在")
 	}
-	return postToDTO(ctx, post)
+	dto, err := postToDTO(ctx, post)
+	if err != nil {
+		return nil, err
+	}
+	if viewerWxID > 0 {
+		liked, lErr := likedPostIDSet(ctx, viewerWxID, []uint64{postID})
+		if lErr == nil {
+			_, dto.LikedByMe = liked[postID]
+		}
+	}
+	return dto, nil
 }
 
 func loadOwnedPost(ctx context.Context, wxID int64, postID uint64) (*entity.UcgPost, error) {
@@ -263,6 +274,7 @@ func postToDTO(ctx context.Context, post entity.UcgPost) (*PostDTO, error) {
 	if prof, pErr := GetPublicProfile(ctx, post.AuthorWxId); pErr == nil {
 		author = prof
 	}
+	ensureAuthorBio(author)
 	dto := &PostDTO{
 		Id:           post.Id,
 		AuthorWxId:   post.AuthorWxId,
@@ -282,8 +294,17 @@ func postToDTO(ctx context.Context, post entity.UcgPost) (*PostDTO, error) {
 	return dto, nil
 }
 
+// ensureAuthorBio 保证 author.bio 非空（Feed/详情展示）。
+func ensureAuthorBio(author *ProfileDTO) {
+	if author == nil {
+		return
+	}
+	if strings.TrimSpace(author.Bio) == "" {
+		author.Bio = " "
+	}
+}
+
 func loadPostMedia(ctx context.Context, postID uint64) ([]PostMediaDTO, error) {
-	cfg := LoadOSSConfig(ctx)
 	rows, err := dao.UcgPostMedia.Ctx(ctx).
 		Where(dao.UcgPostMedia.Columns().PostId, postID).
 		OrderAsc(dao.UcgPostMedia.Columns().SortOrder).
@@ -298,16 +319,17 @@ func loadPostMedia(ctx context.Context, postID uint64) ([]PostMediaDTO, error) {
 			return nil, err
 		}
 		key := strings.TrimSpace(m.ObjectKey)
-		cdn := ""
-		if key != "" {
-			cdn = cfg.CdnBaseURL + "/" + strings.TrimPrefix(key, "/")
-		}
-		out = append(out, PostMediaDTO{
+		cdn := BuildCdnURL(key)
+		item := PostMediaDTO{
 			ObjectKey: key,
 			CdnUrl:    cdn,
 			MediaKind: m.MediaKind,
 			SortOrder: m.SortOrder,
-		})
+		}
+		if key != "" && m.MediaKind == 1 {
+			item.ThumbnailUrl = BuildImageThumbnailURL(key)
+		}
+		out = append(out, item)
 	}
 	return out, nil
 }

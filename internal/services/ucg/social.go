@@ -127,10 +127,11 @@ func LikePost(ctx context.Context, wxID int64, postID uint64) error {
 
 // LikerDTO 点赞用户视图（昵称与头像经 GetPublicProfile 填充）。
 type LikerDTO struct {
-	WxId       uint64 `json:"wxId"`
-	Nickname   string `json:"nickname"`
-	AvatarKey  string `json:"avatarKey,omitempty"`
-	AvatarUrl  string `json:"avatarUrl,omitempty"`
+	WxId               uint64 `json:"wxId"`
+	Nickname           string `json:"nickname"`
+	AvatarKey          string `json:"avatarKey,omitempty"`
+	AvatarUrl          string `json:"avatarUrl,omitempty"`
+	AvatarThumbnailUrl string `json:"avatarThumbnailUrl,omitempty"`
 }
 
 // ListPostLikes 帖子点赞用户分页（按点赞时间升序）。
@@ -162,6 +163,7 @@ func ListPostLikes(ctx context.Context, postID uint64, page, pageSize int) (*Pag
 			dto.Nickname = prof.Nickname
 			dto.AvatarKey = prof.AvatarKey
 			dto.AvatarUrl = prof.AvatarUrl
+			dto.AvatarThumbnailUrl = prof.AvatarThumbnailUrl
 		}
 		list = append(list, dto)
 	}
@@ -226,8 +228,9 @@ func AddComment(ctx context.Context, wxID int64, postID uint64, content string) 
 	}
 	id, _ := res.LastInsertId()
 	_, _ = dao.UcgPost.Ctx(ctx).Where(dao.UcgPost.Columns().Id, postID).Increment(dao.UcgPost.Columns().CommentCount, 1)
+	commentID := uint64(id)
 	dto := &CommentDTO{
-		Id:         uint64(id),
+		Id:         commentID,
 		PostId:     postID,
 		AuthorWxId: uint64(wxID),
 		Content:    content,
@@ -235,6 +238,13 @@ func AddComment(ctx context.Context, wxID int64, postID uint64, content string) 
 	}
 	if prof, pErr := GetPublicProfile(ctx, uint64(wxID)); pErr == nil {
 		dto.Author = prof
+	}
+	postRow, pErr := dao.UcgPost.Ctx(ctx).Where(dao.UcgPost.Columns().Id, postID).One()
+	if pErr == nil && !postRow.IsEmpty() {
+		var post entity.UcgPost
+		if sErr := postRow.Struct(&post); sErr == nil {
+			NotifyOnComment(ctx, wxID, post.AuthorWxId, postID, commentID, content)
+		}
 	}
 	return dto, nil
 }

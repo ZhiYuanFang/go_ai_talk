@@ -127,6 +127,16 @@ func (c *UcgAppCtrl) PostDelete(ctx context.Context, req *v1.UcgPostDeleteReq) (
 	return &v1.UcgPostDeleteRes{}, nil
 }
 
+func (c *UcgAppCtrl) PostGet(ctx context.Context, req *v1.UcgPostGetReq) (res *v1.UcgPostGetRes, err error) {
+	_ = c
+	viewerWxID, _ := wxIDFromUcgHeaderOptional(ghttp.RequestFromCtx(ctx))
+	post, err := ucgsvc.GetPostByID(ctx, req.Id, viewerWxID)
+	if err != nil {
+		return nil, err
+	}
+	return &v1.UcgPostGetRes{UcgPostItem: postDTOToItem(post)}, nil
+}
+
 func (c *UcgAppCtrl) PostsMine(ctx context.Context, req *v1.UcgPostsMineReq) (res *v1.UcgPageRes, err error) {
 	_ = c
 	wxID, err := wxIDFromUcgHeader(ghttp.RequestFromCtx(ctx))
@@ -274,6 +284,31 @@ func (c *UcgAppCtrl) CommentDelete(ctx context.Context, req *v1.UcgCommentDelete
 	return &v1.UcgCommentDeleteRes{}, nil
 }
 
+func (c *UcgAppCtrl) CommentNotificationsGet(ctx context.Context, req *v1.UcgCommentNotificationsGetReq) (res *v1.UcgCommentNotificationsGetRes, err error) {
+	_ = c
+	wxID, err := wxIDFromUcgHeader(ghttp.RequestFromCtx(ctx))
+	if err != nil {
+		return nil, err
+	}
+	page, err := ucgsvc.ListCommentNotifications(ctx, wxID, req.Page, req.PageSize)
+	if err != nil {
+		return nil, err
+	}
+	return notificationPageToRes(page), nil
+}
+
+func (c *UcgAppCtrl) CommentNotificationsReadPost(ctx context.Context, req *v1.UcgCommentNotificationsReadPostReq) (res *v1.UcgCommentNotificationsReadPostRes, err error) {
+	_ = c
+	wxID, err := wxIDFromUcgHeader(ghttp.RequestFromCtx(ctx))
+	if err != nil {
+		return nil, err
+	}
+	if err = ucgsvc.MarkNotificationsRead(ctx, wxID, req.Ids, req.All); err != nil {
+		return nil, err
+	}
+	return &v1.UcgCommentNotificationsReadPostRes{}, nil
+}
+
 func (c *UcgAppCtrl) ConversationsGet(ctx context.Context, req *v1.UcgConversationsGetReq) (res *v1.UcgConversationsPageRes, err error) {
 	_ = c
 	wxID, err := wxIDFromUcgHeader(ghttp.RequestFromCtx(ctx))
@@ -370,6 +405,7 @@ func conversationDTOToItem(c *ucgsvc.ConversationDTO) v1.UcgConversationItem {
 		Id: c.Id, PeerWxId: c.PeerWxId, Pinned: c.Pinned,
 		UnreadCount: c.UnreadCount, UpdatedAt: c.UpdatedAt, LastPreview: c.LastPreview,
 		PeerNickname: c.PeerNickname, PeerAvatarKey: c.PeerAvatarKey, PeerAvatarUrl: c.PeerAvatarUrl,
+		PeerAvatarThumbnailUrl: c.PeerAvatarThumbnailUrl,
 	}
 }
 
@@ -383,6 +419,8 @@ func chatMessagesPageToRes(page *ucgsvc.PageResult) *v1.UcgChatMessagesPageRes {
 			res.List = append(res.List, v1.UcgChatMessageItem{
 				Id: m.ID, ClientMsgId: m.ClientMsgID, SenderWxId: m.SenderWxID,
 				Content: m.Content, CreatedAt: m.CreatedAt, Status: m.Status,
+				ImageKey: m.ImageKey, VideoKey: m.VideoKey,
+				MediaCdnUrl: m.MediaCdnUrl, MediaThumbnailUrl: m.MediaThumbnailUrl,
 			})
 		}
 	}
@@ -402,6 +440,7 @@ func likesPageToRes(page *ucgsvc.PageResult) *v1.UcgLikesPageRes {
 			res.List = append(res.List, v1.UcgLikerItem{
 				WxId: l.WxId, Nickname: l.Nickname,
 				AvatarKey: l.AvatarKey, AvatarUrl: l.AvatarUrl,
+				AvatarThumbnailUrl: l.AvatarThumbnailUrl,
 			})
 		}
 	}
@@ -419,6 +458,35 @@ func commentsPageToRes(page *ucgsvc.PageResult) *v1.UcgCommentsPageRes {
 		}
 	}
 	return res
+}
+
+func notificationPageToRes(page *ucgsvc.NotificationPageResult) *v1.UcgCommentNotificationsGetRes {
+	if page == nil {
+		return &v1.UcgCommentNotificationsGetRes{List: []v1.UcgCommentNotificationItem{}}
+	}
+	res := &v1.UcgCommentNotificationsGetRes{
+		Total: page.Total, Page: page.Page, PageSize: page.PageSize,
+		UnreadCount: page.UnreadCount,
+		List:        []v1.UcgCommentNotificationItem{},
+	}
+	for _, n := range page.List {
+		res.List = append(res.List, notificationDTOToItem(n))
+	}
+	return res
+}
+
+func notificationDTOToItem(n *ucgsvc.NotificationDTO) v1.UcgCommentNotificationItem {
+	if n == nil {
+		return v1.UcgCommentNotificationItem{}
+	}
+	item := v1.UcgCommentNotificationItem{
+		Id: n.Id, Type: n.Type, PostId: n.PostId, CommentId: n.CommentId,
+		Preview: n.Preview, Read: n.Read, CreatedAt: n.CreatedAt,
+	}
+	if n.Actor != nil {
+		item.Actor = profileDTOToRes(n.Actor)
+	}
+	return item
 }
 
 func commentDTOToItem(c *ucgsvc.CommentDTO) v1.UcgCommentItem {
@@ -464,11 +532,12 @@ func profileDTOToRes(p *ucgsvc.ProfileDTO) *v1.UcgProfileRes {
 		return nil
 	}
 	return &v1.UcgProfileRes{
-		WxId:           p.WxId,
-		Nickname:       p.Nickname,
-		AvatarKey:      p.AvatarKey,
-		AvatarUrl:      p.AvatarUrl,
-		Bio:            p.Bio,
+		WxId:               p.WxId,
+		Nickname:           p.Nickname,
+		AvatarKey:          p.AvatarKey,
+		AvatarUrl:          p.AvatarUrl,
+		AvatarThumbnailUrl: p.AvatarThumbnailUrl,
+		Bio:                p.Bio,
 		FollowerCount:  p.FollowerCount,
 		FollowingCount: p.FollowingCount,
 		PostCount:      p.PostCount,
@@ -501,10 +570,11 @@ func postDTOToItem(p *ucgsvc.PostDTO) v1.UcgPostItem {
 	media := make([]v1.UcgPostMediaOut, 0, len(p.Media))
 	for _, m := range p.Media {
 		media = append(media, v1.UcgPostMediaOut{
-			ObjectKey: m.ObjectKey,
-			CdnUrl:    m.CdnUrl,
-			MediaKind: m.MediaKind,
-			SortOrder: m.SortOrder,
+			ObjectKey:    m.ObjectKey,
+			CdnUrl:       m.CdnUrl,
+			ThumbnailUrl: m.ThumbnailUrl,
+			MediaKind:    m.MediaKind,
+			SortOrder:    m.SortOrder,
 		})
 	}
 	item := v1.UcgPostItem{

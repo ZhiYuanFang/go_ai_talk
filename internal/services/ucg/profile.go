@@ -16,11 +16,12 @@ import (
 
 // ProfileDTO App 侧 profile 视图。
 type ProfileDTO struct {
-	WxId           uint64 `json:"wxId"`
-	Nickname       string `json:"nickname"`
-	AvatarKey      string `json:"avatarKey"`
-	AvatarUrl      string `json:"avatarUrl"`
-	Bio            string `json:"bio"`
+	WxId                uint64 `json:"wxId"`
+	Nickname            string `json:"nickname"`
+	AvatarKey           string `json:"avatarKey"`
+	AvatarUrl           string `json:"avatarUrl"`
+	AvatarThumbnailUrl  string `json:"avatarThumbnailUrl,omitempty"`
+	Bio                 string `json:"bio"`
 	FollowerCount  int    `json:"followerCount,omitempty"`
 	FollowingCount int    `json:"followingCount,omitempty"`
 	PostCount      int    `json:"postCount,omitempty"`
@@ -195,19 +196,22 @@ func defaultNickname(babyName string) string {
 }
 
 func profileToDTO(p entity.UcgProfile) *ProfileDTO {
-	cfg := LoadOSSConfig(context.Background())
+	key := strings.TrimSpace(p.AvatarKey)
 	avatarURL := ""
-	if key := strings.TrimSpace(p.AvatarKey); key != "" {
-		avatarURL = cfg.CdnBaseURL + "/" + strings.TrimPrefix(key, "/")
+	avatarThumbURL := ""
+	if key != "" {
+		avatarURL = BuildCdnURL(key)
+		avatarThumbURL = BuildImageThumbnailURL(key)
 	}
 	return &ProfileDTO{
-		WxId:      p.WxId,
-		Nickname:  p.Nickname,
-		AvatarKey: p.AvatarKey,
-		AvatarUrl: avatarURL,
-		Bio:       p.Bio,
-		CreatedAt: p.CreatedAt,
-		UpdatedAt: p.UpdatedAt,
+		WxId:               p.WxId,
+		Nickname:           p.Nickname,
+		AvatarKey:          p.AvatarKey,
+		AvatarUrl:          avatarURL,
+		AvatarThumbnailUrl: avatarThumbURL,
+		Bio:                p.Bio,
+		CreatedAt:          p.CreatedAt,
+		UpdatedAt:          p.UpdatedAt,
 	}
 }
 
@@ -255,8 +259,8 @@ func mergeProfileForAuthor(ctx context.Context, p entity.UcgProfile) (*ProfileDT
 	}
 	if patch.AvatarKey != "" {
 		dto.AvatarKey = patch.AvatarKey
-		cfg := LoadOSSConfig(ctx)
-		dto.AvatarUrl = cfg.CdnBaseURL + "/" + strings.TrimPrefix(patch.AvatarKey, "/")
+		dto.AvatarUrl = BuildCdnURL(patch.AvatarKey)
+		dto.AvatarThumbnailUrl = BuildImageThumbnailURL(patch.AvatarKey)
 	}
 	if patch.Bio != "" {
 		dto.Bio = patch.Bio

@@ -15,12 +15,13 @@ import (
 
 // ConversationDTO 会话列表项。
 type ConversationDTO struct {
-	Id             uint64 `json:"id"`
-	PeerWxId       uint64 `json:"peerWxId"`
-	PeerNickname   string `json:"peerNickname,omitempty"`
-	PeerAvatarKey  string `json:"peerAvatarKey,omitempty"`
-	PeerAvatarUrl  string `json:"peerAvatarUrl,omitempty"`
-	Pinned         int    `json:"pinned"`
+	Id                     uint64 `json:"id"`
+	PeerWxId               uint64 `json:"peerWxId"`
+	PeerNickname           string `json:"peerNickname,omitempty"`
+	PeerAvatarKey          string `json:"peerAvatarKey,omitempty"`
+	PeerAvatarUrl          string `json:"peerAvatarUrl,omitempty"`
+	PeerAvatarThumbnailUrl string `json:"peerAvatarThumbnailUrl,omitempty"`
+	Pinned                 int    `json:"pinned"`
 	UnreadCount    int    `json:"unreadCount"`
 	UpdatedAt      int64  `json:"updatedAt"`
 	LastPreview    string `json:"lastPreview,omitempty"`
@@ -172,6 +173,7 @@ func loadConversationDTO(ctx context.Context, convID uint64, wxID int64) (*Conve
 		dto.PeerNickname = prof.Nickname
 		dto.PeerAvatarKey = prof.AvatarKey
 		dto.PeerAvatarUrl = prof.AvatarUrl
+		dto.PeerAvatarThumbnailUrl = prof.AvatarThumbnailUrl
 	}
 	return dto, nil
 }
@@ -328,6 +330,7 @@ func DeliverChatMessage(ctx context.Context, convID uint64, senderWxID, recipien
 	if err != nil {
 		return msg, err
 	}
+	enrichChatMessageMedia(&msg)
 	_ = incrUnread(ctx, convID, recipientWxID)
 	bumpMemberActivity(ctx, convID, senderWxID, recipientWxID)
 	_, _ = dao.UcgConversationMember.Ctx(ctx).
@@ -376,10 +379,9 @@ func ProcessOutboundChatMessage(ctx context.Context, senderWxID int64, convID ui
 			return nil
 		}
 	}
-	cfg := LoadOSSConfig(ctx)
 	var mediaCdnURL string
 	if imageKey != "" {
-		mediaCdnURL = cfg.CdnBaseURL + "/" + strings.TrimPrefix(imageKey, "/")
+		mediaCdnURL = BuildCdnURL(imageKey)
 		if verdict, mErr := moderator.ModerateImageURL(ctx, mediaCdnURL); mErr != nil {
 			return mErr
 		} else if !verdict.Pass {
@@ -388,7 +390,7 @@ func ProcessOutboundChatMessage(ctx context.Context, senderWxID int64, convID ui
 		}
 	}
 	if videoKey != "" {
-		mediaCdnURL = cfg.CdnBaseURL + "/" + strings.TrimPrefix(videoKey, "/")
+		mediaCdnURL = BuildCdnURL(videoKey)
 		if verdict, mErr := moderator.ModerateVideoURL(ctx, mediaCdnURL); mErr != nil {
 			return mErr
 		} else if !verdict.Pass {

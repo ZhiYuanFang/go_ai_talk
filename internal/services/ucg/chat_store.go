@@ -12,15 +12,16 @@ import (
 
 // ChatMessage 聊天消息（Redis 持久化 JSON）。
 type ChatMessage struct {
-	ID          uint64 `json:"id"`
-	ClientMsgID string `json:"clientMsgId,omitempty"`
-	SenderWxID  int64  `json:"senderWxId"`
-	Content     string `json:"content"`
-	ImageKey    string `json:"imageKey,omitempty"`
-	VideoKey    string `json:"videoKey,omitempty"`
-	MediaCdnUrl string `json:"mediaCdnUrl,omitempty"`
-	CreatedAt   int64  `json:"createdAt"`
-	Status      string `json:"status"` // pending | delivered
+	ID                uint64 `json:"id"`
+	ClientMsgID       string `json:"clientMsgId,omitempty"`
+	SenderWxID        int64  `json:"senderWxId"`
+	Content           string `json:"content"`
+	ImageKey          string `json:"imageKey,omitempty"`
+	VideoKey          string `json:"videoKey,omitempty"`
+	MediaCdnUrl       string `json:"mediaCdnUrl,omitempty"`
+	MediaThumbnailUrl string `json:"mediaThumbnailUrl,omitempty"`
+	CreatedAt         int64  `json:"createdAt"`
+	Status            string `json:"status"` // pending | delivered
 }
 
 func appendChatMessage(ctx context.Context, convID uint64, msg ChatMessage) (ChatMessage, error) {
@@ -73,6 +74,7 @@ func listChatMessages(ctx context.Context, convID uint64, page, pageSize int) (t
 		if uErr := json.Unmarshal([]byte(g.NewVar(item).String()), &msg); uErr != nil {
 			continue
 		}
+		enrichChatMessageMedia(&msg)
 		list = append(list, msg)
 	}
 	// LRANGE 升序，前端通常要时间升序展示
@@ -105,4 +107,22 @@ func getUnread(ctx context.Context, convID uint64, wxID int64) (int, error) {
 func touchUserConversation(ctx context.Context, wxID int64, convID uint64, score int64) error {
 	_, err := g.Redis().Do(ctx, "ZADD", redisChatUserConvKey(wxID), score, strconv.FormatUint(convID, 10))
 	return err
+}
+
+func enrichChatMessageMedia(msg *ChatMessage) {
+	if msg == nil {
+		return
+	}
+	imageKey := strings.TrimSpace(msg.ImageKey)
+	videoKey := strings.TrimSpace(msg.VideoKey)
+	if imageKey != "" {
+		if strings.TrimSpace(msg.MediaCdnUrl) == "" {
+			msg.MediaCdnUrl = BuildCdnURL(imageKey)
+		}
+		msg.MediaThumbnailUrl = BuildImageThumbnailURL(imageKey)
+		return
+	}
+	if videoKey != "" && strings.TrimSpace(msg.MediaCdnUrl) == "" {
+		msg.MediaCdnUrl = BuildCdnURL(videoKey)
+	}
 }

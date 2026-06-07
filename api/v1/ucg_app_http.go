@@ -44,11 +44,12 @@ type UcgProfilePublicGetReq struct {
 }
 
 type UcgProfileRes struct {
-	WxId           uint64 `json:"wxId"`
-	Nickname       string `json:"nickname"`
-	AvatarKey      string `json:"avatarKey"`
-	AvatarUrl      string `json:"avatarUrl"`
-	Bio            string `json:"bio"`
+	WxId               uint64 `json:"wxId"`
+	Nickname           string `json:"nickname"`
+	AvatarKey          string `json:"avatarKey"`
+	AvatarUrl          string `json:"avatarUrl"`
+	AvatarThumbnailUrl string `json:"avatarThumbnailUrl,omitempty"`
+	Bio                string `json:"bio"`
 	FollowerCount  int    `json:"followerCount,omitempty"`
 	FollowingCount int    `json:"followingCount,omitempty"`
 	PostCount      int    `json:"postCount,omitempty"`
@@ -83,6 +84,15 @@ type UcgPostDeleteReq struct {
 }
 
 type UcgPostDeleteRes struct{}
+
+type UcgPostGetReq struct {
+	g.Meta `path:"/ucg/app/api/posts/{id}" method:"get" tags:"ucg" summary:"获取单帖"`
+	Id     uint64 `json:"id" in:"path" v:"required|min:1"`
+}
+
+type UcgPostGetRes struct {
+	UcgPostItem
+}
 
 // UcgPostCreateRes 创建帖子响应（字段与 UcgPostItem 一致）。
 type UcgPostCreateRes struct {
@@ -139,10 +149,11 @@ type UcgPostItem struct {
 }
 
 type UcgPostMediaOut struct {
-	ObjectKey string `json:"objectKey"`
-	CdnUrl    string `json:"cdnUrl"`
-	MediaKind int    `json:"mediaKind"`
-	SortOrder int    `json:"sortOrder"`
+	ObjectKey    string `json:"objectKey"`
+	CdnUrl       string `json:"cdnUrl"`
+	ThumbnailUrl string `json:"thumbnailUrl,omitempty"`
+	MediaKind    int    `json:"mediaKind"`
+	SortOrder    int    `json:"sortOrder"`
 }
 
 type UcgPageRes struct {
@@ -199,10 +210,11 @@ type UcgPostLikesGetReq struct {
 }
 
 type UcgLikerItem struct {
-	WxId      uint64 `json:"wxId"`
-	Nickname  string `json:"nickname"`
-	AvatarKey string `json:"avatarKey,omitempty"`
-	AvatarUrl string `json:"avatarUrl,omitempty"`
+	WxId               uint64 `json:"wxId"`
+	Nickname           string `json:"nickname"`
+	AvatarKey          string `json:"avatarKey,omitempty"`
+	AvatarUrl          string `json:"avatarUrl,omitempty"`
+	AvatarThumbnailUrl string `json:"avatarThumbnailUrl,omitempty"`
 }
 
 type UcgLikesPageRes struct {
@@ -253,6 +265,39 @@ type UcgCommentDeleteReq struct {
 
 type UcgCommentDeleteRes struct{}
 
+type UcgCommentNotificationsGetReq struct {
+	g.Meta   `path:"/ucg/app/api/notifications/comments" method:"get" tags:"ucg" summary:"互动消息列表"`
+	Page     int `json:"page" in:"query" d:"1"`
+	PageSize int `json:"pageSize" in:"query" d:"20"`
+}
+
+type UcgCommentNotificationItem struct {
+	Id        uint64         `json:"id"`
+	Type      string         `json:"type"`
+	PostId    uint64         `json:"postId"`
+	CommentId uint64         `json:"commentId"`
+	Actor     *UcgProfileRes `json:"actor,omitempty"`
+	Preview   string         `json:"preview"`
+	Read      bool           `json:"read"`
+	CreatedAt int64          `json:"createdAt"`
+}
+
+type UcgCommentNotificationsGetRes struct {
+	List        []UcgCommentNotificationItem `json:"list"`
+	Total       int                          `json:"total"`
+	Page        int                          `json:"page"`
+	PageSize    int                          `json:"pageSize"`
+	UnreadCount int                          `json:"unreadCount"`
+}
+
+type UcgCommentNotificationsReadPostReq struct {
+	g.Meta `path:"/ucg/app/api/notifications/comments/read" method:"post" tags:"ucg" summary:"标记互动消息已读"`
+	Ids    []uint64 `json:"ids"`
+	All    bool     `json:"all"`
+}
+
+type UcgCommentNotificationsReadPostRes struct{}
+
 type UcgConversationsGetReq struct {
 	g.Meta   `path:"/ucg/app/api/conversations" method:"get" tags:"ucg" summary:"会话列表"`
 	Page     int `json:"page" in:"query" d:"1"`
@@ -270,12 +315,13 @@ type UcgConversationCreateRes struct {
 }
 
 type UcgConversationItem struct {
-	Id            uint64 `json:"id"`
-	PeerWxId      uint64 `json:"peerWxId"`
-	PeerNickname  string `json:"peerNickname,omitempty"`
-	PeerAvatarKey string `json:"peerAvatarKey,omitempty"`
-	PeerAvatarUrl string `json:"peerAvatarUrl,omitempty"`
-	Pinned        int    `json:"pinned"`
+	Id                     uint64 `json:"id"`
+	PeerWxId               uint64 `json:"peerWxId"`
+	PeerNickname           string `json:"peerNickname,omitempty"`
+	PeerAvatarKey          string `json:"peerAvatarKey,omitempty"`
+	PeerAvatarUrl          string `json:"peerAvatarUrl,omitempty"`
+	PeerAvatarThumbnailUrl string `json:"peerAvatarThumbnailUrl,omitempty"`
+	Pinned                 int    `json:"pinned"`
 	UnreadCount   int    `json:"unreadCount"`
 	UpdatedAt     int64  `json:"updatedAt"`
 	LastPreview   string `json:"lastPreview,omitempty"`
@@ -296,12 +342,16 @@ type UcgConversationMessagesGetReq struct {
 }
 
 type UcgChatMessageItem struct {
-	Id          uint64 `json:"id"`
-	ClientMsgId string `json:"clientMsgId,omitempty"`
-	SenderWxId  int64  `json:"senderWxId"`
-	Content     string `json:"content"`
-	CreatedAt   int64  `json:"createdAt"`
-	Status      string `json:"status"`
+	Id                uint64 `json:"id"`
+	ClientMsgId       string `json:"clientMsgId,omitempty"`
+	SenderWxId        int64  `json:"senderWxId"`
+	Content           string `json:"content"`
+	ImageKey          string `json:"imageKey,omitempty"`
+	VideoKey          string `json:"videoKey,omitempty"`
+	MediaCdnUrl       string `json:"mediaCdnUrl,omitempty"`
+	MediaThumbnailUrl string `json:"mediaThumbnailUrl,omitempty"`
+	CreatedAt         int64  `json:"createdAt"`
+	Status            string `json:"status"`
 }
 
 type UcgChatMessagesPageRes struct {

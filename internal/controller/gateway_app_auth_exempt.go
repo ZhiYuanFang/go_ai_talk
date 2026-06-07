@@ -110,6 +110,9 @@ func gatewayAppPathAuthExempt(r *ghttp.Request) bool {
 		if stringInSlice(path, gatewayAppAuthExemptExactGETHEAD) {
 			return true
 		}
+		if gatewayAppGetPostByIDExempt(path, method) {
+			return true
+		}
 		for _, p := range gatewayAppAuthExemptPrefixesGETHEAD {
 			if strings.HasPrefix(path, p) {
 				return true
@@ -123,6 +126,30 @@ func gatewayAppPathAuthExempt(r *ghttp.Request) bool {
 	}
 
 	return false
+}
+
+// gatewayAppGetPostByIDExempt GET /ucg/app/api/posts/{numericId} 匿名可读已发布帖。
+func gatewayAppGetPostByIDExempt(path, method string) bool {
+	if method != http.MethodGet && method != http.MethodHead {
+		return false
+	}
+	const prefix = "/ucg/app/api/posts/"
+	if !strings.HasPrefix(path, prefix) {
+		return false
+	}
+	rest := strings.TrimPrefix(path, prefix)
+	if rest == "" || rest == "mine" {
+		return false
+	}
+	if strings.Contains(rest, "/") {
+		return false
+	}
+	for _, c := range rest {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return len(rest) > 0
 }
 
 func stringInSlice(s string, list []string) bool {
