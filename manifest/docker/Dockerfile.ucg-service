@@ -16,6 +16,8 @@ WORKDIR ${WORKDIR}
 
 COPY --from=builder /out/ucg-service ${WORKDIR}/ucg-service
 COPY manifest/config/config.ucg-service.yaml ${WORKDIR}/manifest/config/config.ucg-service.yaml
+# IP 属地离线库（约 10MB）；更新时替换 resource/ip2region/ip2region_v4.xdb 后重建 ucg-service 镜像。
+COPY resource/ip2region/ip2region_v4.xdb ${WORKDIR}/resource/ip2region/ip2region_v4.xdb
 
 EXPOSE 9804
 HEALTHCHECK --interval=10s --timeout=3s --retries=6 CMD wget -q -O - http://127.0.0.1:9804/api.json > /dev/null || exit 1

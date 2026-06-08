@@ -269,6 +269,8 @@ services:
       MQ_USER: "guest"
       MQ_PASSWORD: "guest"
       GF_REDIS_DEFAULT_ADDRESS: "${GF_REDIS_DEFAULT_ADDRESS:-}"
+      # 可选：覆盖 yaml 中 ucg.ip2regionXdbPath；默认镜像内 /app/resource/ip2region/ip2region_v4.xdb
+      IP2REGION_XDB_PATH: "${IP2REGION_XDB_PATH:-/app/resource/ip2region/ip2region_v4.xdb}"
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:9804/api.json > /dev/null || exit 1"]
       interval: 10s

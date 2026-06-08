@@ -15,6 +15,8 @@ logger:
 ucg:
   deviceServiceUrl: ""
   deviceInternalSecret: ""
+  # ip2region IPv4 离线库路径；Docker 内默认 /app/resource/ip2region/ip2region_v4.xdb，可用 IP2REGION_XDB_PATH 覆盖。
+  ip2regionXdbPath: "/app/resource/ip2region/ip2region_v4.xdb"
   oss:
     bucket: "pang-bao"
     region: "cn-beijing"
