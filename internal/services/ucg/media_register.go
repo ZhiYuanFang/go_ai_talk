@@ -3,6 +3,7 @@ package ucg
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"strings"
 	"time"
 
@@ -57,7 +58,7 @@ func RegisterMedia(ctx context.Context, wxID int64, req RegisterMediaRequest) (*
 			Where(cols.ContentHash, hash).
 			Where(cols.TransformVersion, version).
 			Scan(&blob)
-		if scanErr != nil {
+		if scanErr != nil && !errors.Is(scanErr, sql.ErrNoRows) {
 			return gerror.WrapCode(gcode.CodeInternalError, scanErr, "查询 blob 失败")
 		}
 

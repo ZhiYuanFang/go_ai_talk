@@ -2,6 +2,8 @@ package ucg
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"regexp"
 	"strings"
 
@@ -42,6 +44,9 @@ func ResolveMediaByHash(ctx context.Context, contentHash, transformVersion strin
 		Where(cols.TransformVersion, version).
 		Scan(&blob)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return &MediaResolveResult{Hit: false}, nil
+		}
 		return nil, gerror.WrapCode(gcode.CodeInternalError, err, "查询 blob 索引失败")
 	}
 	if blob.Id == 0 || strings.TrimSpace(blob.ObjectKey) == "" {
