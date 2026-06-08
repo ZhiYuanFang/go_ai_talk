@@ -69,6 +69,10 @@ type DeviceAdminContract interface {
 	DeleteEvent(ctx context.Context, id int64) error
 	ListQAPage(ctx context.Context, page, pageSize int) (QaPageResult, error)
 	DeleteQA(ctx context.Context, id int64) error
+	ListFeedbackByWxID(ctx context.Context, wxID int64) ([]entity.Feedback, error)
+	SubmitFeedback(ctx context.Context, wxID int64, question string) (entity.Feedback, error)
+	ListFeedbackPage(ctx context.Context, page, pageSize int, unrepliedOnly bool) (FeedbackPageResult, error)
+	ReplyFeedback(ctx context.Context, id int64, officialReply string) error
 	ListActionsForAdmin(ctx context.Context) ([]sharedtypes.AdminActionItem, error)
 	UpdateAction(ctx context.Context, id int64, name, targetType string) error
 	DeleteAction(ctx context.Context, id int64) error
@@ -94,6 +98,14 @@ type HistoryPageResult struct {
 // QaPageResult 问答库分页列表（qa 表权威在 voice 库）。
 type QaPageResult struct {
 	List     []entity.Qa
+	Total    int
+	Page     int
+	PageSize int
+}
+
+// FeedbackPageResult 用户反馈分页列表（feedback 表权威在 device 库）。
+type FeedbackPageResult struct {
+	List     []entity.Feedback
 	Total    int
 	Page     int
 	PageSize int

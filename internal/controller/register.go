@@ -24,6 +24,11 @@ func RegisterHTTP(s *ghttp.Server) {
 		r.Response.ServeFile("resource/public/qa-records.html")
 	})
 
+	s.BindHandler("/device/admin/feedback-records", func(r *ghttp.Request) {
+		r.Response.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
+		r.Response.ServeFile("resource/public/feedback-records.html")
+	})
+
 	s.BindHandler("/device/admin/ucg-admin.html", func(r *ghttp.Request) {
 		r.Response.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
 		r.Response.ServeFile("resource/public/ucg-admin.html")

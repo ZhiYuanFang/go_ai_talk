@@ -170,6 +170,31 @@
 		</div>
 	</div>
 
+	<div class="card hidden" id="feedbackCard">
+		<div class="card-head">
+			<h3>用户反馈</h3>
+			<div class="card-actions">
+				<button id="refreshFeedbackBtn" type="button">刷新</button>
+				<a id="feedbackMoreLink" class="link-btn hidden" href="/device/admin/feedback-records">展开更多</a>
+			</div>
+		</div>
+		<div id="feedbackMsg" class="msg"></div>
+		<div class="table-wrap">
+			<table>
+				<thead>
+					<tr>
+						<th>ID</th>
+						<th>用户 wxId</th>
+						<th>问题</th>
+						<th>官方回复</th>
+						<th>状态</th>
+					</tr>
+				</thead>
+				<tbody id="feedbackTbody"></tbody>
+			</table>
+		</div>
+	</div>
+
 	<div class="card hidden" id="actionCard">
 		<div class="card-head">
 			<h3>动作预设</h3>
@@ -277,11 +302,13 @@ const loginCard = document.getElementById('loginCard');
 const mainCard = document.getElementById('mainCard');
 const eventCard = document.getElementById('eventCard');
 const qaCard = document.getElementById('qaCard');
+const feedbackCard = document.getElementById('feedbackCard');
 const actionCard = document.getElementById('actionCard');
 const loginMsg = document.getElementById('loginMsg');
 const mainMsg = document.getElementById('mainMsg');
 const eventMsg = document.getElementById('eventMsg');
 const qaMsg = document.getElementById('qaMsg');
+const feedbackMsg = document.getElementById('feedbackMsg');
 const actionMsg = document.getElementById('actionMsg');
 const eventModal = document.getElementById('eventModal');
 const eventModalTitle = document.getElementById('eventModalTitle');
@@ -944,6 +971,33 @@ async function loadQaList(){
 	}
 }
 
+function feedbackStatusLabel(status){
+	return Number(status) === 1 ? '已回复' : '待回复';
+}
+
+async function loadFeedbackList(){
+	const paged = asPagedListPayload(await api('/device/admin/api/feedback/list?page=1&pageSize=10'));
+	const tbody = document.getElementById('feedbackTbody');
+	tbody.innerHTML = '';
+	(paged.list || []).forEach(it => {
+		const tr = document.createElement('tr');
+		tr.innerHTML = '<td>'+ escapeHtml(it.id||'') +'</td>' +
+			'<td>'+ escapeHtml(it.wxId ?? '') +'</td>' +
+			'<td class="wrapcell">'+ escapeHtml(it.question||'') +'</td>' +
+			'<td class="wrapcell">'+ escapeHtml(it.officialReply || '—') +'</td>' +
+			'<td>'+ escapeHtml(feedbackStatusLabel(it.status)) +'</td>';
+		tbody.appendChild(tr);
+	});
+	const moreLink = document.getElementById('feedbackMoreLink');
+	if(moreLink){
+		if(paged.total > 10){
+			moreLink.classList.remove('hidden');
+		} else {
+			moreLink.classList.add('hidden');
+		}
+	}
+}
+
 async function loadActionList(){
 	const data = asListPayload(await api('/device/admin/api/action/list'));
 	const tbody = document.getElementById('actionTbody');
@@ -994,12 +1048,14 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
 		await loadDeviceRecordList(1);
 		await loadEventList();
 		await loadQaList();
+		await loadFeedbackList();
 		await loadActionList();
 		loginCard.classList.add('hidden');
 		mainCard.classList.remove('hidden');
 		document.getElementById('deviceRecordCard').classList.remove('hidden');
 		eventCard.classList.remove('hidden');
 		qaCard.classList.remove('hidden');
+		feedbackCard.classList.remove('hidden');
 		actionCard.classList.remove('hidden');
 		setMsg(mainMsg, '登录成功', true);
 	} catch (e) {
@@ -1060,6 +1116,11 @@ document.getElementById('refreshEventBtn').addEventListener('click', async () =>
 document.getElementById('refreshQaBtn').addEventListener('click', async () => {
 	try { await loadQaList(); setMsg(qaMsg, '已刷新', true); }
 	catch (e) { setMsg(qaMsg, e.message || '刷新失败'); }
+});
+
+document.getElementById('refreshFeedbackBtn').addEventListener('click', async () => {
+	try { await loadFeedbackList(); setMsg(feedbackMsg, '已刷新', true); }
+	catch (e) { setMsg(feedbackMsg, e.message || '刷新失败'); }
 });
 
 document.getElementById('refreshActionBtn').addEventListener('click', async () => {

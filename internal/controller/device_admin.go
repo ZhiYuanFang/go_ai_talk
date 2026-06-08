@@ -215,3 +215,59 @@ func (c *AdminCtrl) ActionDelete(ctx context.Context, req *v1.DeviceAdminActionD
 	}
 	return &v1.DeviceAdminActionDeleteRes{}, nil
 }
+
+// FeedbackList 用户反馈分页列表。
+func (c *AdminCtrl) FeedbackList(ctx context.Context, req *v1.DeviceAdminFeedbackListReq) (res *v1.DeviceAdminFeedbackListRes, err error) {
+	if err := c.requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	result, err := c.Admin.ListFeedbackPage(ctx, req.Page, req.PageSize, req.UnrepliedOnly)
+	if err != nil {
+		return nil, err
+	}
+	list := make([]v1.DeviceAdminFeedbackItem, 0, len(result.List))
+	for _, row := range result.List {
+		item := v1.DeviceAdminFeedbackItem{
+			Id:        row.Id,
+			WxId:      row.WxId,
+			Question:  row.Question,
+			Status:    row.Status,
+			CreatedAt: feedbackTimeUnix(row.CreatedAt),
+		}
+		if row.OfficialReply != "" {
+			item.OfficialReply = row.OfficialReply
+		}
+		item.RepliedAt = feedbackTimeUnixPtr(row.RepliedAt)
+		list = append(list, item)
+	}
+	return &v1.DeviceAdminFeedbackListRes{
+		List:     list,
+		Total:    result.Total,
+		Page:     result.Page,
+		PageSize: result.PageSize,
+	}, nil
+}
+
+// FeedbackReply 官方回复（每条仅一次）。
+func (c *AdminCtrl) FeedbackReply(ctx context.Context, req *v1.DeviceAdminFeedbackReplyReq) (res *v1.DeviceAdminFeedbackReplyRes, err error) {
+	if err := c.requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	if req.Id <= 0 {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "id 无效")
+	}
+	if err := c.Admin.ReplyFeedback(ctx, req.Id, req.OfficialReply); err != nil {
+		switch err {
+		case device.ErrFeedbackNotFound:
+			return nil, gerror.NewCode(gcode.CodeNotFound, err.Error())
+		case device.ErrFeedbackAlreadyReplied:
+			return nil, gerror.NewCode(gcode.CodeInvalidOperation, err.Error())
+		default:
+			if gerror.Code(err) == gcode.CodeInvalidParameter {
+				return nil, err
+			}
+			return nil, gerror.NewCode(gcode.CodeInvalidParameter, err.Error())
+		}
+	}
+	return &v1.DeviceAdminFeedbackReplyRes{}, nil
+}

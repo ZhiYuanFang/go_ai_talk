@@ -209,6 +209,22 @@ func (c *httpDeviceAdminClient) DeleteQA(ctx context.Context, id int64) error {
 	return deleteQaFromVoiceHTTP(ctx, id)
 }
 
+func (c *httpDeviceAdminClient) ListFeedbackByWxID(ctx context.Context, wxID int64) ([]entity.Feedback, error) {
+	return nil, fmt.Errorf("device http admin: feedback APIs are device-service local only")
+}
+
+func (c *httpDeviceAdminClient) SubmitFeedback(ctx context.Context, wxID int64, question string) (entity.Feedback, error) {
+	return entity.Feedback{}, fmt.Errorf("device http admin: feedback APIs are device-service local only")
+}
+
+func (c *httpDeviceAdminClient) ListFeedbackPage(ctx context.Context, page, pageSize int, unrepliedOnly bool) (contracts.FeedbackPageResult, error) {
+	return contracts.FeedbackPageResult{}, fmt.Errorf("device http admin: feedback APIs are device-service local only")
+}
+
+func (c *httpDeviceAdminClient) ReplyFeedback(ctx context.Context, id int64, officialReply string) error {
+	return fmt.Errorf("device http admin: feedback APIs are device-service local only")
+}
+
 func (c *httpDeviceAdminClient) ListActionsForAdmin(ctx context.Context) ([]sharedtypes.AdminActionItem, error) {
 	var out struct {
 		List []sharedtypes.AdminActionItem `json:"list"`
