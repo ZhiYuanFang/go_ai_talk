@@ -46,6 +46,47 @@ func (c *UcgAppCtrl) MediaPresign(ctx context.Context, req *v1.UcgMediaPresignRe
 	}, nil
 }
 
+// MediaResolve POST /ucg/app/api/media/resolve
+func (c *UcgAppCtrl) MediaResolve(ctx context.Context, req *v1.UcgMediaResolveReq) (res *v1.UcgMediaResolveRes, err error) {
+	_ = c
+	if _, err = wxIDFromUcgHeader(ghttp.RequestFromCtx(ctx)); err != nil {
+		return nil, err
+	}
+	result, err := ucgsvc.ResolveMediaByHash(ctx, req.ContentHash, req.TransformVersion, req.MediaKind)
+	if err != nil {
+		return nil, err
+	}
+	res = &v1.UcgMediaResolveRes{Hit: result.Hit}
+	if result.Hit {
+		res.ObjectKey = result.ObjectKey
+		res.CdnUrl = result.CdnURL
+	}
+	return res, nil
+}
+
+// MediaRegister POST /ucg/app/api/media/register
+func (c *UcgAppCtrl) MediaRegister(ctx context.Context, req *v1.UcgMediaRegisterReq) (res *v1.UcgMediaRegisterRes, err error) {
+	_ = c
+	wxID, err := wxIDFromUcgHeader(ghttp.RequestFromCtx(ctx))
+	if err != nil {
+		return nil, err
+	}
+	result, err := ucgsvc.RegisterMedia(ctx, wxID, ucgsvc.RegisterMediaRequest{
+		ObjectKey:        req.ObjectKey,
+		ContentHash:      req.ContentHash,
+		TransformVersion: req.TransformVersion,
+		MediaKind:        req.MediaKind,
+		DedupHit:         req.DedupHit,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &v1.UcgMediaRegisterRes{
+		ObjectKey: result.ObjectKey,
+		CdnUrl:    result.CdnURL,
+	}, nil
+}
+
 // MediaDelete POST /ucg/app/api/media/delete
 func (c *UcgAppCtrl) MediaDelete(ctx context.Context, req *v1.UcgMediaDeleteReq) (res *v1.UcgMediaDeleteRes, err error) {
 	_ = c

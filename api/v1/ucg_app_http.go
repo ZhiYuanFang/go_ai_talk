@@ -17,6 +17,33 @@ type UcgMediaPresignRes struct {
 	Headers   map[string]string `json:"headers"`
 }
 
+type UcgMediaResolveReq struct {
+	g.Meta           `path:"/ucg/app/api/media/resolve" method:"post" tags:"ucg" summary:"按内容哈希查询 blob 索引"`
+	ContentHash      string `json:"contentHash" v:"required|length:64"`
+	TransformVersion string `json:"transformVersion" v:"required|length:1,16"`
+	MediaKind        int    `json:"mediaKind" v:"required|in:1,2" dc:"1=图片 2=视频"`
+}
+
+type UcgMediaResolveRes struct {
+	Hit       bool   `json:"hit"`
+	ObjectKey string `json:"objectKey,omitempty"`
+	CdnUrl    string `json:"cdnUrl,omitempty"`
+}
+
+type UcgMediaRegisterReq struct {
+	g.Meta           `path:"/ucg/app/api/media/register" method:"post" tags:"ucg" summary:"登记 blob 与媒体所有权"`
+	ObjectKey        string `json:"objectKey" v:"required"`
+	ContentHash      string `json:"contentHash" v:"required|length:64"`
+	TransformVersion string `json:"transformVersion" v:"required|length:1,16"`
+	MediaKind        int    `json:"mediaKind" v:"required|in:1,2" dc:"1=图片 2=视频"`
+	DedupHit         bool   `json:"dedupHit"`
+}
+
+type UcgMediaRegisterRes struct {
+	ObjectKey string `json:"objectKey"`
+	CdnUrl    string `json:"cdnUrl"`
+}
+
 type UcgMediaDeleteReq struct {
 	g.Meta     `path:"/ucg/app/api/media/delete" method:"post" tags:"ucg" summary:"删除已上传媒体（孤儿清理）"`
 	ObjectKeys []string `json:"objectKeys" v:"required"`

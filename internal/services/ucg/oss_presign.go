@@ -14,8 +14,9 @@ import (
 
 const presignExpireSeconds = 900
 
-// PresignUpload 生成 social/ 前缀 objectKey 与 PUT 预签名 URL，并记录 ucg_media_upload 所有权。
+// PresignUpload 生成 social/ 前缀 objectKey 与 PUT 预签名 URL（不写 ownership，由 register 负责）。
 func PresignUpload(ctx context.Context, wxID int64, mediaKind int, ext string) (uploadURL, objectKey, cdnURL string, headers map[string]string, err error) {
+	_ = wxID
 	cfg := LoadOSSConfig(ctx)
 	if err = validateOSSConfig(cfg); err != nil {
 		return "", "", "", nil, err
@@ -44,9 +45,6 @@ func PresignUpload(ctx context.Context, wxID int64, mediaKind int, ext string) (
 	cdnURL = cfg.CdnBaseURL + "/" + strings.TrimPrefix(objectKey, "/")
 	headers = map[string]string{
 		"Content-Type": contentType,
-	}
-	if logErr := LogMediaUpload(ctx, wxID, objectKey, mediaKind); logErr != nil {
-		return "", "", "", nil, gerror.WrapCode(gcode.CodeInternalError, logErr, "记录媒体所有权失败")
 	}
 	return signedURL, objectKey, cdnURL, headers, nil
 }

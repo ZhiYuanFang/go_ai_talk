@@ -13,8 +13,9 @@ import (
 // MaxMediaUploadBytes UCG 单文件上传上限（与 Flutter maxUcgVideoBytes 20MB + 余量对齐）。
 const MaxMediaUploadBytes = 25 << 20
 
-// UploadMediaObject 服务端直传 OSS（供 Web 等同域代理上传，规避浏览器对 OSS 的 CORS 预检），并记录所有权。
+// UploadMediaObject 服务端直传 OSS（供 Web 同域代理上传）；不写 ownership，由 register 负责。
 func UploadMediaObject(ctx context.Context, wxID int64, mediaKind int, ext string, body io.Reader, size int64) (objectKey, cdnURL string, err error) {
+	_ = wxID
 	if size <= 0 || size > MaxMediaUploadBytes {
 		return "", "", gerror.NewCode(gcode.CodeInvalidParameter, "文件大小无效或超过上限")
 	}
@@ -43,8 +44,5 @@ func UploadMediaObject(ctx context.Context, wxID int64, mediaKind int, ext strin
 		return "", "", gerror.WrapCode(gcode.CodeInternalError, err, "OSS 上传失败")
 	}
 	cdnURL = cfg.CdnBaseURL + "/" + strings.TrimPrefix(objectKey, "/")
-	if logErr := LogMediaUpload(ctx, wxID, objectKey, mediaKind); logErr != nil {
-		return "", "", gerror.WrapCode(gcode.CodeInternalError, logErr, "记录媒体所有权失败")
-	}
 	return objectKey, cdnURL, nil
 }
