@@ -20,4 +20,6 @@ type User struct {
 	LastTalkTime   interface{} // 最后对话时间戳
 	Birthday       interface{} // 生日时间戳
 	BabyName       interface{} // 宝宝名字
+	LastApiPath    interface{} // 最近 HTTP 接口 METHOD /path
+	LastApiAt      interface{} // 最近 HTTP 接口时间 Unix 秒
 }

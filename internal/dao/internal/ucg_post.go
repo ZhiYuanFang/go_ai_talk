@@ -23,7 +23,7 @@ type UcgPostColumns struct {
 	Id           string //
 	AuthorWxId   string //
 	Content      string //
-	IpLocation   string // 发帖IP属地快照
+	IpLocation   string // 发帖时 IP属地快照
 	Status       string // 0 draft 1 pending_audit 2 published 3 rejected
 	RejectReason string //
 	MediaType    string // 0 none 1 images 2 video

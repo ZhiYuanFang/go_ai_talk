@@ -22,7 +22,8 @@ func ucgMediaUpload(r *ghttp.Request) {
 		return
 	}
 	ctx := r.Context()
-	if _, err := wxIDFromUcgHeader(r); err != nil {
+	wxID, err := wxIDFromUcgHeader(r)
+	if err != nil {
 		writeUcgMediaUploadFail(r, err)
 		return
 	}
@@ -59,7 +60,7 @@ func ucgMediaUpload(r *ghttp.Request) {
 		writeUcgMediaUploadFail(r, gerror.NewCode(gcode.CodeInvalidParameter, "文件超过大小上限"))
 		return
 	}
-	objectKey, cdnURL, err := ucgsvc.UploadMediaObject(ctx, mediaKind, ext, bytes.NewReader(data), int64(len(data)))
+	objectKey, cdnURL, err := ucgsvc.UploadMediaObject(ctx, wxID, mediaKind, ext, bytes.NewReader(data), int64(len(data)))
 	if err != nil {
 		writeUcgMediaUploadFail(r, err)
 		return

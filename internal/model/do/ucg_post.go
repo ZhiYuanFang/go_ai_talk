@@ -14,6 +14,7 @@ type UcgPost struct {
 	Id           interface{} //
 	AuthorWxId   interface{} //
 	Content      interface{} //
+	IpLocation   interface{} // 发帖时 IP属地快照
 	Status       interface{} // 0 draft 1 pending_audit 2 published 3 rejected
 	RejectReason interface{} //
 	MediaType    interface{} // 0 none 1 images 2 video

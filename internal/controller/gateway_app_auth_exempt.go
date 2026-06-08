@@ -14,6 +14,7 @@ var (
 	gatewayAppAuthExemptPrefixesAnyMethod = []string{
 		"/device/app/api/user/internal/",
 		"/swagger",
+		"/ucg/admin/api/",
 	}
 
 	// POST 且路径精确匹配。
@@ -57,6 +58,7 @@ var (
 		"/ucg/app/api/feed/recommend",
 		"/ucg/app/api/health",
 		"/device/app/version-admin.html",
+		"/device/admin/ucg-admin.html",
 		"/device/app/integration-test.html",
 		"/user-agreement.html",
 		"/privacy-policy.html",

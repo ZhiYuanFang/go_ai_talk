@@ -20,26 +20,26 @@ type WxDao struct {
 
 // WxColumns defines and stores column names for table wx.
 type WxColumns struct {
-	Id       string //
-	DeviceNo string //
-	Unionid  string //
-	AppleSub string // Apple JWT sub
+	Id         string //
+	DeviceNo   string //
+	Unionid    string //
+	AppleSub   string // Apple JWT sub
 	Platform   string // 平台来源
-	IpLocation string // IP属地（网关解析）
+	IpLocation string // IP属地展示文案（省/市，客户端上报）
 	Account    string // 账户
-	Password string // 密码哈希（bcrypt，不可逆）
+	Password   string // 密码哈希（bcrypt，不可逆）
 }
 
 // wxColumns holds the columns for table wx.
 var wxColumns = WxColumns{
-	Id:       "id",
-	DeviceNo: "device_no",
-	Unionid:  "unionid",
-	AppleSub: "apple_sub",
+	Id:         "id",
+	DeviceNo:   "device_no",
+	Unionid:    "unionid",
+	AppleSub:   "apple_sub",
 	Platform:   "platform",
 	IpLocation: "ip_location",
 	Account:    "account",
-	Password: "password",
+	Password:   "password",
 }
 
 // NewWxDao creates and returns a new DAO object for table data access.

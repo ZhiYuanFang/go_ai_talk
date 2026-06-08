@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>UCG AI 配置</title>
+	<style>
+		body{font-family:Arial,Helvetica,sans-serif;background:#f7f8fa;color:#222;margin:0;padding:24px}
+		.card{background:#fff;border-radius:12px;padding:16px;max-width:640px;margin:0 auto 16px;box-shadow:0 2px 10px rgba(0,0,0,.05)}
+		input,button,select{padding:10px 12px;border-radius:8px;border:1px solid #d0d7de;font-size:14px}
+		select{min-width:240px;background:#fff}
+		button{background:#1677ff;color:#fff;border:none;cursor:pointer}
+		button:disabled{background:#9bbcf5;cursor:not-allowed}
+		a.link-btn{display:inline-block;padding:10px 12px;border-radius:8px;font-size:14px;background:#6b7280;color:#fff;text-decoration:none;line-height:1.2}
+		a.link-btn:hover{background:#4b5563}
+		.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px}
+		label{display:block;font-size:13px;color:#64748b;margin-bottom:6px}
+		.field{margin-bottom:16px}
+		.hidden{display:none}
+		.msg{margin-top:8px;font-size:13px}
+		.msg.ok{color:#059669}
+		.msg.err{color:#dc2626}
+	</style>
+</head>
+<body>
+	<div class="card" id="loginCard">
+		<h3>UCG AI 配置登录</h3>
+		<p class="msg" style="color:#64748b;margin-top:0;">使用 UCG Admin 口令（yaml <code>ucg.admin.password</code>）</p>
+		<div class="row">
+			<input id="pwd" type="password" placeholder="请输入口令" />
+			<button id="loginBtn" type="button">进入</button>
+			<a class="link-btn" href="/device/admin">返回设备管理</a>
+		</div>
+		<div id="loginMsg" class="msg"></div>
+	</div>
+
+	<div class="card hidden" id="mainCard">
+		<h3>UCG AI 润笔配置</h3>
+		<div class="field">
+			<label for="visionModel">Vision 模型</label>
+			<select id="visionModel"></select>
+		</div>
+		<div class="field">
+			<label for="maxImages">单次润笔最大图片数 (1-9)</label>
+			<input id="maxImages" type="number" min="1" max="9" step="1" />
+		</div>
+		<div class="row">
+			<button id="saveBtn" type="button">保存</button>
+			<span id="meta" class="msg" style="color:#64748b;"></span>
+		</div>
+		<div id="mainMsg" class="msg"></div>
+	</div>
+
+<script>
+let adminPwd = localStorage.getItem('ucgAdminPwd') || '';
+
+async function api(path, options={}){
+	const headers = Object.assign({'Content-Type':'application/json','X-Admin-Password':adminPwd}, options.headers || {});
+	const res = await fetch(path, Object.assign({}, options, {headers}));
+	const data = await res.json().catch(() => ({}));
+	if(!res.ok || data.code !== 0){ throw new Error(data.message || ('HTTP '+res.status)); }
+	return data.data;
+}
+
+function showMsg(el, text, ok){
+	el.textContent = text || '';
+	el.className = 'msg ' + (ok ? 'ok' : (text ? 'err' : ''));
+}
+
+function fillModelOptions(models, current){
+	const sel = document.getElementById('visionModel');
+	sel.innerHTML = '';
+	(models || []).forEach(m => {
+		const opt = document.createElement('option');
+		opt.value = m;
+		opt.textContent = m;
+		if(m === current) opt.selected = true;
+		sel.appendChild(opt);
+	});
+}
+
+async function loadConfig(){
+	const data = await api('/ucg/admin/api/ai-config');
+	fillModelOptions(data.allowedModels || [], data.visionModel);
+	document.getElementById('maxImages').value = data.maxImagesPerRequest || 9;
+	const meta = document.getElementById('meta');
+	if(data.updatedAt){
+		const d = new Date(data.updatedAt * 1000);
+		meta.textContent = '上次更新: ' + d.toLocaleString() + (data.updatedBy ? (' · ' + data.updatedBy) : '');
+	} else {
+		meta.textContent = '';
+	}
+}
+
+async function enterMain(){
+	document.getElementById('loginCard').classList.add('hidden');
+	document.getElementById('mainCard').classList.remove('hidden');
+	await loadConfig();
+}
+
+document.getElementById('loginBtn').addEventListener('click', async () => {
+	const pwd = document.getElementById('pwd').value.trim();
+	if(!pwd){ showMsg(document.getElementById('loginMsg'), '请输入口令', false); return; }
+	adminPwd = pwd;
+	localStorage.setItem('ucgAdminPwd', pwd);
+	try {
+		await api('/ucg/admin/api/ai-config');
+		showMsg(document.getElementById('loginMsg'), '', true);
+		await enterMain();
+	} catch(e){
+		showMsg(document.getElementById('loginMsg'), e.message || '登录失败', false);
+	}
+});
+
+document.getElementById('saveBtn').addEventListener('click', async () => {
+	const btn = document.getElementById('saveBtn');
+	btn.disabled = true;
+	try {
+		const body = {
+			visionModel: document.getElementById('visionModel').value,
+			maxImagesPerRequest: parseInt(document.getElementById('maxImages').value, 10) || 9,
+			updatedBy: 'ucg-admin.html'
+		};
+		await api('/ucg/admin/api/ai-config', {method:'PUT', body: JSON.stringify(body)});
+		showMsg(document.getElementById('mainMsg'), '保存成功', true);
+		await loadConfig();
+	} catch(e){
+		showMsg(document.getElementById('mainMsg'), e.message || '保存失败', false);
+	} finally {
+		btn.disabled = false;
+	}
+});
+
+if(adminPwd){
+	document.getElementById('pwd').value = adminPwd;
+	api('/ucg/admin/api/ai-config').then(() => enterMain()).catch(() => {});
+}
+</script>
+</body>
+</html>

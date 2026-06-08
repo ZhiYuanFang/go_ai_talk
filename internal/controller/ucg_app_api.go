@@ -30,10 +30,11 @@ func (c *UcgAppCtrl) Health(ctx context.Context, req *v1.UcgHealthReq) (res *v1.
 // MediaPresign POST /ucg/app/api/media/presign
 func (c *UcgAppCtrl) MediaPresign(ctx context.Context, req *v1.UcgMediaPresignReq) (res *v1.UcgMediaPresignRes, err error) {
 	_ = c
-	if _, err = wxIDFromUcgHeader(ghttp.RequestFromCtx(ctx)); err != nil {
+	wxID, err := wxIDFromUcgHeader(ghttp.RequestFromCtx(ctx))
+	if err != nil {
 		return nil, err
 	}
-	uploadURL, objectKey, cdnURL, headers, err := ucgsvc.PresignUpload(ctx, req.MediaKind, req.Extension)
+	uploadURL, objectKey, cdnURL, headers, err := ucgsvc.PresignUpload(ctx, wxID, req.MediaKind, req.Extension)
 	if err != nil {
 		return nil, err
 	}
@@ -43,6 +44,33 @@ func (c *UcgAppCtrl) MediaPresign(ctx context.Context, req *v1.UcgMediaPresignRe
 		CdnUrl:    cdnURL,
 		Headers:   headers,
 	}, nil
+}
+
+// MediaDelete POST /ucg/app/api/media/delete
+func (c *UcgAppCtrl) MediaDelete(ctx context.Context, req *v1.UcgMediaDeleteReq) (res *v1.UcgMediaDeleteRes, err error) {
+	_ = c
+	wxID, err := wxIDFromUcgHeader(ghttp.RequestFromCtx(ctx))
+	if err != nil {
+		return nil, err
+	}
+	deleted, skipped, err := ucgsvc.DeleteOwnedMedia(ctx, wxID, req.ObjectKeys)
+	if err != nil {
+		return nil, err
+	}
+	return &v1.UcgMediaDeleteRes{Deleted: deleted, Skipped: skipped}, nil
+}
+
+// PostsPolish POST /ucg/app/api/posts/polish
+func (c *UcgAppCtrl) PostsPolish(ctx context.Context, req *v1.UcgPostsPolishReq) (res *v1.UcgPostsPolishRes, err error) {
+	_ = c
+	if _, err = wxIDFromUcgHeader(ghttp.RequestFromCtx(ctx)); err != nil {
+		return nil, err
+	}
+	polished, err := ucgsvc.PolishPostText(ctx, req.ImageKeys, req.Text)
+	if err != nil {
+		return nil, err
+	}
+	return &v1.UcgPostsPolishRes{PolishedText: polished}, nil
 }
 
 func (c *UcgAppCtrl) ProfileMeGet(ctx context.Context, req *v1.UcgProfileMeGetReq) (res *v1.UcgProfileRes, err error) {

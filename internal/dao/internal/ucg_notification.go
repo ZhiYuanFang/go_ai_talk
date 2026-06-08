@@ -21,15 +21,15 @@ type UcgNotificationDao struct {
 // UcgNotificationColumns defines and stores column names for table ucg_notification.
 type UcgNotificationColumns struct {
 	Id            string //
-	RecipientWxId string //
-	Type          string //
+	RecipientWxId string // 接收者 wxId
+	Type          string // comment_on_post | mention_in_comment
 	PostId        string //
 	CommentId     string //
-	ActorWxId     string //
-	Preview       string //
-	PostThumbUrl  string //
-	PostMediaKind string //
-	ReadAt        string //
+	ActorWxId     string // 评论者
+	Preview       string // 评论摘要
+	PostThumbUrl  string // 写入时快照的帖子封面 URL
+	PostMediaKind string // 0=none,1=image,2=video
+	ReadAt        string // NULL=未读
 	CreatedAt     string //
 }
 
@@ -83,6 +83,11 @@ func (dao *UcgNotificationDao) Ctx(ctx context.Context) *gdb.Model {
 }
 
 // Transaction wraps the transaction logic using function f.
+// It rollbacks the transaction and returns the error from function f if it returns non-nil error.
+// It commits the transaction and returns nil if function f returns nil.
+//
+// Note that, you should not Commit or Rollback the transaction in function f
+// as it is automatically handled by this function.
 func (dao *UcgNotificationDao) Transaction(ctx context.Context, f func(ctx context.Context, tx gdb.TX) error) (err error) {
 	return dao.Ctx(ctx).Transaction(ctx, f)
 }

@@ -17,7 +17,7 @@ gfcli:
       jsonCase: "CamelLower"
     # ucg 域：ucg
     - link:     "mysql:root:Fang930927@tcp(120.55.50.105:3306)/ai_voice_ucg"
-      tables:   "ucg_profile, ucg_post, ucg_post_media, ucg_follow, ucg_post_like, ucg_post_comment, ucg_conversation, ucg_conversation_member, ucg_post_recommend, ucg_notification"
+      tables:   "ucg_profile, ucg_post, ucg_post_media, ucg_follow, ucg_post_like, ucg_post_comment, ucg_conversation, ucg_conversation_member, ucg_post_recommend, ucg_notification, ucg_media_upload, ucg_ai_config"
       jsonCase: "CamelLower"
     # app 域：gateway-app 读 ai_voice_app.version 等
     - link:     "mysql:root:Fang930927@tcp(120.55.50.105:3306)/ai_voice_app"

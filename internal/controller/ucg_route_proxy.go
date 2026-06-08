@@ -22,7 +22,7 @@ func installUcgProxyMiddleware(s *ghttp.Server) {
 	if proxy == nil {
 		return
 	}
-	s.BindMiddleware("/ucg/app/api/*", func(r *ghttp.Request) {
+	serve := func(r *ghttp.Request) {
 		// GoFrame 将更具体路径的中间件排在 CORS(/*) 之前；若把 OPTIONS 反代到 ucg-service，
 		// 下游仅注册 POST /media/upload 会返回 405，浏览器预检失败。预检由 gateway CORS 中间件 204 短路。
 		if r.Method == http.MethodOptions {
@@ -32,7 +32,9 @@ func installUcgProxyMiddleware(s *ghttp.Server) {
 		// Bearer 与 X-Internal-Wx-Id 由 gateway-app HookBeforeServe 统一注入，此处仅透传。
 		proxy.ServeHTTP(r.Response.Writer, r.Request)
 		r.ExitAll()
-	})
+	}
+	s.BindMiddleware("/ucg/app/api/*", serve)
+	s.BindMiddleware("/ucg/admin/api/*", serve)
 }
 
 func ucgProxyFromEnv() *httputil.ReverseProxy {

@@ -12,6 +12,7 @@ func RegisterUcgServiceHTTP(s *ghttp.Server) {
 	s.Use(ghttp.MiddlewareHandlerResponse)
 	s.Group("/", func(group *ghttp.RouterGroup) {
 		group.Bind(NewUcgAppCtrl())
+		group.Bind(NewUcgAdminCtrl())
 		group.POST("/ucg/app/api/media/upload", ucgMediaUpload)
 	})
 	registerUcgChatWS(s)
