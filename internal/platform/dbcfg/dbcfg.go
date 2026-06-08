@@ -30,17 +30,33 @@ func ApplyGroupFromEnv(service, group, envKey, gfEnvKey string) {
 		service, group, envKey, DatabaseNameFromLink(link), HostFromLink(link))
 }
 
-// resolveEffectiveLink 应用 MYSQL_TCP_HOST 覆盖（若已设置）。
+// resolveEffectiveLink 应用 MYSQL_TCP_HOST 覆盖（若已设置），并确保 MySQL 连接使用 utf8mb4。
 func resolveEffectiveLink(link string) string {
 	link = strings.TrimSpace(link)
 	if link == "" {
 		return ""
 	}
 	host := strings.TrimSpace(os.Getenv("MYSQL_TCP_HOST"))
-	if host == "" {
+	if host != "" {
+		link = RewriteLinkHost(link, host)
+	}
+	return EnsureMysqlUtf8mb4(link)
+}
+
+// EnsureMysqlUtf8mb4 为 GoFrame MySQL DSN 补全 charset=utf8mb4，避免 emoji 等四字节字符写入 utf8mb4 列时触发 Error 3988。
+func EnsureMysqlUtf8mb4(link string) string {
+	link = strings.TrimSpace(link)
+	if link == "" || !strings.HasPrefix(link, "mysql:") {
 		return link
 	}
-	return RewriteLinkHost(link, host)
+	lower := strings.ToLower(link)
+	if strings.Contains(lower, "charset=") {
+		return link
+	}
+	if strings.Contains(link, "?") {
+		return link + "&charset=utf8mb4"
+	}
+	return link + "?charset=utf8mb4"
 }
 
 // RewriteLinkHost 将 DSN 中 @tcp(host:port) 的 host 替换为 newHost。
