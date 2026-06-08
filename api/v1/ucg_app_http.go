@@ -110,6 +110,13 @@ type UcgPostsMineReq struct {
 	PageSize int `json:"pageSize" in:"query" d:"20"`
 }
 
+type UcgPostsUserReq struct {
+	g.Meta   `path:"/ucg/app/api/posts/user/{wxId}" method:"get" tags:"ucg" summary:"用户已发布动态"`
+	WxId     uint64 `json:"wxId" in:"path" v:"required|min:1"`
+	Page     int    `json:"page" in:"query" d:"1"`
+	PageSize int    `json:"pageSize" in:"query" d:"20"`
+}
+
 type UcgFeedRecommendReq struct {
 	g.Meta   `path:"/ucg/app/api/feed/recommend" method:"get" tags:"ucg" summary:"推荐 Feed"`
 	Page     int `json:"page" in:"query" d:"1"`

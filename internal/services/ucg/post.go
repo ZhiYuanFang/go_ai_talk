@@ -141,6 +141,30 @@ func ListMyPosts(ctx context.Context, wxID int64, page, pageSize int) (*PageResu
 	return &PageResult{List: list, Total: total, Page: p.Page, PageSize: p.PageSize}, nil
 }
 
+// ListUserPosts 指定作者已发布动态（status=published）。
+func ListUserPosts(ctx context.Context, authorWxID, viewerWxID int64, page, pageSize int) (*PageResult, error) {
+	if authorWxID <= 0 {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "wxId 无效")
+	}
+	p := NormalizePage(page, pageSize)
+	model := dao.UcgPost.Ctx(ctx).
+		Where(dao.UcgPost.Columns().AuthorWxId, authorWxID).
+		Where(dao.UcgPost.Columns().Status, PostStatusPublished)
+	total, err := model.Count()
+	if err != nil {
+		return nil, err
+	}
+	rows, err := model.OrderDesc(dao.UcgPost.Columns().CreatedAt).Limit(p.PageSize).Offset(pageOffset(p)).All()
+	if err != nil {
+		return nil, err
+	}
+	list, err := postsFromResult(ctx, rows, viewerWxID)
+	if err != nil {
+		return nil, err
+	}
+	return &PageResult{List: list, Total: total, Page: p.Page, PageSize: p.PageSize}, nil
+}
+
 // GetPostByID 获取单帖；非 published 仅作者可见；enrich likedByMe。
 func GetPostByID(ctx context.Context, postID uint64, viewerWxID int64) (*PostDTO, error) {
 	row, err := dao.UcgPost.Ctx(ctx).Where(dao.UcgPost.Columns().Id, postID).One()

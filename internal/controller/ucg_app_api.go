@@ -150,6 +150,16 @@ func (c *UcgAppCtrl) PostsMine(ctx context.Context, req *v1.UcgPostsMineReq) (re
 	return pageResultToRes(page), nil
 }
 
+func (c *UcgAppCtrl) PostsUser(ctx context.Context, req *v1.UcgPostsUserReq) (res *v1.UcgPageRes, err error) {
+	_ = c
+	viewerWxID, _ := wxIDFromUcgHeaderOptional(ghttp.RequestFromCtx(ctx))
+	page, err := ucgsvc.ListUserPosts(ctx, int64(req.WxId), viewerWxID, req.Page, req.PageSize)
+	if err != nil {
+		return nil, err
+	}
+	return pageResultToRes(page), nil
+}
+
 func (c *UcgAppCtrl) FeedRecommend(ctx context.Context, req *v1.UcgFeedRecommendReq) (res *v1.UcgPageRes, err error) {
 	_ = c
 	viewerWxID, _ := wxIDFromUcgHeaderOptional(ghttp.RequestFromCtx(ctx))
