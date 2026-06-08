@@ -55,6 +55,8 @@ var (
 		"/device/app/api/version/check",
 		"/device/app/api/version/admin/list",
 		"/device/app/api/version/admin/get",
+		// 全局事件字典，无 deviceNo/用户维度，允许登录前拉取 UI 选项。
+		"/device/history/api/event/options",
 		"/ucg/app/api/feed/recommend",
 		"/ucg/app/api/health",
 		"/device/app/version-admin.html",

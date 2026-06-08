@@ -462,7 +462,7 @@
 
 	$('btnLoadEvents').onclick = async () => {
 		try{
-			const d = await apiJson('/device/history/api/event/options', { method:'GET' });
+			const d = await apiJsonNoAuth('/device/history/api/event/options', { method:'GET' });
 			const list = (d && d.list) ? d.list : [];
 			const sel = $('eventId');
 			sel.innerHTML = '';
