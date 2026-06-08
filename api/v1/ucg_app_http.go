@@ -19,7 +19,7 @@ type UcgMediaPresignRes struct {
 
 type UcgMediaResolveReq struct {
 	g.Meta           `path:"/ucg/app/api/media/resolve" method:"post" tags:"ucg" summary:"按内容哈希查询 blob 索引"`
-	ContentHash      string `json:"contentHash" v:"required|length:64"`
+	ContentHash      string `json:"contentHash" v:"required|length:64,64" dc:"SHA-256 hex lowercase, 64 chars"`
 	TransformVersion string `json:"transformVersion" v:"required|length:1,16"`
 	MediaKind        int    `json:"mediaKind" v:"required|in:1,2" dc:"1=图片 2=视频"`
 }
@@ -33,7 +33,7 @@ type UcgMediaResolveRes struct {
 type UcgMediaRegisterReq struct {
 	g.Meta           `path:"/ucg/app/api/media/register" method:"post" tags:"ucg" summary:"登记 blob 与媒体所有权"`
 	ObjectKey        string `json:"objectKey" v:"required"`
-	ContentHash      string `json:"contentHash" v:"required|length:64"`
+	ContentHash      string `json:"contentHash" v:"required|length:64,64" dc:"SHA-256 hex lowercase, 64 chars"`
 	TransformVersion string `json:"transformVersion" v:"required|length:1,16"`
 	MediaKind        int    `json:"mediaKind" v:"required|in:1,2" dc:"1=图片 2=视频"`
 	DedupHit         bool   `json:"dedupHit"`
