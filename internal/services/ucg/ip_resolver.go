@@ -56,15 +56,16 @@ func ResolveIPLocation(ctx context.Context, clientIP string) string {
 	return formatIp2regionRegion(region)
 }
 
-// formatIp2regionRegion 将 ip2region 管道格式转为展示文案（优先省份+城市，去重「0」段）。
+// formatIp2regionRegion 将 ip2region v4 xdb 管道格式转为展示文案（省/市；不含 ISP）。
+// 字段顺序：国家|省份|城市|ISP|国家代码；parts[3] 为运营商（如移动/电信），属地展示须忽略。
 func formatIp2regionRegion(region string) string {
 	parts := strings.Split(region, "|")
-	if len(parts) < 4 {
+	if len(parts) < 3 {
 		return ""
 	}
 	country := strings.TrimSpace(parts[0])
-	province := strings.TrimSpace(parts[2])
-	city := strings.TrimSpace(parts[3])
+	province := strings.TrimSpace(parts[1])
+	city := strings.TrimSpace(parts[2])
 	if country != "" && country != "0" && country != "中国" {
 		if province != "" && province != "0" {
 			return province
