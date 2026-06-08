@@ -26,14 +26,16 @@ var mentionPattern = regexp.MustCompile(`@([^\s@]+?)(?:#(\d+))?`)
 
 // NotificationDTO inbox 通知视图。
 type NotificationDTO struct {
-	Id        uint64       `json:"id"`
-	Type      string       `json:"type"`
-	PostId    uint64       `json:"postId"`
-	CommentId uint64       `json:"commentId"`
-	Actor     *ProfileDTO  `json:"actor,omitempty"`
-	Preview   string       `json:"preview"`
-	Read      bool         `json:"read"`
-	CreatedAt int64        `json:"createdAt"`
+	Id            uint64      `json:"id"`
+	Type          string      `json:"type"`
+	PostId        uint64      `json:"postId"`
+	CommentId     uint64      `json:"commentId"`
+	Actor         *ProfileDTO `json:"actor,omitempty"`
+	Preview       string      `json:"preview"`
+	PostThumbUrl  string      `json:"postThumbUrl"`
+	PostMediaKind int         `json:"postMediaKind"`
+	Read          bool        `json:"read"`
+	CreatedAt     int64       `json:"createdAt"`
 }
 
 // NotificationPageResult 分页 + 未读计数。
@@ -57,7 +59,7 @@ func truncatePreview(content string) string {
 }
 
 // InsertNotification 写入一条 inbox 通知并可选 WS 推送。
-func InsertNotification(ctx context.Context, recipientWxID int64, nType string, postID, commentID, actorWxID uint64, preview string) (uint64, error) {
+func InsertNotification(ctx context.Context, recipientWxID int64, nType string, postID, commentID, actorWxID uint64, preview, postThumbURL string, postMediaKind int) (uint64, error) {
 	if recipientWxID <= 0 || postID == 0 || commentID == 0 || actorWxID == 0 {
 		return 0, gerror.NewCode(gcode.CodeInvalidParameter, "通知参数无效")
 	}
@@ -69,6 +71,8 @@ func InsertNotification(ctx context.Context, recipientWxID int64, nType string, 
 		dao.UcgNotification.Columns().CommentId:     commentID,
 		dao.UcgNotification.Columns().ActorWxId:     actorWxID,
 		dao.UcgNotification.Columns().Preview:       truncatePreview(preview),
+		dao.UcgNotification.Columns().PostThumbUrl:  strings.TrimSpace(postThumbURL),
+		dao.UcgNotification.Columns().PostMediaKind: postMediaKind,
 		dao.UcgNotification.Columns().CreatedAt:     now,
 	}).Insert()
 	if err != nil {
@@ -131,13 +135,15 @@ func ListCommentNotifications(ctx context.Context, recipientWxID int64, page, pa
 
 func notificationToDTO(ctx context.Context, n entity.UcgNotification) *NotificationDTO {
 	dto := &NotificationDTO{
-		Id:        n.Id,
-		Type:      n.Type,
-		PostId:    n.PostId,
-		CommentId: n.CommentId,
-		Preview:   n.Preview,
-		Read:      n.ReadAt > 0,
-		CreatedAt: n.CreatedAt,
+		Id:            n.Id,
+		Type:          n.Type,
+		PostId:        n.PostId,
+		CommentId:     n.CommentId,
+		Preview:       n.Preview,
+		PostThumbUrl:  n.PostThumbUrl,
+		PostMediaKind: n.PostMediaKind,
+		Read:          n.ReadAt > 0,
+		CreatedAt:     n.CreatedAt,
 	}
 	if prof, err := GetPublicProfile(ctx, n.ActorWxId); err == nil {
 		dto.Actor = prof
@@ -256,15 +262,41 @@ func parseMentionTargets(content string) []mentionTarget {
 	return out
 }
 
+// resolvePostCoverSnapshot 写入通知前一次 loadPostMedia，取首条媒体生成封面快照。
+func resolvePostCoverSnapshot(ctx context.Context, postID uint64) (thumbURL string, mediaKind int) {
+	media, err := loadPostMedia(ctx, postID)
+	if err != nil || len(media) == 0 {
+		return "", 0
+	}
+	first := media[0]
+	key := strings.TrimSpace(first.ObjectKey)
+	if key == "" {
+		return "", 0
+	}
+	switch first.MediaKind {
+	case 1:
+		return BuildImageThumbnailURL(key), 1
+	case 2:
+		return BuildVideoSnapshotURL(key), 2
+	default:
+		return "", 0
+	}
+}
+
 // NotifyOnComment AddComment 成功后：通知帖主 + @提及（Option A：仅 inbox，不发 DM）。
 func NotifyOnComment(ctx context.Context, commenterWxID int64, postAuthorWxID uint64, postID, commentID uint64, content string) {
 	preview := truncatePreview(content)
 	actor := uint64(commenterWxID)
+	thumbURL, mediaKind := resolvePostCoverSnapshot(ctx, postID)
+
+	insert := func(recipient int64, nType string) {
+		if _, err := InsertNotification(ctx, recipient, nType, postID, commentID, actor, preview, thumbURL, mediaKind); err != nil {
+			g.Log().Warningf(ctx, "[ucg-notification] %s insert failed recipient=%d post=%d comment=%d err=%v", nType, recipient, postID, commentID, err)
+		}
+	}
 
 	if postAuthorWxID > 0 && int64(postAuthorWxID) != commenterWxID {
-		if _, err := InsertNotification(ctx, int64(postAuthorWxID), NotificationTypeCommentOnPost, postID, commentID, actor, preview); err != nil {
-			g.Log().Warningf(ctx, "[ucg-notification] comment_on_post insert failed post=%d comment=%d err=%v", postID, commentID, err)
-		}
+		insert(int64(postAuthorWxID), NotificationTypeCommentOnPost)
 	}
 
 	notified := make(map[int64]struct{})
@@ -282,8 +314,6 @@ func NotifyOnComment(ctx context.Context, commenterWxID int64, postAuthorWxID ui
 			continue
 		}
 		notified[int64(wxID)] = struct{}{}
-		if _, err := InsertNotification(ctx, int64(wxID), NotificationTypeMentionInComment, postID, commentID, actor, preview); err != nil {
-			g.Log().Warningf(ctx, "[ucg-notification] mention_in_comment insert failed recipient=%d err=%v", wxID, err)
-		}
+		insert(int64(wxID), NotificationTypeMentionInComment)
 	}
 }

@@ -18,6 +18,8 @@ type UcgNotification struct {
 	CommentId     interface{} //
 	ActorWxId     interface{} //
 	Preview       interface{} //
+	PostThumbUrl  interface{} //
+	PostMediaKind interface{} //
 	ReadAt        interface{} //
 	CreatedAt     interface{} //
 }

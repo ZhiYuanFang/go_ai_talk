@@ -481,7 +481,8 @@ func notificationDTOToItem(n *ucgsvc.NotificationDTO) v1.UcgCommentNotificationI
 	}
 	item := v1.UcgCommentNotificationItem{
 		Id: n.Id, Type: n.Type, PostId: n.PostId, CommentId: n.CommentId,
-		Preview: n.Preview, Read: n.Read, CreatedAt: n.CreatedAt,
+		Preview: n.Preview, PostThumbUrl: n.PostThumbUrl, PostMediaKind: n.PostMediaKind,
+		Read: n.Read, CreatedAt: n.CreatedAt,
 	}
 	if n.Actor != nil {
 		item.Actor = profileDTOToRes(n.Actor)

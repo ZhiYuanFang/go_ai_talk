@@ -13,6 +13,8 @@ type UcgNotification struct {
 	CommentId     uint64 `json:"commentId"     ` //
 	ActorWxId     uint64 `json:"actorWxId"     ` //
 	Preview       string `json:"preview"       ` //
+	PostThumbUrl  string `json:"postThumbUrl"  ` //
+	PostMediaKind int    `json:"postMediaKind" ` //
 	ReadAt        int64  `json:"readAt"        ` //
 	CreatedAt     int64  `json:"createdAt"     ` //
 }

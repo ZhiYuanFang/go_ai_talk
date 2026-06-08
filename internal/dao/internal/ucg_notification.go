@@ -27,6 +27,8 @@ type UcgNotificationColumns struct {
 	CommentId     string //
 	ActorWxId     string //
 	Preview       string //
+	PostThumbUrl  string //
+	PostMediaKind string //
 	ReadAt        string //
 	CreatedAt     string //
 }
@@ -40,6 +42,8 @@ var ucgNotificationColumns = UcgNotificationColumns{
 	CommentId:     "comment_id",
 	ActorWxId:     "actor_wx_id",
 	Preview:       "preview",
+	PostThumbUrl:  "post_thumb_url",
+	PostMediaKind: "post_media_kind",
 	ReadAt:        "read_at",
 	CreatedAt:     "created_at",
 }

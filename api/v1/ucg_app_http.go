@@ -272,14 +272,16 @@ type UcgCommentNotificationsGetReq struct {
 }
 
 type UcgCommentNotificationItem struct {
-	Id        uint64         `json:"id"`
-	Type      string         `json:"type"`
-	PostId    uint64         `json:"postId"`
-	CommentId uint64         `json:"commentId"`
-	Actor     *UcgProfileRes `json:"actor,omitempty"`
-	Preview   string         `json:"preview"`
-	Read      bool           `json:"read"`
-	CreatedAt int64          `json:"createdAt"`
+	Id            uint64         `json:"id"`
+	Type          string         `json:"type"`
+	PostId        uint64         `json:"postId"`
+	CommentId     uint64         `json:"commentId"`
+	Actor         *UcgProfileRes `json:"actor,omitempty"`
+	Preview       string         `json:"preview"`
+	PostThumbUrl  string         `json:"postThumbUrl"`
+	PostMediaKind int            `json:"postMediaKind"`
+	Read          bool           `json:"read"`
+	CreatedAt     int64          `json:"createdAt"`
 }
 
 type UcgCommentNotificationsGetRes struct {
