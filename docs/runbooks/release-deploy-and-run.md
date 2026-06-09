@@ -147,6 +147,8 @@ docker compose -f manifest/docker/docker-compose.redis-cluster.yml exec -T redis
 
 ```bash
 systemctl start mysql-local   # 或你的 mysqld 服务名
+systemctl restart mysql-local
+systemctl status mysql-local.service
 ```
 
 **3. 环境变量**
@@ -279,6 +281,14 @@ curl -s http://127.0.0.1:3000/api/health       # Grafana
 对外：`https://test.pangbao.cuplay.top:9701` / `:9702`（Nginx 反代至宿主机 **19701 / 19702**）。  
 镜像 tag：**与 git 预发布 tag 一致**（如 **`v1.0.0-rc.1`**，写在 `.env.test` 的 **`IMAGE_TAG`**）。  
 **停/启全栈**（给生产腾资源）：见 [B.3](#b3-日常停启测试全栈给生产腾资源)。
+
+### 清理磁盘空间
+```bash 清理docker日志,会导致容器停止
+sudo truncate -s 0 /var/lib/docker/containers/*/*-json.log
+# 要记得恢复被停止的容器
+docker start $(docker ps -aq) # 第一步恢复redis
+docker start $(docker ps -aq)
+```
 
 ### B.1 首次搭建测试栈（一次性，与生产同机且完全隔离）
 
