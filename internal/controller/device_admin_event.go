@@ -33,7 +33,7 @@ func deviceAdminEventAdd(r *ghttp.Request, c *AdminCtrl) {
 		writeDeviceAdminFail(r, gcode.CodeInvalidParameter, "multipart 解析失败")
 		return
 	}
-	name, eventType, extraNames, color, err := parseEventMultipartFields(r)
+	name, eventType, extraNames, color, unit, err := parseEventMultipartFields(r)
 	if err != nil {
 		writeDeviceAdminFail(r, gcode.CodeInvalidParameter, err.Error())
 		return
@@ -42,7 +42,7 @@ func deviceAdminEventAdd(r *ghttp.Request, c *AdminCtrl) {
 	if parentID < 0 {
 		parentID = 0
 	}
-	eventID, err := c.Admin.AddEvent(ctx, name, eventType, extraNames, color, "", parentID)
+	eventID, err := c.Admin.AddEvent(ctx, name, eventType, extraNames, color, unit, "", parentID)
 	if err != nil {
 		writeDeviceAdminEventErr(r, err)
 		return
@@ -53,7 +53,7 @@ func deviceAdminEventAdd(r *ghttp.Request, c *AdminCtrl) {
 		return
 	}
 	if logoPath != "" {
-		if err := c.Admin.UpdateEvent(ctx, eventID, name, eventType, extraNames, color, logoPath, nil); err != nil {
+		if err := c.Admin.UpdateEvent(ctx, eventID, name, eventType, extraNames, color, unit, logoPath, nil); err != nil {
 			writeDeviceAdminEventErr(r, err)
 			return
 		}
@@ -82,7 +82,7 @@ func deviceAdminEventUpdate(r *ghttp.Request, c *AdminCtrl) {
 		writeDeviceAdminFail(r, gcode.CodeInvalidParameter, "事件ID无效")
 		return
 	}
-	name, eventType, extraNames, color, err := parseEventMultipartFields(r)
+	name, eventType, extraNames, color, unit, err := parseEventMultipartFields(r)
 	if err != nil {
 		writeDeviceAdminFail(r, gcode.CodeInvalidParameter, err.Error())
 		return
@@ -96,7 +96,7 @@ func deviceAdminEventUpdate(r *ghttp.Request, c *AdminCtrl) {
 	if parentID, ok := eventParentIDFromMultipart(r); ok {
 		parentPtr = &parentID
 	}
-	if err := c.Admin.UpdateEvent(ctx, id, name, eventType, extraNames, color, logoPath, parentPtr); err != nil {
+	if err := c.Admin.UpdateEvent(ctx, id, name, eventType, extraNames, color, unit, logoPath, parentPtr); err != nil {
 		writeDeviceAdminEventErr(r, err)
 		return
 	}
@@ -145,21 +145,22 @@ func deviceEventImageServe(r *ghttp.Request) {
 	r.Response.ServeFile(abs)
 }
 
-func parseEventMultipartFields(r *ghttp.Request) (name string, eventType string, extraNames, color string, err error) {
+func parseEventMultipartFields(r *ghttp.Request) (name string, eventType string, extraNames, color, unit string, err error) {
 	name = strings.TrimSpace(r.GetForm("name").String())
 	if name == "" {
-		return "", "", "", "", gerror.New("事件名称不能为空")
+		return "", "", "", "", "", gerror.New("事件名称不能为空")
 	}
 	eventType = device.NormalizeEventType(r.GetForm("eventType").String())
 	if err := device.ValidateEventType(eventType); err != nil {
-		return "", "", "", "", err
+		return "", "", "", "", "", err
 	}
 	extraNames = r.GetForm("extraNames").String()
 	color = strings.TrimSpace(r.GetForm("color").String())
 	if err := device.ValidateEventColor(color); err != nil {
-		return "", "", "", "", err
+		return "", "", "", "", "", err
 	}
-	return name, eventType, extraNames, color, nil
+	unit = strings.TrimSpace(r.GetForm("unit").String())
+	return name, eventType, extraNames, color, unit, nil
 }
 
 func saveEventLogoFromRequest(ctx context.Context, r *ghttp.Request, eventID int64) (string, error) {

@@ -86,6 +86,7 @@ type DeviceInternalEventAddReq struct {
 	Name       string `json:"name"`
 	EventType  string `json:"eventType"`
 	ExtraNames string `json:"extraNames"`
+	Unit       string `json:"unit"`
 	ParentId   int64  `json:"parentId"`
 }
 
@@ -97,6 +98,7 @@ type DeviceInternalEventUpdateReq struct {
 	Name       string `json:"name"`
 	EventType  string `json:"eventType"`
 	ExtraNames string `json:"extraNames"`
+	Unit       string `json:"unit"`
 	// ParentId 非空时修改 parent_id；省略或 null 表示不修改父节点。
 	ParentId *int64 `json:"parentId"`
 }
@@ -155,9 +157,10 @@ type DeviceInternalVoiceActionReq struct {
 type DeviceInternalVoiceActionRes struct{}
 
 type DeviceInternalVoiceEventNeedleReq struct {
-	g.Meta         `path:"/device/internal/api/voice/event/needle" method:"post" tags:"device" summary:"内部-语音按名插入事件"`
-	Needle         string `json:"needle"`
-	EventType      string `json:"eventType"`
+	g.Meta    `path:"/device/internal/api/voice/event/needle" method:"post" tags:"device" summary:"内部-语音按名插入事件"`
+	Needle    string `json:"needle"`
+	EventType string `json:"eventType"`
+	Unit      string `json:"unit"`
 }
 
 type DeviceInternalVoiceEventNeedleRes struct {
@@ -165,10 +168,11 @@ type DeviceInternalVoiceEventNeedleRes struct {
 }
 
 type DeviceInternalVoiceEventDeepSeekReq struct {
-	g.Meta         `path:"/device/internal/api/voice/event/deepseek" method:"post" tags:"device" summary:"内部-DeepSeek事件落库"`
-	Name           string `json:"name"`
-	ExtraNames     string `json:"extraNames"`
-	EventType      string `json:"eventType"`
+	g.Meta     `path:"/device/internal/api/voice/event/deepseek" method:"post" tags:"device" summary:"内部-DeepSeek事件落库"`
+	Name       string `json:"name"`
+	ExtraNames string `json:"extraNames"`
+	EventType  string `json:"eventType"`
+	Unit       string `json:"unit"`
 }
 
 type DeviceInternalVoiceEventDeepSeekRes struct {

@@ -1,6 +1,7 @@
 package history
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 
@@ -18,6 +19,7 @@ func historyListSelectFields() []interface{} {
 		c.EventId,
 		c.EventName,
 		c.EventNumber,
+		c.EventUnit,
 		c.StartTime,
 		c.EndTime,
 		c.Remark,
@@ -87,6 +89,40 @@ func decodeImageKeys(raw string) []string {
 	return out
 }
 
+func nullableEventUnit(v string) interface{} {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return nil
+	}
+	return v
+}
+
+func lookupEventUnit(ctx context.Context, eventID int64) string {
+	if eventID <= 0 {
+		return ""
+	}
+	v, err := dao.Event.Ctx(ctx).
+		Where(dao.Event.Columns().Id, eventID).
+		Fields(dao.Event.Columns().Unit).
+		Value()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(v.String())
+}
+
+// enrichHistoryEventUnit 写入前补全 event_unit：优先已有值，否则查事件主档。
+func enrichHistoryEventUnit(ctx context.Context, item *entity.History) {
+	if item == nil {
+		return
+	}
+	if strings.TrimSpace(item.EventUnit) != "" {
+		item.EventUnit = strings.TrimSpace(item.EventUnit)
+		return
+	}
+	item.EventUnit = lookupEventUnit(ctx, item.EventId)
+}
+
 func historyRowToEntity(row gdb.Record) entity.History {
 	c := dao.History.Columns()
 	return entity.History{
@@ -95,12 +131,13 @@ func historyRowToEntity(row gdb.Record) entity.History {
 		EventId:     row[c.EventId].Int64(),
 		EventName:   row[c.EventName].String(),
 		EventNumber: row[c.EventNumber].Int64(),
+		EventUnit:   row[c.EventUnit].String(),
 		StartTime:   row[c.StartTime].Int64(),
 		EndTime:     row[c.EndTime].Int64(),
 		Remark:      row[c.Remark].String(),
 		PostId:      row[c.PostId].Uint64(),
 		MediaType:   row[c.MediaType].Int(),
-		ImageKeys:   decodeImageKeys(row[c.ImageKeys].String()),
+		ImageKeys:   strings.TrimSpace(row[c.ImageKeys].String()),
 		VideoKey:    row[c.VideoKey].String(),
 	}
 }
@@ -112,12 +149,13 @@ func historyInsertData(item entity.History) map[string]interface{} {
 		c.EventId:     item.EventId,
 		c.EventName:   item.EventName,
 		c.EventNumber: item.EventNumber,
+		c.EventUnit:   nullableEventUnit(item.EventUnit),
 		c.StartTime:   item.StartTime,
 		c.EndTime:     item.EndTime,
 		c.Remark:      item.Remark,
 		c.PostId:      nullablePostId(item.PostId),
 		c.MediaType:   nullableMediaType(item.MediaType),
-		c.ImageKeys:   nullableImageKeys(item.ImageKeys),
+		c.ImageKeys:   nullableImageKeys(decodeImageKeys(item.ImageKeys)),
 		c.VideoKey:    nullableVideoKey(item.VideoKey),
 	}
 }
@@ -128,12 +166,13 @@ func historyUpdateData(item entity.History) map[string]interface{} {
 		c.EventId:     item.EventId,
 		c.EventName:   item.EventName,
 		c.EventNumber: item.EventNumber,
+		c.EventUnit:   nullableEventUnit(item.EventUnit),
 		c.StartTime:   item.StartTime,
 		c.EndTime:     item.EndTime,
 		c.Remark:      item.Remark,
 		c.PostId:      nullablePostId(item.PostId),
 		c.MediaType:   nullableMediaType(item.MediaType),
-		c.ImageKeys:   nullableImageKeys(item.ImageKeys),
+		c.ImageKeys:   nullableImageKeys(decodeImageKeys(item.ImageKeys)),
 		c.VideoKey:    nullableVideoKey(item.VideoKey),
 	}
 }

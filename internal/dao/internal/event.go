@@ -23,6 +23,7 @@ type EventColumns struct {
 	Id         string //
 	Name       string // 吃奶/睡觉/尿/屎等
 	EventType  string // 事件类型，number: 计数，time:计时，one:一次性
+	Unit       string // 计数单位，如 ml、次
 	ExtraNames string // name的其它表达方式
 	Color      string //
 	Logo       string //
@@ -34,6 +35,7 @@ var eventColumns = EventColumns{
 	Id:         "id",
 	Name:       "name",
 	EventType:  "event_type",
+	Unit:       "unit",
 	ExtraNames: "extra_names",
 	Color:      "color",
 	Logo:       "logo",

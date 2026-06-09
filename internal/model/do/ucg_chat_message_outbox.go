@@ -13,8 +13,8 @@ type UcgChatMessageOutbox struct {
 	g.Meta         `orm:"table:ucg_chat_message_outbox, do:true"`
 	Id             interface{} //
 	ConversationId interface{} //
-	Payload        interface{} //
-	Status         interface{} //
+	Payload        interface{} // ChatMessage JSON
+	Status         interface{} // pending|done|failed
 	Attempts       interface{} //
 	LastError      interface{} //
 	CreatedAt      interface{} //

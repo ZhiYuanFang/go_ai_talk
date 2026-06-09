@@ -81,10 +81,10 @@ func DeleteOwnedMedia(ctx context.Context, wxID int64, objectKeys []string) (del
 			if delErr := bucket.DeleteObject(key); delErr != nil {
 				return deleted, skipped, gerror.WrapCode(gcode.CodeInternalError, delErr, "OSS 删除失败")
 			}
-			if delBlobErr := deleteMediaBlobRow(ctx, blob.Id); delBlobErr != nil {
+			if delBlobErr := deleteMediaBlobRow(ctx, uint64(blob.Id)); delBlobErr != nil {
 				return deleted, skipped, delBlobErr
 			}
-		} else if decErr := decrementMediaBlobRefCount(ctx, blob.Id); decErr != nil {
+		} else if decErr := decrementMediaBlobRefCount(ctx, uint64(blob.Id)); decErr != nil {
 			return deleted, skipped, decErr
 		}
 	}

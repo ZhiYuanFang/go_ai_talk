@@ -11,9 +11,9 @@ import (
 // UcgChatMessage is the golang structure of table ucg_chat_message for DAO operations like Where/Data.
 type UcgChatMessage struct {
 	g.Meta         `orm:"table:ucg_chat_message, do:true"`
-	Id             interface{} //
+	Id             interface{} // 会话内消息序号，与 Redis seq 一致
 	ConversationId interface{} //
-	ClientMsgId    interface{} //
+	ClientMsgId    interface{} // 客户端幂等 ID，空表示无
 	SenderWxId     interface{} //
 	Content        interface{} //
 	ImageKey       interface{} //

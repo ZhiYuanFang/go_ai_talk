@@ -25,13 +25,14 @@ type HistoryColumns struct {
 	EventId     string // 事件id
 	EventName   string // 事件名
 	EventNumber string // 奶量等
+	EventUnit   string // 写入时反规范化的事件单位
 	StartTime   string // 开始时间戳
 	EndTime     string // 结束时间戳
 	Remark      string // 备注
-	PostId      string // 关联 UCG 帖子
-	MediaType   string // 媒体类型
-	ImageKeys   string // 图片 objectKey JSON 数组
-	VideoKey    string // 视频 objectKey
+	PostId      string //
+	MediaType   string //
+	ImageKeys   string //
+	VideoKey    string //
 }
 
 // historyColumns holds the columns for table history.
@@ -41,6 +42,7 @@ var historyColumns = HistoryColumns{
 	EventId:     "event_id",
 	EventName:   "event_name",
 	EventNumber: "event_number",
+	EventUnit:   "event_unit",
 	StartTime:   "start_time",
 	EndTime:     "end_time",
 	Remark:      "remark",

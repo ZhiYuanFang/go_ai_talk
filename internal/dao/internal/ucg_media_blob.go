@@ -21,11 +21,11 @@ type UcgMediaBlobDao struct {
 // UcgMediaBlobColumns defines and stores column names for table ucg_media_blob.
 type UcgMediaBlobColumns struct {
 	Id               string //
-	ContentHash      string // SHA-256 hex lowercase
+	ContentHash      string // SHA-256 hex lowercase of prepared bytes
 	TransformVersion string // client transform pipeline version
 	ObjectKey        string // OSS object key
 	MediaKind        string // 1=image 2=video
-	RefCount         string // ownership registrations
+	RefCount         string // ownership registrations referencing this blob
 	CreatedAt        string //
 }
 
@@ -75,6 +75,11 @@ func (dao *UcgMediaBlobDao) Ctx(ctx context.Context) *gdb.Model {
 }
 
 // Transaction wraps the transaction logic using function f.
+// It rollbacks the transaction and returns the error from function f if it returns non-nil error.
+// It commits the transaction and returns nil if function f returns nil.
+//
+// Note that, you should not Commit or Rollback the transaction in function f
+// as it is automatically handled by this function.
 func (dao *UcgMediaBlobDao) Transaction(ctx context.Context, f func(ctx context.Context, tx gdb.TX) error) (err error) {
 	return dao.Ctx(ctx).Transaction(ctx, f)
 }

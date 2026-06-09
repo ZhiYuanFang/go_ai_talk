@@ -137,6 +137,7 @@
 						<th>Logo</th>
 						<th>色调</th>
 						<th>事件类型</th>
+						<th>单位</th>
 						<th>事件扩展</th>
 						<th>操作</th>
 					</tr>
@@ -230,6 +231,9 @@
 						<option value="one">一次性</option>
 					</select>
 				</label>
+				<label style="font-size:13px;color:#444;margin-left:12px;">单位
+					<input id="eventFormUnit" placeholder="如 ml、次" style="margin-left:6px;min-width:80px;" />
+				</label>
 			</div>
 			<div style="margin-top:10px;">
 				<div style="font-size:13px;color:#444;margin-bottom:6px;">事件扩展（别名等，可选）</div>
@@ -315,6 +319,7 @@ const eventModalTitle = document.getElementById('eventModalTitle');
 const eventFormName = document.getElementById('eventFormName');
 const eventFormEventType = document.getElementById('eventFormEventType');
 const eventFormExtraNames = document.getElementById('eventFormExtraNames');
+const eventFormUnit = document.getElementById('eventFormUnit');
 const eventFormColor = document.getElementById('eventFormColor');
 const eventFormLogo = document.getElementById('eventFormLogo');
 const eventFormLogoPreview = document.getElementById('eventFormLogoPreview');
@@ -729,6 +734,7 @@ function openEventAddModal(parentRow){
 	}
 	eventFormName.value = '';
 	eventFormEventType.value = 'time';
+	eventFormUnit.value = '';
 	eventFormExtraNames.value = '';
 	eventFormLogo.value = '';
 	eventFormMsg.textContent = '';
@@ -793,6 +799,8 @@ function appendEventTableRow(tbody, row, depth){
 
 	const tdType = document.createElement('td');
 	tdType.textContent = eventTypeLabel(row.eventType);
+	const tdUnit = document.createElement('td');
+	tdUnit.textContent = row.unit || '';
 	const tdExtra = document.createElement('td');
 	tdExtra.className = 'wrapcell';
 	tdExtra.textContent = row.extraNames;
@@ -813,6 +821,7 @@ function appendEventTableRow(tbody, row, depth){
 		eventModalTitle.textContent = '编辑事件';
 		eventFormName.value = row.name;
 		eventFormEventType.value = normalizeEventType(row.eventType);
+		eventFormUnit.value = row.unit || '';
 		eventFormExtraNames.value = row.extraNames;
 		eventFormLogo.value = '';
 		eventFormMsg.textContent = '';
@@ -841,7 +850,7 @@ function appendEventTableRow(tbody, row, depth){
 	tdAct.appendChild(document.createTextNode(' '));
 	tdAct.appendChild(btnDel);
 
-	tr.append(tdId, tdName, tdLogo, tdColor, tdType, tdExtra, tdAct);
+	tr.append(tdId, tdName, tdLogo, tdColor, tdType, tdUnit, tdExtra, tdAct);
 	tbody.appendChild(tr);
 }
 
@@ -1142,6 +1151,7 @@ eventFormSubmitBtn.addEventListener('click', async () => {
 	const name = eventFormName.value.trim();
 	const eventType = normalizeEventType(eventFormEventType.value);
 	const extraNames = eventFormExtraNames.value.trim();
+	const unit = eventFormUnit.value.trim();
 	const color = eventFormColor.value.trim();
 	if(!name){ eventFormMsg.textContent = '事件名称不能为空'; eventFormMsg.style.color = '#c1121f'; return; }
 	eventFormSubmitBtn.disabled = true;
@@ -1151,6 +1161,7 @@ eventFormSubmitBtn.addEventListener('click', async () => {
 		fd.append('name', name);
 		fd.append('eventType', eventType);
 		fd.append('extraNames', extraNames);
+		fd.append('unit', unit);
 		fd.append('color', color);
 		if(eventFormLogo.files && eventFormLogo.files[0]){
 			fd.append('logo', eventFormLogo.files[0]);

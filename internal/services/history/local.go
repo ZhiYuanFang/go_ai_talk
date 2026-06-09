@@ -274,6 +274,7 @@ func AddDeviceHistory(ctx context.Context, item entity.History) (int64, error) {
 	if item.DeviceNo == "" {
 		return 0, fmt.Errorf("deviceNo 不能为空")
 	}
+	enrichHistoryEventUnit(ctx, &item)
 	var id int64
 	err := g.DB(dao.History.Group()).Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
 		res, err := tx.Model(dao.History.Table()).Data(historyInsertData(item)).Insert()
@@ -339,6 +340,7 @@ func UpdateDeviceHistory(ctx context.Context, item entity.History) error {
 	if item.DeviceNo == "" {
 		return fmt.Errorf("deviceNo 不能为空")
 	}
+	enrichHistoryEventUnit(ctx, &item)
 	err := g.DB(dao.History.Group()).Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
 		_, err := tx.Model(dao.History.Table()).
 			Where(dao.History.Columns().Id, item.Id).

@@ -63,9 +63,9 @@ type DeviceAdminContract interface {
 	ListUsersPage(ctx context.Context, page, pageSize int, q string) (UserPageResult, error)
 	// TouchLastAPIAccess 记录设备最近一次对外 HTTP API（网关边缘或 internal 调用）。
 	TouchLastAPIAccess(ctx context.Context, deviceNo, apiPath string, atUnixSec int64) error
-	AddEvent(ctx context.Context, name string, eventType string, extraNames, color, logoPath string, parentID int64) (int64, error)
+	AddEvent(ctx context.Context, name string, eventType string, extraNames, color, unit, logoPath string, parentID int64) (int64, error)
 	ListEvents(ctx context.Context) ([]entity.Event, error)
-	UpdateEvent(ctx context.Context, id int64, name string, eventType string, extraNames, color, logoPath string, parentID *int64) error
+	UpdateEvent(ctx context.Context, id int64, name string, eventType string, extraNames, color, unit, logoPath string, parentID *int64) error
 	DeleteEvent(ctx context.Context, id int64) error
 	ListQAPage(ctx context.Context, page, pageSize int) (QaPageResult, error)
 	DeleteQA(ctx context.Context, id int64) error
@@ -81,7 +81,7 @@ type DeviceAdminContract interface {
 	// InsertVoiceActionRecord 语音 DeepSeek 新增动作词典，名称冲突时返回错误。
 	InsertVoiceActionRecord(ctx context.Context, name, targetType string) error
 	// InsertOrGetEventByNeedle 统一意图路径创建事件并回读最新行。
-	InsertOrGetEventByNeedle(ctx context.Context, needle string, eventType string) (entity.Event, error)
+	InsertOrGetEventByNeedle(ctx context.Context, needle string, eventType, unit string) (entity.Event, error)
 	// ApplyDeepSeekEventExtractPersistence DeepSeek 实体抽取管线写事件字典（新增或合并 extra_names）。
 	ApplyDeepSeekEventExtractPersistence(ctx context.Context, out entity.Event) (entity.Event, string, error)
 }

@@ -204,7 +204,7 @@ func (s *VoiceService) resolveEventForAction(ctx context.Context, deviceNo, norm
 			if target == "" {
 				target = needle
 			}
-			inserted, insErr := DeviceAdmin().InsertOrGetEventByNeedle(ctx, needle, intent.EventType)
+			inserted, insErr := DeviceAdmin().InsertOrGetEventByNeedle(ctx, needle, intent.EventType, intent.EventUnit)
 			if insErr == nil && inserted.Id > 0 {
 				idx = buildEventTreeIndex(events)
 				res = s.wrapLeafResult(inserted, target, idx)

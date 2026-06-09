@@ -164,6 +164,7 @@ func (c *HistoryCtrl) EventAdd(ctx context.Context, req *v1.DeviceHistoryEventAd
 		EventId:     req.EventId,
 		EventName:   c.canonicalEventNameForRow(ctx, req.EventId, req.EventName),
 		EventNumber: int64(req.EventNumber),
+		EventUnit:   strings.TrimSpace(req.EventUnit),
 		StartTime:   req.StartTime,
 		EndTime:     req.EndTime,
 		Remark:      strings.TrimSpace(req.Remark),
@@ -209,7 +210,7 @@ func mergeHistoryUpdateFromReq(ctx context.Context, c *HistoryCtrl, req *v1.Devi
 		item.MediaType = *req.MediaType
 	}
 	if req.ImageKeys != nil {
-		item.ImageKeys = req.ImageKeys
+		item.ImageKeys = strings.Join(req.ImageKeys, ",")
 	}
 	if req.VideoKey != nil {
 		item.VideoKey = strings.TrimSpace(*req.VideoKey)

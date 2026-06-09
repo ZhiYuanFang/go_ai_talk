@@ -84,6 +84,7 @@ func historyToNotifyPayload(ctx context.Context, h entity.History) map[string]in
 		"eventId":     h.EventId,
 		"eventName":   notifyEventDisplayName(ctx, h.EventId, h.EventName),
 		"eventNumber": h.EventNumber,
+		"eventUnit":   strings.TrimSpace(h.EventUnit),
 		"startTime":   h.StartTime,
 		"endTime":     h.EndTime,
 		"remark":      h.Remark,

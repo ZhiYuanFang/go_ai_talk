@@ -159,12 +159,13 @@ func (c *httpDeviceAdminClient) TouchLastAPIAccess(ctx context.Context, deviceNo
 	}, nil)
 }
 
-func (c *httpDeviceAdminClient) AddEvent(ctx context.Context, name string, eventType string, extraNames, color, logoPath string, parentID int64) (int64, error) {
+func (c *httpDeviceAdminClient) AddEvent(ctx context.Context, name string, eventType string, extraNames, color, unit, logoPath string, parentID int64) (int64, error) {
 	err := c.doJSON(ctx, http.MethodPost, "/device/internal/api/event/add", nil, map[string]interface{}{
 		"name":       strings.TrimSpace(name),
 		"eventType":  NormalizeEventType(eventType),
 		"extraNames": strings.TrimSpace(extraNames),
 		"color":      strings.TrimSpace(color),
+		"unit":       strings.TrimSpace(unit),
 		"logo":       strings.TrimSpace(logoPath),
 		"parentId":   parentID,
 	}, nil)
@@ -179,13 +180,14 @@ func (c *httpDeviceAdminClient) ListEvents(ctx context.Context) ([]entity.Event,
 	return out.List, err
 }
 
-func (c *httpDeviceAdminClient) UpdateEvent(ctx context.Context, id int64, name string, eventType string, extraNames, color, logoPath string, parentID *int64) error {
+func (c *httpDeviceAdminClient) UpdateEvent(ctx context.Context, id int64, name string, eventType string, extraNames, color, unit, logoPath string, parentID *int64) error {
 	body := map[string]interface{}{
 		"id":         id,
 		"name":       strings.TrimSpace(name),
 		"eventType":  NormalizeEventType(eventType),
 		"extraNames": strings.TrimSpace(extraNames),
 		"color":      strings.TrimSpace(color),
+		"unit":       strings.TrimSpace(unit),
 		"logo":       strings.TrimSpace(logoPath),
 	}
 	if parentID != nil {
@@ -263,13 +265,14 @@ func (c *httpDeviceAdminClient) InsertVoiceActionRecord(ctx context.Context, nam
 	}, nil)
 }
 
-func (c *httpDeviceAdminClient) InsertOrGetEventByNeedle(ctx context.Context, needle string, eventType string) (entity.Event, error) {
+func (c *httpDeviceAdminClient) InsertOrGetEventByNeedle(ctx context.Context, needle string, eventType, unit string) (entity.Event, error) {
 	var out struct {
 		Item entity.Event `json:"item"`
 	}
 	err := c.doJSON(ctx, http.MethodPost, "/device/internal/api/voice/event/needle", nil, map[string]interface{}{
 		"needle":    strings.TrimSpace(needle),
 		"eventType": NormalizeEventType(eventType),
+		"unit":      strings.TrimSpace(unit),
 	}, &out)
 	return out.Item, err
 }
@@ -283,6 +286,7 @@ func (c *httpDeviceAdminClient) ApplyDeepSeekEventExtractPersistence(ctx context
 		"name":       strings.TrimSpace(out.Name),
 		"extraNames": strings.TrimSpace(out.ExtraNames),
 		"eventType":  NormalizeEventType(out.EventType),
+		"unit":       strings.TrimSpace(out.Unit),
 	}, &resp)
 	return resp.Item, strings.TrimSpace(resp.TargetName), err
 }

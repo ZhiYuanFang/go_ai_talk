@@ -145,12 +145,16 @@ func (s *service) InsertVoiceActionRecord(ctx context.Context, name, targetType 
 }
 
 // InsertOrGetEventByNeedle 统一意图路径下按名称插入事件并回读。
-func (s *service) InsertOrGetEventByNeedle(ctx context.Context, needle string, eventType string) (entity.Event, error) {
+func (s *service) InsertOrGetEventByNeedle(ctx context.Context, needle string, eventType, unit string) (entity.Event, error) {
 	needle = strings.TrimSpace(needle)
 	if needle == "" {
 		return entity.Event{}, errors.New("事件名为空")
 	}
-	created := entity.Event{Name: needle, EventType: NormalizeEventType(eventType)}
+	created := entity.Event{
+		Name:      needle,
+		EventType: NormalizeEventType(eventType),
+		Unit:      strings.TrimSpace(unit),
+	}
 	if _, insErr := dao.Event.Ctx(ctx).Insert(&created); insErr != nil {
 		// 并发或重复名称可能导致唯一约束失败，后续回读仍可拿到已有行。
 		_ = insErr
@@ -251,7 +255,7 @@ func (s *service) List(ctx context.Context) ([]entity.User, error) {
 func eventListFields() []interface{} {
 	c := dao.Event.Columns()
 	return []interface{}{
-		c.Id, c.Name, c.EventType, c.ExtraNames, c.Logo, c.Color, c.ParentId,
+		c.Id, c.Name, c.EventType, c.Unit, c.ExtraNames, c.Logo, c.Color, c.ParentId,
 	}
 }
 
@@ -340,7 +344,7 @@ func normalizeEventRows(rows []entity.Event) {
 	}
 }
 
-func (s *service) AddEvent(ctx context.Context, name string, eventType string, extraNames, color, logoPath string, parentID int64) (int64, error) {
+func (s *service) AddEvent(ctx context.Context, name string, eventType string, extraNames, color, unit, logoPath string, parentID int64) (int64, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return 0, errors.New("事件名称不能为空")
@@ -373,6 +377,7 @@ func (s *service) AddEvent(ctx context.Context, name string, eventType string, e
 	result, err := dao.Event.Ctx(ctx).Data(g.Map{
 		dao.Event.Columns().Name:       name,
 		dao.Event.Columns().EventType:  eventType,
+		dao.Event.Columns().Unit:       strings.TrimSpace(unit),
 		dao.Event.Columns().ExtraNames: strings.TrimSpace(extraNames),
 		dao.Event.Columns().Color:      strings.TrimSpace(color),
 		dao.Event.Columns().Logo:       logoPath,
@@ -411,7 +416,7 @@ func (s *service) ListEvents(ctx context.Context) ([]entity.Event, error) {
 }
 
 // UpdateEvent 更新事件字典；parentID 非 nil 时同时修改 parent_id（0 表示升为根）。
-func (s *service) UpdateEvent(ctx context.Context, id int64, name string, eventType string, extraNames, color, logoPath string, parentID *int64) error {
+func (s *service) UpdateEvent(ctx context.Context, id int64, name string, eventType string, extraNames, color, unit, logoPath string, parentID *int64) error {
 	if id <= 0 {
 		return errors.New("事件ID无效")
 	}
@@ -458,6 +463,7 @@ func (s *service) UpdateEvent(ctx context.Context, id int64, name string, eventT
 	data := g.Map{
 		dao.Event.Columns().Name:       name,
 		dao.Event.Columns().EventType:  eventType,
+		dao.Event.Columns().Unit:       strings.TrimSpace(unit),
 		dao.Event.Columns().ExtraNames: strings.TrimSpace(extraNames),
 		dao.Event.Columns().Color:      strings.TrimSpace(color),
 	}

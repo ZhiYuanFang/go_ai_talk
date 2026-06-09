@@ -96,7 +96,7 @@ func (c *DeviceInternalCtrl) UserList(ctx context.Context, req *v1.DeviceInterna
 // EventAddInternal 新增事件字典。
 func (c *DeviceInternalCtrl) EventAddInternal(ctx context.Context, req *v1.DeviceInternalEventAddReq) (res *v1.DeviceInternalEventAddRes, err error) {
 	_ = c
-	if _, err := device.DeviceAdmin().AddEvent(ctx, strings.TrimSpace(req.Name), req.EventType, req.ExtraNames, "", "", req.ParentId); err != nil {
+	if _, err := device.DeviceAdmin().AddEvent(ctx, strings.TrimSpace(req.Name), req.EventType, req.ExtraNames, "", req.Unit, "", req.ParentId); err != nil {
 		switch err {
 		case device.ErrEventExists:
 			return nil, gerror.NewCode(gcode.CodeInvalidOperation, err.Error())
@@ -112,7 +112,7 @@ func (c *DeviceInternalCtrl) EventAddInternal(ctx context.Context, req *v1.Devic
 // EventUpdateInternal 更新事件。
 func (c *DeviceInternalCtrl) EventUpdateInternal(ctx context.Context, req *v1.DeviceInternalEventUpdateReq) (res *v1.DeviceInternalEventUpdateRes, err error) {
 	_ = c
-	if err := device.DeviceAdmin().UpdateEvent(ctx, req.Id, strings.TrimSpace(req.Name), req.EventType, req.ExtraNames, "", "", req.ParentId); err != nil {
+	if err := device.DeviceAdmin().UpdateEvent(ctx, req.Id, strings.TrimSpace(req.Name), req.EventType, req.ExtraNames, "", req.Unit, "", req.ParentId); err != nil {
 		switch {
 		case errors.Is(err, device.ErrEventExists):
 			return nil, gerror.NewCode(gcode.CodeInvalidOperation, err.Error())
@@ -203,7 +203,7 @@ func (c *DeviceInternalCtrl) VoiceInsertAction(ctx context.Context, req *v1.Devi
 // VoiceEventNeedle 语音按名插入/回读事件。
 func (c *DeviceInternalCtrl) VoiceEventNeedle(ctx context.Context, req *v1.DeviceInternalVoiceEventNeedleReq) (res *v1.DeviceInternalVoiceEventNeedleRes, err error) {
 	_ = c
-	item, err := device.DeviceAdmin().InsertOrGetEventByNeedle(ctx, req.Needle, req.EventType)
+	item, err := device.DeviceAdmin().InsertOrGetEventByNeedle(ctx, req.Needle, req.EventType, req.Unit)
 	if err != nil {
 		return nil, err
 	}
@@ -217,6 +217,7 @@ func (c *DeviceInternalCtrl) VoiceEventDeepSeek(ctx context.Context, req *v1.Dev
 		Name:       strings.TrimSpace(req.Name),
 		ExtraNames: strings.TrimSpace(req.ExtraNames),
 		EventType:  device.NormalizeEventType(req.EventType),
+		Unit:       strings.TrimSpace(req.Unit),
 	}
 	item, target, err := device.DeviceAdmin().ApplyDeepSeekEventExtractPersistence(ctx, out)
 	if err != nil {

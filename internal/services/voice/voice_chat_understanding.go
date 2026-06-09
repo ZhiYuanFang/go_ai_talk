@@ -24,6 +24,7 @@ type deepSeekUnifiedIntent struct {
 	EventName     string `json:"event_name"`
 	ExtraEvent    string `json:"extra_event_name"`
 	EventType     string `json:"event_type"`
+	EventUnit     string `json:"event_unit"`
 	Quantity      int    `json:"quantity"`
 	Reply         string `json:"reply"`
 	NeedUserReply bool   `json:"need_user_reply"`
@@ -41,6 +42,18 @@ func mergeDeepSeekEventTypeJSON(trimmed string, ev *entity.Event) {
 	}
 	if err := json.Unmarshal([]byte(trimmed), &aux); err == nil && strings.TrimSpace(aux.EventType) != "" {
 		ev.EventType = aux.EventType
+	}
+}
+
+func mergeDeepSeekEventUnitJSON(trimmed string, ev *entity.Event) {
+	if ev == nil || trimmed == "" {
+		return
+	}
+	var aux struct {
+		EventUnit string `json:"event_unit"`
+	}
+	if err := json.Unmarshal([]byte(trimmed), &aux); err == nil {
+		ev.Unit = strings.TrimSpace(aux.EventUnit)
 	}
 }
 
@@ -375,6 +388,7 @@ func (s *VoiceService) callDeepSeekUnifiedIntent(ctx context.Context, deviceNo, 
   "event_name":"事件名(可空)",
   "extra_event_name":"事件别名(可空)",
   "event_type":"number|time|one",
+  "event_unit":"计数单位(可空，如 ml、次；仅新建 number 事件时填写)",
   "quantity":0,
   "reply":"给用户的回复(可空)",
   "need_user_reply":true/false
@@ -384,7 +398,8 @@ func (s *VoiceService) callDeepSeekUnifiedIntent(ctx context.Context, deviceNo, 
 2) 若是对话类，target_type=%s 并尽量给出 reply。
 3) quantity 无法确定时给 0。
 4) 仅当需要新建事件名时填写 event_type：计数语义 number，持续计时 time，一次性记录 one；匹配已有事件名时不要填 event_type。
-5) 当 target_type=%s 或 target_type=%s 时，你必须直接给出可播报给用户的最终 reply，不要输出“正在查询”这类中间态。`,
+5) 新建 number 事件时 SHOULD 填写 event_unit（如奶量 ml、次数 次）；无法确定可留空。
+6) 当 target_type=%s 或 target_type=%s 时，你必须直接给出可播报给用户的最终 reply，不要输出“正在查询”这类中间态。`,
 		ActionTargetTypeStart, ActionTargetTypeEnd, ActionTargetTypeOne, ActionTargetTypeExit, ActionTargetTypeSuggest, ActionTargetTypeSearch, ActionTargetTypeConversation,
 		ActionTargetTypeStart, ActionTargetTypeEnd, ActionTargetTypeOne, ActionTargetTypeExit, ActionTargetTypeSuggest, ActionTargetTypeSearch, ActionTargetTypeConversation,
 		ActionTargetTypeConversation, ActionTargetTypeSearch, ActionTargetTypeSuggest)
@@ -922,8 +937,8 @@ func (s *VoiceService) callDeepSeekEntityExtract(ctx context.Context, deviceNo, 
 
 输出规则：
 1. 匹配事件列表 → {"name":"原事件名","extraNames":"扩展词"}
-2. 不匹配但可识别新事件 → {"name":"新事件名","extraNames":"","event_type":"number|time|one"}
-   - 计数/数量语义 → number；持续开始结束 → time；一次性完成 → one
+2. 不匹配但可识别新事件 → {"name":"新事件名","extraNames":"","event_type":"number|time|one","event_unit":"单位(仅 number)"}
+   - 计数/数量语义 → number，并尽量给出 event_unit（如 ml、次）；持续开始结束 → time；一次性完成 → one
 3. 无法确定 → {"name":""}`, eventNamesStr)
 
 	prompt := fmt.Sprintf("输入=%s。按规则分析并输出JSON。", transcript)
@@ -958,7 +973,9 @@ func (s *VoiceService) callDeepSeekEntityExtract(ctx context.Context, deviceNo, 
 	out.Name = name
 	out.ExtraNames = parsed.ExtraNames
 	mergeDeepSeekEventTypeJSON(trimmed, &parsed)
+	mergeDeepSeekEventUnitJSON(trimmed, &parsed)
 	out.EventType = device.NormalizeEventType(parsed.EventType)
+	out.Unit = strings.TrimSpace(parsed.Unit)
 	return DeviceAdmin().ApplyDeepSeekEventExtractPersistence(ctx, out)
 }
 
