@@ -28,6 +28,10 @@ type HistoryColumns struct {
 	StartTime   string // 开始时间戳
 	EndTime     string // 结束时间戳
 	Remark      string // 备注
+	PostId      string // 关联 UCG 帖子
+	MediaType   string // 媒体类型
+	ImageKeys   string // 图片 objectKey JSON 数组
+	VideoKey    string // 视频 objectKey
 }
 
 // historyColumns holds the columns for table history.
@@ -40,6 +44,10 @@ var historyColumns = HistoryColumns{
 	StartTime:   "start_time",
 	EndTime:     "end_time",
 	Remark:      "remark",
+	PostId:      "post_id",
+	MediaType:   "media_type",
+	ImageKeys:   "image_keys",
+	VideoKey:    "video_key",
 }
 
 // NewHistoryDao creates and returns a new DAO object for table data access.

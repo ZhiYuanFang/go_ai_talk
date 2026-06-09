@@ -19,4 +19,8 @@ type History struct {
 	StartTime   interface{} // 开始时间戳
 	EndTime     interface{} // 结束时间戳
 	Remark      interface{} // 备注
+	PostId      interface{} // 关联 UCG 帖子
+	MediaType   interface{} // 媒体类型
+	ImageKeys   interface{} // 图片 objectKey JSON 数组
+	VideoKey    interface{} // 视频 objectKey
 }

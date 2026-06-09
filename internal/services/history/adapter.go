@@ -207,6 +207,10 @@ func (r *historyRemoteClient) UpdateHistory(ctx context.Context, item entity.His
 		"startTime":   item.StartTime,
 		"endTime":     item.EndTime,
 		"remark":      strings.TrimSpace(item.Remark),
+		"postId":      item.PostId,
+		"mediaType":   item.MediaType,
+		"imageKeys":   item.ImageKeys,
+		"videoKey":    strings.TrimSpace(item.VideoKey),
 	}, nil)
 }
 

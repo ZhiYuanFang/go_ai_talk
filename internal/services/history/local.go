@@ -79,16 +79,7 @@ func ListDeviceHistory(ctx context.Context, deviceNo string) ([]entity.History, 
 		return cached, nil
 	}
 	rows, err := dao.History.Ctx(ctx).
-		Fields(
-			dao.History.Columns().Id,
-			dao.History.Columns().DeviceNo,
-			dao.History.Columns().EventId,
-			dao.History.Columns().EventName,
-			dao.History.Columns().EventNumber,
-			dao.History.Columns().StartTime,
-			dao.History.Columns().EndTime,
-			dao.History.Columns().Remark,
-		).
+		Fields(historyListSelectFields()...).
 		Where(dao.History.Columns().DeviceNo, deviceNo).
 		OrderDesc(dao.History.Columns().Id).
 		All()
@@ -97,16 +88,7 @@ func ListDeviceHistory(ctx context.Context, deviceNo string) ([]entity.History, 
 	}
 	items := make([]entity.History, 0, len(rows))
 	for _, row := range rows {
-		items = append(items, entity.History{
-			Id:          row[dao.History.Columns().Id].Int64(),
-			DeviceNo:    row[dao.History.Columns().DeviceNo].String(),
-			EventId:     row[dao.History.Columns().EventId].Int64(),
-			EventName:   row[dao.History.Columns().EventName].String(),
-			EventNumber: row[dao.History.Columns().EventNumber].Int64(),
-			StartTime:   row[dao.History.Columns().StartTime].Int64(),
-			EndTime:     row[dao.History.Columns().EndTime].Int64(),
-			Remark:      row[dao.History.Columns().Remark].String(),
-		})
+		items = append(items, historyRowToEntity(row))
 	}
 	_ = historyCache.setHistoryList(ctx, deviceNo, items)
 	return items, nil
@@ -138,16 +120,7 @@ func ListDeviceHistoryPage(ctx context.Context, deviceNo string, page int, pageS
 		return contracts.HistoryPageResult{List: []entity.History{}, Total: 0, Page: page, PageSize: pageSize}, nil
 	}
 	rows, err := dao.History.Ctx(ctx).
-		Fields(
-			dao.History.Columns().Id,
-			dao.History.Columns().DeviceNo,
-			dao.History.Columns().EventId,
-			dao.History.Columns().EventName,
-			dao.History.Columns().EventNumber,
-			dao.History.Columns().StartTime,
-			dao.History.Columns().EndTime,
-			dao.History.Columns().Remark,
-		).
+		Fields(historyListSelectFields()...).
 		Where(dao.History.Columns().DeviceNo, deviceNo).
 		OrderDesc(dao.History.Columns().Id).
 		Page(page, pageSize).
@@ -157,16 +130,7 @@ func ListDeviceHistoryPage(ctx context.Context, deviceNo string, page int, pageS
 	}
 	items := make([]entity.History, 0, len(rows))
 	for _, row := range rows {
-		items = append(items, entity.History{
-			Id:          row[dao.History.Columns().Id].Int64(),
-			DeviceNo:    row[dao.History.Columns().DeviceNo].String(),
-			EventId:     row[dao.History.Columns().EventId].Int64(),
-			EventName:   row[dao.History.Columns().EventName].String(),
-			EventNumber: row[dao.History.Columns().EventNumber].Int64(),
-			StartTime:   row[dao.History.Columns().StartTime].Int64(),
-			EndTime:     row[dao.History.Columns().EndTime].Int64(),
-			Remark:      row[dao.History.Columns().Remark].String(),
-		})
+		items = append(items, historyRowToEntity(row))
 	}
 	return contracts.HistoryPageResult{List: items, Total: total, Page: page, PageSize: pageSize}, nil
 }
@@ -312,15 +276,7 @@ func AddDeviceHistory(ctx context.Context, item entity.History) (int64, error) {
 	}
 	var id int64
 	err := g.DB(dao.History.Group()).Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
-		res, err := tx.Model(dao.History.Table()).Data(g.Map{
-			dao.History.Columns().DeviceNo:    item.DeviceNo,
-			dao.History.Columns().EventId:     item.EventId,
-			dao.History.Columns().EventName:   item.EventName,
-			dao.History.Columns().EventNumber: item.EventNumber,
-			dao.History.Columns().StartTime:   item.StartTime,
-			dao.History.Columns().EndTime:     item.EndTime,
-			dao.History.Columns().Remark:      item.Remark,
-		}).Insert()
+		res, err := tx.Model(dao.History.Table()).Data(historyInsertData(item)).Insert()
 		if err != nil {
 			return err
 		}
@@ -354,6 +310,25 @@ func AddDeviceHistory(ctx context.Context, item entity.History) (int64, error) {
 	return id, err
 }
 
+func GetDeviceHistoryByID(ctx context.Context, id int64, deviceNo string) (entity.History, error) {
+	deviceNo = strings.TrimSpace(deviceNo)
+	if id <= 0 || deviceNo == "" {
+		return entity.History{}, fmt.Errorf("参数无效")
+	}
+	row, err := dao.History.Ctx(ctx).
+		Fields(historyListSelectFields()...).
+		Where(dao.History.Columns().Id, id).
+		Where(dao.History.Columns().DeviceNo, deviceNo).
+		One()
+	if err != nil {
+		return entity.History{}, err
+	}
+	if row.IsEmpty() {
+		return entity.History{}, fmt.Errorf("记录不存在")
+	}
+	return historyRowToEntity(row), nil
+}
+
 func UpdateDeviceHistory(ctx context.Context, item entity.History) error {
 	if item.Id <= 0 {
 		return fmt.Errorf("id 无效")
@@ -368,14 +343,7 @@ func UpdateDeviceHistory(ctx context.Context, item entity.History) error {
 		_, err := tx.Model(dao.History.Table()).
 			Where(dao.History.Columns().Id, item.Id).
 			Where(dao.History.Columns().DeviceNo, item.DeviceNo).
-			Data(g.Map{
-				dao.History.Columns().EventId:     item.EventId,
-				dao.History.Columns().EventName:   item.EventName,
-				dao.History.Columns().EventNumber: item.EventNumber,
-				dao.History.Columns().StartTime:   item.StartTime,
-				dao.History.Columns().EndTime:     item.EndTime,
-				dao.History.Columns().Remark:      item.Remark,
-			}).Update()
+			Data(historyUpdateData(item)).Update()
 		return err
 	})
 	if err == nil {

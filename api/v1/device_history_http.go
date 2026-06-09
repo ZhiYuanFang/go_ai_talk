@@ -112,15 +112,19 @@ type DeviceHistoryEventAddRes struct {
 // DeviceHistoryEventUpdateReq 手动修改历史事件。
 type DeviceHistoryEventUpdateReq struct {
 	g.Meta      `path:"/device/history/api/event/update" method:"post" tags:"device" summary:"修改历史事件"`
-	Id          int64  `json:"id" dc:"主键ID"`
-	DeviceNo    string `json:"deviceNo" dc:"设备号"`
-	EventId     int64  `json:"eventId" dc:"事件ID"`
-	EventName   string `json:"eventName" dc:"事件名"`
-	EventUnit   string `json:"eventUnit" dc:"事件单位"`
-	EventNumber int    `json:"eventNumber" dc:"数量"`
-	StartTime   int64  `json:"startTime" dc:"开始时间，Unix 秒"`
-	EndTime     int64  `json:"endTime" dc:"结束时间，Unix 秒"`
-	Remark      string `json:"remark" dc:"备注"`
+	Id          int64    `json:"id" dc:"主键ID"`
+	DeviceNo    string   `json:"deviceNo" dc:"设备号"`
+	EventId     int64    `json:"eventId" dc:"事件ID"`
+	EventName   string   `json:"eventName" dc:"事件名"`
+	EventUnit   string   `json:"eventUnit" dc:"事件单位"`
+	EventNumber int      `json:"eventNumber" dc:"数量"`
+	StartTime   int64    `json:"startTime" dc:"开始时间，Unix 秒"`
+	EndTime     int64    `json:"endTime" dc:"结束时间，Unix 秒"`
+	Remark      string   `json:"remark" dc:"备注"`
+	PostId      *uint64  `json:"postId" dc:"关联 UCG 帖子；0 表示清除"`
+	MediaType   *int     `json:"mediaType" dc:"0 无 / 1 图 / 2 视频"`
+	ImageKeys   []string `json:"imageKeys" dc:"有序图片 objectKey"`
+	VideoKey    *string  `json:"videoKey" dc:"视频 objectKey"`
 }
 
 // DeviceHistoryEventUpdateRes 修改结果。

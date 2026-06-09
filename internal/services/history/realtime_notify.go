@@ -78,7 +78,7 @@ func notifyEventDisplayName(ctx context.Context, eventID int64, storedRowName st
 }
 
 func historyToNotifyPayload(ctx context.Context, h entity.History) map[string]interface{} {
-	return map[string]interface{}{
+	payload := map[string]interface{}{
 		"id":          h.Id,
 		"deviceNo":    h.DeviceNo,
 		"eventId":     h.EventId,
@@ -88,6 +88,19 @@ func historyToNotifyPayload(ctx context.Context, h entity.History) map[string]in
 		"endTime":     h.EndTime,
 		"remark":      h.Remark,
 	}
+	if h.PostId > 0 {
+		payload["postId"] = h.PostId
+	}
+	if h.MediaType > 0 {
+		payload["mediaType"] = h.MediaType
+	}
+	if len(h.ImageKeys) > 0 {
+		payload["imageKeys"] = h.ImageKeys
+	}
+	if strings.TrimSpace(h.VideoKey) != "" {
+		payload["videoKey"] = h.VideoKey
+	}
+	return payload
 }
 
 func pieceCacheKey(deviceNo string, eventID int64, startTimeUnixSec, endTimeUnixSec, ver int64) string {

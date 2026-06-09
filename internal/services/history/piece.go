@@ -36,16 +36,7 @@ func ListHistoryPiece(ctx context.Context, deviceNo string, eventID int64, start
 	}
 	stCol := dao.History.Columns().StartTime
 	rows, err := dao.History.Ctx(ctx).
-		Fields(
-			dao.History.Columns().Id,
-			dao.History.Columns().DeviceNo,
-			dao.History.Columns().EventId,
-			dao.History.Columns().EventName,
-			dao.History.Columns().EventNumber,
-			dao.History.Columns().StartTime,
-			dao.History.Columns().EndTime,
-			dao.History.Columns().Remark,
-		).
+		Fields(historyListSelectFields()...).
 		Where(dao.History.Columns().DeviceNo, deviceNo).
 		Where(dao.History.Columns().EventId, eventID).
 		Where(stCol+" >= ? AND "+stCol+" <= ?", startTimeUnixSec, endTimeUnixSec).
@@ -56,16 +47,7 @@ func ListHistoryPiece(ctx context.Context, deviceNo string, eventID int64, start
 	}
 	out := make([]entity.History, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, entity.History{
-			Id:          row[dao.History.Columns().Id].Int64(),
-			DeviceNo:    row[dao.History.Columns().DeviceNo].String(),
-			EventId:     row[dao.History.Columns().EventId].Int64(),
-			EventName:   row[dao.History.Columns().EventName].String(),
-			EventNumber: row[dao.History.Columns().EventNumber].Int64(),
-			StartTime:   row[dao.History.Columns().StartTime].Int64(),
-			EndTime:     row[dao.History.Columns().EndTime].Int64(),
-			Remark:      row[dao.History.Columns().Remark].String(),
-		})
+		out = append(out, historyRowToEntity(row))
 	}
 	if blob, err := json.Marshal(out); err == nil {
 		if _, err2 := g.Redis().Do(ctx, "SET", cacheKey, string(blob), "EX", int(pieceListCacheTTL.Seconds())); err2 != nil {

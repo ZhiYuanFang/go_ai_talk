@@ -183,20 +183,38 @@ func (c *HistoryCtrl) EventUpdate(ctx context.Context, req *v1.DeviceHistoryEven
 	if deviceNo == "" {
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "deviceNo 不能为空")
 	}
-	err = c.Svc.UpdateHistory(ctx, entity.History{
-		Id:          req.Id,
-		DeviceNo:    deviceNo,
-		EventId:     req.EventId,
-		EventName:   c.canonicalEventNameForRow(ctx, req.EventId, req.EventName),
-		EventNumber: int64(req.EventNumber),
-		StartTime:   req.StartTime,
-		EndTime:     req.EndTime,
-		Remark:      strings.TrimSpace(req.Remark),
-	})
+	err = c.Svc.UpdateHistory(ctx, mergeHistoryUpdateFromReq(ctx, c, req))
 	if err != nil {
 		return nil, err
 	}
 	return &v1.DeviceHistoryEventUpdateRes{}, nil
+}
+
+func mergeHistoryUpdateFromReq(ctx context.Context, c *HistoryCtrl, req *v1.DeviceHistoryEventUpdateReq) entity.History {
+	deviceNo := strings.TrimSpace(req.DeviceNo)
+	item, err := histsvc.GetDeviceHistoryByID(ctx, req.Id, deviceNo)
+	if err != nil {
+		item = entity.History{Id: req.Id, DeviceNo: deviceNo}
+	}
+	item.EventId = req.EventId
+	item.EventName = c.canonicalEventNameForRow(ctx, req.EventId, req.EventName)
+	item.EventNumber = int64(req.EventNumber)
+	item.StartTime = req.StartTime
+	item.EndTime = req.EndTime
+	item.Remark = strings.TrimSpace(req.Remark)
+	if req.PostId != nil {
+		item.PostId = *req.PostId
+	}
+	if req.MediaType != nil {
+		item.MediaType = *req.MediaType
+	}
+	if req.ImageKeys != nil {
+		item.ImageKeys = req.ImageKeys
+	}
+	if req.VideoKey != nil {
+		item.VideoKey = strings.TrimSpace(*req.VideoKey)
+	}
+	return item
 }
 
 // EventDelete 手动删除历史事件。
