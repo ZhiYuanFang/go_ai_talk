@@ -51,10 +51,30 @@ func listChatMessages(ctx context.Context, convID uint64, page, pageSize int) (t
 	if err != nil {
 		return 0, nil, err
 	}
-	total = lenRaw.Int()
-	if total == 0 {
-		return 0, []ChatMessage{}, nil
+	redisLen := lenRaw.Int()
+	if redisLen == 0 {
+		mysqlCount, cErr := countChatMessagesMySQL(ctx, convID)
+		if cErr != nil {
+			return 0, nil, cErr
+		}
+		if mysqlCount > 0 {
+			_ = tryWarmChatFromMySQL(ctx, convID)
+			if mysqlCount > chatWarmMaxMessages() {
+				return listChatMessagesMySQL(ctx, convID, page, pageSize)
+			}
+			lenRaw, err = g.Redis().Do(ctx, "LLEN", redisChatMsgListKey(convID))
+			if err != nil {
+				return 0, nil, err
+			}
+			redisLen = lenRaw.Int()
+			if redisLen == 0 {
+				return listChatMessagesMySQL(ctx, convID, page, pageSize)
+			}
+		} else {
+			return 0, []ChatMessage{}, nil
+		}
 	}
+	total = redisLen
 	// 分页从最新消息往回取：page=1 为最新一页
 	end := total - (p.Page-1)*p.PageSize - 1
 	start := end - p.PageSize + 1
@@ -77,7 +97,6 @@ func listChatMessages(ctx context.Context, convID uint64, page, pageSize int) (t
 		enrichChatMessageMedia(&msg)
 		list = append(list, msg)
 	}
-	// LRANGE 升序，前端通常要时间升序展示
 	return total, list, nil
 }
 

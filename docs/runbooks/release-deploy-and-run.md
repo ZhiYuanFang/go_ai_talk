@@ -2,6 +2,8 @@
 
 适用范围：gateway / gateway-app / voice-service / device-service / history-service / worker-service / ucg-service。
 
+**Redis 容灾与恢复**（容器重启、volume 备份/还原、数据分层）：见 [redis-disaster-recovery.md](./redis-disaster-recovery.md)。
+
 **三种运行方式**
 
 | 方式 | 何时用 | 镜像来源 | 服务器是否需要完整源码 |

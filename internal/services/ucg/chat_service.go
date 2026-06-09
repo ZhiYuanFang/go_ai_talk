@@ -11,6 +11,7 @@ import (
 	"github.com/gogf/gf/v2/errors/gcode"
 	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/frame/g"
+	"github.com/gogf/gf/v2/os/glog"
 )
 
 // ConversationDTO 会话列表项。
@@ -197,10 +198,16 @@ func peerWxID(ctx context.Context, convID uint64, wxID int64) (uint64, error) {
 
 func lastMessagePreview(ctx context.Context, convID uint64) string {
 	_, msgs, err := listChatMessages(ctx, convID, 1, 1)
-	if err != nil || len(msgs) == 0 {
-		return ""
+	if err == nil && len(msgs) > 0 {
+		return formatMessagePreview(msgs[len(msgs)-1])
 	}
-	last := msgs[len(msgs)-1]
+	if msg, ok, mErr := lastChatMessageMySQL(ctx, convID); mErr == nil && ok {
+		return formatMessagePreview(msg)
+	}
+	return ""
+}
+
+func formatMessagePreview(last ChatMessage) string {
 	if strings.TrimSpace(last.VideoKey) != "" {
 		if t := strings.TrimSpace(last.Content); t != "" {
 			return "[视频] " + previewTrim(t, 48)
@@ -224,7 +231,7 @@ func previewTrim(s string, maxRunes int) string {
 	return s
 }
 
-// ListConversationMessages 会话消息分页（Redis）。
+// ListConversationMessages 会话消息分页（Redis 优先，MySQL fallback）。
 func ListConversationMessages(ctx context.Context, wxID int64, convID uint64, page, pageSize int) (*PageResult, error) {
 	if err := ensureConversationMember(ctx, convID, wxID); err != nil {
 		return nil, err
@@ -331,6 +338,9 @@ func DeliverChatMessage(ctx context.Context, convID uint64, senderWxID, recipien
 		return msg, err
 	}
 	enrichChatMessageMedia(&msg)
+	if oErr := enqueueChatMessageOutbox(ctx, convID, msg); oErr != nil {
+		glog.Errorf(ctx, "[ucg-chat] outbox 写入失败 conv=%d msgId=%d err=%v", convID, msg.ID, oErr)
+	}
 	_ = incrUnread(ctx, convID, recipientWxID)
 	bumpMemberActivity(ctx, convID, senderWxID, recipientWxID)
 	_, _ = dao.UcgConversationMember.Ctx(ctx).

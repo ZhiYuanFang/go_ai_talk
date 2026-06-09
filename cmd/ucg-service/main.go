@@ -30,6 +30,7 @@ func main() {
 	controller.RegisterUcgServiceHTTP(s)
 	ucgsvc.StartAuditWorker(ctx)
 	ucgsvc.StartRecommendWorker(ctx)
+	ucgsvc.StartChatPersistWorker(ctx)
 	s.Run()
 }
 
