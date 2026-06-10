@@ -29,16 +29,6 @@
 	</style>
 </head>
 <body>
-	<div class="card" id="loginCard">
-		<h3>功能使用统计 — 登录</h3>
-		<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-			<input id="pwd" type="password" placeholder="请输入管理口令" />
-			<button id="loginBtn" type="button">登录</button>
-			<a class="link-btn" href="/device/admin">返回设备管理</a>
-		</div>
-		<div id="loginMsg" class="msg"></div>
-	</div>
-
 	<div class="card hidden" id="mainCard">
 		<div class="card-head">
 			<h3>App API 使用统计</h3>
@@ -110,13 +100,11 @@
 		</div>
 	</div>
 
+<script src="/resource/public/admin-common.js"></script>
 <script>
-let adminPwd = '';
 let activeTab = 'api';
 
-const loginCard = document.getElementById('loginCard');
 const mainCard = document.getElementById('mainCard');
-const loginMsg = document.getElementById('loginMsg');
 const mainMsg = document.getElementById('mainMsg');
 const apiTbody = document.getElementById('apiTbody');
 const userTbody = document.getElementById('userTbody');
@@ -147,13 +135,7 @@ function daysParam(){
 	return document.getElementById('daysSelect').value;
 }
 
-async function api(path, options={}){
-	const headers = Object.assign({'Content-Type':'application/json','X-Admin-Password':adminPwd}, options.headers || {});
-	const res = await fetch(path, Object.assign({}, options, {headers}));
-	const data = await res.json().catch(() => ({}));
-	if(!res.ok || data.code !== 0){ throw new Error(data.message || ('HTTP '+res.status)); }
-	return data.data;
-}
+function api(path, options={}){ return AdminCommon.adminFetch(path, options); }
 
 async function loadApiList(){
 	const d = await api('/device/admin/api/usage/list?days='+encodeURIComponent(daysParam()));
@@ -213,19 +195,6 @@ function switchTab(tab){
 	userPanel.classList.toggle('hidden', tab !== 'user');
 }
 
-document.getElementById('loginBtn').addEventListener('click', async () => {
-	adminPwd = document.getElementById('pwd').value.trim();
-	if(!adminPwd){ setMsg(loginMsg, '请输入口令'); return; }
-	try {
-		await loadApiList();
-		loginCard.classList.add('hidden');
-		mainCard.classList.remove('hidden');
-		setMsg(mainMsg, '登录成功', true);
-	} catch (e) {
-		setMsg(loginMsg, e.message || '口令错误');
-	}
-});
-
 document.getElementById('refreshBtn').addEventListener('click', async () => {
 	try {
 		if(activeTab === 'api') await loadApiList();
@@ -247,6 +216,11 @@ document.getElementById('daysSelect').addEventListener('change', async () => {
 document.getElementById('tabApiBtn').addEventListener('click', () => switchTab('api'));
 document.getElementById('tabUserBtn').addEventListener('click', () => switchTab('user'));
 document.getElementById('userSearchBtn').addEventListener('click', loadUserApis);
+
+if(AdminCommon.requireAdmin()){
+	mainCard.classList.remove('hidden');
+	loadApiList().catch(e => setMsg(mainMsg, e.message || '加载失败'));
+}
 </script>
 </body>
 </html>

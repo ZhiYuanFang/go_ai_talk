@@ -35,6 +35,11 @@ func installDeviceProxyMiddleware(s *ghttp.Server) {
 			r.Middleware.Next()
 			return
 		}
+		// Hub 登录由 gateway-app 本机 Handler 处理，不得反代至 device-service。
+		if r.URL.Path == "/device/admin/api/login" {
+			r.Middleware.Next()
+			return
+		}
 		if !shouldProxyDomainRequest(cfg, routeKeyForDomainRequest(r)) {
 			r.Middleware.Next()
 			return

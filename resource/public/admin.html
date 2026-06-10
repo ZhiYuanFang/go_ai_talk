@@ -51,11 +51,13 @@
 </head>
 <body>
 	<div class="card" id="loginCard">
-		<h3>设备管理登录</h3>
+		<h3>运维 Hub 登录</h3>
 		<div class="row">
-			<input id="pwd" type="password" placeholder="请输入口令" />
+			<input id="adminUser" type="text" placeholder="账号（默认 admin）" autocomplete="username" />
+			<input id="adminPwd" type="password" placeholder="密码" autocomplete="current-password" />
 			<button id="loginBtn">进入</button>
 		</div>
+		<p class="msg" style="color:#64748b;margin-top:0;">使用 <code>GATEWAY_APP_ADMIN_*</code> 配置的运维账号；登录后各管理模块共用 Admin JWT。</p>
 		<div id="loginMsg" class="msg"></div>
 	</div>
 
@@ -65,11 +67,9 @@
 			<div class="card-actions">
 				<input id="deviceNo" placeholder="device_no" />
 				<button id="registerBtn" type="button">注册</button>
-				<a id="versionAdminLink" class="link-btn" href="#" target="_blank" rel="noopener">App 版本管理</a>
-				<a id="ucgAdminLink" class="link-btn" href="/device/admin/ucg-admin.html" target="_blank" rel="noopener">UCG 管理</a>
+				<span id="adminNavLinks"></span>
 			</div>
 		</div>
-		<p class="msg" style="color:#64748b;margin-top:0;">版本管理在 App 网关（与当前页配对端口），需单独登录；与设备管理口令不同。</p>
 		<div id="mainMsg" class="msg"></div>
 	</div>
 
@@ -80,7 +80,7 @@
 				<input id="deviceSearchQ" placeholder="搜索 device_no" />
 				<button id="deviceSearchBtn" type="button">搜索</button>
 				<button id="deviceRefreshBtn" type="button">刷新</button>
-				<a id="apiUsageStatsLink" class="link-btn" href="/device/admin/api-usage-stats" target="_blank" rel="noopener">功能使用统计</a>
+				<span id="deviceRecordNavLinks"></span>
 			</div>
 		</div>
 		<div id="deviceRecordMsg" class="msg"></div>
@@ -301,8 +301,9 @@
 			<div id="actionFormMsg" class="msg"></div>
 		</div>
 	</div>
+<script src="/resource/public/admin-common.js"></script>
+<script src="/resource/public/admin-modules.js"></script>
 <script>
-let adminPwd = "";
 const loginCard = document.getElementById('loginCard');
 const mainCard = document.getElementById('mainCard');
 const eventCard = document.getElementById('eventCard');
@@ -391,31 +392,6 @@ function formatActionTargetHtml(targetTypeLabel, targetType){
 	const zh = String(targetTypeLabel != null && String(targetTypeLabel).trim() !== '' ? targetTypeLabel : tt);
 	if (!tt) return escapeHtml(zh);
 	return escapeHtml(zh) + ' <span style="color:#64748b;font-size:12px;">(' + escapeHtml(tt) + ')</span>';
-}
-
-/** App 网关 origin：与当前页同环境（9701↔9702、19701↔19702），避免测试 :19701 误跳生产 :9702 */
-function gatewayAppBase(){
-	const loc = window.location;
-	const host = loc.hostname || '127.0.0.1';
-	const proto = loc.protocol || 'http:';
-	const port = loc.port || '';
-	const appPorts = {'9702':1,'19702':1};
-	const pairs = {'9701':'9702','19701':'19702'};
-	if(appPorts[port]){
-		return (loc.origin || proto + '//' + host + (port ? ':' + port : '')).replace(/\/$/,'');
-	}
-	if(pairs[port]){
-		return proto + '//' + host + ':' + pairs[port];
-	}
-	// Nginx 反代（443/80）：同 hostname，对外 App 端口由宝塔配置（常见 9702）
-	if(!port || port === '443' || port === '80'){
-		return proto + '//' + host + ':9702';
-	}
-	return proto + '//' + host + ':9702';
-}
-
-function versionAdminPageUrl(){
-	return gatewayAppBase() + '/device/app/version-admin.html';
 }
 
 /** 事件 logo：API 返回 CDN 绝对 URL；兼容历史 path-only 时仍可按同源拼接 */
@@ -554,28 +530,29 @@ async function submitEventRowUpdate(row, opts){
 	}
 }
 
-(function initVersionAdminLink(){
-	const el = document.getElementById('versionAdminLink');
-	if(el){ el.href = versionAdminPageUrl(); }
+(function initAdminModuleLinks(){
+	const nav = document.getElementById('adminNavLinks');
+	const devNav = document.getElementById('deviceRecordNavLinks');
+	if(!window.ADMIN_MODULES) return;
+	window.ADMIN_MODULES.forEach(function(m){
+		if(!m.pagePath) return;
+		const a = document.createElement('a');
+		a.className = 'link-btn';
+		a.href = m.pagePath;
+		a.target = '_blank';
+		a.rel = 'noopener';
+		a.textContent = m.title;
+		if(m.showInNav && nav) nav.appendChild(a);
+		if(m.showInDeviceRecord && devNav) devNav.appendChild(a.cloneNode(true));
+	});
 })();
 
 async function api(path, options={}){
-	const headers = Object.assign({'Content-Type':'application/json','X-Admin-Password':adminPwd}, options.headers || {});
-	const res = await fetch(path, Object.assign({}, options, {headers}));
-	const data = await res.json().catch(() => ({}));
-	if(!res.ok || data.code !== 0){ throw new Error(data.message || ('HTTP '+res.status)); }
-	return data.data;
+	return AdminCommon.adminFetch(path, options);
 }
 
 async function apiForm(path, formData){
-	const res = await fetch(path, {
-		method: 'POST',
-		headers: { 'X-Admin-Password': adminPwd },
-		body: formData
-	});
-	const data = await res.json().catch(() => ({}));
-	if(!res.ok || data.code !== 0){ throw new Error(data.message || ('HTTP '+res.status)); }
-	return data.data;
+	return AdminCommon.adminFetchForm(path, formData);
 }
 
 /** 列表类接口 data 为 { list: [...] }（GoFrame 标准结构） */
@@ -1048,9 +1025,11 @@ async function loadActionList(){
 }
 
 document.getElementById('loginBtn').addEventListener('click', async () => {
-	adminPwd = document.getElementById('pwd').value.trim();
-	if(!adminPwd){ setMsg(loginMsg, '请输入口令'); return; }
+	const username = document.getElementById('adminUser').value.trim() || 'admin';
+	const password = document.getElementById('adminPwd').value;
+	if(!password){ setMsg(loginMsg, '请输入密码'); return; }
 	try {
+		await AdminCommon.login(username, password);
 		deviceRecordPage = 1;
 		deviceRecordQuery = '';
 		const searchEl = document.getElementById('deviceSearchQ');
@@ -1069,7 +1048,7 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
 		actionCard.classList.remove('hidden');
 		setMsg(mainMsg, '登录成功', true);
 	} catch (e) {
-		setMsg(loginMsg, e.message || '口令错误');
+		setMsg(loginMsg, e.message || '登录失败');
 	}
 });
 

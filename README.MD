@@ -35,23 +35,24 @@
 
 ### 4) Web 页面与静态入口（汇总）
 
-仓库内联调/运维用页面集中在 `resource/public/`，由**主网关**（`gateway-service`，默认 `:9701`，见 `manifest/config/config.yaml`）与 **App 专用网关**（`gateway-app-server`，默认 `:9702`，见 `manifest/config/config.gateway-app-server.yaml`）分别挂载；下文路径均相对于对应网关根地址（如 `http://127.0.0.1:9701`、`http://127.0.0.1:9702`）。
+仓库内联调/运维用页面集中在 `resource/public/`，由 **App 专用网关**（`gateway-app-server`，默认 `:9702`）提供；主网关（`:9701`）对 admin/history 壳页 **302** 至 `GATEWAY_APP_PUBLIC_BASE_URL` 对应路径。下文路径均相对于 App 网关根地址（如 `http://127.0.0.1:9702`）。
 
 | 进程 | 路径 | 静态文件 | 用途简述 |
 |------|------|----------|----------|
-| 主网关 | `/` | （内联文案） | 根路径提示「智能语音」 |
-| 主网关、App 网关 | `/device/admin` | `resource/public/admin.html` | 设备注册与列表（管理 API 需 `X-Admin-Password`）；登录后可跳转 **App 版本管理**（`:9702/device/app/version-admin.html`，独立口令） |
-| 主网关、App 网关 | `/device/history/{deviceNo}` | `resource/public/history.html` | 单设备历史事件 + 成长建议；壳页内请求 `/device/history/api/*`（经网关反代至 history-service） |
-| App 网关 | `/device/app/integration-test.html` | `resource/public/gateway-app-integration-test.html` | App 联调：模拟登录、绑定、文本对话、历史 WS、piece 趋势等（Bearer 白名单页，**勿暴露公网**） |
-| App 网关 | `/device/app/version-admin.html` | `resource/public/gateway-app-version-admin.html` | 版本与 APK 管理：口令登录后上传包、写 `ai_voice_app.version` 的 `download_url`（口令与 `publicBaseUrl` 见 `docs/runbooks/release-deploy-and-run.md`） |
+| 主网关 | `/` | （内联文案） | 根路径提示「智能语音」；访问 `/device/admin*` 302 至 App 网关 |
+| App 网关 | `/device/admin` | `resource/public/admin.html` | **运维 Hub**：`GATEWAY_APP_ADMIN_*` 登录后签发 Admin JWT，各模块共用 |
+| App 网关 | `/device/admin/qa-records` 等 | 见 `admin-modules.js` | 问答库、反馈、API 统计、UCG 管理等子页（须 Hub 登录） |
+| App 网关 | `/device/history/{deviceNo}` | `resource/public/history.html` | 单设备历史事件 + 成长建议；壳页内请求 `/device/history/api/*` |
+| App 网关 | `/device/app/integration-test.html` | `resource/public/gateway-app-integration-test.html` | App 联调（Bearer 白名单页，**勿暴露公网**） |
+| App 网关 | `/device/app/version-admin.html` | `resource/public/gateway-app-version-admin.html` | 版本与 APK 管理（Admin JWT，与 Hub 同一登录） |
 | App 网关 | `/device/app/apk/{文件名}` | （磁盘 `/apk/ai_talk/` 等配置目录） | 安装包匿名下载；URL 由版本管理上传流程写入库表 |
 | 两网关 | `/resource/*` | `resource/` 下文件 | GoFrame 静态资源目录（按需访问） |
 | App 网关 | `/` | （内联文案） | 根路径提示「智能语音 App 网关」 |
 
 说明：
 
-- **主网关**侧重设备域壳页 + 语音 WS 等统一入口；**App 网关**侧重小程序/App 聚合登录、JWT、`/device/app/api/version/check`、历史 WS 代理及上表 App 专用页。
-- `admin.html` / `history.html` 在两套网关中路径相同，便于本地只起 App 网关时仍能打开壳页（实际 API 仍依赖下游与 `DEVICE_SERVICE_URL` / `HISTORY_SERVICE_URL` 等配置）。
+- **Web 管理唯一入口**为 App 网关 `:9702`（测试 Nginx 反代或 `:19702`）；主网关不再挂载 admin 静态页。
+- Hub 登录 `POST /device/admin/api/login` 返回 Admin JWT；管理 API 请求须 `Authorization: Bearer`；网关校验后向下游注入 `X-Admin-Password`（`DEVICE_ADMIN_PASSWORD` / `UCG_ADMIN_PASSWORD`）。
 
 ---
 
@@ -144,7 +145,7 @@
 
 #### 1. 管理页（Web）
 
-- **GET** `/device/admin` → `resource/public/admin.html`（主网关或 App 网关，见上文「Web 页面」表）
+- **GET** `/device/admin` → `resource/public/admin.html`（**仅 App 网关** `:9702`；主网关 `:9701` 302 至 App 网关）
 
 #### 2. 注册设备
 

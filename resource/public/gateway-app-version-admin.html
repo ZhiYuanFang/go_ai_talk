@@ -101,22 +101,13 @@
 			<div class="logo">APK</div>
 			<div>
 				<h1>App 版本管理</h1>
-				<p>gateway-app · 上传 APK、维护 <code>ai_voice_app.version</code></p>
+				<p>gateway-app · 上传 APK、维护 <code>ai_voice_app.version</code> · 须先在 <a href="/device/admin">运维 Hub</a> 登录</p>
 			</div>
 		</header>
 
-		<section id="loginBox" class="card glass">
-			<h2>管理员登录</h2>
-			<p class="sub">口令由服务端 <code>GATEWAY_APP_VERSION_ADMIN_PASSWORD</code> 注入，与设备管理口令不同。</p>
-			<label for="password">管理员口令</label>
-			<input type="password" id="password" autocomplete="current-password" />
-			<button type="button" id="btnLogin" class="btn btn-primary">登录</button>
-			<p id="loginMsg" class="msg"></p>
-		</section>
-
 		<div id="panel" style="display:none;">
 			<section class="card glass">
-				<p class="session-ok">已登录 · Cookie 路径 <code>/device/app</code></p>
+				<p class="session-ok">已登录 · Admin JWT（与运维 Hub 共用）</p>
 				<h2>历史版本</h2>
 				<p id="listHint" class="sub">登录后自动加载；若始终为空，请重建 <code>gateway-app</code> 并强制刷新（Ctrl+F5）。</p>
 				<div class="toolbar">
@@ -176,9 +167,9 @@
 		</div>
 	</div>
 
+	<script src="/resource/public/admin-common.js"></script>
 	<script>
 	(function(){
-		const loginMsg = document.getElementById('loginMsg');
 		const listMsg = document.getElementById('listMsg');
 		const upMsg = document.getElementById('upMsg');
 		const verBody = document.getElementById('verBody');
@@ -211,39 +202,18 @@
 			return d.toLocaleString('zh-CN') + ' (' + ts + ')';
 		}
 
-		function unwrapApiBody(data) {
-			if (!data || typeof data !== 'object') return data;
-			if (data.items === undefined && data.data && typeof data.data === 'object') {
-				return data.data;
-			}
-			return data;
-		}
-
 		async function apiJson(url, opts) {
-			let res;
+			opts = opts || {};
 			try {
-				res = await fetch(url, Object.assign({ credentials: 'same-origin' }, opts || {}));
+				if (opts.body instanceof FormData) {
+					return await AdminCommon.adminFetchForm(url, opts.body);
+				}
+				return await AdminCommon.adminFetch(url, opts);
 			} catch (e) {
 				const err = new Error(formatFetchError(e));
 				err.network = true;
 				throw err;
 			}
-			const raw = await res.json().catch(function(){ return {}; });
-			const data = unwrapApiBody(raw);
-			if (!res.ok || (data.code !== undefined && data.code !== 0)) {
-				let msg = data.message || ('HTTP ' + res.status);
-				if (res.status === 404) {
-					msg += '（接口不存在：请重建并重启 gateway-app 服务）';
-				}
-				if (res.status === 413) {
-					msg += '（请求体过大：检查 server.clientMaxBodySize 与反代 client_max_body_size）';
-				}
-				const err = new Error(msg);
-				err.status = res.status;
-				err.data = data;
-				throw err;
-			}
-			return data;
 		}
 
 		async function refreshList() {
@@ -365,37 +335,6 @@
 			}
 		}
 
-		async function tryRestoreSession() {
-			try {
-				await apiJson('/device/app/api/version/admin/list?limit=1&_=' + Date.now());
-				document.getElementById('loginBox').style.display = 'none';
-				document.getElementById('panel').style.display = 'block';
-				await refreshList();
-			} catch (e) {
-				// 未登录或接口不可用：留在登录框
-			}
-		}
-
-		tryRestoreSession();
-
-		document.getElementById('btnLogin').addEventListener('click', async function(){
-			clearMsg(loginMsg);
-			const password = (document.getElementById('password').value || '').trim();
-			if (!password) { showErr(loginMsg, '请输入口令'); return; }
-			try {
-				await apiJson('/device/app/api/version/admin/login', {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({ password })
-				});
-				document.getElementById('loginBox').style.display = 'none';
-				document.getElementById('panel').style.display = 'block';
-				await refreshList();
-			} catch (e) {
-				showErr(loginMsg, formatFetchError(e));
-			}
-		});
-
 		document.getElementById('btnRefresh').addEventListener('click', refreshList);
 
 		document.getElementById('upForm').addEventListener('submit', async function(ev){
@@ -431,6 +370,11 @@
 				if (submitBtn) submitBtn.disabled = false;
 			}
 		});
+
+		if (AdminCommon.requireAdmin()) {
+			document.getElementById('panel').style.display = 'block';
+			refreshList();
+		}
 	})();
 	</script>
 </body>

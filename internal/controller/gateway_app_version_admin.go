@@ -2,7 +2,6 @@ package controller
 
 import (
 	"context"
-	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -34,92 +33,20 @@ const (
 )
 
 var (
-	versionAdminUploadMu    sync.Mutex
-	versionAdminLastUpload  = map[string]time.Time{} // sessionId -> last upload
-	versionAdminLoginBurst  sync.Mutex
-	versionAdminLastLoginIP = map[string]time.Time{} // remote IP -> last attempt
+	versionAdminUploadMu   sync.Mutex
+	versionAdminLastUpload = map[string]time.Time{} // client IP -> last upload
 )
 
-const versionAdminLoginMinInterval = time.Second
-
-func gatewayAppVersionAdminLogin(r *ghttp.Request) {
-	if r.Method != http.MethodPost {
-		r.Response.WriteStatusExit(http.StatusMethodNotAllowed)
-		return
-	}
-	ctx := r.Context()
-	remote := gatewayapp.ClientIP(r)
-	versionAdminLoginBurst.Lock()
-	if t, ok := versionAdminLastLoginIP[remote]; ok && time.Since(t) < versionAdminLoginMinInterval {
-		versionAdminLoginBurst.Unlock()
-		r.Response.Status = http.StatusTooManyRequests
-		r.Response.WriteJson(g.Map{"code": 429, "message": "请求过快"})
-		return
-	}
-	versionAdminLastLoginIP[remote] = time.Now()
-	versionAdminLoginBurst.Unlock()
-
-	pw := strings.TrimSpace(r.Get("password").String())
-	if pw == "" {
-		ct := strings.ToLower(r.Header.Get("Content-Type"))
-		if strings.Contains(ct, "application/json") {
-			var body struct {
-				Password string `json:"password"`
-			}
-			if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&body); err == nil {
-				pw = strings.TrimSpace(body.Password)
-			}
-		}
-	}
-	expected := gatewayapp.VersionAdminPassword(ctx)
-	if expected == "" {
-		glog.Warningf(ctx, "[gateway-app-version-admin] 未配置管理员口令，拒绝登录")
+// requireGatewayAdminHTTP 版本管理等 BindHandler 路径校验 Admin JWT（Hook 已标记）。
+func requireGatewayAdminHTTP(r *ghttp.Request) bool {
+	if !gatewayapp.AdminLoginEnabled() {
 		r.Response.Status = http.StatusServiceUnavailable
-		r.Response.WriteJson(g.Map{"code": 503, "message": "版本管理未启用（未配置口令）"})
-		return
-	}
-	if !constantTimeStringEqual(pw, expected) {
-		glog.Warningf(ctx, "[gateway-app-version-admin] 管理员口令错误 remote=%s", remote)
-		r.Response.Status = http.StatusUnauthorized
-		r.Response.WriteJson(g.Map{"code": 401, "message": "口令错误"})
-		return
-	}
-	sid, err := gatewayapp.NewVersionAdminSessionID()
-	if err != nil {
-		glog.Warningf(ctx, "[gateway-app-version-admin] 生成会话失败 err=%v", err)
-		r.Response.Status = http.StatusInternalServerError
-		r.Response.WriteJson(g.Map{"code": 500, "message": "内部错误"})
-		return
-	}
-	ttl := gatewayapp.VersionAdminSessionTTL(ctx)
-	sec := int(ttl.Seconds())
-	if sec <= 0 {
-		sec = 8 * 3600
-	}
-	key := gatewayapp.RedisSessionKey(sid)
-	if _, err := g.Redis().Do(ctx, "SET", key, "1", "EX", sec); err != nil {
-		glog.Warningf(ctx, "[gateway-app-version-admin] 写入会话 Redis 失败 err=%v", err)
-		r.Response.Status = http.StatusInternalServerError
-		r.Response.WriteJson(g.Map{"code": 500, "message": "会话创建失败"})
-		return
-	}
-	setVersionAdminSessionCookie(r, sid, sec)
-	r.Response.WriteJson(g.Map{"code": 0, "message": "ok"})
-}
-
-// requireVersionAdminSession 校验版本管理已启用且持有有效管理会话；失败时已写 JSON 响应。
-func requireVersionAdminSession(r *ghttp.Request) bool {
-	ctx := r.Context()
-	if gatewayapp.VersionAdminPassword(ctx) == "" {
-		glog.Warningf(ctx, "[gateway-app-version-admin] 未配置管理员口令，拒绝管理操作")
-		r.Response.Status = http.StatusServiceUnavailable
-		r.Response.WriteJson(g.Map{"code": 503, "message": "版本管理未启用（未配置口令）"})
+		r.Response.WriteJson(g.Map{"code": 503, "message": "管理未启用（未配置口令）"})
 		return false
 	}
-	sid := versionAdminSessionIDFromRequest(r)
-	if sid == "" || !versionAdminSessionValid(ctx, sid) {
+	if !gatewayapp.RequestAdminVerified(r) {
 		r.Response.Status = http.StatusUnauthorized
-		r.Response.WriteJson(g.Map{"code": 401, "message": "请先登录管理页"})
+		r.Response.WriteJson(g.Map{"code": 401, "message": "请先登录管理 Hub"})
 		return false
 	}
 	return true
@@ -131,18 +58,18 @@ func gatewayAppVersionAdminUpload(r *ghttp.Request) {
 		return
 	}
 	ctx := r.Context()
-	if !requireVersionAdminSession(r) {
+	if !requireGatewayAdminHTTP(r) {
 		return
 	}
-	sid := versionAdminSessionIDFromRequest(r)
+	remote := gatewayapp.ClientIP(r)
 	versionAdminUploadMu.Lock()
-	if t, ok := versionAdminLastUpload[sid]; ok && time.Since(t) < versionAdminUploadMinInterval {
+	if t, ok := versionAdminLastUpload[remote]; ok && time.Since(t) < versionAdminUploadMinInterval {
 		versionAdminUploadMu.Unlock()
 		r.Response.Status = http.StatusTooManyRequests
 		r.Response.WriteJson(g.Map{"code": 429, "message": "上传过于频繁，请稍后再试"})
 		return
 	}
-	versionAdminLastUpload[sid] = time.Now()
+	versionAdminLastUpload[remote] = time.Now()
 	versionAdminUploadMu.Unlock()
 
 	maxBytes := gatewayapp.ApkMaxBytes(ctx)
@@ -258,7 +185,7 @@ func gatewayAppVersionAdminList(r *ghttp.Request) {
 		r.Response.WriteStatusExit(http.StatusMethodNotAllowed)
 		return
 	}
-	if !requireVersionAdminSession(r) {
+	if !requireGatewayAdminHTTP(r) {
 		return
 	}
 	ctx := r.Context()
@@ -314,7 +241,7 @@ func gatewayAppVersionAdminGet(r *ghttp.Request) {
 		r.Response.WriteStatusExit(http.StatusMethodNotAllowed)
 		return
 	}
-	if !requireVersionAdminSession(r) {
+	if !requireGatewayAdminHTTP(r) {
 		return
 	}
 	ctx := r.Context()
@@ -343,7 +270,7 @@ func gatewayAppVersionAdminUpdate(r *ghttp.Request) {
 		r.Response.WriteStatusExit(http.StatusMethodNotAllowed)
 		return
 	}
-	if !requireVersionAdminSession(r) {
+	if !requireGatewayAdminHTTP(r) {
 		return
 	}
 	ctx := r.Context()
@@ -427,7 +354,7 @@ func gatewayAppVersionAdminDelete(r *ghttp.Request) {
 		r.Response.WriteStatusExit(http.StatusMethodNotAllowed)
 		return
 	}
-	if !requireVersionAdminSession(r) {
+	if !requireGatewayAdminHTTP(r) {
 		return
 	}
 	ctx := r.Context()
@@ -605,45 +532,5 @@ func sanitizeVersionForFilename(v string) string {
 		return "ver"
 	}
 	return s
-}
-
-func versionAdminSessionIDFromRequest(r *ghttp.Request) string {
-	if c, err := r.Request.Cookie(gatewayapp.VersionAdminSessionCookieName); err == nil && c != nil {
-		return strings.TrimSpace(c.Value)
-	}
-	return ""
-}
-
-func versionAdminSessionValid(ctx context.Context, sid string) bool {
-	if sid == "" {
-		return false
-	}
-	v, err := g.Redis().Do(ctx, "GET", gatewayapp.RedisSessionKey(sid))
-	if err != nil || v == nil {
-		return false
-	}
-	return strings.TrimSpace(v.String()) != ""
-}
-
-func setVersionAdminSessionCookie(r *ghttp.Request, sid string, maxAgeSec int) {
-	http.SetCookie(r.Response.Writer, &http.Cookie{
-		Name:     gatewayapp.VersionAdminSessionCookieName,
-		Value:    sid,
-		Path:     "/device/app",
-		MaxAge:   maxAgeSec,
-		HttpOnly: true,
-		Secure:   gatewayapp.VersionAdminCookieSecure(r.Context()),
-		SameSite: http.SameSiteLaxMode,
-	})
-}
-
-func constantTimeStringEqual(a, b string) bool {
-	if len(a) != len(b) {
-		// 长度不等时仍做一次等长比较，略降低口令长度侧信道可区分度。
-		dummy := strings.Repeat("\x00", 64)
-		_ = subtle.ConstantTimeCompare([]byte(dummy), []byte(dummy))
-		return false
-	}
-	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }
 

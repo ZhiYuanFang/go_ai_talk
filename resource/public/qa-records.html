@@ -27,16 +27,6 @@
 	</style>
 </head>
 <body>
-	<div class="card" id="loginCard">
-		<h3>问答库 — 登录</h3>
-		<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-			<input id="pwd" type="password" placeholder="请输入管理口令" />
-			<button id="loginBtn" type="button">登录</button>
-			<a class="link-btn" href="/device/admin">返回设备管理</a>
-		</div>
-		<div id="loginMsg" class="msg"></div>
-	</div>
-
 	<div class="card hidden" id="mainCard">
 		<div class="card-head">
 			<h3>问答库</h3>
@@ -67,14 +57,12 @@
 		</div>
 	</div>
 
+<script src="/resource/public/admin-common.js"></script>
 <script>
-let adminPwd = '';
 let currentPage = 1;
 const pageSize = 20;
 
-const loginCard = document.getElementById('loginCard');
 const mainCard = document.getElementById('mainCard');
-const loginMsg = document.getElementById('loginMsg');
 const mainMsg = document.getElementById('mainMsg');
 const qaTbody = document.getElementById('qaTbody');
 const pagerInfo = document.getElementById('pagerInfo');
@@ -90,13 +78,7 @@ function escapeHtml(s){
 	return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-async function api(path, options={}){
-	const headers = Object.assign({'Content-Type':'application/json','X-Admin-Password':adminPwd}, options.headers || {});
-	const res = await fetch(path, Object.assign({}, options, {headers}));
-	const data = await res.json().catch(() => ({}));
-	if(!res.ok || data.code !== 0){ throw new Error(data.message || ('HTTP '+res.status)); }
-	return data.data;
-}
+function api(path, options={}){ return AdminCommon.adminFetch(path, options); }
 
 function asPagedListPayload(d){
 	const list = Array.isArray(d) ? d : (d && Array.isArray(d.list) ? d.list : []);
@@ -138,19 +120,6 @@ async function loadQaPage(page){
 	nextBtn.disabled = currentPage >= totalPages;
 }
 
-document.getElementById('loginBtn').addEventListener('click', async () => {
-	adminPwd = document.getElementById('pwd').value.trim();
-	if(!adminPwd){ setMsg(loginMsg, '请输入口令'); return; }
-	try {
-		await loadQaPage(1);
-		loginCard.classList.add('hidden');
-		mainCard.classList.remove('hidden');
-		setMsg(mainMsg, '登录成功', true);
-	} catch (e) {
-		setMsg(loginMsg, e.message || '口令错误');
-	}
-});
-
 document.getElementById('refreshBtn').addEventListener('click', async () => {
 	try { await loadQaPage(currentPage); setMsg(mainMsg, '已刷新', true); }
 	catch (e) { setMsg(mainMsg, e.message || '刷新失败'); }
@@ -166,6 +135,11 @@ nextBtn.addEventListener('click', async () => {
 	try { await loadQaPage(currentPage + 1); }
 	catch (e) { setMsg(mainMsg, e.message || '加载失败'); }
 });
+
+if(AdminCommon.requireAdmin()){
+	mainCard.classList.remove('hidden');
+	loadQaPage(1).catch(e => setMsg(mainMsg, e.message || '加载失败'));
+}
 </script>
 </body>
 </html>

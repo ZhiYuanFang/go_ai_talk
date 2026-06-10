@@ -39,19 +39,9 @@
 	</style>
 </head>
 <body>
-	<div class="card" id="loginCard">
-		<h3>UCG 管理登录</h3>
-		<p class="msg" style="color:#64748b;margin-top:0;">使用 UCG Admin 口令（yaml <code>ucg.admin.password</code>）</p>
-		<div class="row">
-			<input id="pwd" type="password" placeholder="请输入口令" />
-			<button id="loginBtn" type="button">进入</button>
-			<a class="link-btn" href="/device/admin">返回设备管理</a>
-		</div>
-		<div id="loginMsg" class="msg"></div>
-	</div>
-
 	<div class="card hidden" id="mainCard">
 		<h3>UCG 管理</h3>
+		<p class="msg" style="color:#64748b;margin-top:0;">须先在 <a href="/device/admin">运维 Hub</a> 登录；本页 API 使用 Admin JWT。</p>
 		<div class="tabs">
 			<button type="button" class="tab active" id="tabAi">AI 配置</button>
 			<button type="button" class="tab" id="tabPosts">动态审查</button>
@@ -143,21 +133,15 @@
 		</div>
 	</div>
 
+<script src="/resource/public/admin-common.js"></script>
 <script>
-let adminPwd = localStorage.getItem('ucgAdminPwd') || '';
 let postsPage = 1;
 const postsPageSize = 20;
 let postsTotal = 0;
 let postsRows = [];
 const selectedPostIds = new Set();
 
-async function api(path, options={}){
-	const headers = Object.assign({'Content-Type':'application/json','X-Admin-Password':adminPwd}, options.headers || {});
-	const res = await fetch(path, Object.assign({}, options, {headers}));
-	const data = await res.json().catch(() => ({}));
-	if(!res.ok || data.code !== 0){ throw new Error(data.message || ('HTTP '+res.status)); }
-	return data.data;
-}
+function api(path, options={}){ return AdminCommon.adminFetch(path, options); }
 
 function showMsg(el, text, ok){
 	el.textContent = text || '';
@@ -298,24 +282,9 @@ async function loadPostsList(){
 }
 
 async function enterMain(){
-	document.getElementById('loginCard').classList.add('hidden');
 	document.getElementById('mainCard').classList.remove('hidden');
 	await loadConfig();
 }
-
-document.getElementById('loginBtn').addEventListener('click', async () => {
-	const pwd = document.getElementById('pwd').value.trim();
-	if(!pwd){ showMsg(document.getElementById('loginMsg'), '请输入口令', false); return; }
-	adminPwd = pwd;
-	localStorage.setItem('ucgAdminPwd', pwd);
-	try {
-		await api('/ucg/admin/api/ai-config');
-		showMsg(document.getElementById('loginMsg'), '', true);
-		await enterMain();
-	} catch(e){
-		showMsg(document.getElementById('loginMsg'), e.message || '登录失败', false);
-	}
-});
 
 document.getElementById('saveBtn').addEventListener('click', async () => {
 	const btn = document.getElementById('saveBtn');
@@ -433,9 +402,8 @@ document.getElementById('postsRejectBtn').addEventListener('click', async () => 
 	}
 });
 
-if(adminPwd){
-	document.getElementById('pwd').value = adminPwd;
-	api('/ucg/admin/api/ai-config').then(() => enterMain()).catch(() => {});
+if(AdminCommon.requireAdmin()){
+	enterMain().catch(e => showMsg(document.getElementById('mainMsg'), e.message || '加载失败', false));
 }
 </script>
 </body>

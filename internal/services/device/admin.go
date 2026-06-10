@@ -39,8 +39,19 @@ var insAdmin = &service{}
 // DeviceAdmin 返回设备管理领域服务实现。
 func DeviceAdmin() *service { return insAdmin }
 
+func deviceAdminPasswordExpected() string {
+	if v := strings.TrimSpace(os.Getenv("DEVICE_ADMIN_PASSWORD")); v != "" {
+		return v
+	}
+	return fixedDeviceAdminPassword
+}
+
 func (s *service) VerifyPassword(password string) bool {
-	return strings.TrimSpace(password) == fixedDeviceAdminPassword
+	expected := deviceAdminPasswordExpected()
+	if expected == "" {
+		return false
+	}
+	return strings.TrimSpace(password) == expected
 }
 
 func (s *service) Register(ctx context.Context, deviceNo string) (int64, error) {

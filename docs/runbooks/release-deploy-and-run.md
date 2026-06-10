@@ -1136,25 +1136,48 @@ curl -sk https://test.pangbao.cuplay.top:9702/device/app/api/site/home
 
 ### Web 管理页与环境隔离
 
-静态页在 `resource/public/`，经主网关（`:9701` / 测试 `:19701`）或 App 网关提供。**业务 API 须与当前页面同源或配对端口**，域名由宝塔 Nginx + 服务器 `.env` 配置，**不写入 compose/代码**。
+静态页在 `resource/public/`，**唯一入口为 App 网关**（`:9702` / 测试 Nginx 反代 `:9702` 或宿主机 `:19702`）。主网关 `:9701` 对 `/device/admin*`、`/device/history/{deviceNo}` 返回 **302** 至 `GATEWAY_APP_PUBLIC_BASE_URL` 同路径。
+
+**Admin JWT 环境变量**（`.env.*` → compose）：
+
+| 变量 | 用途 |
+|------|------|
+| `GATEWAY_APP_ADMIN_USERNAME` | Hub 登录账号（默认 `admin`） |
+| `GATEWAY_APP_ADMIN_PASSWORD` | Hub 登录密码（必填，未配置则 login 503） |
+| `DEVICE_ADMIN_PASSWORD` | gateway-app 注入 device 反代 `X-Admin-Password`（默认同 Hub 密码） |
+| `UCG_ADMIN_PASSWORD` | gateway-app 注入 ucg 反代 `X-Admin-Password`（默认同 Hub 密码） |
+| `GATEWAY_APP_PUBLIC_BASE_URL` | APK 绝对 URL、CORS、主网关 302 目标 |
 
 | 页面 | 路径 | API 请求方式 |
 |------|------|----------------|
-| 设备管理 | `/device/admin` | 同源相对路径 `/device/admin/api/*` |
-| 历史记录 | `/device/history/{deviceNo}` | 同源 `/device/history/api/*` |
-| 问答库 | `/device/admin/qa-records` | 同源 `/device/admin/api/qa/*` |
-| 版本管理 | `/device/app/version-admin.html` | 同源 `/device/app/api/version/admin/*` |
+| 运维 Hub | `/device/admin` | `POST /device/admin/api/login` → Bearer；`/device/admin/api/*` |
+| 历史记录 | `/device/history/{deviceNo}` | 同源 `/device/history/api/*`（用户 JWT 或白名单） |
+| 问答库 / 反馈 / 统计 / UCG | `/device/admin/*` | 同源 + Admin JWT（须先 Hub 登录） |
+| 版本管理 | `/device/app/version-admin.html` | 同源 `/device/app/api/version/admin/*` + Admin JWT |
 | App 联调 | `/device/app/integration-test.html` | 默认 `window.location.origin`（可手改 baseUrl） |
-
-**易错点**：设备管理页跳转「App 版本管理」时，须打开**同环境** App 网关（9701→9702、19701→19702），已在 `admin.html` 按当前端口配对。
 
 **验收**（测试环境示例）：
 
 ```bash
-# 1) 浏览器打开测试设备管理（Nginx 或直连 19701）
-# 2) 开发者工具 → 网络：/device/admin/api/* 的 Host 须为测试域名或 :19701，不得出现 :9702（生产直连端口）
-# 3) 点击「App 版本管理」：地址栏应为 :19702 或测试域名 :9702（Nginx 反代），不得为生产宿主机 9702
-# 4) gateway-app CORS：.env.test 中 GATEWAY_APP_PUBLIC_BASE_URL 填测试对外 HTTPS 基址
+# 1) 主网关 admin 302
+curl -sI http://127.0.0.1:19701/device/admin | grep -i location
+# 期望 Location 含 GATEWAY_APP_PUBLIC_BASE_URL（如 https://test.pangbao.cuplay.top/device/admin）
+
+# 2) Hub 登录（App 网关）
+curl -s -X POST http://127.0.0.1:19702/device/admin/api/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"<GATEWAY_APP_ADMIN_PASSWORD>"}'
+# 期望 code=0 且 data.accessToken 非空
+
+# 3) Admin JWT 访问设备管理 API
+TOKEN=<上步 accessToken>
+curl -s http://127.0.0.1:19702/device/admin/api/list -H "Authorization: Bearer $TOKEN"
+# 期望 code=0
+
+# 4) 用户 JWT 访问管理 API 应 403（若有测试用户 token）
+# curl -s http://127.0.0.1:19702/device/admin/api/list -H "Authorization: Bearer <user-jwt>"
+
+# 5) gateway-app CORS
 docker exec go-ai-talk-gateway-app-test printenv GATEWAY_APP_PUBLIC_BASE_URL
 ```
 - device logo：`/ai_talk_images`；测试栈用 `/ai_talk_images_test`。

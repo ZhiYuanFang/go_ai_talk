@@ -19,15 +19,7 @@ var internalHeaders = []string{
 
 // StripSpoofedInternalHeaders 移除客户端可能伪造的内部头，避免污染反代下游。
 func StripSpoofedInternalHeaders(r *ghttp.Request) {
-	if r == nil {
-		return
-	}
-	for _, h := range internalHeaders {
-		r.Header.Del(h)
-		if r.Request != nil {
-			r.Request.Header.Del(h)
-		}
-	}
+	StripSpoofedGatewayHeaders(r)
 }
 
 // InjectClientIPHeader 从 X-Forwarded-For / RemoteAddr 解析客户端 IP 并写入 HeaderInternalClientIP。

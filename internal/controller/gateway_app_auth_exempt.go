@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/net/ghttp"
 )
 
@@ -14,7 +15,6 @@ var (
 	gatewayAppAuthExemptPrefixesAnyMethod = []string{
 		"/device/app/api/user/internal/",
 		"/swagger",
-		"/ucg/admin/api/",
 	}
 
 	// POST 且路径精确匹配。
@@ -29,10 +29,7 @@ var (
 		"/device/app/api/user/username/register",
 		"/device/app/api/user/username/login",
 		"/device/app/api/user/device_login",
-		"/device/app/api/version/admin/login",
-		"/device/app/api/version/admin/upload",
-		"/device/app/api/version/admin/update",
-		"/device/app/api/version/admin/delete",
+		"/device/admin/api/login",
 	}
 
 	// GET 且路径精确匹配（WebSocket Upgrade 等不要求 HTTP 层 Bearer）。
@@ -51,11 +48,11 @@ var (
 		"/api.json",
 		"/device/admin",
 		"/device/admin/",
+		"/device/admin/qa-records",
+		"/device/admin/feedback-records",
+		"/device/admin/api-usage-stats",
 		"/device/app/api/site/home",
 		"/device/app/api/version/check",
-		"/device/app/api/version/admin/list",
-		"/device/app/api/version/admin/get",
-		// 全局事件字典，无 deviceNo/用户维度，允许登录前拉取 UI 选项。
 		"/device/history/api/event/options",
 		"/ucg/app/api/feed/recommend",
 		"/ucg/app/api/health",
@@ -78,8 +75,8 @@ var (
 
 // gatewayAppAuthPrefixExcept 表示「以前缀放行但排除更具体前缀」的壳页类路由。
 type gatewayAppAuthPrefixExcept struct {
-	Prefix        string // 例如历史 HTML 壳 /device/history/
-	ExcludePrefix string // 需鉴权的 API，如 /device/history/api/
+	Prefix        string
+	ExcludePrefix string
 }
 
 var gatewayAppAuthExemptPrefixGETHEADExcept = []gatewayAppAuthPrefixExcept{
@@ -134,7 +131,6 @@ func gatewayAppPathAuthExempt(r *ghttp.Request) bool {
 	return false
 }
 
-// gatewayAppGetPostByIDExempt GET /ucg/app/api/posts/{numericId} 匿名可读已发布帖。
 func gatewayAppGetPostByIDExempt(path, method string) bool {
 	if method != http.MethodGet && method != http.MethodHead {
 		return false
@@ -158,7 +154,6 @@ func gatewayAppGetPostByIDExempt(path, method string) bool {
 	return len(rest) > 0
 }
 
-// gatewayAppGetPostsUserExempt GET /ucg/app/api/posts/user/{wxId} 匿名可读已发布帖。
 func gatewayAppGetPostsUserExempt(path, method string) bool {
 	if method != http.MethodGet && method != http.MethodHead {
 		return false
@@ -178,4 +173,10 @@ func stringInSlice(s string, list []string) bool {
 		}
 	}
 	return false
+}
+
+func writeGatewayAppAuthJSON(r *ghttp.Request, status int, message string) {
+	r.Response.Status = status
+	r.Response.WriteJson(g.Map{"code": status, "message": message})
+	r.ExitAll()
 }

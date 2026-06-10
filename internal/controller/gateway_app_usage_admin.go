@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	v1 "hello/api/v1"
-	"hello/internal/services/device"
 	"hello/internal/services/gatewayapp/apiregistry"
 	"hello/internal/services/gatewayapp/usagestats"
 
@@ -21,10 +20,7 @@ func NewGatewayAppUsageAdminCtrl() *GatewayAppUsageAdminCtrl {
 }
 
 func (c *GatewayAppUsageAdminCtrl) requireAdmin(ctx context.Context) error {
-	if !device.HTTPDeviceAdmin().VerifyPassword(adminPassword(ctx)) {
-		return gerror.NewCode(gcode.CodeNotAuthorized, "口令错误")
-	}
-	return nil
+	return requireGatewayAdminJWT(ctx)
 }
 
 func queryDaysFromReq(days int) int {

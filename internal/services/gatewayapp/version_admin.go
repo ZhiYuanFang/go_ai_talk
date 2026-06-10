@@ -2,22 +2,15 @@ package gatewayapp
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/glog"
 )
 
 const (
-	// VersionAdminSessionCookieName 版本管理页登录态 Cookie 名。
-	VersionAdminSessionCookieName = "gw_ver_admin"
-	// redisKeyVersionAdminSessionPrefix Redis 中管理员会话 key 前缀。
-	redisKeyVersionAdminSessionPrefix = "gw:app:veradmin:sess:"
 	// RedisKeyAppVersionLatestCache 与 gateway 版本检查缓存键一致，写库后须删除以便立即读到新行。
 	RedisKeyAppVersionLatestCache = "gw:app:version:latest"
 )
@@ -36,14 +29,6 @@ func AppVersionLatestCacheKey(ctx context.Context) string {
 		}
 	}
 	return RedisKeyAppVersionLatestCache
-}
-
-// VersionAdminPassword 管理员口令：优先环境变量 GATEWAY_APP_VERSION_ADMIN_PASSWORD，否则读配置 gatewayApp.versionAdmin.password（生产勿将真口令写入仓库 yaml）。
-func VersionAdminPassword(ctx context.Context) string {
-	if v := strings.TrimSpace(os.Getenv("GATEWAY_APP_VERSION_ADMIN_PASSWORD")); v != "" {
-		return v
-	}
-	return strings.TrimSpace(g.Cfg().MustGet(ctx, "gatewayApp.versionAdmin.password").String())
 }
 
 // PublicBaseURL 对外访问 gateway-app 的基址（用于拼接 APK 绝对下载 URL），须含 scheme，建议不含末尾斜杠。
@@ -85,37 +70,6 @@ func ApkMaxBytes(ctx context.Context) int64 {
 		return 200 << 20
 	}
 	return n
-}
-
-// VersionAdminSessionTTL 管理会话 TTL，默认 8 小时。
-func VersionAdminSessionTTL(ctx context.Context) time.Duration {
-	sec := g.Cfg().MustGet(ctx, "gatewayApp.versionAdmin.sessionTtlSeconds").Int64()
-	if sec <= 0 {
-		sec = 8 * 3600
-	}
-	return time.Duration(sec) * time.Second
-}
-
-// VersionAdminCookieSecure 是否对管理 Cookie 设置 Secure（HTTPS）；可由 gatewayApp.versionAdmin.cookieSecure 或环境 GATEWAY_APP_VERSION_ADMIN_COOKIE_SECURE=1 开启。
-func VersionAdminCookieSecure(ctx context.Context) bool {
-	if strings.TrimSpace(os.Getenv("GATEWAY_APP_VERSION_ADMIN_COOKIE_SECURE")) == "1" {
-		return true
-	}
-	return g.Cfg().MustGet(ctx, "gatewayApp.versionAdmin.cookieSecure").Bool()
-}
-
-// NewVersionAdminSessionID 生成随机会话 ID（32 hex）。
-func NewVersionAdminSessionID() (string, error) {
-	var b [16]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(b[:]), nil
-}
-
-// RedisSessionKey 会话在 Redis 中的完整 key。
-func RedisSessionKey(sessionID string) string {
-	return redisKeyVersionAdminSessionPrefix + strings.TrimSpace(sessionID)
 }
 
 // InvalidateAppVersionLatestCache 删除版本检查用的最新行缓存，避免上传后仍返回旧 downloadUrl。

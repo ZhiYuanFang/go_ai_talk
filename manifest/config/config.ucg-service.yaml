@@ -51,4 +51,5 @@ ucg:
     default_max_images_per_request: 9
     timeout_seconds: 60
   admin:
+    # 管理口令：生产 MUST 用 env UCG_ADMIN_PASSWORD 注入；yaml 留空。gateway-app 校验 Admin JWT 后注入 X-Admin-Password。
     password: ""

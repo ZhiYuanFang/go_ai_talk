@@ -185,8 +185,11 @@ func isAllowedVisionModel(model string) bool {
 	return false
 }
 
-// UcgAdminPassword returns admin password from yaml ucg.admin.password.
+// UcgAdminPassword returns admin password from env UCG_ADMIN_PASSWORD or yaml ucg.admin.password.
 func UcgAdminPassword(ctx context.Context) string {
+	if v := strings.TrimSpace(os.Getenv("UCG_ADMIN_PASSWORD")); v != "" {
+		return v
+	}
 	return strings.TrimSpace(g.Cfg().MustGet(ctx, "ucg.admin.password").String())
 }
 

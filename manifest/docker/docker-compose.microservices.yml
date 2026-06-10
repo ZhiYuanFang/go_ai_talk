@@ -42,6 +42,8 @@ services:
       MQ_PASSWORD: "guest"
       # 非空时覆盖 config yaml 的 redis cluster 地址（测试 standalone 用 redis-test:6379）
       GF_REDIS_DEFAULT_ADDRESS: "${GF_REDIS_DEFAULT_ADDRESS:-}"
+      # admin/history 壳页 302 至 App 网关（见 installGatewayAdminRedirects）
+      GATEWAY_APP_PUBLIC_BASE_URL: "${GATEWAY_APP_PUBLIC_BASE_URL:-}"
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:9701/api.json > /dev/null || exit 1"]
       interval: 10s
@@ -86,11 +88,14 @@ services:
       MQ_USER: "guest"
       MQ_PASSWORD: "guest"
       DEVICE_GATEWAY_INTERNAL_SECRET: "${DEVICE_GATEWAY_INTERNAL_SECRET:-gateway-internal-change-me}"
-      # 以下由 .env.prod / .env.test 注入；publicBaseUrl 用于 APK 下载绝对 URL，versionAdmin 口令用于版本管理页
+      # 以下由 .env.prod / .env.test 注入；publicBaseUrl 用于 APK 下载绝对 URL；Admin JWT 与下游口令注入见 runbook
       GATEWAY_APP_PUBLIC_BASE_URL: "${GATEWAY_APP_PUBLIC_BASE_URL:-}"
       GATEWAY_APP_JWT_SECRET: "${GATEWAY_APP_JWT_SECRET:-}"
       GATEWAY_APP_CORS_ALLOWED_HOSTS: "${GATEWAY_APP_CORS_ALLOWED_HOSTS:-}"
-      GATEWAY_APP_VERSION_ADMIN_PASSWORD: "${GATEWAY_APP_VERSION_ADMIN_PASSWORD:-}"
+      GATEWAY_APP_ADMIN_USERNAME: "${GATEWAY_APP_ADMIN_USERNAME:-admin}"
+      GATEWAY_APP_ADMIN_PASSWORD: "${GATEWAY_APP_ADMIN_PASSWORD:-}"
+      DEVICE_ADMIN_PASSWORD: "${DEVICE_ADMIN_PASSWORD:-}"
+      UCG_ADMIN_PASSWORD: "${UCG_ADMIN_PASSWORD:-}"
       GF_REDIS_DEFAULT_ADDRESS: "${GF_REDIS_DEFAULT_ADDRESS:-}"
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:9702/api.json > /dev/null || exit 1"]
@@ -205,6 +210,7 @@ services:
       MQ_PASSWORD: "guest"
       # 与 gateway-app 配置 gatewayApp.deviceInternalSecret 保持一致，供 GET /device/app/api/user/internal/by-id 校验
       DEVICE_GATEWAY_INTERNAL_SECRET: "${DEVICE_GATEWAY_INTERNAL_SECRET:-gateway-internal-change-me}"
+      DEVICE_ADMIN_PASSWORD: "${DEVICE_ADMIN_PASSWORD:-}"
       UCG_SERVICE_BASE_URL: "http://ucg-service:9804"
       GF_REDIS_DEFAULT_ADDRESS: "${GF_REDIS_DEFAULT_ADDRESS:-}"
     healthcheck:
@@ -265,6 +271,7 @@ services:
       UCG_OSS_ACCESS_KEY_ID: "${UCG_OSS_ACCESS_KEY_ID:-}"
       UCG_OSS_ACCESS_KEY_SECRET: "${UCG_OSS_ACCESS_KEY_SECRET:-}"
       UCG_DASHSCOPE_API_KEY: "${UCG_DASHSCOPE_API_KEY:-}"
+      UCG_ADMIN_PASSWORD: "${UCG_ADMIN_PASSWORD:-}"
       MQ_HTTP_API_BASE: "http://rabbitmq:15672/api"
       MQ_USER: "guest"
       MQ_PASSWORD: "guest"
