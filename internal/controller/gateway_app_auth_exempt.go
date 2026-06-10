@@ -73,7 +73,6 @@ var (
 		"/wx/ulink/",
 		"/resource/",
 		"/device/app/apk/",
-		"/ai_talk_images/",
 	}
 )
 

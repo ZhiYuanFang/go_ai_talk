@@ -1,6 +1,8 @@
 package controller
 
 import (
+	"strings"
+
 	"hello/internal/services/device"
 	"hello/internal/services/gatewayapp"
 	"hello/internal/shared/deviceaccess"
@@ -35,4 +37,13 @@ func deviceServiceBaseForTouch(r *ghttp.Request) string {
 		}
 	}
 	return gatewayDeviceServiceTarget()
+}
+
+// gatewayDeviceServiceTarget 主网关反代 device 时使用的下游基址（与 DEVICE_API_PROXY_URL 一致）。
+func gatewayDeviceServiceTarget() string {
+	cfg, _ := deviceProxyFromEnv()
+	if t := strings.TrimRight(strings.TrimSpace(cfg.targetURL), "/"); t != "" {
+		return t
+	}
+	return "http://127.0.0.1:9803"
 }

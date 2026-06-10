@@ -3,9 +3,7 @@ package controller
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
-	"os"
 	"strings"
 
 	device "hello/internal/services/device"
@@ -14,7 +12,6 @@ import (
 	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/net/ghttp"
-	"github.com/gogf/gf/v2/os/gfile"
 )
 
 // deviceAdminEventAdd 管理端新增事件（multipart：name/eventType/extraNames/color，可选 logo 文件）。
@@ -47,7 +44,7 @@ func deviceAdminEventAdd(r *ghttp.Request, c *AdminCtrl) {
 		writeDeviceAdminEventErr(r, err)
 		return
 	}
-	logoPath, err := saveEventLogoFromRequest(ctx, r, eventID)
+	logoPath, err := saveEventLogoFromRequest(ctx, r)
 	if err != nil {
 		writeDeviceAdminFail(r, gcode.CodeInvalidParameter, err.Error())
 		return
@@ -87,7 +84,7 @@ func deviceAdminEventUpdate(r *ghttp.Request, c *AdminCtrl) {
 		writeDeviceAdminFail(r, gcode.CodeInvalidParameter, err.Error())
 		return
 	}
-	logoPath, err := saveEventLogoFromRequest(ctx, r, id)
+	logoPath, err := saveEventLogoFromRequest(ctx, r)
 	if err != nil {
 		writeDeviceAdminFail(r, gcode.CodeInvalidParameter, err.Error())
 		return
@@ -114,37 +111,6 @@ func eventParentIDFromMultipart(r *ghttp.Request) (int64, bool) {
 	return device.NormalizeEventParentIDForAPI(r.GetForm("parentId").Int64()), true
 }
 
-// deviceEventImageServe 提供事件 logo 静态读（路径前缀 /ai_talk_images/）。
-func deviceEventImageServe(r *ghttp.Request) {
-	if r.Method != http.MethodGet && r.Method != http.MethodHead {
-		r.Response.WriteStatusExit(http.StatusMethodNotAllowed)
-		return
-	}
-	ctx := r.Context()
-	name := strings.TrimSpace(r.Get("filename").String())
-	if name == "" {
-		name = strings.TrimPrefix(r.URL.Path, "/ai_talk_images/")
-	}
-	logoPath := "/ai_talk_images/" + name
-	abs, err := device.EventLogoAbsPath(ctx, logoPath)
-	if err != nil {
-		r.Response.WriteStatusExit(http.StatusBadRequest)
-		return
-	}
-	if !gfile.Exists(abs) {
-		r.Response.WriteStatusExit(http.StatusNotFound)
-		return
-	}
-	r.Response.Header().Set("Content-Type", device.EventLogoContentType(name))
-	if r.Method == http.MethodHead {
-		if fi, err := os.Stat(abs); err == nil {
-			r.Response.Header().Set("Content-Length", fmt.Sprintf("%d", fi.Size()))
-		}
-		return
-	}
-	r.Response.ServeFile(abs)
-}
-
 func parseEventMultipartFields(r *ghttp.Request) (name string, eventType string, extraNames, color, unit string, err error) {
 	name = strings.TrimSpace(r.GetForm("name").String())
 	if name == "" {
@@ -163,13 +129,13 @@ func parseEventMultipartFields(r *ghttp.Request) (name string, eventType string,
 	return name, eventType, extraNames, color, unit, nil
 }
 
-func saveEventLogoFromRequest(ctx context.Context, r *ghttp.Request, eventID int64) (string, error) {
+func saveEventLogoFromRequest(ctx context.Context, r *ghttp.Request) (string, error) {
 	file, hdr, err := r.Request.FormFile("logo")
 	if err != nil {
 		return "", nil
 	}
 	defer func() { _ = file.Close() }()
-	return device.SaveEventLogo(ctx, eventID, hdr.Filename, file, hdr.Size)
+	return device.UploadEventLogo(ctx, hdr.Filename, file, hdr.Size)
 }
 
 func writeDeviceAdminOK(r *ghttp.Request, data interface{}) {

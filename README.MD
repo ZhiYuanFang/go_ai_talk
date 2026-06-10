@@ -165,15 +165,13 @@
 
 #### 4. 事件管理（logo / color）
 
-- **列表**: `GET /device/admin/api/event/list` — 每项含 `logo`（应用内路径，如 `/ai_talk_images/event_1_xxx.png`）、`color`（如 `#FF6B6B`）
+- **列表**: `GET /device/admin/api/event/list` — 每项含 `logo`（CDN 绝对 URL，如 `https://resorce.cuplay.top/event/...`）、`color`（如 `#FF6B6B`）
 - **新增/更新**: `POST` multipart 至 `/device/admin/api/event/add` 或 `/event/update`
   - 表单字段：`name`、`eventType`（`number` 计数 / `time` 计时 / `one` 一次性）、`extraNames`、`color`（`#RGB`/`#RRGGBB`）、可选文件 `logo`
   - 更新时未传 `logo` 文件则保留原 logo
-- **静态资源**：库内**不存域名**；由客户端按当前访问网关 **origin + path** 拼接。Docker Compose 默认将 **`/ai_talk_images`**（device-service 写 logo）、**`/apk/ai_talk`**（gateway-app 写 APK）bind 到 **Linux 宿主机同路径**，便于备份与排障（见 `docs/runbooks/release-deploy-and-run.md`）。例如：
-  - 事件 logo（设备管理页 `:9701`）：`https://<host>:9701` + `/ai_talk_images/xxx.png`（主网关反代 device-service）
-  - 事件 logo / APK（App 端 `:9702`）：`https://<host>:9702` + 路径
-- **管理页**：`admin.html` 事件表展示 Logo、色调；**点击**色块或 Logo 可直接更新（无需打开完整编辑弹窗）
-- **BREAKING**：`GET /device/app/api/version/check` 的 `downloadUrl` 现为**路径**（非绝对 URL），App 须自行拼接网关基址。
+- **存储**：库内 `event.logo` 为 OSS objectKey（`event/...`）；API 响应返回 CDN URL。上传经 ucg-service OSS；详见 `docs/runbooks/event-logo-oss-migration.md`。
+- **管理页**：`admin.html` 事件表展示 Logo、色调；**点击**色块或 Logo 可直接更新
+- **BREAKING**：`GET /device/app/api/version/check` 的 `downloadUrl` 仍为**路径**（非绝对 URL），App 须自行拼接网关基址。
 
 ---
 

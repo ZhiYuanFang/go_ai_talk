@@ -115,7 +115,7 @@
 			</div>
 		</div>
 		<div id="eventMsg" class="msg"></div>
-		<p class="msg" style="color:#64748b;margin-top:0;">点击列表中的 <strong>Logo</strong> 或 <strong>色调</strong> 可直接修改；图片地址与当前页同源。</p>
+		<p class="msg" style="color:#64748b;margin-top:0;">点击列表中的 <strong>Logo</strong> 或 <strong>色调</strong> 可直接修改；Logo 由 CDN 地址展示。</p>
 		<input type="file" id="eventInlineLogoFile" accept="image/png,image/jpeg,image/webp" style="display:none" />
 		<div id="eventColorPopover" class="event-color-popover" aria-hidden="true">
 			<div class="event-color-popover-title">修改色调</div>
@@ -417,7 +417,7 @@ function versionAdminPageUrl(){
 	return gatewayAppBase() + '/device/app/version-admin.html';
 }
 
-/** 事件 logo：与当前管理页同源（主网关 :9701），path-only 拼 origin */
+/** 事件 logo：API 返回 CDN 绝对 URL；兼容历史 path-only 时仍可按同源拼接 */
 function eventLogoUrl(logoPath){
 	const p = String(logoPath || '').trim();
 	if(!p) return '';

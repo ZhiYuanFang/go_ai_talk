@@ -34,8 +34,7 @@ func RegisterHTTP(s *ghttp.Server) {
 		r.Response.ServeFile("resource/public/ucg-admin.html")
 	})
 
-	// 事件 logo 静态读：与管理页同源（:9701），反代至 device-service。
-	installEventImageProxy(s, gatewayDeviceServiceTarget())
+	// 事件 logo 已迁移至 OSS/CDN，不再反代 /ai_talk_images。
 
 	s.BindHandler("/device/history/*deviceNo", func(r *ghttp.Request) {
 		r.Response.ServeFile("resource/public/history.html")

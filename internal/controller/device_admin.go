@@ -7,6 +7,7 @@ import (
 	v1 "hello/api/v1"
 	contracts "hello/internal/services/contracts"
 	device "hello/internal/services/device"
+	"hello/internal/shared/eventlogo"
 
 	"github.com/gogf/gf/v2/errors/gcode"
 	"github.com/gogf/gf/v2/errors/gerror"
@@ -97,7 +98,7 @@ func (c *AdminCtrl) EventList(ctx context.Context, req *v1.DeviceAdminEventListR
 	if err != nil {
 		return nil, err
 	}
-	return &v1.DeviceAdminEventListRes{List: items}, nil
+	return &v1.DeviceAdminEventListRes{List: eventlogo.MapEventsLogoCdn(ctx, items)}, nil
 }
 
 // EventDelete 删除事件。

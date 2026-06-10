@@ -5,6 +5,7 @@ import (
 
 	v1 "hello/api/v1"
 	device "hello/internal/services/device"
+	"hello/internal/shared/eventlogo"
 )
 
 // DeviceInternalCtrl 设备域内部只读接口（供 history/voice 跨服务调用，依赖网络隔离）。
@@ -22,5 +23,5 @@ func (c *DeviceInternalCtrl) EventOptions(ctx context.Context, req *v1.DeviceInt
 	if err != nil {
 		return nil, err
 	}
-	return &v1.DeviceInternalEventOptionsRes{List: items}, nil
+	return &v1.DeviceInternalEventOptionsRes{List: eventlogo.MapEventsLogoCdn(ctx, items)}, nil
 }

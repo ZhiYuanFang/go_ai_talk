@@ -52,8 +52,6 @@ services:
     container_name: go-ai-talk-device-service-test
     ports:
       - "19803:9803"
-    volumes:
-      - /ai_talk_images_test:/ai_talk_images
     networks: [go-ai-talk-test-net]
 
   worker:

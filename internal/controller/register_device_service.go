@@ -18,7 +18,6 @@ func RegisterDeviceServiceHTTP(s *ghttp.Server) {
 	s.BindHandler("/device/admin/api/event/update", func(r *ghttp.Request) {
 		deviceAdminEventUpdate(r, admin)
 	})
-	s.BindHandler("/ai_talk_images/*filename", deviceEventImageServe)
 	s.Group("/", func(group *ghttp.RouterGroup) {
 		// 设备域服务仅承载设备管理接口，避免职责回流到 gateway。
 		group.Bind(admin)

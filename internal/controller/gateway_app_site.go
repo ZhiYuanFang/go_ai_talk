@@ -8,6 +8,7 @@ import (
 	"hello/internal/model/entity"
 	"hello/internal/services/contracts"
 	"hello/internal/services/gatewayapp"
+	"hello/internal/shared/eventlogo"
 
 	"github.com/gogf/gf/v2/encoding/gjson"
 	"github.com/gogf/gf/v2/net/gclient"
@@ -67,7 +68,7 @@ func fetchGatewayAppSiteEvents(ctx context.Context, publicBaseURL string) []v1.G
 		items = append(items, v1.GatewayAppSiteEventItem{
 			Id:       row.Id,
 			Name:     strings.TrimSpace(row.Name),
-			LogoUrl:  gatewayAppAbsoluteAssetURL(publicBaseURL, strings.TrimSpace(row.Logo)),
+			LogoUrl:  eventlogo.CdnURL(ctx, strings.TrimSpace(row.Logo)),
 			Color:    strings.TrimSpace(row.Color),
 			ParentId: row.ParentId,
 		})

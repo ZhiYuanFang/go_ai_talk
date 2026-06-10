@@ -73,7 +73,6 @@ func RegisterGatewayAppHTTP(s *ghttp.Server) {
 	installGatewayCrosscuttingMiddlewares(s)
 	installGatewayAppBearerMiddleware(s)
 	installDeviceAPIAccessTouchMiddleware(s)
-	installGatewayAppEventImageProxy(s)
 	installDomainProxyMiddlewares(s)
 	installVoiceWSProxyMiddleware(s)
 	installUcgWSProxyMiddleware(s)

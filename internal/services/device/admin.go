@@ -14,7 +14,6 @@ import (
 	"hello/internal/platform/eventkit"
 	"hello/internal/services/contracts"
 	"hello/internal/services/workeroutbox"
-	"hello/internal/shared/assetpath"
 	sharedtypes "hello/internal/shared/types"
 
 	"github.com/gogf/gf/v2/frame/g"
@@ -340,7 +339,7 @@ func validateEventParentChange(ctx context.Context, eventID, newParentID int64) 
 
 func normalizeEventRows(rows []entity.Event) {
 	for i := range rows {
-		rows[i].Logo = assetpath.Normalize(rows[i].Logo)
+		rows[i].Logo = NormalizeEventLogoStored(rows[i].Logo)
 	}
 }
 
@@ -373,7 +372,7 @@ func (s *service) AddEvent(ctx context.Context, name string, eventType string, e
 	if exists {
 		return 0, ErrEventExists
 	}
-	logoPath = assetpath.Normalize(strings.TrimSpace(logoPath))
+	logoPath = NormalizeEventLogoStored(logoPath)
 	result, err := dao.Event.Ctx(ctx).Data(g.Map{
 		dao.Event.Columns().Name:       name,
 		dao.Event.Columns().EventType:  eventType,
@@ -470,7 +469,7 @@ func (s *service) UpdateEvent(ctx context.Context, id int64, name string, eventT
 	if parentID != nil {
 		data[dao.Event.Columns().ParentId] = targetParent
 	}
-	if lp := assetpath.Normalize(strings.TrimSpace(logoPath)); lp != "" {
+	if lp := NormalizeEventLogoStored(logoPath); lp != "" {
 		data[dao.Event.Columns().Logo] = lp
 	}
 	_, err = dao.Event.Ctx(ctx).Where(dao.Event.Columns().Id, id).Data(data).Update()
