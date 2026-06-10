@@ -19,6 +19,9 @@ output/
 manifest/output/
 temp/
 main.exe~
-# 本地 Compose 数据库口令（由 manifest/docker/.env.example 复制生成）
-manifest/docker/.env
+# 环境变量与本地密钥（模板 .env.example 除外）
+.env
+**/.env
+**/.env.*
+!**/.env.example
 *.exe
