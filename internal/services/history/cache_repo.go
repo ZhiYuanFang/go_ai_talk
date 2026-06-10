@@ -245,6 +245,7 @@ type historyProjectionEvent struct {
 	EventIDRef int64  `json:"event_id_ref"`
 	EventName  string `json:"event_name"`
 	EventNum   int64  `json:"event_number"`
+	EventUnit  string `json:"event_unit"`
 	StartTime  int64  `json:"start_time"`
 	EndTime    int64  `json:"end_time"`
 	Remark     string `json:"remark"`
@@ -281,6 +282,7 @@ func ApplyProjection(ctx context.Context, routingKey string, payload string) err
 			EventId:     evt.EventIDRef,
 			EventName:   evt.EventName,
 			EventNumber: evt.EventNum,
+			EventUnit:   strings.TrimSpace(evt.EventUnit),
 			StartTime:   evt.StartTime,
 			EndTime:     evt.EndTime,
 			Remark:      strings.TrimSpace(evt.Remark),
@@ -292,6 +294,7 @@ func ApplyProjection(ctx context.Context, routingKey string, payload string) err
 			EventId:     evt.EventIDRef,
 			EventName:   evt.EventName,
 			EventNumber: evt.EventNum,
+			EventUnit:   strings.TrimSpace(evt.EventUnit),
 			StartTime:   evt.StartTime,
 			EndTime:     evt.EndTime,
 			Remark:      strings.TrimSpace(evt.Remark),

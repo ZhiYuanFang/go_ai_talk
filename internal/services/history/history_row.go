@@ -98,17 +98,7 @@ func nullableEventUnit(v string) interface{} {
 }
 
 func lookupEventUnit(ctx context.Context, eventID int64) string {
-	if eventID <= 0 {
-		return ""
-	}
-	v, err := dao.Event.Ctx(ctx).
-		Where(dao.Event.Columns().Id, eventID).
-		Fields(dao.Event.Columns().Unit).
-		Value()
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(v.String())
+	return resolveEventUnitFromDevice(ctx, eventID)
 }
 
 // enrichHistoryEventUnit 写入前补全 event_unit：优先已有值，否则查事件主档。

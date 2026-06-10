@@ -77,6 +77,7 @@ func notifyEventDisplayName(ctx context.Context, eventID int64, storedRowName st
 	return stored
 }
 
+// historyToNotifyPayload 构造 WS 推送载荷；eventUnit 与 DB history.event_unit 一致。
 func historyToNotifyPayload(ctx context.Context, h entity.History) map[string]interface{} {
 	payload := map[string]interface{}{
 		"id":          h.Id,

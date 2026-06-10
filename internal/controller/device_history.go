@@ -227,6 +227,7 @@ func mergeHistoryUpdateFromReq(ctx context.Context, c *HistoryCtrl, req *v1.Devi
 	item.EventId = req.EventId
 	item.EventName = c.canonicalEventNameForRow(ctx, req.EventId, req.EventName)
 	item.EventNumber = int64(req.EventNumber)
+	item.EventUnit = strings.TrimSpace(req.EventUnit)
 	item.StartTime = req.StartTime
 	item.EndTime = req.EndTime
 	item.Remark = strings.TrimSpace(req.Remark)

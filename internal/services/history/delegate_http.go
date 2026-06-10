@@ -109,6 +109,24 @@ func delegateListEventOptions(ctx context.Context) ([]entity.Event, error) {
 	return resp.List, nil
 }
 
+// resolveEventUnitFromDevice 经 device-service HTTP 契约按 eventId 解析单位；禁止 history 直查 event 表。
+func resolveEventUnitFromDevice(ctx context.Context, eventID int64) string {
+	if eventID <= 0 {
+		return ""
+	}
+	rows, err := delegateListEventOptions(ctx)
+	if err != nil {
+		logDelegateFailure(ctx, "list_event_options_for_unit", err)
+		return ""
+	}
+	for i := range rows {
+		if rows[i].Id == eventID {
+			return strings.TrimSpace(rows[i].Unit)
+		}
+	}
+	return ""
+}
+
 func delegateGetProfile(ctx context.Context, deviceNo string) (babyName string, birthdayUnixSec int64, sex int, err error) {
 	t := contracts.ResolveHTTPTargets()
 	var resp struct {

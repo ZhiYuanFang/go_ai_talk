@@ -377,6 +377,20 @@
             return normalizeEventType(ev && ev.eventType);
         }
 
+        function resolveRowEventUnit(row){
+            const u = String((row && row.eventUnit) || '').trim();
+            if(u){ return u; }
+            const ev = eventOptions.find(e => String(e.id) === String(row && row.eventId));
+            return String((ev && ev.unit) || '').trim();
+        }
+
+        function formatCountWithUnit(num, unit){
+            const n = String(num ?? '').trim();
+            if(!n || n === '-'){ return '-'; }
+            const u = String(unit || '').trim();
+            return u ? (n + u) : n;
+        }
+
         function escapeHtml(v){
             return String(v ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
         }
@@ -571,6 +585,7 @@
                 opt.textContent = String(ev.name || ('事件#'+ev.id)) + '（' + eventTypeLabel(et) + '）';
                 opt.setAttribute('data-name', String(ev.name || ''));
                 opt.setAttribute('data-event-type', et);
+                opt.setAttribute('data-unit', String(ev.unit || '').trim());
                 fEventSelect.appendChild(opt);
             });
             syncEventUnitAndNumberReadonly();
@@ -606,7 +621,8 @@
                 const hasEnd = Number(it.endTime || 0) !== 0;
                 let numberText;
                 if(et === 'number'){
-                    numberText = String(it.eventNumber ?? '').trim() || '-';
+                    const raw = String(it.eventNumber ?? '').trim();
+                    numberText = raw ? formatCountWithUnit(raw, resolveRowEventUnit(it)) : '-';
                 }else if(et === 'one'){
                     numberText = '1次';
                 }else{
@@ -771,6 +787,7 @@
                 deviceNo,
                 eventId: Number(fEventSelect.value || 0),
                 eventName: String((fEventSelect.options[fEventSelect.selectedIndex] || {}).getAttribute('data-name') || '').trim(),
+                eventUnit: String((selected && selected.getAttribute('data-unit')) || '').trim(),
                 eventNumber: et === 'number' ? Number(fEventNumber.value || 0) : (et === 'one' ? 1 : 0),
                 startTime: startTimeSec,
                 endTime: endTimeSec,

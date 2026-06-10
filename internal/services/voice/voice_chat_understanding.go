@@ -64,6 +64,11 @@ func historyRowEventName(ev entity.Event, displayHint string) string {
 	return strings.TrimSpace(displayHint)
 }
 
+// historyRowEventUnit 写入 history.event_unit 时使用事件主档单位。
+func historyRowEventUnit(ev entity.Event) string {
+	return strings.TrimSpace(ev.Unit)
+}
+
 type chatResult struct {
 	Reply            string
 	Ask              string
@@ -485,6 +490,7 @@ func (s *VoiceService) handleUnifiedIntentAction(ctx context.Context, deviceNo, 
 			DeviceNo:  deviceNo,
 			EventId:   event.Id,
 			EventName: historyRowEventName(event, targetName),
+			EventUnit: historyRowEventUnit(event),
 			StartTime: nowTime,
 			Remark:    normalizedTranscript,
 		})
@@ -505,6 +511,7 @@ func (s *VoiceService) handleUnifiedIntentAction(ctx context.Context, deviceNo, 
 			DeviceNo:  deviceNo,
 			EventId:   event.Id,
 			EventName: historyRowEventName(event, targetName),
+			EventUnit: historyRowEventUnit(event),
 			StartTime: nowTime,
 			EndTime:   nowTime,
 			Remark:    normalizedTranscript,
@@ -535,6 +542,7 @@ func (s *VoiceService) handleUnifiedIntentAction(ctx context.Context, deviceNo, 
 			DeviceNo:    deviceNo,
 			EventId:     event.Id,
 			EventName:   historyRowEventName(event, targetName),
+			EventUnit:   historyRowEventUnit(event),
 			EventNumber: eventNumber,
 			StartTime:   nowTime,
 			EndTime:     nowTime,
@@ -581,6 +589,7 @@ func (s *VoiceService) handleActionRecord(ctx context.Context, deviceNo string, 
 			DeviceNo:  deviceNo,
 			EventId:   event.Id,
 			EventName: historyRowEventName(event, targetName),
+			EventUnit: historyRowEventUnit(event),
 			StartTime: nowTime,
 			Remark:    normalizedTranscript,
 		})
@@ -622,6 +631,7 @@ func (s *VoiceService) handleActionRecord(ctx context.Context, deviceNo string, 
 				DeviceNo:  deviceNo,
 				EventId:   event.Id,
 				EventName: historyRowEventName(event, targetName),
+				EventUnit: historyRowEventUnit(event),
 				StartTime: nowTime,
 				EndTime:   nowTime,
 				Remark:    normalizedTranscript,
@@ -662,6 +672,7 @@ func (s *VoiceService) handleActionRecord(ctx context.Context, deviceNo string, 
 			DeviceNo:    deviceNo,
 			EventId:     event.Id,
 			EventName:   historyRowEventName(event, targetName),
+			EventUnit:   historyRowEventUnit(event),
 			EventNumber: eventNumber,
 			StartTime:   nowTime,
 			EndTime:     nowTime,

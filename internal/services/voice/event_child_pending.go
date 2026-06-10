@@ -109,6 +109,7 @@ func (s *VoiceService) applyEventActionTarget(ctx context.Context, deviceNo, act
 			DeviceNo:  deviceNo,
 			EventId:   event.Id,
 			EventName: targetName,
+			EventUnit: historyRowEventUnit(event),
 			StartTime: nowTime,
 			Remark:    normalizedTranscript,
 		})
@@ -132,6 +133,7 @@ func (s *VoiceService) applyEventActionTarget(ctx context.Context, deviceNo, act
 			StartTime: nowTime,
 			EndTime:   nowTime,
 			Remark:    normalizedTranscript,
+			EventUnit: historyRowEventUnit(event),
 		})
 		if err != nil {
 			return "记录事件失败,请重试", false, true, err
@@ -153,6 +155,7 @@ func (s *VoiceService) applyEventActionTarget(ctx context.Context, deviceNo, act
 			EventId:     event.Id,
 			EventName:   targetName,
 			EventNumber: eventNumber,
+			EventUnit:   historyRowEventUnit(event),
 			StartTime:   nowTime,
 			EndTime:     nowTime,
 			Remark:      normalizedTranscript,
