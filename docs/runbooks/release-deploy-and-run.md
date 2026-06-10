@@ -817,12 +817,13 @@ docker pull crpi-xxx-vpc.cn-hangzhou.personal.cr.aliyuncs.com/pangbao-test/gatew
 grep -E '^REGISTRY=|^IMAGE_TAG=' manifest/docker/.env.test
 ```
 
-**GitHub Actions push 侧**（与 pull 共用 `.env`，无需 GitHub Secrets）：
+**GitHub Actions push 侧**（凭证在 GitHub Secrets，**不**读仓库内 `.env` 文件；详见下方「ACR 与 CI 凭证」）：
 
 | 配置项 | 要求 |
 |--------|------|
-| `manifest/docker/.env.test` / `.env.prod` | 须含 `REGISTRY`、`ACR_USERNAME`、`ACR_PASSWORD` |
-| `REGISTRY` | 服务器 pull 用，**可用** `-vpc`；workflow 自动去掉 `-vpc` 作为 push 地址 |
+| GitHub Environment `test` / `prod` | 各配置 secret `REGISTRY`（与 ECS `.env` 中值相同，可用 `-vpc`） |
+| Repository secrets | `ACR_USERNAME`、`ACR_PASSWORD`（两环境通常相同） |
+| `REGISTRY` | ECS pull 用，**可用** `-vpc`；workflow 自动去掉 `-vpc` 作为 push 地址 |
 | 命名空间 | `REGISTRY` 中 `/pangbao-test` 等与目标环境一致 |
 | ACR 控制台 | 对应命名空间下已有 7 个镜像仓库且存在预发布/正式 tag（如 `:v1.0.0-rc.1`、`:v1.0.0`） |
 
@@ -1284,45 +1285,70 @@ docker compose -f manifest/docker/docker-compose.redis-cluster.yml up -d --force
 
 > 测试 Redis 默认使用 `docker-compose.redis-standalone.test.yml`（`redis-test:6379`），勿再使用已删除的六节点 cluster test compose。
 
-### ACR 与 .env 统一配置
+### ACR 与 CI 凭证
 
-个人版 ACR 镜像完整路径：`域名/命名空间/仓库名:tag`。**测试与生产使用不同命名空间**，分别在 `manifest/docker/.env.test` 与 `.env.prod` 配置。**无需在 GitHub Settings 配置 Secrets**；换私有仓库后 push 代码即可直接触发 Actions。
+个人版 ACR 镜像完整路径：`域名/命名空间/仓库名:tag`。**测试与生产使用不同命名空间**。CI 与 ECS **职责分离**：
 
-| 环境 | 配置文件 | CI 触发 |
-|------|----------|---------|
-| **测试** | `manifest/docker/.env.test` | push tag `v*-*`（预发布，如 `v1.0.0-rc.1`） |
-| **生产** | `manifest/docker/.env.prod` | push tag `vMAJOR.MINOR.PATCH`（如 `v1.0.0`） |
+| 用途 | 凭证存放位置 | 说明 |
+|------|--------------|------|
+| **GitHub Actions push** | GitHub Secrets / Environments | 不读 git 仓库内 `.env` 文件 |
+| **ECS pull / compose** | 服务器本地 `manifest/docker/.env.test` / `.env.prod` | 从 `.env.example` 复制，**不上传 git** |
 
-镜像段必填项（同一 ACR 实例下 `ACR_USERNAME` / `ACR_PASSWORD` 通常两环境相同）：
+#### CI 触发与 Environment 路由
 
-| 变量 | 取值 |
-|------|------|
-| `REGISTRY` | `<vpc 或公网域名>/<命名空间>`；服务器 pull 推荐 `-vpc` 专线 |
-| `IMAGE_TAG` | 与 git tag 一致（如 `v1.0.0-rc.1`、`v1.0.0`） |
+| 环境 | GitHub Environment | CI 触发 |
+|------|-------------------|---------|
+| **测试** | `test` | push tag `v*-*`（预发布，如 `v1.0.0-rc.1`） |
+| **生产** | `prod` | push tag `vMAJOR.MINOR.PATCH`（如 `v1.0.0`） |
+
+手动触发：Actions → **docker-acr** → Run workflow → 选择 `target_env` 与 `image_tag`。
+
+#### GitHub Secrets 配置（首次必做）
+
+1. **Settings → Environments**：创建 `test`、`prod`（prod 可按需加 required reviewers）。
+2. **Settings → Secrets and variables → Actions → Repository secrets**（两环境共用）：
+
+| Secret | 取值 |
+|--------|------|
 | `ACR_USERNAME` | ACR 控制台 → 访问凭证 → 登录用户名 |
 | `ACR_PASSWORD` | 访问凭证 → 设置的**固定密码** |
 
+3. **各 Environment secrets**（命名空间不同）：
+
+| Environment | Secret | 取值 |
+|-------------|--------|------|
+| `test` | `REGISTRY` | `<vpc 或公网域名>/pangbao-test`（与 ECS `.env.test` 中 `REGISTRY` 一致） |
+| `prod` | `REGISTRY` | `<vpc 或公网域名>/pangbao-release`（与 ECS `.env.prod` 中 `REGISTRY` 一致） |
+
 CI push 地址由 workflow 从 `REGISTRY` **自动去掉 `-vpc`** 推导，无需单独维护公网域名。
 
-**填写示例**（命名空间名以控制台为准）：
+**验证 CI**：配置完成后，Actions → docker-acr → Run workflow → `target_env=test`、`image_tag=v0.0.0-test`（或当前预发布 tag），确认七服务 build + push 成功。
+
+#### ECS 本地 .env（部署用）
+
+服务器上 `manifest/docker/.env.test` / `.env.prod` **不进 git**（见仓库 `.gitignore`）。除 CI 所需的 ACR 三字段外，还须配置 `IMAGE_TAG`、各 `*_DB_LINK`、Redis、JWT 等完整项（见 `.env.example`）。
+
+**ECS 镜像段示例**（命名空间名以控制台为准）：
 
 ```text
-# manifest/docker/.env.test
+# manifest/docker/.env.test（仅存在于 ECS，勿 commit）
 REGISTRY=crpi-lff3xynwzvqxxxjk-vpc.cn-hangzhou.personal.cr.aliyuncs.com/pangbao-test
 IMAGE_TAG=v1.0.0-rc.1
 ACR_USERNAME=<ACR 登录用户名>
 ACR_PASSWORD=<ACR 固定密码>
 
-# manifest/docker/.env.prod
+# manifest/docker/.env.prod（仅存在于 ECS，勿 commit）
 REGISTRY=crpi-lff3xynwzvqxxxjk-vpc.cn-hangzhou.personal.cr.aliyuncs.com/pangbao-release
 IMAGE_TAG=v1.0.0
 ACR_USERNAME=<ACR 登录用户名>
 ACR_PASSWORD=<ACR 固定密码>
 ```
 
+换 ACR 密码时须**同时**更新 GitHub Repository secrets 与各 ECS `.env` 中的 `ACR_PASSWORD`。
+
 每个命名空间下须预先创建 7 个镜像仓库：`gateway`、`gateway-app`、`history-service`、`voice-service`、`device-service`、`worker`、`ucg-service`（或开启「自动创建仓库」）。
 
-push 报 `denied` 常见原因：① `.env` 缺 `ACR_USERNAME` / `ACR_PASSWORD`；② `REGISTRY` 缺命名空间；③ 测试/生产 `.env` 命名空间混用；④ 仓库未创建；⑤ ECS 未 `docker login`。详见 [D.2](#d2-acr-拉镜像-pull-access-denied)。
+push 报 `denied` 常见原因：① GitHub 或 ECS 缺 `ACR_USERNAME` / `ACR_PASSWORD`；② `REGISTRY` 缺命名空间；③ 测试/生产命名空间混用；④ 仓库未创建；⑤ ECS 未 `docker login`。详见 [D.2](#d2-acr-拉镜像-pull-access-denied)。
 
 ### 脱敏种子（测试库刷新）
 

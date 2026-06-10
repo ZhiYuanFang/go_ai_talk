@@ -5,12 +5,11 @@
 # 规则：vMAJOR.MINOR.PATCH（无 - 后缀）→ 生产；v* 预发布（含 -rc/-beta 等）→ 测试
 # 手动：Actions → Run workflow（workflow_dispatch）
 #
-# ACR 配置统一在 manifest/docker/.env.test / .env.prod（无需 GitHub Secrets）：
-#   REGISTRY      = 服务器 pull 地址（可用 -vpc 域名）
-#   ACR_USERNAME  = ACR 控制台「访问凭证」登录用户名
-#   ACR_PASSWORD  = ACR 控制台「访问凭证」固定密码
+# ACR 凭证来自 GitHub Actions Secrets / Environments（不读仓库内 .env 文件）：
+#   Repository secrets: ACR_USERNAME, ACR_PASSWORD
+#   Environment test / prod: REGISTRY（服务器 pull 地址，可用 -vpc 域名）
 # CI push 地址由 workflow 从 REGISTRY 去掉 -vpc 自动推导。
-# 详见 docs/runbooks/release-deploy-and-run.md「ACR 与 .env 统一配置」。
+# 详见 docs/runbooks/release-deploy-and-run.md「ACR 与 CI 凭证」。
 
 name: docker-acr
 
@@ -33,33 +32,15 @@ on:
         type: string
 
 jobs:
-  build-push:
+  # 先解析 test/prod，以便 build-push job 绑定 GitHub Environment 并读取对应 REGISTRY secret
+  resolve-env:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - id: gateway
-            dockerfile: manifest/docker/Dockerfile.gateway-service
-          - id: gateway-app
-            dockerfile: manifest/docker/Dockerfile.gateway-app-service
-          - id: history-service
-            dockerfile: manifest/docker/Dockerfile.history-service
-          - id: voice-service
-            dockerfile: manifest/docker/Dockerfile.voice-service
-          - id: device-service
-            dockerfile: manifest/docker/Dockerfile.device-service
-          - id: worker
-            dockerfile: manifest/docker/Dockerfile.worker-service
-          - id: ucg-service
-            dockerfile: manifest/docker/Dockerfile.ucg-service
-
+    outputs:
+      deploy_env: ${{ steps.resolve.outputs.deploy_env }}
+      primary_tag: ${{ steps.resolve.outputs.primary_tag }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: 选择环境并加载 .env
-        id: acr
+      - name: 解析目标环境与镜像 tag
+        id: resolve
         shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
@@ -68,57 +49,6 @@ jobs:
           DISPATCH_TAG: ${{ inputs.image_tag }}
         run: |
           set -euo pipefail
-
-          # 从 .env 文件读取单个键（忽略注释行，取首个匹配）
-          read_env_var() {
-            local file="$1" key="$2"
-            local line
-            line="$(grep -E "^${key}=" "${file}" | head -1 || true)"
-            if [[ -z "${line}" ]]; then
-              echo ""
-              return
-            fi
-            echo "${line#*=}"
-          }
-
-          validate_push_registry() {
-            local reg="$1"
-            local env_file="$2"
-            local host ns suggested
-
-            if [[ -z "${reg}" ]]; then
-              echo "::error title=缺少 REGISTRY::请在 ${env_file} 配置 REGISTRY=<域名>/<命名空间>"
-              exit 1
-            fi
-
-            host="${reg%%/*}"
-            if [[ "${host}" == "${reg}" ]]; then
-              ns="(缺失)"
-            else
-              ns="${reg#*/}"
-            fi
-
-            echo "env_file: ${env_file}"
-            echo "push host: ${host}"
-            echo "push namespace: ${ns}"
-
-            if [[ "${reg}" == *"-vpc."* ]]; then
-              suggested="${host/-vpc./.}"
-              if [[ "${ns}" != "(缺失)" ]]; then
-                suggested="${suggested}/${ns}"
-              fi
-              echo "::error title=REGISTRY 仍含 -vpc::GitHub Actions 公网 runner 无法 push VPC 专线地址"
-              echo "::error::请检查 ${env_file} 中 REGISTRY 格式，推导后应为: ${suggested}"
-              exit 1
-            fi
-
-            if [[ "${reg}" != *"/"* ]]; then
-              echo "::error title=REGISTRY 缺少命名空间::格式须为 <公网域名>/<命名空间>"
-              exit 1
-            fi
-
-            echo "✓ push registry 格式校验通过"
-          }
 
           # v1.0.0 → prod；v1.0.0-rc.1 / v1.0.0-beta.1 → test
           resolve_env_from_tag() {
@@ -154,39 +84,115 @@ jobs:
             exit 1
           fi
 
-          env_file="manifest/docker/.env.${deploy_env}"
-          if [[ ! -f "${env_file}" ]]; then
-            echo "::error title=缺少环境文件::未找到 ${env_file}"
-            exit 1
-          fi
+          echo "deploy_env=${deploy_env}" >> "${GITHUB_OUTPUT}"
+          echo "primary_tag=${primary_tag}" >> "${GITHUB_OUTPUT}"
 
-          registry_pull="$(read_env_var "${env_file}" "REGISTRY")"
-          acr_username="$(read_env_var "${env_file}" "ACR_USERNAME")"
-          acr_password="$(read_env_var "${env_file}" "ACR_PASSWORD")"
+  build-push:
+    needs: resolve-env
+    runs-on: ubuntu-latest
+    environment: ${{ needs.resolve-env.outputs.deploy_env }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: gateway
+            dockerfile: manifest/docker/Dockerfile.gateway-service
+          - id: gateway-app
+            dockerfile: manifest/docker/Dockerfile.gateway-app-service
+          - id: history-service
+            dockerfile: manifest/docker/Dockerfile.history-service
+          - id: voice-service
+            dockerfile: manifest/docker/Dockerfile.voice-service
+          - id: device-service
+            dockerfile: manifest/docker/Dockerfile.device-service
+          - id: worker
+            dockerfile: manifest/docker/Dockerfile.worker-service
+          - id: ucg-service
+            dockerfile: manifest/docker/Dockerfile.ucg-service
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: 加载 ACR Secrets
+        id: acr
+        shell: bash
+        env:
+          DEPLOY_ENV: ${{ needs.resolve-env.outputs.deploy_env }}
+          PRIMARY_TAG: ${{ needs.resolve-env.outputs.primary_tag }}
+          REGISTRY_PULL: ${{ secrets.REGISTRY }}
+          ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
+          ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          RUNBOOK_HINT="docs/runbooks/release-deploy-and-run.md「ACR 与 CI 凭证」"
+
+          validate_push_registry() {
+            local reg="$1"
+            local host ns suggested
+
+            if [[ -z "${reg}" ]]; then
+              echo "::error title=缺少 REGISTRY::请在 GitHub Environment '${DEPLOY_ENV}' 配置 secret REGISTRY=<域名>/<命名空间>，详见 ${RUNBOOK_HINT}"
+              exit 1
+            fi
+
+            host="${reg%%/*}"
+            if [[ "${host}" == "${reg}" ]]; then
+              ns="(缺失)"
+            else
+              ns="${reg#*/}"
+            fi
+
+            echo "deploy_env: ${DEPLOY_ENV}"
+            echo "push host: ${host}"
+            echo "push namespace: ${ns}"
+
+            if [[ "${reg}" == *"-vpc."* ]]; then
+              suggested="${host/-vpc./.}"
+              if [[ "${ns}" != "(缺失)" ]]; then
+                suggested="${suggested}/${ns}"
+              fi
+              echo "::error title=REGISTRY 仍含 -vpc::GitHub Actions 公网 runner 无法 push VPC 专线地址"
+              echo "::error::请检查 Environment '${DEPLOY_ENV}' 的 REGISTRY secret，推导后应为: ${suggested}"
+              exit 1
+            fi
+
+            if [[ "${reg}" != *"/"* ]]; then
+              echo "::error title=REGISTRY 缺少命名空间::格式须为 <公网域名>/<命名空间>"
+              exit 1
+            fi
+
+            echo "✓ push registry 格式校验通过"
+          }
+
+          registry_pull="${REGISTRY_PULL}"
+          acr_username="${ACR_USERNAME}"
+          acr_password="${ACR_PASSWORD}"
 
           if [[ -z "${registry_pull}" ]]; then
-            echo "::error title=缺少 REGISTRY::请在 ${env_file} 配置 REGISTRY"
+            echo "::error title=缺少 REGISTRY::请在 GitHub Environment '${DEPLOY_ENV}' 配置 secret REGISTRY，详见 ${RUNBOOK_HINT}"
             exit 1
           fi
           if [[ -z "${acr_username}" ]]; then
-            echo "::error title=缺少 ACR_USERNAME::请在 ${env_file} 配置 ACR_USERNAME"
+            echo "::error title=缺少 ACR_USERNAME::请在 Repository secrets 配置 ACR_USERNAME，详见 ${RUNBOOK_HINT}"
             exit 1
           fi
           if [[ -z "${acr_password}" ]]; then
-            echo "::error title=缺少 ACR_PASSWORD::请在 ${env_file} 配置 ACR_PASSWORD"
+            echo "::error title=缺少 ACR_PASSWORD::请在 Repository secrets 配置 ACR_PASSWORD，详见 ${RUNBOOK_HINT}"
             exit 1
           fi
 
           # 从 pull 地址（可含 -vpc）推导 CI push 公网地址
           registry_push="${registry_pull/-vpc./.}"
-          validate_push_registry "${registry_push}" "${env_file}"
+          validate_push_registry "${registry_push}"
 
           echo "::add-mask::${acr_password}"
 
-          echo "env=${deploy_env}" >> "${GITHUB_OUTPUT}"
+          echo "env=${DEPLOY_ENV}" >> "${GITHUB_OUTPUT}"
           echo "registry=${registry_push}" >> "${GITHUB_OUTPUT}"
           echo "host=${registry_push%%/*}" >> "${GITHUB_OUTPUT}"
-          echo "primary_tag=${primary_tag}" >> "${GITHUB_OUTPUT}"
+          echo "primary_tag=${PRIMARY_TAG}" >> "${GITHUB_OUTPUT}"
           echo "username=${acr_username}" >> "${GITHUB_OUTPUT}"
           echo "password=${acr_password}" >> "${GITHUB_OUTPUT}"
 
