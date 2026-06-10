@@ -1,23 +1,29 @@
 #!/usr/bin/env python3
 """合并 openspec/specs 下全部 capability spec.md 为单一版本基线文件。"""
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SPECS_DIR = ROOT / "openspec" / "specs"
-OUT = SPECS_DIR / "v1.0.3" / "spec.md"
+DEFAULT_VERSION = "v1.0.3"
 
 
 def main() -> None:
+    import sys
+
+    version = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_VERSION
+    out = SPECS_DIR / version / "spec.md"
+
     files = sorted(SPECS_DIR.glob("*/spec.md"))
-    # 排除已生成的 v1.0.3（若重复运行）
-    files = [f for f in files if f.parent.name != "v1.0.3"]
+    # 排除已生成的版本合并基线目录（如 v1.0.3、v2.0.2）
+    files = [f for f in files if not re.match(r"^v\d+\.\d+\.\d+$", f.parent.name)]
     if not files:
         raise SystemExit("no spec files found")
 
     parts: list[str] = []
-    parts.append("# OpenSpec 基线规格 v1.0.3\n\n")
+    parts.append(f"# OpenSpec 基线规格 {version}\n\n")
     parts.append(
-        "> 本文件由 `openspec/specs` 下全部 capability 规格于 **v1.0.3** 合并而成，"
+        f"> 本文件由 `openspec/specs` 下全部 capability 规格于 **{version}** 合并而成，"
         "作为该版本的确定性规则基线，便于按版本查阅。\n\n"
     )
     parts.append(
@@ -37,11 +43,11 @@ def main() -> None:
         parts.append(content)
         parts.append("\n\n---\n\n")
 
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text("".join(parts), encoding="utf-8", newline="\n")
-    text = OUT.read_text(encoding="utf-8")
-    print(f"merged {len(files)} specs -> {OUT.relative_to(ROOT)}")
-    print(f"lines={len(text.splitlines())} bytes={OUT.stat().st_size}")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text("".join(parts), encoding="utf-8", newline="\n")
+    text = out.read_text(encoding="utf-8")
+    print(f"merged {len(files)} specs -> {out.relative_to(ROOT)}")
+    print(f"lines={len(text.splitlines())} bytes={out.stat().st_size}")
 
 
 if __name__ == "__main__":
