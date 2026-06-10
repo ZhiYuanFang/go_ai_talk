@@ -2,10 +2,12 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"strings"
 
 	v1 "hello/api/v1"
+	"hello/internal/services/device"
 	"hello/internal/services/gatewayapp"
 	ucgsvc "hello/internal/services/ucg"
 
@@ -104,11 +106,31 @@ func (c *UcgAppCtrl) MediaDelete(ctx context.Context, req *v1.UcgMediaDeleteReq)
 // PostsPolish POST /ucg/app/api/posts/polish
 func (c *UcgAppCtrl) PostsPolish(ctx context.Context, req *v1.UcgPostsPolishReq) (res *v1.UcgPostsPolishRes, err error) {
 	_ = c
-	if _, err = wxIDFromUcgHeader(ghttp.RequestFromCtx(ctx)); err != nil {
+	wxID, err := wxIDFromUcgHeader(ghttp.RequestFromCtx(ctx))
+	if err != nil {
 		return nil, err
+	}
+	snap, err := device.AIQuotaHTTP().RemoteCheck(ctx, wxID, device.AIQuotaPolish)
+	if err != nil {
+		if errors.Is(err, device.ErrAINotLoggedIn) {
+			return nil, gerror.NewCode(device.GCodeAINotLoggedIn(), err.Error())
+		}
+		if errors.Is(err, device.ErrAIQuotaExhausted) {
+			return nil, gerror.NewCode(device.GCodeAIQuotaExhausted(), err.Error())
+		}
+		return nil, err
+	}
+	if !snap.Allowed {
+		return nil, gerror.NewCode(device.GCodeAIQuotaExhausted(), device.ErrAIQuotaExhausted.Error())
 	}
 	polished, err := ucgsvc.PolishPostText(ctx, req.ImageKeys, req.Text)
 	if err != nil {
+		return nil, err
+	}
+	if _, err = device.AIQuotaHTTP().RemoteConsume(ctx, wxID, device.AIQuotaPolish); err != nil {
+		if errors.Is(err, device.ErrAIQuotaExhausted) {
+			return nil, gerror.NewCode(device.GCodeAIQuotaExhausted(), err.Error())
+		}
 		return nil, err
 	}
 	return &v1.UcgPostsPolishRes{PolishedText: polished}, nil

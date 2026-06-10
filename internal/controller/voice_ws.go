@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -34,6 +35,7 @@ func registerVoiceChatWS(s *ghttp.Server) {
 
 func voiceChatWS(r *ghttp.Request) {
 	ctx := r.Context()
+	headerWxID := voice.ParseHeaderWxID(r.Header.Get(voice.HeaderInternalWxID))
 	ws, err := r.WebSocket()
 	if err != nil {
 		r.Response.Status = 400
@@ -177,11 +179,12 @@ func voiceChatWS(r *ghttp.Request) {
 			finishTalk bool
 			pErr       error
 		)
-		ask, answer, mode, casualFlow, exit, finishTalk, pErr = voice.Voice().HandleTranscriptForStreaming(ctx, deviceNo, transcript)
+		ask, answer, mode, casualFlow, exit, finishTalk, pErr = voice.Voice().HandleTranscriptForStreaming(voice.WithVoiceWxID(ctx, headerWxID), deviceNo, transcript)
 		if casualFlow {
+			chatCtx := voice.WithVoiceWxID(ctx, headerWxID)
 			seq := 0
 			answer, pErr = voice.Voice().StreamCasualReplyWithBaiduTTS(
-				ctx,
+				chatCtx,
 				deviceNo,
 				meta,
 				transcript,
@@ -207,6 +210,9 @@ func voiceChatWS(r *ghttp.Request) {
 				},
 			)
 			if pErr == nil {
+				if wxID, wErr := voice.VoiceWxIDFromRequest(chatCtx, deviceNo); wErr == nil {
+					_ = voice.ConsumeVoiceAIQuota(chatCtx, wxID)
+				}
 				glog.Infof(ctx, "[TTS下发] 发送音频结束。deviceNo=%s mode=casual chunks=%d finishTalk=%v", deviceNo, seq, true)
 				endPayload, _ := json.Marshal(map[string]interface{}{
 					"type":        "audio_end",
@@ -247,12 +253,12 @@ func voiceChatWS(r *ghttp.Request) {
 				}
 		}
 		if pErr != nil {
-			// if stageErr, ok := pErr.(service.StageError); ok {
-			// glog.Warningf(ctx, "[语音WS] commit处理失败。deviceNo=%s stage=%s detail=%s 处理耗时=%s", deviceNo, stageErr.Stage, stageErr.Detail, time.Since(processStartAt))
-			// } else {
-			// glog.Warningf(ctx, "[语音WS] commit处理失败。deviceNo=%s error=%v 处理耗时=%s", deviceNo, pErr, time.Since(processStartAt))
-			// }
-			safeWriteWSError("service", pErr.Error())
+			var qErr *voice.VoiceAIQuotaError
+			if errors.As(pErr, &qErr) && qErr != nil {
+				writeWSErrorCode(safeWriteMessage, qErr.Code, qErr.Message)
+			} else {
+				safeWriteWSError("service", pErr.Error())
+			}
 			resetStreamBuffers()
 			resetStreamASRUntilNextValid()
 			resetRealtimeState(true)

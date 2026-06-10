@@ -204,6 +204,12 @@ func (s *VoiceService) chatWithResult(ctx context.Context, deviceNo, transcript 
 	}
 	if ParseChatMode(resolvedMode) == ChatModeCasual {
 		if !directCasual {
+			wxID, qCtx, qErr := s.guardVoiceAIQuota(ctx, deviceNo)
+			if qErr != nil {
+				return chatResult{}, qErr
+			}
+			ctx = qCtx
+			_ = wxID // casual 流式成功后在 WS 层 consume
 			return chatResult{
 				Ask:              normalizedTranscript,
 				Mode:             resolvedMode,
@@ -211,6 +217,11 @@ func (s *VoiceService) chatWithResult(ctx context.Context, deviceNo, transcript 
 				NeedCasualStream: true,
 			}, nil
 		}
+		wxID, qCtx, qErr := s.guardVoiceAIQuota(ctx, deviceNo)
+		if qErr != nil {
+			return chatResult{}, qErr
+		}
+		ctx = qCtx
 		reply, chatErr := s.callDeepSeekDirectReply(ctx, deviceNo, normalizedTranscript)
 		if chatErr != nil {
 			return chatResult{
@@ -220,6 +231,7 @@ func (s *VoiceService) chatWithResult(ctx context.Context, deviceNo, transcript 
 				FinishTalk: false,
 			}, chatErr
 		}
+		s.consumeVoiceAIQuotaOnSuccess(ctx, wxID)
 		s.insertQa(ctx, normalizedTranscript, reply)
 		return chatResult{
 			Reply:      reply,
@@ -314,6 +326,11 @@ func (s *VoiceService) chatWithResult(ctx context.Context, deviceNo, transcript 
 		}
 	}
 	// 没有命中预设动作: 单次请求 DeepSeek 返回全量结构，再统一处理。
+	wxID, qCtx, qErr := s.guardVoiceAIQuota(ctx, deviceNo)
+	if qErr != nil {
+		return chatResult{}, qErr
+	}
+	ctx = qCtx
 	intent, err := s.callDeepSeekUnifiedIntent(ctx, deviceNo, normalizedTranscript)
 	if err != nil {
 		return chatResult{
@@ -324,6 +341,7 @@ func (s *VoiceService) chatWithResult(ctx context.Context, deviceNo, transcript 
 			FinishTalk: false,
 		}, err
 	}
+	s.consumeVoiceAIQuotaOnSuccess(ctx, wxID)
 
 	if ParseActionTargetType(intent.TargetType) == ActionTargetTypeConversation || strings.TrimSpace(intent.TargetType) == "" {
 		reply := strings.TrimSpace(intent.Reply)
@@ -660,19 +678,30 @@ func (s *VoiceService) handleActionRecord(ctx context.Context, deviceNo string, 
 		finishTalk = true
 		return finalReply, false, finishTalk, nil
 	case "suggest": //成长建议动作
+		wxID, qCtx, qErr := s.guardVoiceAIQuota(ctx, deviceNo)
+		if qErr != nil {
+			return "", false, true, qErr
+		}
+		ctx = qCtx
 		reply, handleErr := s.callDeepSeekGrowthSuggestion(ctx, deviceNo)
 		if handleErr != nil {
 			return "获取成长建议失败,请重试", false, true, handleErr
 		}
+		s.consumeVoiceAIQuotaOnSuccess(ctx, wxID)
 		finalReply = strings.TrimSpace(reply)
 		finishTalk = true
 		return finalReply, false, finishTalk, nil
 	case "search": //搜索动作
-
+		wxID, qCtx, qErr := s.guardVoiceAIQuota(ctx, deviceNo)
+		if qErr != nil {
+			return "", false, true, qErr
+		}
+		ctx = qCtx
 		reply, handleErr := s.callDeepSeekHistoryReply(ctx, deviceNo, normalizedTranscript, 12)
 		if handleErr != nil {
 			return "获取历史记录失败,请重试", false, true, handleErr
 		}
+		s.consumeVoiceAIQuotaOnSuccess(ctx, wxID)
 		finalReply = strings.TrimSpace(reply)
 		finishTalk = true
 		return finalReply, false, finishTalk, nil

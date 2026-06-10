@@ -1336,6 +1336,15 @@ MYSQL_HOST=127.0.0.1 MYSQL_USER=root MYSQL_PASS='***' ./hack/mask-seed-data.sh
 
 **回滚**：下线新路由即可；`apple_sub` 列可保留，已创建的 Apple 账号行不受影响。
 
+### AI 月度额度（`ai_quota_*` 表）
+
+DDL 在 **device-service 默认库**（`DEVICE_DB_LINK`）执行：
+
+1. **DDL**：`manifest/sql/device_ai_quota.sql`（`ai_quota_default` singleton seed 5/5、`ai_quota_user_override`）
+2. **配置**：ucg/voice 进程须配置 `DEVICE_SERVICE_URL` 与 `DEVICE_GATEWAY_INTERNAL_SECRET`（与 ucg `deviceInternalSecret` 同值）；gateway-app 已反代 `GET /device/app/api/ai-quota`
+3. **滚动** device-service → ucg-service → voice-service
+4. **Flutter**（`flutter_ai_talk` 独立仓库）：HTTP/WS 识别 `code=40302` 弹框「本月额度已用完」、`40301` 引导登录
+
 ### 文档治理
 
 运行、部署、配置边界变更须同步更新本文与 `docs/runbooks/dao-sync-by-domain.md`。

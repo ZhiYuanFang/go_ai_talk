@@ -107,6 +107,73 @@ func (c *UcgAdminCtrl) PostsReject(ctx context.Context, req *v1.UcgAdminPostsRej
 	}, nil
 }
 
+// AIQuotaDefaultGet GET /ucg/admin/api/ai-quota/default
+func (c *UcgAdminCtrl) AIQuotaDefaultGet(ctx context.Context, req *v1.UcgAdminAIQuotaDefaultGetReq) (res *v1.UcgAdminAIQuotaDefaultGetRes, err error) {
+	_ = req
+	if err = c.requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	dto, err := ucgsvc.GetAIQuotaDefaultAdmin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &v1.UcgAdminAIQuotaDefaultGetRes{
+		PolishMonthlyLimit:  dto.PolishMonthlyLimit,
+		VoiceAiMonthlyLimit: dto.VoiceAiMonthlyLimit,
+		UpdatedAt:           dto.UpdatedAt,
+	}, nil
+}
+
+// AIQuotaDefaultPut PUT /ucg/admin/api/ai-quota/default
+func (c *UcgAdminCtrl) AIQuotaDefaultPut(ctx context.Context, req *v1.UcgAdminAIQuotaDefaultPutReq) (res *v1.UcgAdminAIQuotaDefaultPutRes, err error) {
+	if err = c.requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	dto, err := ucgsvc.UpdateAIQuotaDefaultAdmin(ctx, req.PolishMonthlyLimit, req.VoiceAiMonthlyLimit)
+	if err != nil {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, err.Error())
+	}
+	return &v1.UcgAdminAIQuotaDefaultPutRes{
+		PolishMonthlyLimit:  dto.PolishMonthlyLimit,
+		VoiceAiMonthlyLimit: dto.VoiceAiMonthlyLimit,
+		UpdatedAt:           dto.UpdatedAt,
+	}, nil
+}
+
+// AIQuotaUserGet GET /ucg/admin/api/ai-quota/user
+func (c *UcgAdminCtrl) AIQuotaUserGet(ctx context.Context, req *v1.UcgAdminAIQuotaUserGetReq) (res *v1.UcgAdminAIQuotaUserGetRes, err error) {
+	if err = c.requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	dto, err := ucgsvc.GetAIQuotaUserOverrideAdmin(ctx, req.WxId)
+	if err != nil {
+		return nil, err
+	}
+	return &v1.UcgAdminAIQuotaUserGetRes{
+		WxId:                dto.WxId,
+		PolishMonthlyLimit:  dto.PolishMonthlyLimit,
+		VoiceAiMonthlyLimit: dto.VoiceAiMonthlyLimit,
+		UpdatedAt:           dto.UpdatedAt,
+	}, nil
+}
+
+// AIQuotaUserPut PUT /ucg/admin/api/ai-quota/user
+func (c *UcgAdminCtrl) AIQuotaUserPut(ctx context.Context, req *v1.UcgAdminAIQuotaUserPutReq) (res *v1.UcgAdminAIQuotaUserPutRes, err error) {
+	if err = c.requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	dto, err := ucgsvc.UpdateAIQuotaUserOverrideAdmin(ctx, req.WxId, req.PolishMonthlyLimit, req.VoiceAiMonthlyLimit, req.ClearPolish, req.ClearVoiceAi)
+	if err != nil {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, err.Error())
+	}
+	return &v1.UcgAdminAIQuotaUserPutRes{
+		WxId:                dto.WxId,
+		PolishMonthlyLimit:  dto.PolishMonthlyLimit,
+		VoiceAiMonthlyLimit: dto.VoiceAiMonthlyLimit,
+		UpdatedAt:           dto.UpdatedAt,
+	}, nil
+}
+
 func mapAdminPostItem(dto *ucgsvc.PostDTO) v1.UcgAdminPostItem {
 	if dto == nil {
 		return v1.UcgAdminPostItem{}

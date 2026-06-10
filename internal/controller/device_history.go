@@ -2,16 +2,38 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"strings"
 
 	v1 "hello/api/v1"
 	"hello/internal/model/entity"
 	contracts "hello/internal/services/contracts"
+	device "hello/internal/services/device"
+	"hello/internal/services/gatewayapp"
 	histsvc "hello/internal/services/history"
+	voice "hello/internal/services/voice"
 
 	"github.com/gogf/gf/v2/errors/gcode"
 	"github.com/gogf/gf/v2/errors/gerror"
+	"github.com/gogf/gf/v2/net/ghttp"
 )
+
+// mapVoiceAIQuotaErr 将 voice 额度/登录错误转为 HTTP 业务码，供 history chat 等 HTTP 路径返回 40301/40302。
+func mapVoiceAIQuotaErr(err error) error {
+	if err == nil {
+		return nil
+	}
+	var qErr *voice.VoiceAIQuotaError
+	if errors.As(err, &qErr) && qErr != nil {
+		switch qErr.Code {
+		case device.CodeAINotLoggedIn:
+			return gerror.NewCode(device.GCodeAINotLoggedIn(), qErr.Message)
+		case device.CodeAIQuotaExhausted:
+			return gerror.NewCode(device.GCodeAIQuotaExhausted(), qErr.Message)
+		}
+	}
+	return err
+}
 
 // HistoryCtrl 设备历史 / 建议 / 生日 API。
 type HistoryCtrl struct {
@@ -146,9 +168,14 @@ func (c *HistoryCtrl) Chat(ctx context.Context, req *v1.DeviceHistoryChatReq) (r
 	if transcript == "" {
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "transcript 不能为空")
 	}
-	reply, err := c.Voice.TextChat(ctx, deviceNo, transcript)
+	chatCtx := ctx
+	if r := ghttp.RequestFromCtx(ctx); r != nil {
+		wxID := voice.ParseHeaderWxID(r.GetHeader(gatewayapp.HeaderInternalWxId))
+		chatCtx = voice.WithVoiceWxID(ctx, wxID)
+	}
+	reply, err := c.Voice.TextChat(chatCtx, deviceNo, transcript)
 	if err != nil {
-		return nil, err
+		return nil, mapVoiceAIQuotaErr(err)
 	}
 	return &v1.DeviceHistoryChatRes{Reply: reply}, nil
 }

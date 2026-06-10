@@ -66,8 +66,41 @@
 				<label for="maxImages">单次润笔最大图片数 (1-9)</label>
 				<input id="maxImages" type="number" min="1" max="9" step="1" />
 			</div>
+			<hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0;" />
+			<h4 style="margin:0 0 12px;font-size:15px;">AI 月度额度（全局默认）</h4>
+			<div class="field">
+				<label for="quotaPolishDefault">润笔默认次数/月</label>
+				<input id="quotaPolishDefault" type="number" min="1" step="1" />
+			</div>
+			<div class="field">
+				<label for="quotaVoiceDefault">喂养 AI 默认次数/月</label>
+				<input id="quotaVoiceDefault" type="number" min="1" step="1" />
+			</div>
 			<div class="row">
-				<button id="saveBtn" type="button">保存</button>
+				<button id="saveQuotaDefaultBtn" type="button" class="secondary">保存额度默认</button>
+				<span id="quotaDefaultMeta" class="msg" style="color:#64748b;"></span>
+			</div>
+			<h4 style="margin:16px 0 12px;font-size:15px;">单人 override（wxId）</h4>
+			<div class="row">
+				<input id="quotaWxId" type="number" min="1" step="1" placeholder="wxId" style="width:140px;" />
+				<button id="loadQuotaUserBtn" type="button" class="secondary">加载</button>
+			</div>
+			<div class="field">
+				<label for="quotaPolishUser">润笔 override（留空且勾选清除=走默认）</label>
+				<input id="quotaPolishUser" type="number" min="1" step="1" />
+				<label style="margin-top:6px;"><input id="quotaClearPolish" type="checkbox" /> 清除润笔 override</label>
+			</div>
+			<div class="field">
+				<label for="quotaVoiceUser">喂养 AI override</label>
+				<input id="quotaVoiceUser" type="number" min="1" step="1" />
+				<label style="margin-top:6px;"><input id="quotaClearVoice" type="checkbox" /> 清除喂养 override</label>
+			</div>
+			<div class="row">
+				<button id="saveQuotaUserBtn" type="button" class="secondary">保存单人额度</button>
+			</div>
+			<div id="quotaMsg" class="msg"></div>
+			<div class="row">
+				<button id="saveBtn" type="button">保存 AI 模型配置</button>
 				<span id="meta" class="msg" style="color:#64748b;"></span>
 			</div>
 			<div id="mainMsg" class="msg"></div>
@@ -177,6 +210,26 @@ async function loadConfig(){
 	} else {
 		meta.textContent = '';
 	}
+	await loadQuotaDefault();
+}
+
+async function loadQuotaDefault(){
+	const data = await api('/ucg/admin/api/ai-quota/default');
+	document.getElementById('quotaPolishDefault').value = data.polishMonthlyLimit || 5;
+	document.getElementById('quotaVoiceDefault').value = data.voiceAiMonthlyLimit || 5;
+	const meta = document.getElementById('quotaDefaultMeta');
+	meta.textContent = data.updatedAt ? ('默认更新: ' + new Date(data.updatedAt * 1000).toLocaleString()) : '';
+}
+
+async function loadQuotaUser(){
+	const wxId = parseInt(document.getElementById('quotaWxId').value, 10);
+	if(!wxId){ showMsg(document.getElementById('quotaMsg'), '请输入 wxId', false); return; }
+	const data = await api('/ucg/admin/api/ai-quota/user?wxId='+wxId);
+	document.getElementById('quotaPolishUser').value = data.polishMonthlyLimit != null ? data.polishMonthlyLimit : '';
+	document.getElementById('quotaVoiceUser').value = data.voiceAiMonthlyLimit != null ? data.voiceAiMonthlyLimit : '';
+	document.getElementById('quotaClearPolish').checked = false;
+	document.getElementById('quotaClearVoice').checked = false;
+	showMsg(document.getElementById('quotaMsg'), '已加载 wxId='+wxId, true);
 }
 
 function switchTab(which){
@@ -274,10 +327,53 @@ document.getElementById('saveBtn').addEventListener('click', async () => {
 			updatedBy: 'ucg-admin.html'
 		};
 		await api('/ucg/admin/api/ai-config', {method:'PUT', body: JSON.stringify(body)});
-		showMsg(document.getElementById('mainMsg'), '保存成功', true);
+		showMsg(document.getElementById('mainMsg'), 'AI 模型配置已保存', true);
 		await loadConfig();
 	} catch(e){
 		showMsg(document.getElementById('mainMsg'), e.message || '保存失败', false);
+	} finally {
+		btn.disabled = false;
+	}
+});
+
+document.getElementById('saveQuotaDefaultBtn').addEventListener('click', async () => {
+	const btn = document.getElementById('saveQuotaDefaultBtn');
+	btn.disabled = true;
+	try {
+		const body = {
+			polishMonthlyLimit: parseInt(document.getElementById('quotaPolishDefault').value, 10) || 5,
+			voiceAiMonthlyLimit: parseInt(document.getElementById('quotaVoiceDefault').value, 10) || 5
+		};
+		await api('/ucg/admin/api/ai-quota/default', {method:'PUT', body: JSON.stringify(body)});
+		showMsg(document.getElementById('quotaMsg'), '全局额度默认已保存', true);
+		await loadQuotaDefault();
+	} catch(e){
+		showMsg(document.getElementById('quotaMsg'), e.message || '保存失败', false);
+	} finally {
+		btn.disabled = false;
+	}
+});
+
+document.getElementById('loadQuotaUserBtn').addEventListener('click', () => {
+	loadQuotaUser().catch(e => showMsg(document.getElementById('quotaMsg'), e.message || '加载失败', false));
+});
+
+document.getElementById('saveQuotaUserBtn').addEventListener('click', async () => {
+	const btn = document.getElementById('saveQuotaUserBtn');
+	btn.disabled = true;
+	try {
+		const wxId = parseInt(document.getElementById('quotaWxId').value, 10);
+		if(!wxId){ throw new Error('请输入 wxId'); }
+		const body = { wxId, clearPolish: document.getElementById('quotaClearPolish').checked, clearVoiceAi: document.getElementById('quotaClearVoice').checked };
+		const pVal = document.getElementById('quotaPolishUser').value.trim();
+		const vVal = document.getElementById('quotaVoiceUser').value.trim();
+		if(pVal && !body.clearPolish) body.polishMonthlyLimit = parseInt(pVal, 10);
+		if(vVal && !body.clearVoiceAi) body.voiceAiMonthlyLimit = parseInt(vVal, 10);
+		await api('/ucg/admin/api/ai-quota/user', {method:'PUT', body: JSON.stringify(body)});
+		showMsg(document.getElementById('quotaMsg'), '单人额度已保存', true);
+		await loadQuotaUser();
+	} catch(e){
+		showMsg(document.getElementById('quotaMsg'), e.message || '保存失败', false);
 	} finally {
 		btn.disabled = false;
 	}

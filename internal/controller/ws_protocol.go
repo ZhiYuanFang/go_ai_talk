@@ -93,13 +93,18 @@ func processVoiceTranscript(ctx context.Context, deviceNo string, meta voice.Aud
 }
 
 func writeWSError(writeFn func(messageType int, data []byte) error, stage, detail string) {
+	_ = stage
+	writeWSErrorCode(writeFn, 1, detail)
+}
+
+func writeWSErrorCode(writeFn func(messageType int, data []byte) error, code int, detail string) {
 	if writeFn == nil {
 		return
 	}
 	payload, _ := json.Marshal(map[string]interface{}{
 		"type":    "error",
-		"code":    1,
-		"stage":   stage,
+		"code":    code,
+		"stage":   "quota",
 		"message": detail,
 	})
 	_ = writeFn(1, payload)
