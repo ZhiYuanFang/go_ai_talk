@@ -43,9 +43,15 @@ description: >-
 
 按顺序阅读 `proposal.md` → `design.md`（若有）→ `tasks.md`；完成任务后，如实勾选 `tasks.md` 中的复选框。
 
-### 上线之后
+### 收版（/opsx-archive）
 
-按 AGENTS.md 归档（含适时使用 `openspec archive <change-id> …`）；归档后再跑 `openspec validate --strict`。
+将活跃 change 收进目标版本基线（如 `v2.0.3`），**不**保留 `openspec/changes/archive/`：
+
+```bash
+python hack/archive-openspec-to-version.py v2.0.3
+```
+
+收版后更新 `openspec/project.md` 基线引用，并跑 `openspec validate --strict`。
 
 ## CLI 速查
 
