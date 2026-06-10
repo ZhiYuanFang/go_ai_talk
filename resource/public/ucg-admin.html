@@ -3,14 +3,17 @@
 <head>
 	<meta charset="UTF-8" />
 	<meta name="viewport" content="width=device-width, initial-scale=1" />
-	<title>UCG AI 配置</title>
+	<title>UCG 管理</title>
 	<style>
 		body{font-family:Arial,Helvetica,sans-serif;background:#f7f8fa;color:#222;margin:0;padding:24px}
-		.card{background:#fff;border-radius:12px;padding:16px;max-width:640px;margin:0 auto 16px;box-shadow:0 2px 10px rgba(0,0,0,.05)}
+		.card{background:#fff;border-radius:12px;padding:16px;max-width:1100px;margin:0 auto 16px;box-shadow:0 2px 10px rgba(0,0,0,.05)}
 		input,button,select{padding:10px 12px;border-radius:8px;border:1px solid #d0d7de;font-size:14px}
-		select{min-width:240px;background:#fff}
+		select{background:#fff}
 		button{background:#1677ff;color:#fff;border:none;cursor:pointer}
+		button.secondary{background:#6b7280}
+		button.danger{background:#dc2626}
 		button:disabled{background:#9bbcf5;cursor:not-allowed}
+		button.secondary:disabled,button.danger:disabled{background:#d1d5db}
 		a.link-btn{display:inline-block;padding:10px 12px;border-radius:8px;font-size:14px;background:#6b7280;color:#fff;text-decoration:none;line-height:1.2}
 		a.link-btn:hover{background:#4b5563}
 		.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px}
@@ -20,11 +23,24 @@
 		.msg{margin-top:8px;font-size:13px}
 		.msg.ok{color:#059669}
 		.msg.err{color:#dc2626}
+		.tabs{display:flex;gap:8px;margin-bottom:16px;border-bottom:1px solid #e5e7eb;padding-bottom:8px}
+		.tab{padding:8px 14px;border-radius:8px 8px 0 0;background:#f1f5f9;color:#475569;cursor:pointer;border:none}
+		.tab.active{background:#1677ff;color:#fff}
+		table{width:100%;border-collapse:collapse;font-size:13px}
+		th,td{border-bottom:1px solid #e5e7eb;padding:8px;text-align:left;vertical-align:top}
+		th{color:#64748b;font-weight:600}
+		.thumb{width:48px;height:48px;object-fit:cover;border-radius:6px;background:#f1f5f9}
+		.content-cell{max-width:280px;word-break:break-word}
+		.status-draft{color:#6b7280}
+		.status-pending{color:#d97706}
+		.status-published{color:#059669}
+		.status-rejected{color:#dc2626}
+		.pager{display:flex;gap:8px;align-items:center;margin-top:12px}
 	</style>
 </head>
 <body>
 	<div class="card" id="loginCard">
-		<h3>UCG AI 配置登录</h3>
+		<h3>UCG 管理登录</h3>
 		<p class="msg" style="color:#64748b;margin-top:0;">使用 UCG Admin 口令（yaml <code>ucg.admin.password</code>）</p>
 		<div class="row">
 			<input id="pwd" type="password" placeholder="请输入口令" />
@@ -35,24 +51,72 @@
 	</div>
 
 	<div class="card hidden" id="mainCard">
-		<h3>UCG AI 润笔配置</h3>
-		<div class="field">
-			<label for="visionModel">Vision 模型</label>
-			<select id="visionModel"></select>
+		<h3>UCG 管理</h3>
+		<div class="tabs">
+			<button type="button" class="tab active" id="tabAi">AI 配置</button>
+			<button type="button" class="tab" id="tabPosts">动态审查</button>
 		</div>
-		<div class="field">
-			<label for="maxImages">单次润笔最大图片数 (1-9)</label>
-			<input id="maxImages" type="number" min="1" max="9" step="1" />
+
+		<div id="panelAi">
+			<div class="field">
+				<label for="visionModel">Vision 模型</label>
+				<select id="visionModel"></select>
+			</div>
+			<div class="field">
+				<label for="maxImages">单次润笔最大图片数 (1-9)</label>
+				<input id="maxImages" type="number" min="1" max="9" step="1" />
+			</div>
+			<div class="row">
+				<button id="saveBtn" type="button">保存</button>
+				<span id="meta" class="msg" style="color:#64748b;"></span>
+			</div>
+			<div id="mainMsg" class="msg"></div>
 		</div>
-		<div class="row">
-			<button id="saveBtn" type="button">保存</button>
-			<span id="meta" class="msg" style="color:#64748b;"></span>
+
+		<div id="panelPosts" class="hidden">
+			<div class="row">
+				<label style="margin:0;">状态</label>
+				<select id="postStatusFilter">
+					<option value="">全部</option>
+					<option value="0">草稿</option>
+					<option value="1">待审</option>
+					<option value="2">已发布</option>
+					<option value="3">已驳回</option>
+				</select>
+				<button type="button" class="secondary" id="postsRefreshBtn">刷新</button>
+				<button type="button" class="danger" id="postsRejectBtn" disabled>批量驳回</button>
+				<span id="postsSelectedHint" class="msg" style="color:#64748b;margin:0;"></span>
+			</div>
+			<div id="postsMsg" class="msg"></div>
+			<table>
+				<thead>
+					<tr>
+						<th><input type="checkbox" id="postsSelectPage" title="全选本页可驳回项" /></th>
+						<th>ID</th>
+						<th>作者</th>
+						<th>内容</th>
+						<th>状态</th>
+						<th>更新时间</th>
+						<th>媒体</th>
+					</tr>
+				</thead>
+				<tbody id="postsTbody"></tbody>
+			</table>
+			<div class="pager">
+				<button type="button" class="secondary" id="postsPrevBtn">上一页</button>
+				<span id="postsPagerInfo"></span>
+				<button type="button" class="secondary" id="postsNextBtn">下一页</button>
+			</div>
 		</div>
-		<div id="mainMsg" class="msg"></div>
 	</div>
 
 <script>
 let adminPwd = localStorage.getItem('ucgAdminPwd') || '';
+let postsPage = 1;
+const postsPageSize = 20;
+let postsTotal = 0;
+let postsRows = [];
+const selectedPostIds = new Set();
 
 async function api(path, options={}){
 	const headers = Object.assign({'Content-Type':'application/json','X-Admin-Password':adminPwd}, options.headers || {});
@@ -65,6 +129,30 @@ async function api(path, options={}){
 function showMsg(el, text, ok){
 	el.textContent = text || '';
 	el.className = 'msg ' + (ok ? 'ok' : (text ? 'err' : ''));
+}
+
+function escapeHtml(s){
+	return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function postStatusLabel(status){
+	switch(Number(status)){
+		case 0: return {text:'草稿', cls:'status-draft'};
+		case 1: return {text:'待审', cls:'status-pending'};
+		case 2: return {text:'已发布', cls:'status-published'};
+		case 3: return {text:'已驳回', cls:'status-rejected'};
+		default: return {text:String(status), cls:''};
+	}
+}
+
+function formatUnix(ts){
+	if(!ts) return '-';
+	return new Date(ts * 1000).toLocaleString();
+}
+
+function truncate(s, n){
+	const t = String(s || '');
+	return t.length > n ? t.slice(0, n) + '…' : t;
 }
 
 function fillModelOptions(models, current){
@@ -85,11 +173,75 @@ async function loadConfig(){
 	document.getElementById('maxImages').value = data.maxImagesPerRequest || 9;
 	const meta = document.getElementById('meta');
 	if(data.updatedAt){
-		const d = new Date(data.updatedAt * 1000);
-		meta.textContent = '上次更新: ' + d.toLocaleString() + (data.updatedBy ? (' · ' + data.updatedBy) : '');
+		meta.textContent = '上次更新: ' + new Date(data.updatedAt * 1000).toLocaleString() + (data.updatedBy ? (' · ' + data.updatedBy) : '');
 	} else {
 		meta.textContent = '';
 	}
+}
+
+function switchTab(which){
+	const ai = which === 'ai';
+	document.getElementById('tabAi').classList.toggle('active', ai);
+	document.getElementById('tabPosts').classList.toggle('active', !ai);
+	document.getElementById('panelAi').classList.toggle('hidden', !ai);
+	document.getElementById('panelPosts').classList.toggle('hidden', ai);
+	if(!ai) loadPostsList();
+}
+
+function updatePostsSelectionUI(){
+	const n = selectedPostIds.size;
+	document.getElementById('postsRejectBtn').disabled = n === 0;
+	document.getElementById('postsSelectedHint').textContent = n ? ('已选 ' + n + ' 条') : '';
+	const rejectable = postsRows.filter(r => Number(r.status) !== 3);
+	const allSelected = rejectable.length > 0 && rejectable.every(r => selectedPostIds.has(r.id));
+	document.getElementById('postsSelectPage').checked = allSelected;
+}
+
+function renderPostsTable(){
+	const tbody = document.getElementById('postsTbody');
+	tbody.innerHTML = '';
+	postsRows.forEach(row => {
+		const st = postStatusLabel(row.status);
+		const rejectable = Number(row.status) !== 3;
+		const tr = document.createElement('tr');
+		const author = (row.author && row.author.nickname) ? row.author.nickname : ('wx:' + row.authorWxId);
+		const media = (row.media || [])[0];
+		const thumb = media ? (media.thumbnailUrl || media.cdnUrl) : '';
+		tr.innerHTML =
+			'<td>' + (rejectable
+				? '<input type="checkbox" class="post-row-cb" data-id="'+row.id+'"'+(selectedPostIds.has(row.id)?' checked':'')+' />'
+				: '') + '</td>' +
+			'<td>'+row.id+'</td>' +
+			'<td>'+escapeHtml(author)+'</td>' +
+			'<td class="content-cell">'+escapeHtml(truncate(row.content, 120))+'</td>' +
+			'<td class="'+st.cls+'">'+st.text+'</td>' +
+			'<td>'+formatUnix(row.updatedAt)+'</td>' +
+			'<td>'+(thumb ? '<img class="thumb" src="'+escapeHtml(thumb)+'" alt="" />' : '-')+'</td>';
+		tbody.appendChild(tr);
+	});
+	tbody.querySelectorAll('.post-row-cb').forEach(cb => {
+		cb.addEventListener('change', () => {
+			const id = Number(cb.getAttribute('data-id'));
+			if(cb.checked) selectedPostIds.add(id); else selectedPostIds.delete(id);
+			updatePostsSelectionUI();
+		});
+	});
+	const totalPages = Math.max(1, Math.ceil(postsTotal / postsPageSize));
+	document.getElementById('postsPagerInfo').textContent = '第 '+postsPage+' / '+totalPages+' 页，共 '+postsTotal+' 条';
+	document.getElementById('postsPrevBtn').disabled = postsPage <= 1;
+	document.getElementById('postsNextBtn').disabled = postsPage >= totalPages;
+	updatePostsSelectionUI();
+}
+
+async function loadPostsList(){
+	const status = document.getElementById('postStatusFilter').value;
+	let url = '/ucg/admin/api/posts/list?page='+postsPage+'&pageSize='+postsPageSize;
+	if(status !== '') url += '&status='+encodeURIComponent(status);
+	const data = await api(url);
+	postsRows = data.list || [];
+	postsTotal = data.total || 0;
+	postsPage = data.page || postsPage;
+	renderPostsTable();
 }
 
 async function enterMain(){
@@ -128,6 +280,60 @@ document.getElementById('saveBtn').addEventListener('click', async () => {
 		showMsg(document.getElementById('mainMsg'), e.message || '保存失败', false);
 	} finally {
 		btn.disabled = false;
+	}
+});
+
+document.getElementById('tabAi').addEventListener('click', () => switchTab('ai'));
+document.getElementById('tabPosts').addEventListener('click', () => switchTab('posts'));
+
+document.getElementById('postStatusFilter').addEventListener('change', () => {
+	postsPage = 1;
+	selectedPostIds.clear();
+	loadPostsList().catch(e => showMsg(document.getElementById('postsMsg'), e.message, false));
+});
+
+document.getElementById('postsRefreshBtn').addEventListener('click', () => {
+	loadPostsList().then(() => showMsg(document.getElementById('postsMsg'), '已刷新', true))
+		.catch(e => showMsg(document.getElementById('postsMsg'), e.message, false));
+});
+
+document.getElementById('postsPrevBtn').addEventListener('click', () => {
+	if(postsPage > 1){ postsPage--; loadPostsList().catch(e => showMsg(document.getElementById('postsMsg'), e.message, false)); }
+});
+
+document.getElementById('postsNextBtn').addEventListener('click', () => {
+	const totalPages = Math.max(1, Math.ceil(postsTotal / postsPageSize));
+	if(postsPage < totalPages){ postsPage++; loadPostsList().catch(e => showMsg(document.getElementById('postsMsg'), e.message, false)); }
+});
+
+document.getElementById('postsSelectPage').addEventListener('change', (ev) => {
+	const checked = ev.target.checked;
+	postsRows.forEach(row => {
+		if(Number(row.status) === 3) return;
+		if(checked) selectedPostIds.add(row.id); else selectedPostIds.delete(row.id);
+	});
+	renderPostsTable();
+});
+
+document.getElementById('postsRejectBtn').addEventListener('click', async () => {
+	const ids = Array.from(selectedPostIds);
+	if(!ids.length) return;
+	if(!confirm('确认批量驳回 '+ids.length+' 条动态？')) return;
+	const btn = document.getElementById('postsRejectBtn');
+	btn.disabled = true;
+	try {
+		const data = await api('/ucg/admin/api/posts/reject', {
+			method:'POST',
+			body: JSON.stringify({postIds: ids})
+		});
+		const msg = '驳回 '+((data.rejected||[]).length)+' 条，跳过 '+((data.skipped||[]).length)+' 条，失败 '+((data.failed||[]).length)+' 条';
+		showMsg(document.getElementById('postsMsg'), msg, true);
+		selectedPostIds.clear();
+		await loadPostsList();
+	} catch(e){
+		showMsg(document.getElementById('postsMsg'), e.message || '驳回失败', false);
+	} finally {
+		updatePostsSelectionUI();
 	}
 });
 

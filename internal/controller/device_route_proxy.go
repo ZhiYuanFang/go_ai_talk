@@ -2,6 +2,7 @@ package controller
 
 import (
 	"net/http/httputil"
+	"strings"
 	"sync"
 
 	"github.com/gogf/gf/v2/net/ghttp"
@@ -28,6 +29,11 @@ func installDeviceProxyMiddleware(s *ghttp.Server) {
 	// 不得使用 /device/app/api/* 总前缀：会与网关本机路由（token、version 等）冲突；App 用户域统一为 /device/app/api/user/*（与聚合登录 /device/app/api/login 区分）。
 	// App 网关下 Bearer 与 X-Internal-Wx-Id / X-Internal-Device-No 由 installGatewayAppBearerMiddleware（HookBeforeServe）统一处理，先于本反代执行，此处不再重复鉴权。
 	serve := func(r *ghttp.Request) {
+		// 使用统计读 API 由 gateway-app 本机处理（Redis 在边缘），不得反代至 device-service。
+		if strings.HasPrefix(r.URL.Path, "/device/admin/api/usage/") {
+			r.Middleware.Next()
+			return
+		}
 		if !shouldProxyDomainRequest(cfg, routeKeyForDomainRequest(r)) {
 			r.Middleware.Next()
 			return

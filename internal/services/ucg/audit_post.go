@@ -18,7 +18,7 @@ func auditPost(ctx context.Context, post entity.UcgPost) error {
 	if verdict, err := moderator.ModerateText(ctx, "comment_detection", post.Content); err != nil {
 		return err
 	} else if !verdict.Pass {
-		return rejectPost(ctx, post.Id, verdict.Reason)
+		return rejectPostByID(ctx, post.Id, verdict.Reason)
 	}
 
 	media, err := loadPostMedia(ctx, post.Id)
@@ -41,7 +41,7 @@ func auditPost(ctx context.Context, post entity.UcgPost) error {
 			return err
 		}
 		if !verdict.Pass {
-			return rejectPost(ctx, post.Id, verdict.Reason)
+			return rejectPostByID(ctx, post.Id, verdict.Reason)
 		}
 	}
 	return publishPost(ctx, post.Id)
@@ -58,7 +58,8 @@ func publishPost(ctx context.Context, postID uint64) error {
 	return err
 }
 
-func rejectPost(ctx context.Context, postID uint64, reason string) error {
+// rejectPostByID 将帖子置为 rejected；reason 空时用默认文案。Green 机审与管理端共用。
+func rejectPostByID(ctx context.Context, postID uint64, reason string) error {
 	if reason == "" {
 		reason = rejectReasonDefault
 	}

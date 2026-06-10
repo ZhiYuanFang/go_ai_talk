@@ -42,6 +42,10 @@ func RegisterGatewayAppHTTP(s *ghttp.Server) {
 		r.Response.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
 		r.Response.ServeFile("resource/public/feedback-records.html")
 	})
+	s.BindHandler("/device/admin/api-usage-stats", func(r *ghttp.Request) {
+		r.Response.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
+		r.Response.ServeFile("resource/public/api-usage-stats.html")
+	})
 	s.BindHandler("/device/admin/ucg-admin.html", func(r *ghttp.Request) {
 		r.Response.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
 		r.Response.ServeFile("resource/public/ucg-admin.html")
@@ -73,6 +77,7 @@ func RegisterGatewayAppHTTP(s *ghttp.Server) {
 	installGatewayCrosscuttingMiddlewares(s)
 	installGatewayAppBearerMiddleware(s)
 	installDeviceAPIAccessTouchMiddleware(s)
+	installGatewayAppAPIUsageStatsMiddleware(s)
 	installDomainProxyMiddlewares(s)
 	installVoiceWSProxyMiddleware(s)
 	installUcgWSProxyMiddleware(s)
@@ -84,6 +89,7 @@ func RegisterGatewayAppHTTP(s *ghttp.Server) {
 	s.Group("/", func(group *ghttp.RouterGroup) {
 		group.Middleware(ghttp.MiddlewareHandlerResponse)
 		group.Bind(NewGatewayAppCtrl())
+		group.Bind(NewGatewayAppUsageAdminCtrl())
 	})
 
 	s.SetServerRoot(gfile.MainPkgPath())

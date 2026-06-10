@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>功能使用统计 — 设备管理</title>
+	<style>
+		body{font-family:Arial,Helvetica,sans-serif;background:#f7f8fa;color:#222;margin:0;padding:24px}
+		.card{background:#fff;border-radius:12px;padding:16px;max-width:1100px;margin:0 auto 16px;box-shadow:0 2px 10px rgba(0,0,0,.05)}
+		input,button,select{padding:10px 12px;border-radius:8px;border:1px solid #d0d7de;font-size:14px}
+		button{background:#1677ff;color:#fff;border:none;cursor:pointer}
+		button:disabled{background:#9bbcf5;cursor:not-allowed}
+		button.tab-btn{background:#e2e8f0;color:#334155}
+		button.tab-btn.active{background:#1677ff;color:#fff}
+		a.link-btn{display:inline-block;padding:10px 12px;border-radius:8px;font-size:14px;background:#6b7280;color:#fff;text-decoration:none;line-height:1.2}
+		a.link-btn:hover{background:#4b5563}
+		.table-wrap{overflow-x:auto;margin-top:12px}
+		table{width:max-content;min-width:100%;border-collapse:collapse}
+		th,td{border-bottom:1px solid #eee;padding:10px;text-align:left;font-size:13px}
+		td.wrapcell{white-space:normal;max-width:420px;word-break:break-word;vertical-align:middle}
+		.card-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:12px}
+		.card-head h3{margin:0;font-size:1.1em;font-weight:600}
+		.card-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+		.hidden{display:none}
+		.msg{margin-top:8px;font-size:13px}
+		.hint{color:#64748b;font-size:13px;margin-top:8px}
+		.detail-panel{margin-top:12px;padding:12px;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc}
+		.detail-panel h4{margin:0 0 8px;font-size:14px}
+	</style>
+</head>
+<body>
+	<div class="card" id="loginCard">
+		<h3>功能使用统计 — 登录</h3>
+		<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+			<input id="pwd" type="password" placeholder="请输入管理口令" />
+			<button id="loginBtn" type="button">登录</button>
+			<a class="link-btn" href="/device/admin">返回设备管理</a>
+		</div>
+		<div id="loginMsg" class="msg"></div>
+	</div>
+
+	<div class="card hidden" id="mainCard">
+		<div class="card-head">
+			<h3>App API 使用统计</h3>
+			<div class="card-actions">
+				<label>时间范围
+					<select id="daysSelect">
+						<option value="7" selected>近 7 天</option>
+						<option value="30">近 30 天</option>
+						<option value="0">全部（90 天内）</option>
+					</select>
+				</label>
+				<button id="refreshBtn" type="button">刷新</button>
+				<a class="link-btn" href="/device/admin">返回设备管理</a>
+			</div>
+		</div>
+		<div class="card-actions" style="margin-bottom:12px;">
+			<button id="tabApiBtn" type="button" class="tab-btn active">按 API</button>
+			<button id="tabUserBtn" type="button" class="tab-btn">按用户</button>
+		</div>
+		<p class="hint">仅统计经 App 网关的 HTTP 2xx 成功请求。用户维度仅包含已登录账号（wxId &gt; 0）。</p>
+		<div id="mainMsg" class="msg"></div>
+
+		<div id="apiPanel">
+			<div class="table-wrap">
+				<table>
+					<thead>
+						<tr>
+							<th>API</th>
+							<th>中文说明</th>
+							<th>调用次数</th>
+							<th>最近调用</th>
+							<th>操作</th>
+						</tr>
+					</thead>
+					<tbody id="apiTbody"></tbody>
+				</table>
+			</div>
+			<div id="apiDetailPanel" class="detail-panel hidden">
+				<h4 id="apiDetailTitle"></h4>
+				<div class="table-wrap">
+					<table>
+						<thead>
+							<tr><th>wxId</th><th>次数</th><th>最近调用</th></tr>
+						</thead>
+						<tbody id="apiDetailTbody"></tbody>
+					</table>
+				</div>
+			</div>
+		</div>
+
+		<div id="userPanel" class="hidden">
+			<div class="card-actions">
+				<input id="wxIdInput" placeholder="输入 wxId" />
+				<button id="userSearchBtn" type="button">查询</button>
+			</div>
+			<div class="table-wrap" style="margin-top:12px;">
+				<table>
+					<thead>
+						<tr>
+							<th>API</th>
+							<th>中文说明</th>
+							<th>调用次数</th>
+							<th>最近调用</th>
+						</tr>
+					</thead>
+					<tbody id="userTbody"></tbody>
+				</table>
+			</div>
+		</div>
+	</div>
+
+<script>
+let adminPwd = '';
+let activeTab = 'api';
+
+const loginCard = document.getElementById('loginCard');
+const mainCard = document.getElementById('mainCard');
+const loginMsg = document.getElementById('loginMsg');
+const mainMsg = document.getElementById('mainMsg');
+const apiTbody = document.getElementById('apiTbody');
+const userTbody = document.getElementById('userTbody');
+const apiPanel = document.getElementById('apiPanel');
+const userPanel = document.getElementById('userPanel');
+const apiDetailPanel = document.getElementById('apiDetailPanel');
+const apiDetailTbody = document.getElementById('apiDetailTbody');
+const apiDetailTitle = document.getElementById('apiDetailTitle');
+
+function setMsg(el, text, ok){
+	el.textContent = text || '';
+	el.style.color = ok ? '#0a6' : '#c1121f';
+}
+
+function escapeHtml(s){
+	return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function formatTime(ts){
+	const n = Number(ts);
+	if(!n) return '-';
+	const d = new Date(n * 1000);
+	if(isNaN(d.getTime())) return '-';
+	return d.toLocaleString('zh-CN', { hour12: false });
+}
+
+function daysParam(){
+	return document.getElementById('daysSelect').value;
+}
+
+async function api(path, options={}){
+	const headers = Object.assign({'Content-Type':'application/json','X-Admin-Password':adminPwd}, options.headers || {});
+	const res = await fetch(path, Object.assign({}, options, {headers}));
+	const data = await res.json().catch(() => ({}));
+	if(!res.ok || data.code !== 0){ throw new Error(data.message || ('HTTP '+res.status)); }
+	return data.data;
+}
+
+async function loadApiList(){
+	const d = await api('/device/admin/api/usage/list?days='+encodeURIComponent(daysParam()));
+	apiTbody.innerHTML = '';
+	apiDetailPanel.classList.add('hidden');
+	(d.list || []).forEach(it => {
+		const tr = document.createElement('tr');
+		tr.innerHTML =
+			'<td class="wrapcell">'+ escapeHtml(it.apiKey||'') +'</td>' +
+			'<td>'+ escapeHtml(it.summary||'') +'</td>' +
+			'<td>'+ escapeHtml(it.count ?? 0) +'</td>' +
+			'<td>'+ escapeHtml(formatTime(it.lastAt)) +'</td>' +
+			'<td><button type="button" class="drill-btn">下钻</button></td>';
+		tr.querySelector('.drill-btn').addEventListener('click', () => loadApiDetail(it.apiKey, it.summary));
+		apiTbody.appendChild(tr);
+	});
+	setMsg(mainMsg, '已加载 '+ (d.list||[]).length +' 条 API', true);
+}
+
+async function loadApiDetail(apiKey, summary){
+	const d = await api('/device/admin/api/usage/detail?apiKey='+encodeURIComponent(apiKey)+'&days='+encodeURIComponent(daysParam()));
+	apiDetailTitle.textContent = (summary || '') + ' — ' + apiKey;
+	apiDetailTbody.innerHTML = '';
+	(d.list || []).forEach(it => {
+		const tr = document.createElement('tr');
+		tr.innerHTML =
+			'<td>'+ escapeHtml(it.wxId) +'</td>' +
+			'<td>'+ escapeHtml(it.count ?? 0) +'</td>' +
+			'<td>'+ escapeHtml(formatTime(it.lastAt)) +'</td>';
+		apiDetailTbody.appendChild(tr);
+	});
+	apiDetailPanel.classList.remove('hidden');
+}
+
+async function loadUserApis(){
+	const wxId = document.getElementById('wxIdInput').value.trim();
+	if(!wxId){ setMsg(mainMsg, '请输入 wxId'); return; }
+	const d = await api('/device/admin/api/usage/user?wxId='+encodeURIComponent(wxId)+'&days='+encodeURIComponent(daysParam()));
+	userTbody.innerHTML = '';
+	(d.list || []).forEach(it => {
+		const tr = document.createElement('tr');
+		tr.innerHTML =
+			'<td class="wrapcell">'+ escapeHtml(it.apiKey||'') +'</td>' +
+			'<td>'+ escapeHtml(it.summary||'') +'</td>' +
+			'<td>'+ escapeHtml(it.count ?? 0) +'</td>' +
+			'<td>'+ escapeHtml(formatTime(it.lastAt)) +'</td>';
+		userTbody.appendChild(tr);
+	});
+	setMsg(mainMsg, 'wxId '+ wxId +' 共 '+ (d.list||[]).length +' 个 API', true);
+}
+
+function switchTab(tab){
+	activeTab = tab;
+	document.getElementById('tabApiBtn').classList.toggle('active', tab === 'api');
+	document.getElementById('tabUserBtn').classList.toggle('active', tab === 'user');
+	apiPanel.classList.toggle('hidden', tab !== 'api');
+	userPanel.classList.toggle('hidden', tab !== 'user');
+}
+
+document.getElementById('loginBtn').addEventListener('click', async () => {
+	adminPwd = document.getElementById('pwd').value.trim();
+	if(!adminPwd){ setMsg(loginMsg, '请输入口令'); return; }
+	try {
+		await loadApiList();
+		loginCard.classList.add('hidden');
+		mainCard.classList.remove('hidden');
+		setMsg(mainMsg, '登录成功', true);
+	} catch (e) {
+		setMsg(loginMsg, e.message || '口令错误');
+	}
+});
+
+document.getElementById('refreshBtn').addEventListener('click', async () => {
+	try {
+		if(activeTab === 'api') await loadApiList();
+		else await loadUserApis();
+	} catch (e) {
+		setMsg(mainMsg, e.message || '刷新失败');
+	}
+});
+
+document.getElementById('daysSelect').addEventListener('change', async () => {
+	try {
+		if(activeTab === 'api') await loadApiList();
+		else await loadUserApis();
+	} catch (e) {
+		setMsg(mainMsg, e.message || '加载失败');
+	}
+});
+
+document.getElementById('tabApiBtn').addEventListener('click', () => switchTab('api'));
+document.getElementById('tabUserBtn').addEventListener('click', () => switchTab('user'));
+document.getElementById('userSearchBtn').addEventListener('click', loadUserApis);
+</script>
+</body>
+</html>

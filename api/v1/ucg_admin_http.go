@@ -27,3 +27,60 @@ type UcgAdminAiConfigPutRes struct {
 	UpdatedAt           int64  `json:"updatedAt"`
 	UpdatedBy           string `json:"updatedBy"`
 }
+
+// UcgAdminPostsListReq 管理端动态分页列表。
+type UcgAdminPostsListReq struct {
+	g.Meta   `path:"/ucg/admin/api/posts/list" method:"get" tags:"ucg-admin" summary:"UCG 动态分页列表"`
+	Page     int  `json:"page" p:"page" dc:"页码，从 1 开始"`
+	PageSize int  `json:"pageSize" p:"pageSize" dc:"每页条数，默认 20，最大 100"`
+	Status   *int `json:"status" p:"status" dc:"可选：0 draft 1 pending 2 published 3 rejected"`
+}
+
+// UcgAdminPostAuthor 管理端列表作者摘要。
+type UcgAdminPostAuthor struct {
+	Nickname string `json:"nickname,omitempty"`
+}
+
+// UcgAdminPostMediaItem 管理端列表媒体项。
+type UcgAdminPostMediaItem struct {
+	ObjectKey    string `json:"objectKey"`
+	CdnUrl       string `json:"cdnUrl"`
+	ThumbnailUrl string `json:"thumbnailUrl,omitempty"`
+	MediaKind    int    `json:"mediaKind"`
+}
+
+// UcgAdminPostItem 管理端动态列表项。
+type UcgAdminPostItem struct {
+	Id           uint64                  `json:"id"`
+	AuthorWxId   uint64                  `json:"authorWxId"`
+	Content      string                  `json:"content"`
+	Status       int                     `json:"status"`
+	RejectReason string                  `json:"rejectReason,omitempty"`
+	CreatedAt    int64                   `json:"createdAt"`
+	UpdatedAt    int64                   `json:"updatedAt"`
+	PublishedAt  int64                   `json:"publishedAt,omitempty"`
+	Media        []UcgAdminPostMediaItem `json:"media,omitempty"`
+	Author       *UcgAdminPostAuthor     `json:"author,omitempty"`
+}
+
+// UcgAdminPostsListRes 管理端动态分页响应。
+type UcgAdminPostsListRes struct {
+	List     []UcgAdminPostItem `json:"list"`
+	Total    int                `json:"total"`
+	Page     int                `json:"page"`
+	PageSize int                `json:"pageSize"`
+}
+
+// UcgAdminPostsRejectReq 管理端批量驳回。
+type UcgAdminPostsRejectReq struct {
+	g.Meta  `path:"/ucg/admin/api/posts/reject" method:"post" tags:"ucg-admin" summary:"UCG 动态批量驳回"`
+	PostIds []uint64 `json:"postIds" v:"required"`
+	Reason  string   `json:"reason" dc:"可选，空则用默认文案"`
+}
+
+// UcgAdminPostsRejectRes 批量驳回结果。
+type UcgAdminPostsRejectRes struct {
+	Rejected []uint64 `json:"rejected"`
+	Skipped  []uint64 `json:"skipped"`
+	Failed   []uint64 `json:"failed"`
+}
