@@ -159,6 +159,10 @@ systemctl status mysql-local.service
 - **`*_DB_LINK`**：6 条 DSN，host 写占位符 `mysql-host`
 - **`GF_REDIS_DEFAULT_ADDRESS`**：本机 Redis（Cluster 三主种子或 standalone 单地址）
 - **`GATEWAY_APP_JWT_SECRET`**：App JWT 签名密钥（gateway-app 签发、ucg 校验须同值）
+- **`UCG_OSS_ACCESS_KEY_ID` / `UCG_OSS_ACCESS_KEY_SECRET`**：ucg OSS 直传与 Green 审核（Green 复用 OSS AK）；`config.ucg-service.yaml` 留空，见 `manifest/docker/.env.example`
+- **`UCG_DASHSCOPE_API_KEY`**：ucg AI 润笔（DashScope）；yaml 中 `dashscope_api_key` 留空
+
+完整变量清单见 **`manifest/docker/.env.example`**。
 
 **4. 静态资源目录**
 
@@ -1075,7 +1079,7 @@ docker network create go-ai-talk-test-net 2>/dev/null || true
 |------|----------|------|
 | gateway | `manifest/config/config.yaml` | 无数据库 |
 | gateway-app | `config.gateway-app-server.yaml` | `APP_DB_LINK`、`GF_REDIS_DEFAULT_ADDRESS`、`GATEWAY_APP_JWT_SECRET` |
-| voice / device / history / worker / ucg | 各 `config.*-service.yaml` | `*_DB_LINK`、`GF_REDIS_DEFAULT_ADDRESS`（ucg 另需 `GATEWAY_APP_JWT_SECRET`） |
+| voice / device / history / worker / ucg | 各 `config.*-service.yaml` | `*_DB_LINK`、`GF_REDIS_DEFAULT_ADDRESS`（ucg 另需 `GATEWAY_APP_JWT_SECRET` 与阿里云 env，见下表） |
 | 跨服务 | Compose 环境变量 | 容器内勿用 `127.0.0.1` 访问他域；用服务名 |
 
 关键原则：
@@ -1093,6 +1097,11 @@ docker network create go-ai-talk-test-net 2>/dev/null || true
 | `*_DB_LINK` | 6 条 DSN，host 写 `mysql-host`；库名区分 test/prod |
 | `GF_REDIS_DEFAULT_ADDRESS` | Redis 地址；生产多地址逗号分隔（Cluster），测试 `redis-test:6379` |
 | `GATEWAY_APP_JWT_SECRET` | App access JWT 密钥；**prod/test 必须不同**；ucg 与 gateway-app 同值 |
+| `UCG_OSS_ACCESS_KEY_ID` | ucg OSS AccessKey ID；yaml `ucg.oss.accessKeyId` 留空，Green 审核复用同一 AK |
+| `UCG_OSS_ACCESS_KEY_SECRET` | ucg OSS AccessKey Secret |
+| `UCG_DASHSCOPE_API_KEY` | ucg AI 润笔 DashScope API Key；yaml `ucg.ai.dashscope_api_key` 留空 |
+
+占位符与注释见 **`manifest/docker/.env.example`**；真实值写入 `.env.local` / `.env.test` / `.env.prod`。
 
 MySQL 经 `internal/platform/dbcfg`；Redis 经 `internal/platform/rediscfg`；启动日志应含 `database.* 已用` 与 `redis.default 已用`。
 

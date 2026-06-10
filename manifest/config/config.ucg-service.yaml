@@ -1,5 +1,6 @@
 # ucg-service：社交 UGC 域（ai_voice_ucg）。Docker/K8s 部署时设置 DEVICE_SERVICE_URL 与 DEVICE_GATEWAY_INTERNAL_SECRET。
-# OSS 凭证可按环境变量 UCG_OSS_ACCESS_KEY_ID / UCG_OSS_ACCESS_KEY_SECRET 覆盖（生产建议 env 注入）。
+# 阿里云凭证 MUST 经环境变量注入（yaml 留空）：UCG_OSS_ACCESS_KEY_ID、UCG_OSS_ACCESS_KEY_SECRET、UCG_DASHSCOPE_API_KEY。
+# Green 内容审核复用 OSS AccessKey（ucg.green.accessKey* 留空即可）；见 manifest/docker/.env.example 与 runbook。
 # MySQL：UCG_DB_LINK + MYSQL_TCP_HOST；JWT 校验用 GATEWAY_APP_JWT_SECRET（与 gateway-app 同值）。
 server:
   address: ":9804"
@@ -21,8 +22,8 @@ ucg:
     bucket: "pang-bao"
     region: "cn-beijing"
     endpoint: "oss-cn-beijing.aliyuncs.com"
-    accessKeyId: "LTAI5t6tomJZp4im2H32FSMT"
-    accessKeySecret: "LVCECT4exrGkkhI85HmyD4P2e6wJZW"
+    accessKeyId: ""
+    accessKeySecret: ""
     objectKeyPrefix: "social/"
     # 展示 URL：CDN 域名（API cdnUrl / 客户端 objectKeyToCdn 均基于此）
     cdnBaseUrl: "https://resorce.cuplay.top"
@@ -40,11 +41,11 @@ ucg:
     wLike: 0.3         # 点赞对数项权重
     wComment: 0.5      # 评论对数项权重
     refreshIntervalSeconds: 300  # 后台重算间隔（秒）
-  # AI 润笔（DashScope Qwen vision）：凭证与 Admin 口令在此 yaml 配置；env UCG_DASHSCOPE_API_KEY 可覆盖 key。
+  # AI 润笔（DashScope Qwen vision）：DashScope key 经 env UCG_DASHSCOPE_API_KEY 注入；Admin 口令见 ucg.admin.password。
   # 注意：此为阿里云 DashScope API Key，非 DeepSeek/SiliconFlow 文本或 VL2 key。
   ai:
-    # DashScope API Key；留空则润笔接口返回未配置
-    dashscope_api_key: "sk-657eb5eddf9f4eb289fdd9aca6177911"
+    # DashScope API Key；留空则润笔接口返回未配置（生产 MUST 用 env 注入）
+    dashscope_api_key: ""
     vision_endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
     default_vision_model: "qwen3-vl-plus"
     default_max_images_per_request: 9
