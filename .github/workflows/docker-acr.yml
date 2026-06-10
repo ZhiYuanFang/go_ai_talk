@@ -5,14 +5,12 @@
 # 规则：vMAJOR.MINOR.PATCH（无 - 后缀）→ 生产；v* 预发布（含 -rc/-beta 等）→ 测试
 # 手动：Actions → Run workflow（workflow_dispatch）
 #
-# 所需 GitHub Secrets（个人版 ACR，测试/生产各一套命名空间）：
-#   ACR_REGISTRY_TEST = <公网域名>/<测试命名空间>
-#   ACR_REGISTRY_PROD = <公网域名>/<生产命名空间>
-#                       禁止 -vpc（GitHub 公网 runner 无法访问 VPC 专线）
-#   ACR_USERNAME      = ACR 控制台「访问凭证」登录用户名
-#   ACR_PASSWORD      = ACR 控制台「访问凭证」固定密码
-# 服务器 pull：.env.test / .env.prod 的 REGISTRY 可用 -vpc 域名，IMAGE_TAG 与 git tag 一致。
-# 详见 docs/runbooks/release-deploy-and-run.md「ACR 与 GitHub Secrets」。
+# ACR 配置统一在 manifest/docker/.env.test / .env.prod（无需 GitHub Secrets）：
+#   REGISTRY      = 服务器 pull 地址（可用 -vpc 域名）
+#   ACR_USERNAME  = ACR 控制台「访问凭证」登录用户名
+#   ACR_PASSWORD  = ACR 控制台「访问凭证」固定密码
+# CI push 地址由 workflow 从 REGISTRY 去掉 -vpc 自动推导。
+# 详见 docs/runbooks/release-deploy-and-run.md「ACR 与 .env 统一配置」。
 
 name: docker-acr
 
@@ -60,15 +58,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: 选择并校验 ACR Registry
+      - name: 选择环境并加载 .env
         id: acr
         shell: bash
         env:
-          ACR_REGISTRY_TEST: ${{ secrets.ACR_REGISTRY_TEST }}
-          ACR_REGISTRY_PROD: ${{ secrets.ACR_REGISTRY_PROD }}
-          ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
-          ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
-          ACR_REGISTRY_LEGACY: ${{ secrets.ACR_REGISTRY }}
           EVENT_NAME: ${{ github.event_name }}
           GIT_REF: ${{ github.ref }}
           DISPATCH_ENV: ${{ inputs.target_env }}
@@ -76,43 +69,25 @@ jobs:
         run: |
           set -euo pipefail
 
-          echo "GitHub Secrets 配置路径: Settings → Secrets and variables → Actions → Repository secrets"
-          echo "本 workflow 要求的 Secret Name（区分大小写，须完全一致）:"
-          echo "  - ACR_REGISTRY_TEST  （预发布 tag v*-* → 测试命名空间）"
-          echo "  - ACR_REGISTRY_PROD  （正式 tag vMAJOR.MINOR.PATCH → 生产命名空间）"
-          echo "  - ACR_USERNAME       （ACR 访问凭证登录名）"
-          echo "  - ACR_PASSWORD       （ACR 访问凭证固定密码）"
-          echo ""
-
-          for name in ACR_REGISTRY_TEST ACR_REGISTRY_PROD ACR_USERNAME ACR_PASSWORD; do
-            case "${name}" in
-              ACR_REGISTRY_TEST) val="${ACR_REGISTRY_TEST}" ;;
-              ACR_REGISTRY_PROD) val="${ACR_REGISTRY_PROD}" ;;
-              ACR_USERNAME) val="${ACR_USERNAME}" ;;
-              ACR_PASSWORD) val="${ACR_PASSWORD}" ;;
-            esac
-            if [[ -n "${val}" ]]; then
-              echo "✓ Secret 已配置: ${name}"
-            else
-              echo "✗ Secret 未配置: ${name}"
+          # 从 .env 文件读取单个键（忽略注释行，取首个匹配）
+          read_env_var() {
+            local file="$1" key="$2"
+            local line
+            line="$(grep -E "^${key}=" "${file}" | head -1 || true)"
+            if [[ -z "${line}" ]]; then
+              echo ""
+              return
             fi
-          done
-          if [[ -z "${ACR_REGISTRY_TEST}" && -z "${ACR_REGISTRY_PROD}" && -n "${ACR_REGISTRY_LEGACY}" ]]; then
-            echo ""
-            echo "::warning::检测到旧 Secret Name「ACR_REGISTRY」有值，但当前 workflow 已拆分为 ACR_REGISTRY_TEST / ACR_REGISTRY_PROD。"
-            echo "::warning::请新建 Secret Name「ACR_REGISTRY_TEST」并填入测试命名空间地址（公网域名，无 -vpc）。"
-          fi
-          echo ""
+            echo "${line#*=}"
+          }
 
-          validate_registry() {
+          validate_push_registry() {
             local reg="$1"
-            local secret_name="$2"
+            local env_file="$2"
             local host ns suggested
 
-            echo "--- 校验 Secret Name: ${secret_name} ---"
-
             if [[ -z "${reg}" ]]; then
-              echo "::error title=缺少 Secret ${secret_name}::请在 GitHub 创建 Repository secret，Name 必须为「${secret_name}」"
+              echo "::error title=缺少 REGISTRY::请在 ${env_file} 配置 REGISTRY=<域名>/<命名空间>"
               exit 1
             fi
 
@@ -123,27 +98,26 @@ jobs:
               ns="${reg#*/}"
             fi
 
-            echo "Secret Name: ${secret_name}（已读取到值）"
-            echo "当前 host: ${host}"
-            echo "当前 namespace: ${ns}"
+            echo "env_file: ${env_file}"
+            echo "push host: ${host}"
+            echo "push namespace: ${ns}"
 
             if [[ "${reg}" == *"-vpc."* ]]; then
               suggested="${host/-vpc./.}"
               if [[ "${ns}" != "(缺失)" ]]; then
                 suggested="${suggested}/${ns}"
               fi
-              echo "::error title=${secret_name} 误用了 -vpc 域名::GitHub Actions 公网 runner 无法 push VPC 专线地址"
-              echo "::error::建议改为: ${suggested}"
+              echo "::error title=REGISTRY 仍含 -vpc::GitHub Actions 公网 runner 无法 push VPC 专线地址"
+              echo "::error::请检查 ${env_file} 中 REGISTRY 格式，推导后应为: ${suggested}"
               exit 1
             fi
 
             if [[ "${reg}" != *"/"* ]]; then
-              echo "::error title=${secret_name} 缺少命名空间::Value 格式须为 <公网域名>/<命名空间>"
+              echo "::error title=REGISTRY 缺少命名空间::格式须为 <公网域名>/<命名空间>"
               exit 1
             fi
 
-            echo "✓ ${secret_name} 格式校验通过"
-            echo ""
+            echo "✓ push registry 格式校验通过"
           }
 
           # v1.0.0 → prod；v1.0.0-rc.1 / v1.0.0-beta.1 → test
@@ -180,26 +154,41 @@ jobs:
             exit 1
           fi
 
-          if [[ "${deploy_env}" == "prod" ]]; then
-            validate_registry "${ACR_REGISTRY_PROD}" "ACR_REGISTRY_PROD"
-            selected="${ACR_REGISTRY_PROD}"
-          elif [[ "${deploy_env}" == "test" ]]; then
-            validate_registry "${ACR_REGISTRY_TEST}" "ACR_REGISTRY_TEST"
-            selected="${ACR_REGISTRY_TEST}"
-          else
-            echo "::error::未知 deploy_env: ${deploy_env}" >&2
+          env_file="manifest/docker/.env.${deploy_env}"
+          if [[ ! -f "${env_file}" ]]; then
+            echo "::error title=缺少环境文件::未找到 ${env_file}"
             exit 1
           fi
 
-          if [[ -z "${ACR_USERNAME}" || -z "${ACR_PASSWORD}" ]]; then
-            echo "::error title=缺少 ACR 登录凭证::请配置 Secret Name「ACR_USERNAME」与「ACR_PASSWORD」"
+          registry_pull="$(read_env_var "${env_file}" "REGISTRY")"
+          acr_username="$(read_env_var "${env_file}" "ACR_USERNAME")"
+          acr_password="$(read_env_var "${env_file}" "ACR_PASSWORD")"
+
+          if [[ -z "${registry_pull}" ]]; then
+            echo "::error title=缺少 REGISTRY::请在 ${env_file} 配置 REGISTRY"
             exit 1
           fi
+          if [[ -z "${acr_username}" ]]; then
+            echo "::error title=缺少 ACR_USERNAME::请在 ${env_file} 配置 ACR_USERNAME"
+            exit 1
+          fi
+          if [[ -z "${acr_password}" ]]; then
+            echo "::error title=缺少 ACR_PASSWORD::请在 ${env_file} 配置 ACR_PASSWORD"
+            exit 1
+          fi
+
+          # 从 pull 地址（可含 -vpc）推导 CI push 公网地址
+          registry_push="${registry_pull/-vpc./.}"
+          validate_push_registry "${registry_push}" "${env_file}"
+
+          echo "::add-mask::${acr_password}"
 
           echo "env=${deploy_env}" >> "${GITHUB_OUTPUT}"
-          echo "registry=${selected}" >> "${GITHUB_OUTPUT}"
-          echo "host=${selected%%/*}" >> "${GITHUB_OUTPUT}"
+          echo "registry=${registry_push}" >> "${GITHUB_OUTPUT}"
+          echo "host=${registry_push%%/*}" >> "${GITHUB_OUTPUT}"
           echo "primary_tag=${primary_tag}" >> "${GITHUB_OUTPUT}"
+          echo "username=${acr_username}" >> "${GITHUB_OUTPUT}"
+          echo "password=${acr_password}" >> "${GITHUB_OUTPUT}"
 
       - name: 解析镜像 tag
         id: tags
@@ -223,8 +212,8 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: ${{ steps.acr.outputs.host }}
-          username: ${{ secrets.ACR_USERNAME }}
-          password: ${{ secrets.ACR_PASSWORD }}
+          username: ${{ steps.acr.outputs.username }}
+          password: ${{ steps.acr.outputs.password }}
 
       - name: Build and push
         uses: docker/build-push-action@v6

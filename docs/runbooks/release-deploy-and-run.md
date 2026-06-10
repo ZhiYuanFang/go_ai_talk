@@ -813,13 +813,14 @@ docker pull crpi-xxx-vpc.cn-hangzhou.personal.cr.aliyuncs.com/pangbao-test/gatew
 grep -E '^REGISTRY=|^IMAGE_TAG=' manifest/docker/.env.test
 ```
 
-**GitHub Actions push 侧**（与 pull 分离）：
+**GitHub Actions push 侧**（与 pull 共用 `.env`，无需 GitHub Secrets）：
 
 | 配置项 | 要求 |
 |--------|------|
-| `ACR_REGISTRY_TEST` / `ACR_REGISTRY_PROD` | **公网域名**，**禁止** `-vpc` |
-| 命名空间 | 与 `.env.test` / `.env.prod` 的 `REGISTRY` 中 `/pangbao-test` 等一致 |
-| ACR 控制台 | 对应命名空间下已有 7 个仓库且存在预发布/正式 tag（如 `:v1.0.0-rc.1`、`:v1.0.0`） |
+| `manifest/docker/.env.test` / `.env.prod` | 须含 `REGISTRY`、`ACR_USERNAME`、`ACR_PASSWORD` |
+| `REGISTRY` | 服务器 pull 用，**可用** `-vpc`；workflow 自动去掉 `-vpc` 作为 push 地址 |
+| 命名空间 | `REGISTRY` 中 `/pangbao-test` 等与目标环境一致 |
+| ACR 控制台 | 对应命名空间下已有 7 个镜像仓库且存在预发布/正式 tag（如 `:v1.0.0-rc.1`、`:v1.0.0`） |
 
 ---
 
@@ -1251,39 +1252,45 @@ docker compose -f manifest/docker/docker-compose.redis-cluster.yml up -d --force
 
 > 测试 Redis 默认使用 `docker-compose.redis-standalone.test.yml`（`redis-test:6379`），勿再使用已删除的六节点 cluster test compose。
 
-### ACR 与 GitHub Secrets
+### ACR 与 .env 统一配置
 
-个人版 ACR 镜像完整路径：`域名/命名空间/仓库名:tag`。**测试与生产使用不同命名空间**，须分别配置。
+个人版 ACR 镜像完整路径：`域名/命名空间/仓库名:tag`。**测试与生产使用不同命名空间**，分别在 `manifest/docker/.env.test` 与 `.env.prod` 配置。**无需在 GitHub Settings 配置 Secrets**；换私有仓库后 push 代码即可直接触发 Actions。
 
-| 环境 | 服务器 `.env` 的 `REGISTRY` | GitHub Secret | CI 触发 |
-|------|------------------------------|---------------|---------|
-| **测试** | `crpi-xxx-vpc.../<测试命名空间>` | `ACR_REGISTRY_TEST` = `crpi-xxx.../<测试命名空间>`（公网，无 `-vpc`） | push tag `v*-*`（预发布，如 `v1.0.0-rc.1`） |
-| **生产** | `crpi-xxx-vpc.../<生产命名空间>` | `ACR_REGISTRY_PROD` = `crpi-xxx.../<生产命名空间>`（公网，无 `-vpc`） | push tag `vMAJOR.MINOR.PATCH`（如 `v1.0.0`） |
+| 环境 | 配置文件 | CI 触发 |
+|------|----------|---------|
+| **测试** | `manifest/docker/.env.test` | push tag `v*-*`（预发布，如 `v1.0.0-rc.1`） |
+| **生产** | `manifest/docker/.env.prod` | push tag `vMAJOR.MINOR.PATCH`（如 `v1.0.0`） |
 
-共用 Secrets（同一 ACR 实例）：
+镜像段必填项（同一 ACR 实例下 `ACR_USERNAME` / `ACR_PASSWORD` 通常两环境相同）：
 
-| Secret | 取值 |
-|--------|------|
+| 变量 | 取值 |
+|------|------|
+| `REGISTRY` | `<vpc 或公网域名>/<命名空间>`；服务器 pull 推荐 `-vpc` 专线 |
+| `IMAGE_TAG` | 与 git tag 一致（如 `v1.0.0-rc.1`、`v1.0.0`） |
 | `ACR_USERNAME` | ACR 控制台 → 访问凭证 → 登录用户名 |
 | `ACR_PASSWORD` | 访问凭证 → 设置的**固定密码** |
+
+CI push 地址由 workflow 从 `REGISTRY` **自动去掉 `-vpc`** 推导，无需单独维护公网域名。
 
 **填写示例**（命名空间名以控制台为准）：
 
 ```text
-# GitHub Secrets（push 用公网域名）
-ACR_REGISTRY_TEST=crpi-lff3xynwzvqxxxjk.cn-hangzhou.personal.cr.aliyuncs.com/pangbao-test
-ACR_REGISTRY_PROD=crpi-lff3xynwzvqxxxjk.cn-hangzhou.personal.cr.aliyuncs.com/pangbao-prod
-
-# 服务器 .env.test（pull 可用 -vpc）
+# manifest/docker/.env.test
 REGISTRY=crpi-lff3xynwzvqxxxjk-vpc.cn-hangzhou.personal.cr.aliyuncs.com/pangbao-test
+IMAGE_TAG=v1.0.0-rc.1
+ACR_USERNAME=<ACR 登录用户名>
+ACR_PASSWORD=<ACR 固定密码>
 
-# 服务器 .env.prod
-REGISTRY=crpi-lff3xynwzvqxxxjk-vpc.cn-hangzhou.personal.cr.aliyuncs.com/pangbao-prod
+# manifest/docker/.env.prod
+REGISTRY=crpi-lff3xynwzvqxxxjk-vpc.cn-hangzhou.personal.cr.aliyuncs.com/pangbao-release
+IMAGE_TAG=v1.0.0
+ACR_USERNAME=<ACR 登录用户名>
+ACR_PASSWORD=<ACR 固定密码>
 ```
 
 每个命名空间下须预先创建 7 个镜像仓库：`gateway`、`gateway-app`、`history-service`、`voice-service`、`device-service`、`worker`、`ucg-service`（或开启「自动创建仓库」）。
 
-push 报 `denied` 常见原因：① GitHub 用了 `-vpc` 域名；② 缺命名空间；③ 测试/生产 Secret 与 `.env` 命名空间不一致；④ 仓库未创建；⑤ ECS 未 `docker login`。详见 [D.2](#d2-acr-拉镜像-pull-access-denied)。
+push 报 `denied` 常见原因：① `.env` 缺 `ACR_USERNAME` / `ACR_PASSWORD`；② `REGISTRY` 缺命名空间；③ 测试/生产 `.env` 命名空间混用；④ 仓库未创建；⑤ ECS 未 `docker login`。详见 [D.2](#d2-acr-拉镜像-pull-access-denied)。
 
 ### 脱敏种子（测试库刷新）
 
