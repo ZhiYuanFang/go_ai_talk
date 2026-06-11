@@ -6,6 +6,7 @@ import (
 
 // 维护型 / 探测型 App HTTP API：不计入使用统计（登录、注册、绑定与业务 API 仍记录）。
 // 新增排除项时在此维护精确 apiKey 或 path 前缀即可。
+// 流程约束：新增 App HTTP 接口 MUST 先向负责人确认是否统计，见 openspec/project.md「App API 使用统计约定」。
 
 var maintenanceExactAPI = map[string]struct{}{
 	"POST /device/app/api/token/refresh": {},

@@ -23,3 +23,7 @@
 
 ## 测试文件
 - 当前阶段不新增测试文件（包括 `*_test.go`、`*.spec.*`、`*.test.*`）。
+
+## App API 使用统计（OpenSpec / 实现强制）
+- 新增经 **gateway-app** 对外的 **App HTTP 接口**时，**必须先向负责人询问是否计入 usage 统计**；未获明确答复前不得修改 `usagestats/maintenance_skip.go` 或假定统计策略。
+- 细则见 **`openspec/project.md`**「App API 使用统计约定」；维护型排除列表在 **`internal/services/gatewayapp/usagestats/maintenance_skip.go`**。

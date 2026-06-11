@@ -10,6 +10,7 @@ import (
 	"hello/internal/model/entity"
 	"hello/internal/platform/cachekit"
 	"hello/internal/platform/eventkit"
+	"hello/internal/shared/eventlogo"
 
 	"github.com/gogf/gf/v2/os/glog"
 )
@@ -189,7 +190,9 @@ func (r *cacheRepo) setEventOptions(ctx context.Context, items []entity.Event) e
 	if err != nil {
 		return err
 	}
-	body, err := json.Marshal(items)
+	// 与 device 共用 Redis 键：仅持久化 objectKey，CDN 映射在 HTTP 边界完成。
+	stored := eventlogo.MapEventsLogoStored(ctx, items)
+	body, err := json.Marshal(stored)
 	if err != nil {
 		return err
 	}

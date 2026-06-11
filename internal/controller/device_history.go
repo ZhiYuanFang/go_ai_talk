@@ -12,6 +12,7 @@ import (
 	"hello/internal/services/gatewayapp"
 	histsvc "hello/internal/services/history"
 	voice "hello/internal/services/voice"
+	"hello/internal/shared/eventlogo"
 
 	"github.com/gogf/gf/v2/errors/gcode"
 	"github.com/gogf/gf/v2/errors/gerror"
@@ -120,13 +121,14 @@ func (c *HistoryCtrl) SuggestDelete(ctx context.Context, req *v1.DeviceHistorySu
 }
 
 // EventOptions 历史事件可选项（来自数据库）。
+// Redis 事件选项缓存与 device-service 共用键，logo 可能为 OSS objectKey；对外 HTTP MUST 映射为 CDN 绝对 URL。
 func (c *HistoryCtrl) EventOptions(ctx context.Context, req *v1.DeviceHistoryEventOptionsReq) (res *v1.DeviceHistoryEventOptionsRes, err error) {
 	_ = req
 	items, err := c.Svc.ListEventOptions(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return &v1.DeviceHistoryEventOptionsRes{List: items}, nil
+	return &v1.DeviceHistoryEventOptionsRes{List: eventlogo.MapEventsLogoCdn(ctx, items)}, nil
 }
 
 // Birthday 获取设备生日。

@@ -66,3 +66,17 @@
 
 - **WHEN** 管理员切换到「按用户」视图
 - **THEN** 页面 SHALL 展示 wx 账号列表；点选某 wxId 后 SHALL 展示该用户的 API 调用列表
+
+### Requirement: 新增 App HTTP 接口 MUST 经负责人确认是否计入 usage 统计
+
+当 OpenSpec 变更或实现工作 **新增** 经 gateway-app 对外的 App HTTP 路由（`api/v1` 的 `g.Meta` 或 gateway-app `BindHandler`，不含已结构性 skip 的 internal/admin/static/WS）时，执行方（含 AI）**MUST 向产品负责人询问**该接口是否计入 App API 使用统计；负责人未明确答复前 **MUST NOT** 擅自将其加入或移出 `maintenance_skip.go` denylist。proposal 或 tasks **SHALL** 记录确认结论。
+
+#### Scenario: 新增业务 API 且负责人要求统计
+
+- **WHEN** 变更新增 `POST /ucg/app/api/foo` 且负责人确认需要统计
+- **THEN** 实现 SHALL 在 `api/v1` 登记路由且 SHALL NOT 写入 `maintenance_skip.go`
+
+#### Scenario: 新增维护型 API 且负责人要求不统计
+
+- **WHEN** 变更新增维护型接口且负责人确认不统计
+- **THEN** 实现 SHALL 在 `maintenance_skip.go` 增加对应排除规则并在 proposal/tasks 中说明

@@ -64,6 +64,14 @@
 - 评审检查项必须包含“是否引用并遵循 **`openspec/specs/v2.0.3/spec.md`** 基线”检查：涉及行为变更时必须可追溯到对应 Requirement/Scenario。
 - 在没有特别要求的情况下，不用生成关于当前变更需求的md文件。当有要求生成文档时，文档必须在`docs/`文件夹内生成md文件，不要生成到`docs/runbooks/`
 
+### App API 使用统计约定（强制）
+
+- **适用范围**：经 **gateway-app** 对外暴露、且可能被 App 客户端或运维页调用的 **新增 HTTP 接口**（含 `api/v1` 中 `g.Meta` 路由，以及 `gateway-app-server` 上 `BindHandler` 注册的 App 路径）。**不适用**：`/device/internal/*`、`/device/admin/api/*`、WebSocket 升级、静态资源与 HTML 壳页（已由 `usagestats` 结构性 skip 排除，无需重复询问）。
+- **新增接口时必须询问产品负责人**：该接口 **是否计入 App API 使用统计**（运维页「功能使用统计」）。**AI 在 propose / apply 阶段 MUST 向用户确认**，不得默认假设；用户未明确答复前，不得擅自将新接口加入或移出统计 denylist。
+- **用户确认「统计」**：确保 `api/v1` 已登记 `path`/`method`/`summary`（供 apiregistry 归一化与中文展示）；**不得**写入 `internal/services/gatewayapp/usagestats/maintenance_skip.go`。
+- **用户确认「不统计」**（维护型/探测型/运维型，如 token 刷新、版本探测）：在 **`maintenance_skip.go`** 增加精确 `METHOD + path` 或 path 前缀，并在变更 **proposal/tasks** 中列出排除项。
+- **proposal / tasks 检查项**：若变更新增 App HTTP 路由，MUST 包含一条「已与负责人确认是否计入 usage 统计」及结论（统计 / 不统计 + denylist 变更说明）。
+
 ## 外部依赖
 - Redis
 - RabbitMQ

@@ -38,6 +38,10 @@
 
 `sortBy=count`（默认）或 `lastAt`；list/detail/user 三处一致。前端提供排序下拉。
 
+### 5. 新增接口统计确认流程
+
+见 `openspec/project.md`「App API 使用统计约定」：新增 App HTTP 路由时 MUST 询问负责人是否计入统计；不统计则改 `maintenance_skip.go`。
+
 - `GET /device/admin/api/wx/list?page=&pageSize=&q=` — `q` 模糊匹配 id/deviceNo/unionid/account
 - 鉴权：`X-Admin-Password`（与现有 device admin 一致）；gateway 反代时注入 password
 - gateway-app 统计页用 Admin JWT + `adminFetch` 调该路径（gateway Bearer hook 对 admin API 注入下游 password）
