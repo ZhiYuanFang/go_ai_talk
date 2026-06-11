@@ -4,100 +4,19 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>设备历史记录</title>
-    <style>
-        :root{
-            --bg1:#eef6ff;
-            --bg2:#f7fbff;
-            --accent:#6ab5ff;
-            --accent-soft:#d8ecff;
-            --btn:#4a9fff;
-            --btn-hover:#328ff8;
-            --text:#234;
-            --card:#ffffff;
-        }
-        body{font-family:Arial,Helvetica,sans-serif;background-color:var(--bg1);color:var(--text);margin:0;padding:24px;position:relative;overflow-x:hidden}
-        .bubble-bg{position:fixed;inset:0;pointer-events:none;z-index:0;overflow:hidden}
-        .bubble{position:absolute;bottom:-120px;border-radius:50%;background:radial-gradient(circle at 30% 30%,rgba(255,255,255,.98),rgba(255,255,255,.42));box-shadow:inset 0 0 12px rgba(255,255,255,.52),0 12px 26px rgba(66,140,220,.18),0 0 0 1px rgba(255,255,255,.36);opacity:.78;animation:floatUp var(--dur) linear infinite;animation-delay:var(--delay)}
-        .bubble::after{content:"";position:absolute;inset:18% 18% auto auto;width:24%;height:24%;border-radius:50%;background:rgba(255,255,255,.55)}
-        .bubble::before{content:"";position:absolute;inset:9% 55% auto 15%;height:18%;border-radius:50%;background:rgba(255,255,255,.6);filter:blur(1px)}
-        @keyframes floatUp{
-            0%{transform:translate3d(0,0,0) scale(.9);opacity:0}
-            10%{opacity:.65}
-            50%{transform:translate3d(var(--drift),-45vh,0) scale(1)}
-            100%{transform:translate3d(calc(var(--drift) * -1),-110vh,0) scale(1.08);opacity:0}
-        }
-        body.sex-male{--bg1:#e8f4ff;--bg2:#f4faff;--accent:#68b5ff;--accent-soft:#d7ecff;--btn:#4a9fff;--btn-hover:#328ff8;--text:#18324d}
-        body.sex-female{--bg1:#ffeaf3;--bg2:#fff5f9;--accent:#ff8ab7;--accent-soft:#ffe0ef;--btn:#ff6ca8;--btn-hover:#ff5b9f;--text:#5a2a44}
-        .card{background:var(--card);border-radius:16px;padding:16px;max-width:1080px;margin:0 auto 16px;box-shadow:0 6px 16px rgba(0,0,0,.06);border:1px solid var(--accent-soft);position:relative;z-index:1}
-        h1,h3{margin:0 0 12px 0}
-        .muted{color:#666;font-size:13px}
-        .meta-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-        .meta-row input,.meta-row select{padding:6px 8px;border:1px solid var(--accent-soft);border-radius:8px;min-width:180px;background:#fff}
-        #chatInput{padding-top:12px;padding-bottom:12px}
-        button{padding:6px 10px;border:1px solid var(--accent-soft);border-radius:8px;background:#fff;cursor:pointer;transition:all .18s ease}
-        button:hover{transform:translateY(-1px)}
-        .meta-row button{padding:6px 10px}
-        .meta-row button.primary{background:var(--btn);color:#fff;border-color:var(--btn)}
-        .meta-row button.primary:hover{background:var(--btn-hover)}
-        .btn-primary{background:var(--btn);color:#fff;border-color:var(--btn)}
-        .btn-primary:hover{background:var(--btn-hover)}
-        .btn-secondary{background:var(--accent-soft);color:var(--text);border-color:var(--accent-soft)}
-        .btn-danger{background:#ff6b6b;color:#fff;border-color:#ff6b6b}
-        .btn-danger:hover{background:#f25555}
-        .table-wrap{overflow-x:auto;margin-top:10px}
-        /* 约 20 条数据高度，超出纵向滚动（表头固定） */
-        .scroll-max-20{
-            max-height:min(72vh,calc(20 * 2.85rem));
-            overflow-y:auto;
-            overflow-x:auto;
-            border:1px solid var(--accent-soft);
-            border-radius:10px;
-        }
-        .scroll-max-20 table{width:max-content;min-width:100%;border-collapse:collapse}
-        .scroll-max-20 thead th{
-            position:sticky;
-            top:0;
-            z-index:2;
-            background:var(--card);
-            box-shadow:0 1px 0 #eee;
-        }
-        table{width:max-content;min-width:100%;border-collapse:collapse}
-        th,td{border-bottom:1px solid #eee;padding:10px;text-align:left;font-size:13px;white-space:nowrap;vertical-align:middle}
-        .suggest-item{display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--accent-soft);border-radius:10px;margin-bottom:10px;background:#fff}
-        .suggest-time{flex-shrink:0;font-size:12px;color:#666;margin:0;min-width:8.5em}
-        .suggest-item > div:last-child{flex:1;min-width:0;word-break:break-word}
-        td.history-remark{white-space:normal;word-break:break-word;max-width:320px;vertical-align:middle}
-        .section-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
-        .section-head h3{margin:0}
-        .modal{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:center;justify-content:center;z-index:99}
-        .modal.show{display:flex}
-        .modal-card{background:#fff;border-radius:14px;padding:16px;min-width:320px;max-width:560px;width:90%;box-shadow:0 10px 30px rgba(0,0,0,.15);border:1px solid var(--accent-soft)}
-        .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-        .form-grid .full{grid-column:1 / -1}
-        .form-grid label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:#444}
-        .form-grid input,.form-grid select{padding:8px;border:1px solid var(--accent-soft);border-radius:8px}
-        .required::after{content:' *';color:#c1121f}
-        .field-error{font-size:12px;color:#c1121f;display:none}
-        .pagination-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:10px}
-        .pagination-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-        .pagination-actions select{padding:6px 8px;border:1px solid var(--accent-soft);border-radius:8px;background:#fff}
-    </style>
+    <link rel="stylesheet" href="/resource/public/pangbao-theme.css" />
+    <link rel="stylesheet" href="/resource/public/admin-pages.css" />
 </head>
-<body>
-    <div class="bubble-bg" aria-hidden="true">
-        <span class="bubble" style="left:4%;width:44px;height:44px;--dur:20s;--delay:-4s;--drift:26px;"></span>
-        <span class="bubble" style="left:12%;width:26px;height:26px;--dur:15s;--delay:-9s;--drift:18px;"></span>
-        <span class="bubble" style="left:22%;width:62px;height:62px;--dur:24s;--delay:-2s;--drift:34px;"></span>
-        <span class="bubble" style="left:36%;width:38px;height:38px;--dur:18s;--delay:-12s;--drift:22px;"></span>
-        <span class="bubble" style="left:49%;width:28px;height:28px;--dur:14s;--delay:-5s;--drift:16px;"></span>
-        <span class="bubble" style="left:58%;width:52px;height:52px;--dur:23s;--delay:-8s;--drift:30px;"></span>
-        <span class="bubble" style="left:68%;width:32px;height:32px;--dur:17s;--delay:-11s;--drift:20px;"></span>
-        <span class="bubble" style="left:78%;width:48px;height:48px;--dur:21s;--delay:-6s;--drift:28px;"></span>
-        <span class="bubble" style="left:88%;width:24px;height:24px;--dur:13s;--delay:-10s;--drift:14px;"></span>
-        <span class="bubble" style="left:95%;width:40px;height:40px;--dur:19s;--delay:-3s;--drift:24px;"></span>
-    </div>
-    <div class="card">
-        <h1>设备历史记录</h1>
+<body class="history-page">
+<div class="page">
+    <header class="admin-header glass">
+        <div class="logo">胖宝</div>
+        <div>
+            <h1>设备历史记录</h1>
+            <p>宝宝档案、对话、喂养与事件记录</p>
+        </div>
+    </header>
+    <div class="card glass">
         <div class="meta-row muted">
             <span>宝宝名字：</span>
             <input id="babyNameInput" type="text" maxlength="32" placeholder="请输入宝宝名字" />
@@ -113,7 +32,7 @@
         </div>
     </div>
 
-    <div class="card">
+    <div class="card glass">
         <h3>文本对话</h3>
         <div class="meta-row">
             <input id="chatInput" type="text" placeholder="输入要发送给智能对话的文本" style="min-width:320px;flex:1;" />
@@ -123,7 +42,7 @@
         <div id="chatReplyWrap" class="suggest-item" style="margin-top:10px;display:none;"></div>
     </div>
 
-    <div class="card">
+    <div class="card glass">
         <div class="section-head">
             <h3>历史事件</h3>
             <div class="meta-row">
@@ -165,7 +84,7 @@
         </div>
     </div>
 
-    <div class="card">
+    <div class="card glass">
         <div class="section-head">
             <h3>历史成长建议</h3>
         </div>
@@ -258,12 +177,8 @@
         };
 
         function applyThemeBySex(sex){
-            document.body.classList.remove('sex-male', 'sex-female');
-            if(Number(sex) > 0){
-                document.body.classList.add('sex-male');
-            }else{
-                document.body.classList.add('sex-female');
-            }
+            // 统一玻璃态主题，不再按性别切换页面配色
+            void sex;
         }
 
         function parseDateTime(v){
@@ -994,5 +909,6 @@
             historyAutoTimePreview.textContent = '计时预览：将自动计算为 ' + autoDisplay;
         }
     </script>
+</div>
 </body>
 </html>

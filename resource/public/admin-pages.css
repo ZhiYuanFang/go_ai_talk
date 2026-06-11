@@ -1,0 +1,351 @@
+/* 运维 Hub 页专用：事件管理、历史记录聊天等 */
+
+.event-logo-cell,
+.event-color-cell {
+	cursor: pointer;
+	vertical-align: middle;
+}
+
+.event-logo-placeholder {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 56px;
+	min-height: 36px;
+	padding: 4px 8px;
+	border: 1px dashed rgba(167, 139, 250, 0.5);
+	border-radius: 10px;
+	font-size: 12px;
+	color: var(--muted);
+	background: rgba(255, 255, 255, 0.45);
+}
+
+.event-logo-cell img {
+	display: block;
+	max-height: 40px;
+	max-width: 56px;
+	border-radius: 8px;
+}
+
+.event-color-swatch {
+	display: inline-block;
+	width: 22px;
+	height: 22px;
+	border: 1px solid rgba(255, 255, 255, 0.6);
+	border-radius: 6px;
+	vertical-align: middle;
+	margin-right: 6px;
+}
+
+.event-row-busy {
+	opacity: 0.55;
+	pointer-events: none;
+}
+
+.event-color-popover {
+	position: fixed;
+	z-index: 200;
+	display: none;
+	background: var(--glass-strong);
+	border: 1px solid var(--line);
+	border-radius: 16px;
+	padding: 12px 14px;
+	box-shadow: var(--shadow);
+	backdrop-filter: blur(18px);
+	min-width: 220px;
+}
+
+.event-color-popover.show {
+	display: block;
+}
+
+.event-color-popover-title {
+	font-size: 13px;
+	font-weight: 600;
+	margin-bottom: 8px;
+	color: var(--text);
+}
+
+.event-color-popover-row {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	margin-bottom: 10px;
+}
+
+.event-color-popover-actions {
+	display: flex;
+	gap: 8px;
+	justify-content: flex-end;
+}
+
+.event-form-visual {
+	margin-top: 12px;
+	padding: 12px;
+	border: 1px solid rgba(255, 255, 255, 0.5);
+	border-radius: 16px;
+	background: rgba(255, 255, 255, 0.35);
+}
+
+.event-form-logo-preview img {
+	display: block;
+	max-height: 64px;
+	max-width: 96px;
+	border-radius: 10px;
+	border: 1px solid rgba(255, 255, 255, 0.6);
+}
+
+.event-form-logo-placeholder {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 72px;
+	min-height: 48px;
+	padding: 6px 10px;
+	border: 1px dashed rgba(167, 139, 250, 0.5);
+	border-radius: 10px;
+	font-size: 12px;
+	color: var(--muted);
+	background: rgba(255, 255, 255, 0.45);
+}
+
+.event-tree-indent {
+	display: inline-block;
+	color: #94a3b8;
+	font-family: monospace;
+	user-select: none;
+}
+
+.event-tree-name {
+	font-weight: 500;
+}
+
+/* 设备历史页 — 玻璃态聊天气泡 */
+.history-page .card {
+	max-width: 1080px;
+}
+
+.history-page h1,
+.history-page h3 {
+	margin: 0 0 12px 0;
+}
+
+.history-page .meta-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+.history-page .meta-row input,
+.history-page .meta-row select {
+	min-width: 180px;
+}
+
+.history-page #chatInput {
+	padding-top: 12px;
+	padding-bottom: 12px;
+}
+
+.history-page button.primary {
+	background: linear-gradient(135deg, rgba(236, 72, 153, 0.95), rgba(99, 102, 241, 0.95));
+	color: #fff;
+	border: none;
+	box-shadow: 0 8px 20px rgba(236, 72, 153, 0.2);
+}
+
+.history-page .chat-list {
+	max-height: 420px;
+	overflow-y: auto;
+	padding: 8px 0;
+}
+
+.history-page .msg-row {
+	display: flex;
+	margin: 8px 0;
+}
+
+.history-page .msg-row.user {
+	justify-content: flex-end;
+}
+
+.history-page .msg-row.ai {
+	justify-content: flex-start;
+}
+
+.history-page .bubble-chat {
+	max-width: 78%;
+	padding: 10px 14px;
+	border-radius: 18px;
+	line-height: 1.5;
+	font-size: 14px;
+	word-break: break-word;
+	background: rgba(255, 255, 255, 0.55);
+	border: 1px solid rgba(255, 255, 255, 0.6);
+}
+
+.history-page .msg-row.user .bubble-chat {
+	background: linear-gradient(135deg, rgba(236, 72, 153, 0.85), rgba(99, 102, 241, 0.85));
+	color: #fff;
+	border: none;
+}
+
+.history-page .toolbar {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px;
+	align-items: center;
+	margin-top: 12px;
+}
+
+.history-page .suggest-chip {
+	display: inline-block;
+	padding: 6px 12px;
+	margin: 4px 6px 4px 0;
+	border-radius: 999px;
+	background: rgba(255, 255, 255, 0.45);
+	border: 1px solid rgba(255, 255, 255, 0.55);
+	cursor: pointer;
+	font-size: 13px;
+}
+
+.history-page .suggest-chip:hover {
+	background: rgba(255, 255, 255, 0.65);
+}
+
+.history-page .scroll-max-20 {
+	max-height: min(72vh, calc(20 * 2.85rem));
+	overflow-y: auto;
+	overflow-x: auto;
+	border: 1px solid rgba(255, 255, 255, 0.5);
+	border-radius: 16px;
+	background: rgba(255, 255, 255, 0.35);
+}
+
+.history-page .scroll-max-20 thead th {
+	position: sticky;
+	top: 0;
+	z-index: 2;
+	background: rgba(255, 255, 255, 0.75);
+	box-shadow: 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+
+.history-page .suggest-item {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 10px 12px;
+	border: 1px solid rgba(255, 255, 255, 0.5);
+	border-radius: 14px;
+	margin-bottom: 10px;
+	background: rgba(255, 255, 255, 0.45);
+}
+
+.history-page .suggest-time {
+	flex-shrink: 0;
+	font-size: 12px;
+	color: var(--muted);
+	margin: 0;
+	min-width: 8.5em;
+}
+
+.history-page .suggest-item > div:last-child {
+	flex: 1;
+	min-width: 0;
+	word-break: break-word;
+}
+
+.history-page td.history-remark {
+	white-space: normal;
+	word-break: break-word;
+	max-width: 320px;
+	vertical-align: middle;
+}
+
+.history-page .section-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+}
+
+.history-page .section-head h3 {
+	margin: 0;
+}
+
+.history-page .form-grid {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 10px;
+}
+
+.history-page .form-grid .full {
+	grid-column: 1 / -1;
+}
+
+.history-page .form-grid label {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	font-size: 13px;
+	color: var(--text);
+}
+
+.history-page .required::after {
+	content: ' *';
+	color: var(--err);
+}
+
+.history-page .field-error {
+	font-size: 12px;
+	color: var(--err);
+	display: none;
+}
+
+.history-page .pagination-bar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	flex-wrap: wrap;
+	margin-top: 10px;
+}
+
+.history-page .pagination-actions {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+.history-page .btn-secondary {
+	background: rgba(255, 255, 255, 0.45);
+	color: var(--text);
+}
+
+.history-page .btn-danger {
+	background: linear-gradient(135deg, rgba(220, 38, 38, 0.92), rgba(185, 28, 28, 0.92));
+	color: #fff;
+	border: none;
+}
+
+.history-page button.primary,
+.history-page .meta-row button.primary {
+	background: linear-gradient(135deg, rgba(236, 72, 153, 0.95), rgba(99, 102, 241, 0.95));
+	color: #fff;
+	border: none;
+	box-shadow: 0 8px 20px rgba(236, 72, 153, 0.2);
+}
+
+.history-page th,
+.history-page td {
+	white-space: nowrap;
+}
+
+.history-page .form-grid input,
+.history-page .form-grid select {
+	padding: 8px 10px;
+	border: 1px solid rgba(255, 255, 255, 0.65);
+	border-radius: 12px;
+	background: rgba(255, 255, 255, 0.55);
+}

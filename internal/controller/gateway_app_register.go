@@ -31,10 +31,6 @@ func RegisterGatewayAppHTTP(s *ghttp.Server) {
 
 	RegisterAdminStaticPages(s)
 
-	s.BindHandler("/device/app/integration-test.html", func(r *ghttp.Request) {
-		r.Response.ServeFile("resource/public/gateway-app-integration-test.html")
-	})
-
 	s.BindHandler("/device/app/api/version/admin/upload", gatewayAppVersionAdminUpload)
 	s.BindHandler("/device/app/api/version/admin/list", gatewayAppVersionAdminList)
 	s.BindHandler("/device/app/api/version/admin/get", gatewayAppVersionAdminGet)

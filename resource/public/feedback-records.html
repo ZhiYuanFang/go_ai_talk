@@ -4,35 +4,21 @@
 	<meta charset="UTF-8" />
 	<meta name="viewport" content="width=device-width, initial-scale=1" />
 	<title>用户反馈 — 设备管理</title>
-	<style>
-		body{font-family:Arial,Helvetica,sans-serif;background:#f7f8fa;color:#222;margin:0;padding:24px}
-		.card{background:#fff;border-radius:12px;padding:16px;max-width:960px;margin:0 auto 16px;box-shadow:0 2px 10px rgba(0,0,0,.05)}
-		input,textarea,button{padding:10px 12px;border-radius:8px;border:1px solid #d0d7de;font-size:14px}
-		textarea{resize:vertical;min-height:72px;width:100%;box-sizing:border-box}
-		button{background:#1677ff;color:#fff;border:none;cursor:pointer}
-		button:disabled{background:#9bbcf5;cursor:not-allowed}
-		a.link-btn{display:inline-block;padding:10px 12px;border-radius:8px;font-size:14px;background:#6b7280;color:#fff;text-decoration:none;line-height:1.2}
-		a.link-btn:hover{background:#4b5563}
-		.table-wrap{overflow-x:auto;margin-top:12px}
-		table{width:max-content;min-width:100%;border-collapse:collapse}
-		th,td{border-bottom:1px solid #eee;padding:10px;text-align:left;font-size:13px;vertical-align:top}
-		td.wrapcell{white-space:normal;max-width:320px;word-break:break-word}
-		.card-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:12px}
-		.card-head h3{margin:0;font-size:1.1em;font-weight:600}
-		.card-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
-		.hidden{display:none}
-		.msg{margin-top:8px;font-size:13px}
-		.pager{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:12px;font-size:13px}
-		.pager span{color:#64748b}
-		.reply-box{margin-top:8px;display:flex;flex-direction:column;gap:8px}
-		.muted{color:#64748b;font-size:12px}
-		label.filter{display:inline-flex;align-items:center;gap:6px;font-size:13px}
-	</style>
+	<link rel="stylesheet" href="/resource/public/pangbao-theme.css" />
+	<link rel="stylesheet" href="/resource/public/admin-pages.css" />
 </head>
 <body>
-	<div class="card hidden" id="mainCard">
+<div class="page">
+	<header class="admin-header glass">
+		<div class="logo">FB</div>
+		<div>
+			<h1>用户反馈</h1>
+			<p>App 用户问题与官方回复</p>
+		</div>
+	</header>
+	<div class="card glass hidden" id="mainCard">
 		<div class="card-head">
-			<h3>用户反馈</h3>
+			<h3>反馈列表</h3>
 			<div class="card-actions">
 				<label class="filter"><input id="unrepliedOnly" type="checkbox" /> 仅未回复</label>
 				<button id="refreshBtn" type="button">刷新</button>
@@ -187,5 +173,6 @@ if(AdminCommon.requireAdmin()){
 	loadFeedbackPage(1).catch(e => setMsg(mainMsg, e.message || '加载失败'));
 }
 </script>
+</div>
 </body>
 </html>

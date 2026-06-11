@@ -13,6 +13,12 @@ window.ADMIN_MODULES = [
 		showInNav: true
 	},
 	{
+		id: 'swagger',
+		title: 'API 接口调试',
+		pagePath: '/swagger',
+		showInNav: true
+	},
+	{
 		id: 'api-usage-stats',
 		title: '功能使用统计',
 		pagePath: '/device/admin/api-usage-stats',

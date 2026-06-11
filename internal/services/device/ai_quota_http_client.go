@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -38,17 +39,44 @@ func AIQuotaHTTP() *AIQuotaHTTPClient {
 		if v := strings.TrimSpace(os.Getenv("DEVICE_SERVICE_URL")); v != "" {
 			base = strings.TrimRight(v, "/")
 		}
-		secret := strings.TrimSpace(os.Getenv("DEVICE_GATEWAY_INTERNAL_SECRET"))
-		if secret == "" {
-			secret = strings.TrimSpace(g.Cfg().MustGet(context.Background(), "deviceInternalSecret").String())
-		}
 		aiQuotaHTTPIns = &AIQuotaHTTPClient{
 			base:   base,
-			secret: secret,
+			secret: resolveAIQuotaDeviceInternalSecret(),
 			client: &http.Client{Timeout: 8 * time.Second},
 		}
 	})
 	return aiQuotaHTTPIns
+}
+
+// resolveAIQuotaDeviceInternalSecret 解析 ucg/voice 调用 device internal ai-quota 的共享密钥。
+// 优先 env；yaml 按进程配置尝试 ucg.deviceInternalSecret / gatewayApp.deviceInternalSecret（避免 MustGet 缺键 panic）。
+func resolveAIQuotaDeviceInternalSecret() string {
+	if v := strings.TrimSpace(os.Getenv("DEVICE_GATEWAY_INTERNAL_SECRET")); v != "" {
+		return v
+	}
+	ctx := context.Background()
+	for _, key := range []string{"ucg.deviceInternalSecret", "gatewayApp.deviceInternalSecret"} {
+		v, err := g.Cfg().Get(ctx, key)
+		if err != nil || v == nil || v.IsEmpty() {
+			continue
+		}
+		if s := strings.TrimSpace(v.String()); s != "" {
+			return s
+		}
+	}
+	return ""
+}
+
+// normalizeHTTPClientContext 避免 nil 或 typed-nil context 导致 NewRequestWithContext panic（ucg admin 链路曾触发）。
+func normalizeHTTPClientContext(ctx context.Context) context.Context {
+	if ctx == nil {
+		return context.Background()
+	}
+	rv := reflect.ValueOf(ctx)
+	if (rv.Kind() == reflect.Ptr || rv.Kind() == reflect.Interface) && rv.IsNil() {
+		return context.Background()
+	}
+	return ctx
 }
 
 type aiQuotaGFEnvelope struct {
@@ -58,6 +86,9 @@ type aiQuotaGFEnvelope struct {
 }
 
 func (c *AIQuotaHTTPClient) doJSON(ctx context.Context, method, path string, query map[string]string, body interface{}, out interface{}) error {
+	if c == nil {
+		return gerror.NewCode(gcode.CodeInternalError, "AIQuotaHTTP 客户端未初始化")
+	}
 	if c.base == "" {
 		return gerror.NewCode(gcode.CodeInternalError, "DEVICE_SERVICE_URL 未配置")
 	}
@@ -77,7 +108,7 @@ func (c *AIQuotaHTTPClient) doJSON(ctx context.Context, method, path string, que
 		}
 		u.RawQuery = q.Encode()
 	}
-	var bodyReader *strings.Reader
+	bodyReader := io.Reader(http.NoBody)
 	if body != nil {
 		raw, mErr := json.Marshal(body)
 		if mErr != nil {
@@ -85,7 +116,7 @@ func (c *AIQuotaHTTPClient) doJSON(ctx context.Context, method, path string, que
 		}
 		bodyReader = strings.NewReader(string(raw))
 	}
-	req, err := http.NewRequestWithContext(ctx, method, u.String(), bodyReader)
+	req, err := http.NewRequestWithContext(normalizeHTTPClientContext(ctx), method, u.String(), bodyReader)
 	if err != nil {
 		return err
 	}
