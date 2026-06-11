@@ -12,6 +12,7 @@
 ## 3. 样式
 
 - [x] 3.1 媒体格 flex 布局、视频 ▶ 角标、modal 内大图/视频尺寸（`ucg-admin.html` 或 `admin-pages.css`）
+- [x] 3.2 列表缩略图固定 48×48（`#panelPosts` 作用域 + `object-fit: cover`），表格 `table-wrap` 防撑破布局
 
 ## 4. 校验
 
