@@ -353,6 +353,10 @@ func loadPostMedia(ctx context.Context, postID uint64) ([]PostMediaDTO, error) {
 		if key != "" && m.MediaKind == 1 {
 			item.ThumbnailUrl = BuildImageThumbnailURL(key)
 		}
+		// 视频列表缩略图用 OSS 首帧截帧，避免前端用 mp4 cdnUrl 填 <img> 导致加载失败。
+		if key != "" && m.MediaKind == 2 {
+			item.ThumbnailUrl = BuildVideoSnapshotURL(key)
+		}
 		out = append(out, item)
 	}
 	return out, nil

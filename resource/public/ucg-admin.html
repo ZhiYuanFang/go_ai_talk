@@ -108,6 +108,20 @@
 		</div>
 	</div>
 
+	<div id="mediaPreviewModal" class="modal" role="dialog" aria-modal="true" aria-label="媒体预览">
+		<div class="modal-card media-preview-card">
+			<div class="media-preview-toolbar">
+				<button type="button" class="secondary" id="mediaPreviewClose">关闭</button>
+			</div>
+			<div id="mediaPreviewImageWrap" class="media-preview-body hidden">
+				<img id="mediaPreviewImage" alt="原图预览" />
+			</div>
+			<div id="mediaPreviewVideoWrap" class="media-preview-body hidden">
+				<video id="mediaPreviewVideo" controls playsinline></video>
+			</div>
+		</div>
+	</div>
+
 <script src="/resource/public/admin-common.js"></script>
 <script>
 let postsPage = 1;
@@ -145,6 +159,80 @@ function formatUnix(ts){
 function truncate(s, n){
 	const t = String(s || '');
 	return t.length > n ? t.slice(0, n) + '…' : t;
+}
+
+// 动态审查：渲染帖子全量媒体缩略图（图片/视频区分）。
+function renderMediaCell(mediaList){
+	const wrap = document.createElement('div');
+	wrap.className = 'media-grid';
+	const list = mediaList || [];
+	if(!list.length){
+		wrap.textContent = '-';
+		return wrap;
+	}
+	list.forEach(m => {
+		const kind = Number(m.mediaKind);
+		const isVideo = kind === 2;
+		const thumb = String(m.thumbnailUrl || m.cdnUrl || '').trim();
+		const full = String(m.cdnUrl || '').trim();
+		if(!thumb && !full) return;
+		const btn = document.createElement('button');
+		btn.type = 'button';
+		btn.className = 'media-thumb-btn' + (isVideo ? ' is-video' : '');
+		btn.title = isVideo ? '播放视频' : '查看原图';
+		btn.dataset.mediaKind = String(kind);
+		btn.dataset.previewUrl = full || thumb;
+		const img = document.createElement('img');
+		img.className = 'media-thumb';
+		img.src = thumb || full;
+		img.alt = '';
+		img.loading = 'lazy';
+		btn.appendChild(img);
+		if(isVideo){
+			const badge = document.createElement('span');
+			badge.className = 'media-play-badge';
+			badge.textContent = '▶';
+			btn.appendChild(badge);
+		}
+		wrap.appendChild(btn);
+	});
+	if(!wrap.children.length) wrap.textContent = '-';
+	return wrap;
+}
+
+function closeMediaPreview(){
+	const modal = document.getElementById('mediaPreviewModal');
+	const video = document.getElementById('mediaPreviewVideo');
+	video.pause();
+	video.removeAttribute('src');
+	video.load();
+	modal.classList.remove('show');
+}
+
+function openMediaPreview(kind, url){
+	url = String(url || '').trim();
+	if(!url) return;
+	const modal = document.getElementById('mediaPreviewModal');
+	const imgWrap = document.getElementById('mediaPreviewImageWrap');
+	const videoWrap = document.getElementById('mediaPreviewVideoWrap');
+	const img = document.getElementById('mediaPreviewImage');
+	const video = document.getElementById('mediaPreviewVideo');
+	video.pause();
+	video.removeAttribute('src');
+	if(Number(kind) === 2){
+		imgWrap.classList.add('hidden');
+		videoWrap.classList.remove('hidden');
+		video.src = url;
+		video.load();
+	} else {
+		videoWrap.classList.add('hidden');
+		imgWrap.classList.remove('hidden');
+		img.src = url;
+	}
+	modal.classList.add('show');
+	if(Number(kind) === 2){
+		video.play().catch(function(){});
+	}
 }
 
 function fillModelOptions(models, current){
@@ -217,8 +305,6 @@ function renderPostsTable(){
 		const rejectable = Number(row.status) !== 3;
 		const tr = document.createElement('tr');
 		const author = (row.author && row.author.nickname) ? row.author.nickname : ('wx:' + row.authorWxId);
-		const media = (row.media || [])[0];
-		const thumb = media ? (media.thumbnailUrl || media.cdnUrl) : '';
 		tr.innerHTML =
 			'<td>' + (rejectable
 				? '<input type="checkbox" class="post-row-cb" data-id="'+row.id+'"'+(selectedPostIds.has(row.id)?' checked':'')+' />'
@@ -228,7 +314,8 @@ function renderPostsTable(){
 			'<td class="content-cell">'+escapeHtml(truncate(row.content, 120))+'</td>' +
 			'<td class="'+st.cls+'">'+st.text+'</td>' +
 			'<td>'+formatUnix(row.updatedAt)+'</td>' +
-			'<td>'+(thumb ? '<img class="thumb" src="'+escapeHtml(thumb)+'" alt="" />' : '-')+'</td>';
+			'<td class="media-cell"></td>';
+		tr.querySelector('.media-cell').appendChild(renderMediaCell(row.media || []));
 		tbody.appendChild(tr);
 	});
 	tbody.querySelectorAll('.post-row-cb').forEach(cb => {
@@ -374,6 +461,22 @@ document.getElementById('postsRejectBtn').addEventListener('click', async () => 
 		showMsg(document.getElementById('postsMsg'), e.message || '驳回失败', false);
 	} finally {
 		updatePostsSelectionUI();
+	}
+});
+
+document.getElementById('postsTbody').addEventListener('click', (ev) => {
+	const btn = ev.target.closest('.media-thumb-btn');
+	if(!btn) return;
+	openMediaPreview(btn.dataset.mediaKind, btn.dataset.previewUrl);
+});
+
+document.getElementById('mediaPreviewClose').addEventListener('click', closeMediaPreview);
+document.getElementById('mediaPreviewModal').addEventListener('click', (ev) => {
+	if(ev.target.id === 'mediaPreviewModal') closeMediaPreview();
+});
+document.addEventListener('keydown', (ev) => {
+	if(ev.key === 'Escape' && document.getElementById('mediaPreviewModal').classList.contains('show')){
+		closeMediaPreview();
 	}
 });
 

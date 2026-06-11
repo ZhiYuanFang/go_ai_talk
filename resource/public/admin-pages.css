@@ -353,3 +353,87 @@
 tr.row-selected td {
 	background: rgba(255, 140, 66, 0.12);
 }
+
+/* UCG 动态审查：全量媒体缩略图与预览 modal */
+.media-cell {
+	min-width: 120px;
+	max-width: 280px;
+}
+
+.media-grid {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	align-items: flex-start;
+}
+
+.media-thumb-btn {
+	position: relative;
+	display: block;
+	padding: 0;
+	border: none;
+	background: transparent;
+	cursor: pointer;
+	border-radius: 10px;
+	line-height: 0;
+}
+
+.media-thumb-btn:focus-visible {
+	outline: 2px solid rgba(99, 102, 241, 0.85);
+	outline-offset: 2px;
+}
+
+.media-thumb {
+	width: 56px;
+	height: 56px;
+	object-fit: cover;
+	border-radius: 10px;
+	background: rgba(255, 255, 255, 0.5);
+	display: block;
+}
+
+.media-play-badge {
+	position: absolute;
+	left: 50%;
+	top: 50%;
+	transform: translate(-50%, -50%);
+	width: 26px;
+	height: 26px;
+	border-radius: 50%;
+	background: rgba(15, 23, 42, 0.55);
+	color: #fff;
+	font-size: 11px;
+	line-height: 26px;
+	text-align: center;
+	pointer-events: none;
+}
+
+.media-preview-card {
+	max-width: min(920px, 96vw);
+	width: auto;
+}
+
+.media-preview-toolbar {
+	display: flex;
+	justify-content: flex-end;
+	margin-bottom: 10px;
+}
+
+.media-preview-body {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	max-height: min(80vh, 720px);
+}
+
+.media-preview-body img,
+.media-preview-body video {
+	max-width: 100%;
+	max-height: min(80vh, 720px);
+	border-radius: 12px;
+	background: #0f172a;
+}
+
+.media-preview-body video {
+	width: 100%;
+}
