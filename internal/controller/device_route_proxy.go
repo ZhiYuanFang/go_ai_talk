@@ -35,6 +35,11 @@ func installDeviceProxyMiddleware(s *ghttp.Server) {
 			r.Middleware.Next()
 			return
 		}
+		// 运维 history API 反代至 history-service，不得误转发至 device-service。
+		if strings.HasPrefix(r.URL.Path, "/device/admin/api/history/") {
+			r.Middleware.Next()
+			return
+		}
 		// Hub 登录由 gateway-app 本机 Handler 处理，不得反代至 device-service。
 		if r.URL.Path == "/device/admin/api/login" {
 			r.Middleware.Next()

@@ -79,7 +79,7 @@ type gatewayAppAuthPrefixExcept struct {
 }
 
 var gatewayAppAuthExemptPrefixGETHEADExcept = []gatewayAppAuthPrefixExcept{
-	{Prefix: "/device/history/", ExcludePrefix: "/device/history/api/"},
+	{Prefix: "/device/admin/history/", ExcludePrefix: "/device/admin/api/"},
 	{Prefix: "/ucg/app/api/profile/", ExcludePrefix: "/ucg/app/api/profile/me"},
 }
 

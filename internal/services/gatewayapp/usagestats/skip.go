@@ -64,7 +64,11 @@ func isStaticOrShellPath(path string) bool {
 			return true
 		}
 	}
-	// 历史 HTML 壳页（非 /api/）
+	// 运维设备数据 HTML 壳页（非 API）
+	if strings.HasPrefix(path, "/device/admin/history/") && !strings.HasPrefix(path, "/device/admin/api/") {
+		return true
+	}
+	// 旧路径壳页（302 至新路径前仍可能命中统计）
 	if strings.HasPrefix(path, "/device/history/") && !strings.HasPrefix(path, "/device/history/api/") {
 		return true
 	}

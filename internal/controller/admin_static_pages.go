@@ -23,7 +23,7 @@ var adminStaticPages = []adminStaticPage{
 	{path: "/device/admin/feedback-records", file: "resource/public/feedback-records.html", noCache: true},
 	{path: "/device/admin/api-usage-stats", file: "resource/public/api-usage-stats.html", noCache: true},
 	{path: "/device/admin/ucg-admin.html", file: "resource/public/ucg-admin.html", noCache: true},
-	{path: "/device/history/*deviceNo", file: "resource/public/history.html", noCache: false},
+	{path: "/device/admin/history/*deviceNo", file: "resource/public/history.html", noCache: true},
 	{path: "/device/app/version-admin.html", file: "resource/public/gateway-app-version-admin.html", noCache: true},
 }
 
@@ -38,6 +38,31 @@ func RegisterAdminStaticPages(s *ghttp.Server) {
 			r.Response.ServeFile(page.file)
 		})
 	}
+	// 旧壳页路径 302 至 /device/admin/history/{deviceNo}，兼容书签与旧链接。
+	s.BindHandler("/device/history/*deviceNo", redirectLegacyHistoryShell)
+}
+
+// redirectLegacyHistoryShell 将 /device/history/{deviceNo} 重定向至运维新路径。
+func redirectLegacyHistoryShell(r *ghttp.Request) {
+	deviceNo := legacyHistoryDeviceNoFromPath(r.URL.Path)
+	if deviceNo == "" {
+		r.Response.RedirectTo("/device/admin", http.StatusFound)
+		return
+	}
+	r.Response.RedirectTo("/device/admin/history/"+deviceNo, http.StatusFound)
+}
+
+func legacyHistoryDeviceNoFromPath(path string) string {
+	const prefix = "/device/history/"
+	path = strings.TrimSpace(path)
+	if !strings.HasPrefix(path, prefix) {
+		return ""
+	}
+	rest := strings.Trim(strings.TrimPrefix(path, prefix), "/")
+	if rest == "" || strings.Contains(rest, "/") {
+		return ""
+	}
+	return rest
 }
 
 // installGatewayAdminRedirects 主网关：admin/history 壳页 302 至 App 网关。
@@ -48,7 +73,17 @@ func installGatewayAdminRedirects(s *ghttp.Server) {
 	}
 	s.BindHandler("/device/admin", redirect)
 	s.BindHandler("/device/admin/*", redirect)
-	s.BindHandler("/device/history/*deviceNo", redirect)
+	// 旧 history 壳页：主网关 302 至 App 网关新路径。
+	s.BindHandler("/device/history/*deviceNo", func(r *ghttp.Request) {
+		deviceNo := legacyHistoryDeviceNoFromPath(r.URL.Path)
+		if deviceNo == "" {
+			target := gatewayAdminRedirectURL(r.Context(), "/device/admin")
+			r.Response.RedirectTo(target, http.StatusFound)
+			return
+		}
+		target := gatewayAdminRedirectURL(r.Context(), "/device/admin/history/"+deviceNo)
+		r.Response.RedirectTo(target, http.StatusFound)
+	})
 }
 
 func gatewayAdminRedirectURL(ctx context.Context, path string) string {

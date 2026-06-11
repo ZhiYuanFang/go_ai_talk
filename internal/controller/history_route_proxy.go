@@ -24,7 +24,7 @@ func installHistoryProxyMiddleware(s *ghttp.Server) {
 	if proxy == nil {
 		return
 	}
-	s.BindMiddleware("/device/history/api/*", func(r *ghttp.Request) {
+	serveHistoryProxy := func(r *ghttp.Request) {
 		// 通过稳定路由键做一致性分流，确保同一设备命中同一发布策略。
 		if !shouldProxyHistoryRequest(cfg, routeKeyForHistoryRequest(r)) {
 			r.Middleware.Next()
@@ -33,7 +33,9 @@ func installHistoryProxyMiddleware(s *ghttp.Server) {
 		// 命中代理后直接短路，避免本地 handler 与下游重复处理。
 		proxy.ServeHTTP(r.Response.Writer, r.Request)
 		r.ExitAll()
-	})
+	}
+	s.BindMiddleware("/device/history/api/*", serveHistoryProxy)
+	s.BindMiddleware("/device/admin/api/history/*", serveHistoryProxy)
 }
 
 func historyProxyFromEnv() (domainRouteProxyConfig, *httputil.ReverseProxy) {

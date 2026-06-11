@@ -549,7 +549,7 @@ let deviceRecordQuery = '';
 function historyPageUrl(deviceNo){
 	const dn = String(deviceNo || '').trim();
 	if(!dn) return '#';
-	return '/device/history/' + encodeURIComponent(dn);
+	return '/device/admin/history/' + encodeURIComponent(dn);
 }
 
 async function loadDeviceRecordList(page){

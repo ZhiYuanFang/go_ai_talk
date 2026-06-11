@@ -11,7 +11,9 @@ import (
 func RegisterHistoryServiceHTTP(s *ghttp.Server) {
 	s.Use(ghttp.MiddlewareHandlerResponse)
 	s.Group("/", func(group *ghttp.RouterGroup) {
-		group.Bind(NewHistoryCtrl(history.DeviceHistory(), voice.Voice()))
+		inner := NewHistoryCtrl(history.DeviceHistory(), voice.Voice())
+		group.Bind(inner)
+		group.Bind(NewHistoryAdminCtrl(inner))
 		group.Bind(NewHistoryInternalProjectionCtrl())
 	})
 }
