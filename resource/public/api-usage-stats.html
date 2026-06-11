@@ -59,6 +59,11 @@
 					<tbody id="apiTbody"></tbody>
 				</table>
 			</div>
+			<div class="pager" id="apiPager">
+				<button id="apiPrevBtn" type="button">上一页</button>
+				<button id="apiNextBtn" type="button">下一页</button>
+				<span id="apiPagerInfo"></span>
+			</div>
 			<div id="apiDetailPanel" class="detail-panel hidden">
 				<h4 id="apiDetailTitle"></h4>
 				<div class="table-wrap">
@@ -68,6 +73,11 @@
 						</thead>
 						<tbody id="apiDetailTbody"></tbody>
 					</table>
+				</div>
+				<div class="pager" id="apiDetailPager">
+					<button id="apiDetailPrevBtn" type="button">上一页</button>
+					<button id="apiDetailNextBtn" type="button">下一页</button>
+					<span id="apiDetailPagerInfo"></span>
 				</div>
 			</div>
 		</div>
@@ -106,6 +116,11 @@
 					<tbody id="userTbody"></tbody>
 				</table>
 			</div>
+			<div class="pager" id="userApisPager">
+				<button id="userApisPrevBtn" type="button">上一页</button>
+				<button id="userApisNextBtn" type="button">下一页</button>
+				<span id="userApisPagerInfo"></span>
+			</div>
 		</div>
 	</div>
 
@@ -113,6 +128,16 @@
 <script>
 let activeTab = 'api';
 let selectedWxId = 0;
+const pageSize = 20;
+
+let apiListCache = [];
+let apiPage = 1;
+let apiDetailCache = [];
+let apiDetailPage = 1;
+let currentApiKey = '';
+let currentApiSummary = '';
+let userApisCache = [];
+let userApisPage = 1;
 
 const mainCard = document.getElementById('mainCard');
 const mainMsg = document.getElementById('mainMsg');
@@ -125,6 +150,15 @@ const userPanel = document.getElementById('userPanel');
 const apiDetailPanel = document.getElementById('apiDetailPanel');
 const apiDetailTbody = document.getElementById('apiDetailTbody');
 const apiDetailTitle = document.getElementById('apiDetailTitle');
+const apiPagerInfo = document.getElementById('apiPagerInfo');
+const apiPrevBtn = document.getElementById('apiPrevBtn');
+const apiNextBtn = document.getElementById('apiNextBtn');
+const apiDetailPagerInfo = document.getElementById('apiDetailPagerInfo');
+const apiDetailPrevBtn = document.getElementById('apiDetailPrevBtn');
+const apiDetailNextBtn = document.getElementById('apiDetailNextBtn');
+const userApisPagerInfo = document.getElementById('userApisPagerInfo');
+const userApisPrevBtn = document.getElementById('userApisPrevBtn');
+const userApisNextBtn = document.getElementById('userApisNextBtn');
 
 function setMsg(el, text, ok){
 	el.textContent = text || '';
@@ -157,11 +191,32 @@ function usageQuerySuffix(){
 
 function api(path, options={}){ return AdminCommon.adminFetch(path, options); }
 
-async function loadApiList(){
-	const d = await api('/device/admin/api/usage/list?'+usageQuerySuffix());
+function totalPages(total){
+	return Math.max(1, Math.ceil(total / pageSize));
+}
+
+function clampPage(page, total){
+	return Math.min(Math.max(1, page), totalPages(total));
+}
+
+function pageSlice(list, page){
+	const p = clampPage(page, list.length);
+	const start = (p - 1) * pageSize;
+	return { page: p, slice: list.slice(start, start + pageSize) };
+}
+
+function updatePager(infoEl, prevBtn, nextBtn, page, total){
+	const tp = totalPages(total);
+	infoEl.textContent = total ? ('第 '+ page +' / '+ tp +' 页，共 '+ total +' 条') : '暂无数据';
+	prevBtn.disabled = page <= 1;
+	nextBtn.disabled = page >= tp || total === 0;
+}
+
+function renderApiListPage(){
+	const { page, slice } = pageSlice(apiListCache, apiPage);
+	apiPage = page;
 	apiTbody.innerHTML = '';
-	apiDetailPanel.classList.add('hidden');
-	(d.list || []).forEach(it => {
+	slice.forEach(it => {
 		const tr = document.createElement('tr');
 		tr.innerHTML =
 			'<td class="wrapcell">'+ escapeHtml(it.apiKey||'') +'</td>' +
@@ -172,8 +227,49 @@ async function loadApiList(){
 		tr.querySelector('.drill-btn').addEventListener('click', () => loadApiDetail(it.apiKey, it.summary));
 		apiTbody.appendChild(tr);
 	});
-	setMsg(mainMsg, '已加载 '+ (d.list||[]).length +' 条 API', true);
-	if((d.list||[]).length === 0){
+	updatePager(apiPagerInfo, apiPrevBtn, apiNextBtn, apiPage, apiListCache.length);
+}
+
+function renderApiDetailPage(){
+	const { page, slice } = pageSlice(apiDetailCache, apiDetailPage);
+	apiDetailPage = page;
+	apiDetailTbody.innerHTML = '';
+	slice.forEach(it => {
+		const tr = document.createElement('tr');
+		tr.innerHTML =
+			'<td>'+ escapeHtml(it.wxId) +'</td>' +
+			'<td>'+ escapeHtml(it.count ?? 0) +'</td>' +
+			'<td>'+ escapeHtml(formatTime(it.lastAt)) +'</td>';
+		apiDetailTbody.appendChild(tr);
+	});
+	updatePager(apiDetailPagerInfo, apiDetailPrevBtn, apiDetailNextBtn, apiDetailPage, apiDetailCache.length);
+}
+
+function renderUserApisPage(){
+	const { page, slice } = pageSlice(userApisCache, userApisPage);
+	userApisPage = page;
+	userTbody.innerHTML = '';
+	slice.forEach(it => {
+		const tr = document.createElement('tr');
+		tr.innerHTML =
+			'<td class="wrapcell">'+ escapeHtml(it.apiKey||'') +'</td>' +
+			'<td>'+ escapeHtml(it.summary||'') +'</td>' +
+			'<td>'+ escapeHtml(it.count ?? 0) +'</td>' +
+			'<td>'+ escapeHtml(formatTime(it.lastAt)) +'</td>';
+		userTbody.appendChild(tr);
+	});
+	updatePager(userApisPagerInfo, userApisPrevBtn, userApisNextBtn, userApisPage, userApisCache.length);
+}
+
+async function loadApiList(){
+	const d = await api('/device/admin/api/usage/list?'+usageQuerySuffix());
+	apiListCache = d.list || [];
+	apiPage = 1;
+	apiDetailPanel.classList.add('hidden');
+	currentApiKey = '';
+	renderApiListPage();
+	setMsg(mainMsg, '已加载 '+ apiListCache.length +' 条 API', true);
+	if(apiListCache.length === 0){
 		setMsg(mainMsg, '暂无 API 统计（若 App 已使用：请确认 gateway-app 已部署最新版；WebSocket 不计入）', true);
 	}
 }
@@ -209,33 +305,22 @@ async function loadUserApis(wxId){
 	const id = wxId || selectedWxId;
 	if(!id){ setMsg(mainMsg, '请先选择 wx 账号'); return; }
 	const d = await api('/device/admin/api/usage/user?wxId='+encodeURIComponent(id)+'&'+usageQuerySuffix());
-	userTbody.innerHTML = '';
+	userApisCache = d.list || [];
+	userApisPage = 1;
 	userDetailTitle.textContent = 'wxId '+ id +' 的 API 调用';
-	(d.list || []).forEach(it => {
-		const tr = document.createElement('tr');
-		tr.innerHTML =
-			'<td class="wrapcell">'+ escapeHtml(it.apiKey||'') +'</td>' +
-			'<td>'+ escapeHtml(it.summary||'') +'</td>' +
-			'<td>'+ escapeHtml(it.count ?? 0) +'</td>' +
-			'<td>'+ escapeHtml(formatTime(it.lastAt)) +'</td>';
-		userTbody.appendChild(tr);
-	});
-	const n = (d.list||[]).length;
+	renderUserApisPage();
+	const n = userApisCache.length;
 	setMsg(mainMsg, n ? ('wxId '+ id +' 共 '+ n +' 个 API') : ('wxId '+ id +' 在所选时间窗口内无已登录 HTTP 调用记录'), true);
 }
 
 async function loadApiDetail(apiKey, summary){
 	const d = await api('/device/admin/api/usage/detail?apiKey='+encodeURIComponent(apiKey)+'&'+usageQuerySuffix());
+	currentApiKey = apiKey;
+	currentApiSummary = summary || '';
+	apiDetailCache = d.list || [];
+	apiDetailPage = 1;
 	apiDetailTitle.textContent = (summary || '') + ' — ' + apiKey;
-	apiDetailTbody.innerHTML = '';
-	(d.list || []).forEach(it => {
-		const tr = document.createElement('tr');
-		tr.innerHTML =
-			'<td>'+ escapeHtml(it.wxId) +'</td>' +
-			'<td>'+ escapeHtml(it.count ?? 0) +'</td>' +
-			'<td>'+ escapeHtml(formatTime(it.lastAt)) +'</td>';
-		apiDetailTbody.appendChild(tr);
-	});
+	renderApiDetailPage();
 	apiDetailPanel.classList.remove('hidden');
 }
 
@@ -275,9 +360,8 @@ document.getElementById('sortSelect').addEventListener('change', async () => {
 	try {
 		if(activeTab === 'api') {
 			await loadApiList();
-			if(!apiDetailPanel.classList.contains('hidden') && apiDetailTitle.textContent) {
-				const parts = apiDetailTitle.textContent.split(' — ');
-				if(parts.length >= 2) await loadApiDetail(parts.slice(1).join(' — '), parts[0]);
+			if(!apiDetailPanel.classList.contains('hidden') && currentApiKey) {
+				await loadApiDetail(currentApiKey, currentApiSummary);
 			}
 		} else if(selectedWxId) {
 			await loadUserApis();
@@ -286,6 +370,13 @@ document.getElementById('sortSelect').addEventListener('change', async () => {
 		setMsg(mainMsg, e.message || '加载失败');
 	}
 });
+
+apiPrevBtn.addEventListener('click', () => { apiPage--; renderApiListPage(); });
+apiNextBtn.addEventListener('click', () => { apiPage++; renderApiListPage(); });
+apiDetailPrevBtn.addEventListener('click', () => { apiDetailPage--; renderApiDetailPage(); });
+apiDetailNextBtn.addEventListener('click', () => { apiDetailPage++; renderApiDetailPage(); });
+userApisPrevBtn.addEventListener('click', () => { userApisPage--; renderUserApisPage(); });
+userApisNextBtn.addEventListener('click', () => { userApisPage++; renderUserApisPage(); });
 
 document.getElementById('tabApiBtn').addEventListener('click', () => switchTab('api'));
 document.getElementById('tabUserBtn').addEventListener('click', () => switchTab('user'));
