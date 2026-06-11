@@ -1,0 +1,36 @@
+version: "3.9"
+# 测试 Redis：单实例 standalone（非 Cluster），供 test 栈 GF_REDIS_DEFAULT_ADDRESS=redis-test:6379。
+# 项目名 go-ai-talk-redis-test，与生产 go-ai-talk-redis 隔离。
+#
+# 启动：docker compose -f manifest/docker/docker-compose.redis-standalone.test.yml up -d
+
+name: go-ai-talk-redis-test
+
+services:
+  redis-test:
+    image: redis:7.2-alpine
+    container_name: go-ai-talk-redis-test
+    mem_limit: 96m
+    cpus: "0.1"
+    command: >
+      redis-server
+      --port 6379
+      --appendonly yes
+      --protected-mode no
+      --bind 0.0.0.0
+      --maxmemory 64mb
+      --maxmemory-policy allkeys-lru
+    ports:
+      - "16379:6379"
+    volumes:
+      - redis-test-data:/data
+    networks:
+      - go-ai-talk-test-net
+
+volumes:
+  redis-test-data:
+
+networks:
+  go-ai-talk-test-net:
+    external: true
+    name: go-ai-talk-test-net

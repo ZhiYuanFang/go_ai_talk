@@ -1,0 +1,26 @@
+version: "3.9"
+# 测试微服务资源上限（2C2G survival profile）；与 microservices + microservices.test 合并使用。
+# test Redis standalone、RabbitMQ test limits 见各自 compose。
+
+services:
+  gateway:
+    mem_limit: 192m
+    cpus: "0.2"
+  gateway-app:
+    mem_limit: 192m
+    cpus: "0.2"
+  history-service:
+    mem_limit: 128m
+    cpus: "0.15"
+  voice-service:
+    mem_limit: 512m
+    cpus: "0.8"
+  device-service:
+    mem_limit: 128m
+    cpus: "0.15"
+  worker:
+    mem_limit: 128m
+    cpus: "0.15"
+  ucg-service:
+    mem_limit: 128m
+    cpus: "0.15"

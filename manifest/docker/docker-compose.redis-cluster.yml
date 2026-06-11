@@ -1,0 +1,82 @@
+version: "3.9"
+# 生产 Redis Cluster：3 主 0 从（7001–7003），与 config 三主种子一致；2G ECS survival profile。
+# 项目名 go-ai-talk-redis（与测试 redis 栈隔离）。
+#
+# 启动后初始化（仓库根目录；空 volume 才 create，见附录 Redis Cluster 验收）：
+#   docker compose -f manifest/docker/docker-compose.redis-cluster.yml exec -T redis-node-1 \
+#     redis-cli --cluster create \
+#     redis-node-1:7001 redis-node-2:7002 redis-node-3:7003 \
+#     --cluster-replicas 0 --cluster-yes
+
+name: go-ai-talk-redis
+
+x-redis-node: &redis-node-defaults
+  image: redis:7.2-alpine
+  mem_limit: 96m
+  cpus: "0.1"
+  networks: [redis-cluster-net]
+
+services:
+  redis-node-1:
+    <<: *redis-node-defaults
+    command: >
+      redis-server
+      --port 7001
+      --cluster-enabled yes
+      --cluster-config-file nodes.conf
+      --cluster-node-timeout 5000
+      --appendonly yes
+      --protected-mode no
+      --bind 0.0.0.0
+      --maxmemory 64mb
+      --maxmemory-policy allkeys-lru
+    ports:
+      - "7001:7001"
+    volumes:
+      - redis-node-1-data:/data
+
+  redis-node-2:
+    <<: *redis-node-defaults
+    command: >
+      redis-server
+      --port 7002
+      --cluster-enabled yes
+      --cluster-config-file nodes.conf
+      --cluster-node-timeout 5000
+      --appendonly yes
+      --protected-mode no
+      --bind 0.0.0.0
+      --maxmemory 64mb
+      --maxmemory-policy allkeys-lru
+    ports:
+      - "7002:7002"
+    volumes:
+      - redis-node-2-data:/data
+
+  redis-node-3:
+    <<: *redis-node-defaults
+    command: >
+      redis-server
+      --port 7003
+      --cluster-enabled yes
+      --cluster-config-file nodes.conf
+      --cluster-node-timeout 5000
+      --appendonly yes
+      --protected-mode no
+      --bind 0.0.0.0
+      --maxmemory 64mb
+      --maxmemory-policy allkeys-lru
+    ports:
+      - "7003:7003"
+    volumes:
+      - redis-node-3-data:/data
+
+volumes:
+  redis-node-1-data:
+  redis-node-2-data:
+  redis-node-3-data:
+
+networks:
+  redis-cluster-net:
+    external: true
+    name: go-ai-talk-net

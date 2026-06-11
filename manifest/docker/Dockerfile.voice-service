@@ -1,0 +1,25 @@
+FROM m.daocloud.io/docker.io/library/golang:1.23-alpine AS builder
+
+ENV GOPROXY=https://goproxy.cn,https://goproxy.io,direct
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/voice-service ./cmd/voice-service
+
+FROM m.daocloud.io/docker.io/library/alpine:3.19
+
+ENV WORKDIR=/app
+ENV GF_GCFG_FILE=manifest/config/config.voice-service.yaml
+WORKDIR ${WORKDIR}
+
+COPY --from=builder /out/voice-service ${WORKDIR}/voice-service
+COPY resource ${WORKDIR}/resource
+COPY manifest/config/config.voice-service.yaml ${WORKDIR}/manifest/config/config.voice-service.yaml
+COPY manifest/config/voice-chat.shared.yaml ${WORKDIR}/manifest/config/voice-chat.shared.yaml
+
+EXPOSE 9802
+HEALTHCHECK --interval=10s --timeout=3s --retries=6 CMD wget -q -O - http://127.0.0.1:9802/api.json > /dev/null || exit 1
+CMD ["./voice-service"]
+
