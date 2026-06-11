@@ -15,6 +15,7 @@ ENV GF_GCFG_FILE=manifest/config/config.gateway-app-server.yaml
 WORKDIR ${WORKDIR}
 
 COPY --from=builder /out/gateway-app-server ${WORKDIR}/gateway-app-server
+COPY api ${WORKDIR}/api
 COPY resource ${WORKDIR}/resource
 COPY manifest/config/config.gateway-app-server.yaml ${WORKDIR}/manifest/config/config.gateway-app-server.yaml
 

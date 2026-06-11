@@ -2,14 +2,15 @@
 package apiregistry
 
 import (
-	"os"
-	"path/filepath"
+	"io/fs"
 	"regexp"
 	"sort"
 	"strings"
 	"sync"
 
-	"github.com/gogf/gf/v2/os/gfile"
+	v1 "hello/api/v1"
+
+	"github.com/gogf/gf/v2/os/glog"
 )
 
 const unregisteredSummary = "未登记"
@@ -34,45 +35,25 @@ func Init() {
 	loadOnce.Do(loadFromAPIV1)
 }
 
+// RouteCount 返回已加载路由条数（供启动自检）。
+func RouteCount() int {
+	Init()
+	return len(routes)
+}
+
 func loadFromAPIV1() {
-	root := gfile.MainPkgPath()
-	if root == "" {
-		root = "."
-	}
-	dir := filepath.Join(root, "api", "v1")
 	byExact = make(map[string]Entry)
 	seen := make(map[string]struct{})
 
-	_ = filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info == nil || info.IsDir() || !strings.HasSuffix(path, ".go") {
+	_ = fs.WalkDir(v1.APIMetaFS, ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") {
 			return nil
 		}
-		content := gfile.GetContents(path)
-		for _, line := range strings.Split(content, "\n") {
-			line = strings.TrimSpace(line)
-			if !strings.Contains(line, "g.Meta") {
-				continue
-			}
-			m := metaTagRe.FindStringSubmatch(line)
-			if len(m) < 2 {
-				continue
-			}
-			tags := parseMetaTags(m[1])
-			p := strings.TrimSpace(tags["path"])
-			method := strings.ToUpper(strings.TrimSpace(tags["method"]))
-			summary := strings.TrimSpace(tags["summary"])
-			if p == "" || method == "" {
-				continue
-			}
-			key := method + " " + p
-			if _, ok := seen[key]; ok {
-				continue
-			}
-			seen[key] = struct{}{}
-			e := Entry{Method: method, Template: p, Summary: summary}
-			routes = append(routes, e)
-			byExact[key] = e
+		content, readErr := fs.ReadFile(v1.APIMetaFS, path)
+		if readErr != nil {
+			return nil
 		}
+		parseMetaContent(string(content), seen)
 		return nil
 	})
 
@@ -82,6 +63,38 @@ func loadFromAPIV1() {
 		}
 		return routes[i].Template < routes[j].Template
 	})
+
+	if len(routes) == 0 {
+		glog.Warning(nil, "[apiregistry] api/v1 embed 未解析到任何 g.Meta 路由，usage 统计 summary 将全部为「未登记」")
+	}
+}
+
+func parseMetaContent(content string, seen map[string]struct{}) {
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.Contains(line, "g.Meta") {
+			continue
+		}
+		m := metaTagRe.FindStringSubmatch(line)
+		if len(m) < 2 {
+			continue
+		}
+		tags := parseMetaTags(m[1])
+		p := strings.TrimSpace(tags["path"])
+		method := strings.ToUpper(strings.TrimSpace(tags["method"]))
+		summary := strings.TrimSpace(tags["summary"])
+		if p == "" || method == "" {
+			continue
+		}
+		key := method + " " + p
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		e := Entry{Method: method, Template: p, Summary: summary}
+		routes = append(routes, e)
+		byExact[key] = e
+	}
 }
 
 func parseMetaTags(raw string) map[string]string {
@@ -115,12 +128,29 @@ func Normalize(method, rawPath string) (apiKey, summary string) {
 }
 
 // SummaryOf 已知 apiKey 的 summary；未知返回「未登记」。
+// 支持模板 apiKey 与可匹配的 raw 路径（如 posts/123/like → posts/{id}/like）。
 func SummaryOf(apiKey string) string {
 	Init()
-	if e, ok := byExact[strings.TrimSpace(apiKey)]; ok {
+	apiKey = strings.TrimSpace(apiKey)
+	if e, ok := byExact[apiKey]; ok {
 		return pickSummary(e.Summary)
 	}
+	method, path, ok := splitAPIKey(apiKey)
+	if !ok {
+		return unregisteredSummary
+	}
+	if best := matchTemplate(method, path); best != nil {
+		return pickSummary(best.Summary)
+	}
 	return unregisteredSummary
+}
+
+func splitAPIKey(apiKey string) (method, path string, ok bool) {
+	i := strings.IndexByte(apiKey, ' ')
+	if i <= 0 || i >= len(apiKey)-1 {
+		return "", "", false
+	}
+	return strings.ToUpper(strings.TrimSpace(apiKey[:i])), normalizePath(apiKey[i+1:]), true
 }
 
 func pickSummary(s string) string {
