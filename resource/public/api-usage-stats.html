@@ -27,6 +27,12 @@
 						<option value="0">全部（90 天内）</option>
 					</select>
 				</label>
+				<label>排序
+					<select id="sortSelect">
+						<option value="count" selected>调用次数 ↓</option>
+						<option value="lastAt">最近调用 ↓</option>
+					</select>
+				</label>
 				<button id="refreshBtn" type="button">刷新</button>
 				<a class="link-btn" href="/device/admin">返回设备管理</a>
 			</div>
@@ -35,7 +41,7 @@
 			<button id="tabApiBtn" type="button" class="tab-btn active">按 API</button>
 			<button id="tabUserBtn" type="button" class="tab-btn">按用户</button>
 		</div>
-		<p class="hint">仅统计经 App 网关的 HTTP 2xx 成功请求。用户维度仅包含已登录账号（wxId &gt; 0）。</p>
+		<p class="hint">仅统计经 App 网关的 HTTP 2xx；不含 WebSocket。不含 token 刷新、版本检查、官网与运维发版接口；登录/注册/绑定与业务 API 均计入。用户维度仅统计 wxId &gt; 0 的已登录调用。</p>
 		<div id="mainMsg" class="msg"></div>
 
 		<div id="apiPanel">
@@ -68,10 +74,26 @@
 
 		<div id="userPanel" class="hidden">
 			<div class="card-actions">
-				<input id="wxIdInput" placeholder="输入 wxId" />
-				<button id="userSearchBtn" type="button">查询</button>
+				<input id="wxSearchInput" placeholder="搜索 wxId / 设备号 / unionid / 账号" style="min-width:220px;" />
+				<button id="wxSearchBtn" type="button">搜索</button>
 			</div>
 			<div class="table-wrap" style="margin-top:12px;">
+				<table>
+					<thead>
+						<tr>
+							<th>wxId</th>
+							<th>设备号</th>
+							<th>unionid</th>
+							<th>平台</th>
+							<th>用户名账号</th>
+						</tr>
+					</thead>
+					<tbody id="wxListTbody"></tbody>
+				</table>
+			</div>
+			<p class="hint" style="margin-top:8px;">点击 wx 账号行查看该用户的 API 调用明细</p>
+			<h4 id="userDetailTitle" style="margin:16px 0 8px;font-size:15px;color:#333;">未选择用户</h4>
+			<div class="table-wrap">
 				<table>
 					<thead>
 						<tr>
@@ -90,11 +112,14 @@
 <script src="/resource/public/admin-common.js"></script>
 <script>
 let activeTab = 'api';
+let selectedWxId = 0;
 
 const mainCard = document.getElementById('mainCard');
 const mainMsg = document.getElementById('mainMsg');
 const apiTbody = document.getElementById('apiTbody');
 const userTbody = document.getElementById('userTbody');
+const wxListTbody = document.getElementById('wxListTbody');
+const userDetailTitle = document.getElementById('userDetailTitle');
 const apiPanel = document.getElementById('apiPanel');
 const userPanel = document.getElementById('userPanel');
 const apiDetailPanel = document.getElementById('apiDetailPanel');
@@ -122,10 +147,18 @@ function daysParam(){
 	return document.getElementById('daysSelect').value;
 }
 
+function sortParam(){
+	return document.getElementById('sortSelect').value;
+}
+
+function usageQuerySuffix(){
+	return 'days='+encodeURIComponent(daysParam())+'&sortBy='+encodeURIComponent(sortParam());
+}
+
 function api(path, options={}){ return AdminCommon.adminFetch(path, options); }
 
 async function loadApiList(){
-	const d = await api('/device/admin/api/usage/list?days='+encodeURIComponent(daysParam()));
+	const d = await api('/device/admin/api/usage/list?'+usageQuerySuffix());
 	apiTbody.innerHTML = '';
 	apiDetailPanel.classList.add('hidden');
 	(d.list || []).forEach(it => {
@@ -140,10 +173,59 @@ async function loadApiList(){
 		apiTbody.appendChild(tr);
 	});
 	setMsg(mainMsg, '已加载 '+ (d.list||[]).length +' 条 API', true);
+	if((d.list||[]).length === 0){
+		setMsg(mainMsg, '暂无 API 统计（若 App 已使用：请确认 gateway-app 已部署最新版；WebSocket 不计入）', true);
+	}
+}
+
+async function loadWxList(){
+	const q = document.getElementById('wxSearchInput').value.trim();
+	const qs = 'page=1&pageSize=50' + (q ? '&q='+encodeURIComponent(q) : '');
+	const d = await api('/device/admin/api/wx/list?'+qs);
+	wxListTbody.innerHTML = '';
+	(d.list || []).forEach(it => {
+		const tr = document.createElement('tr');
+		tr.style.cursor = 'pointer';
+		if(Number(it.id) === selectedWxId) tr.classList.add('row-selected');
+		tr.innerHTML =
+			'<td>'+ escapeHtml(it.id) +'</td>' +
+			'<td>'+ escapeHtml(it.deviceNo||'') +'</td>' +
+			'<td class="wrapcell">'+ escapeHtml(it.unionid||'-') +'</td>' +
+			'<td>'+ escapeHtml(it.platform||'') +'</td>' +
+			'<td>'+ escapeHtml(it.account||'-') +'</td>';
+		tr.addEventListener('click', () => {
+			selectedWxId = Number(it.id);
+			loadWxList().catch(() => {});
+			loadUserApis(it.id).catch(e => setMsg(mainMsg, e.message || '加载失败'));
+		});
+		wxListTbody.appendChild(tr);
+	});
+	if(activeTab === 'user' && !selectedWxId){
+		setMsg(mainMsg, '已加载 '+ (d.list||[]).length +' 个 wx 账号，请点击一行查看 API 明细', true);
+	}
+}
+
+async function loadUserApis(wxId){
+	const id = wxId || selectedWxId;
+	if(!id){ setMsg(mainMsg, '请先选择 wx 账号'); return; }
+	const d = await api('/device/admin/api/usage/user?wxId='+encodeURIComponent(id)+'&'+usageQuerySuffix());
+	userTbody.innerHTML = '';
+	userDetailTitle.textContent = 'wxId '+ id +' 的 API 调用';
+	(d.list || []).forEach(it => {
+		const tr = document.createElement('tr');
+		tr.innerHTML =
+			'<td class="wrapcell">'+ escapeHtml(it.apiKey||'') +'</td>' +
+			'<td>'+ escapeHtml(it.summary||'') +'</td>' +
+			'<td>'+ escapeHtml(it.count ?? 0) +'</td>' +
+			'<td>'+ escapeHtml(formatTime(it.lastAt)) +'</td>';
+		userTbody.appendChild(tr);
+	});
+	const n = (d.list||[]).length;
+	setMsg(mainMsg, n ? ('wxId '+ id +' 共 '+ n +' 个 API') : ('wxId '+ id +' 在所选时间窗口内无已登录 HTTP 调用记录'), true);
 }
 
 async function loadApiDetail(apiKey, summary){
-	const d = await api('/device/admin/api/usage/detail?apiKey='+encodeURIComponent(apiKey)+'&days='+encodeURIComponent(daysParam()));
+	const d = await api('/device/admin/api/usage/detail?apiKey='+encodeURIComponent(apiKey)+'&'+usageQuerySuffix());
 	apiDetailTitle.textContent = (summary || '') + ' — ' + apiKey;
 	apiDetailTbody.innerHTML = '';
 	(d.list || []).forEach(it => {
@@ -157,35 +239,24 @@ async function loadApiDetail(apiKey, summary){
 	apiDetailPanel.classList.remove('hidden');
 }
 
-async function loadUserApis(){
-	const wxId = document.getElementById('wxIdInput').value.trim();
-	if(!wxId){ setMsg(mainMsg, '请输入 wxId'); return; }
-	const d = await api('/device/admin/api/usage/user?wxId='+encodeURIComponent(wxId)+'&days='+encodeURIComponent(daysParam()));
-	userTbody.innerHTML = '';
-	(d.list || []).forEach(it => {
-		const tr = document.createElement('tr');
-		tr.innerHTML =
-			'<td class="wrapcell">'+ escapeHtml(it.apiKey||'') +'</td>' +
-			'<td>'+ escapeHtml(it.summary||'') +'</td>' +
-			'<td>'+ escapeHtml(it.count ?? 0) +'</td>' +
-			'<td>'+ escapeHtml(formatTime(it.lastAt)) +'</td>';
-		userTbody.appendChild(tr);
-	});
-	setMsg(mainMsg, 'wxId '+ wxId +' 共 '+ (d.list||[]).length +' 个 API', true);
-}
-
 function switchTab(tab){
 	activeTab = tab;
 	document.getElementById('tabApiBtn').classList.toggle('active', tab === 'api');
 	document.getElementById('tabUserBtn').classList.toggle('active', tab === 'user');
 	apiPanel.classList.toggle('hidden', tab !== 'api');
 	userPanel.classList.toggle('hidden', tab !== 'user');
+	if(tab === 'user'){
+		loadWxList().catch(e => setMsg(mainMsg, e.message || '加载 wx 列表失败'));
+	}
 }
 
 document.getElementById('refreshBtn').addEventListener('click', async () => {
 	try {
 		if(activeTab === 'api') await loadApiList();
-		else await loadUserApis();
+		else {
+			await loadWxList();
+			if(selectedWxId) await loadUserApis();
+		}
 	} catch (e) {
 		setMsg(mainMsg, e.message || '刷新失败');
 	}
@@ -194,7 +265,23 @@ document.getElementById('refreshBtn').addEventListener('click', async () => {
 document.getElementById('daysSelect').addEventListener('change', async () => {
 	try {
 		if(activeTab === 'api') await loadApiList();
-		else await loadUserApis();
+		else if(selectedWxId) await loadUserApis();
+	} catch (e) {
+		setMsg(mainMsg, e.message || '加载失败');
+	}
+});
+
+document.getElementById('sortSelect').addEventListener('change', async () => {
+	try {
+		if(activeTab === 'api') {
+			await loadApiList();
+			if(!apiDetailPanel.classList.contains('hidden') && apiDetailTitle.textContent) {
+				const parts = apiDetailTitle.textContent.split(' — ');
+				if(parts.length >= 2) await loadApiDetail(parts.slice(1).join(' — '), parts[0]);
+			}
+		} else if(selectedWxId) {
+			await loadUserApis();
+		}
 	} catch (e) {
 		setMsg(mainMsg, e.message || '加载失败');
 	}
@@ -202,7 +289,7 @@ document.getElementById('daysSelect').addEventListener('change', async () => {
 
 document.getElementById('tabApiBtn').addEventListener('click', () => switchTab('api'));
 document.getElementById('tabUserBtn').addEventListener('click', () => switchTab('user'));
-document.getElementById('userSearchBtn').addEventListener('click', loadUserApis);
+document.getElementById('wxSearchBtn').addEventListener('click', () => loadWxList().catch(e => setMsg(mainMsg, e.message || '搜索失败')));
 
 if(AdminCommon.requireAdmin()){
 	mainCard.classList.remove('hidden');

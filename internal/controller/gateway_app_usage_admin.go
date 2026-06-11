@@ -40,7 +40,8 @@ func (c *GatewayAppUsageAdminCtrl) UsageList(ctx context.Context, req *v1.Device
 		return nil, err
 	}
 	queryDays := queryDaysFromReq(req.Days)
-	items, err := usagestats.ListAPIs(ctx, queryDays, summaryOf)
+	sortBy := usagestats.ParseSortBy(req.SortBy)
+	items, err := usagestats.ListAPIs(ctx, queryDays, sortBy, summaryOf)
 	if err != nil {
 		return nil, err
 	}
@@ -53,7 +54,7 @@ func (c *GatewayAppUsageAdminCtrl) UsageList(ctx context.Context, req *v1.Device
 			LastAt:  it.LastAt,
 		})
 	}
-	return &v1.DeviceAdminUsageListRes{List: list, Days: queryDays}, nil
+	return &v1.DeviceAdminUsageListRes{List: list, Days: queryDays, SortBy: sortBy}, nil
 }
 
 // UsageDetail GET /device/admin/api/usage/detail
@@ -66,7 +67,8 @@ func (c *GatewayAppUsageAdminCtrl) UsageDetail(ctx context.Context, req *v1.Devi
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "apiKey 不能为空")
 	}
 	queryDays := queryDaysFromReq(req.Days)
-	items, err := usagestats.ListUsersForAPI(ctx, queryDays, apiKey)
+	sortBy := usagestats.ParseSortBy(req.SortBy)
+	items, err := usagestats.ListUsersForAPI(ctx, queryDays, apiKey, sortBy)
 	if err != nil {
 		return nil, err
 	}
@@ -83,6 +85,7 @@ func (c *GatewayAppUsageAdminCtrl) UsageDetail(ctx context.Context, req *v1.Devi
 		Summary: summaryOf(apiKey),
 		List:    list,
 		Days:    queryDays,
+		SortBy:  sortBy,
 	}, nil
 }
 
@@ -95,7 +98,8 @@ func (c *GatewayAppUsageAdminCtrl) UsageUser(ctx context.Context, req *v1.Device
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "wxId 须为正整数")
 	}
 	queryDays := queryDaysFromReq(req.Days)
-	items, err := usagestats.ListAPIsForUser(ctx, queryDays, req.WxId, summaryOf)
+	sortBy := usagestats.ParseSortBy(req.SortBy)
+	items, err := usagestats.ListAPIsForUser(ctx, queryDays, req.WxId, sortBy, summaryOf)
 	if err != nil {
 		return nil, err
 	}
@@ -108,5 +112,5 @@ func (c *GatewayAppUsageAdminCtrl) UsageUser(ctx context.Context, req *v1.Device
 			LastAt:  it.LastAt,
 		})
 	}
-	return &v1.DeviceAdminUsageUserRes{WxId: req.WxId, List: list, Days: queryDays}, nil
+	return &v1.DeviceAdminUsageUserRes{WxId: req.WxId, List: list, Days: queryDays, SortBy: sortBy}, nil
 }

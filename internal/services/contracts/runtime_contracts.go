@@ -61,6 +61,8 @@ type DeviceAdminContract interface {
 	List(ctx context.Context) ([]entity.User, error)
 	// ListUsersPage 管理端设备分页（user 表，device_no 可模糊过滤）。
 	ListUsersPage(ctx context.Context, page, pageSize int, q string) (UserPageResult, error)
+	// ListWxPage 管理端 wx 账号分页。
+	ListWxPage(ctx context.Context, page, pageSize int, q string) (WxPageResult, error)
 	// TouchLastAPIAccess 记录设备最近一次对外 HTTP API（网关边缘或 internal 调用）。
 	TouchLastAPIAccess(ctx context.Context, deviceNo, apiPath string, atUnixSec int64) error
 	AddEvent(ctx context.Context, name string, eventType string, extraNames, color, unit, logoPath string, parentID int64) (int64, error)
@@ -114,6 +116,23 @@ type FeedbackPageResult struct {
 // UserPageResult 管理端设备分页列表（user 表权威在 device 库）。
 type UserPageResult struct {
 	List     []entity.User
+	Total    int
+	Page     int
+	PageSize int
+}
+
+// AdminWxListItem 管理端 wx 列表项（不含 password）。
+type AdminWxListItem struct {
+	Id       int64  `json:"id"`
+	DeviceNo string `json:"deviceNo"`
+	Unionid  string `json:"unionid"`
+	Platform string `json:"platform"`
+	Account  string `json:"account"`
+}
+
+// WxPageResult 管理端 wx 账号分页列表。
+type WxPageResult struct {
+	List     []AdminWxListItem
 	Total    int
 	Page     int
 	PageSize int

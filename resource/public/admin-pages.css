@@ -349,3 +349,7 @@
 	border-radius: 12px;
 	background: rgba(255, 255, 255, 0.55);
 }
+
+tr.row-selected td {
+	background: rgba(255, 140, 66, 0.12);
+}

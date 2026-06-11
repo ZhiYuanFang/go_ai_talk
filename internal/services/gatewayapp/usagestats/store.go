@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gogf/gf/v2/container/gvar"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/glog"
 )
@@ -88,8 +89,8 @@ func record(ctx context.Context, wxId int64, apiKey string, at time.Time) error 
 	return nil
 }
 
-// ListAPIs 聚合窗口内 API 频率。
-func ListAPIs(ctx context.Context, days int, summaryFn func(apiKey string) string) ([]APIListItem, error) {
+// ListAPIs 聚合窗口内 API 频率；sortBy 为 count（默认）或 lastAt。
+func ListAPIs(ctx context.Context, days int, sortBy string, summaryFn func(apiKey string) string) ([]APIListItem, error) {
 	counts := make(map[string]int64)
 	lastAt := make(map[string]int64)
 	for _, day := range dayRange(days) {
@@ -120,12 +121,12 @@ func ListAPIs(ctx context.Context, days int, summaryFn func(apiKey string) strin
 			LastAt:  lastAt[apiKey],
 		})
 	}
-	sortAPIList(out)
+	applyAPISort(out, ParseSortBy(sortBy))
 	return out, nil
 }
 
 // ListUsersForAPI 某 API 在窗口内的 wxId 分布。
-func ListUsersForAPI(ctx context.Context, days int, apiKey string) ([]UserListItem, error) {
+func ListUsersForAPI(ctx context.Context, days int, apiKey string, sortBy string) ([]UserListItem, error) {
 	apiKey = strings.TrimSpace(apiKey)
 	if apiKey == "" {
 		return nil, fmt.Errorf("apiKey 不能为空")
@@ -169,12 +170,12 @@ func ListUsersForAPI(ctx context.Context, days int, apiKey string) ([]UserListIt
 	for wxId, cnt := range counts {
 		out = append(out, UserListItem{WxId: wxId, Count: cnt, LastAt: lastAt[wxId]})
 	}
-	sortUserList(out)
+	applyUserSort(out, ParseSortBy(sortBy))
 	return out, nil
 }
 
 // ListAPIsForUser 某 wxId 在窗口内的 API 分布。
-func ListAPIsForUser(ctx context.Context, days int, wxId int64, summaryFn func(apiKey string) string) ([]UserAPIItem, error) {
+func ListAPIsForUser(ctx context.Context, days int, wxId int64, sortBy string, summaryFn func(apiKey string) string) ([]UserAPIItem, error) {
 	if wxId <= 0 {
 		return nil, fmt.Errorf("wxId 须为正整数")
 	}
@@ -208,7 +209,7 @@ func ListAPIsForUser(ctx context.Context, days int, wxId int64, summaryFn func(a
 			LastAt:  lastMap[apiKey],
 		})
 	}
-	sortUserAPIList(out)
+	applyUserAPISort(out, ParseSortBy(sortBy))
 	return out, nil
 }
 
@@ -243,6 +244,10 @@ func redisHashToMap(v interface{}) map[string]string {
 	if v == nil {
 		return out
 	}
+	// GoFrame Redis Do 返回 *gvar.Var，须 unwrap 后再解析。
+	if vv, ok := v.(*gvar.Var); ok && vv != nil {
+		return redisHashToMap(vv.Val())
+	}
 	if m, ok := v.(map[string]interface{}); ok {
 		for k, val := range m {
 			out[k] = redisString(val)
@@ -267,6 +272,9 @@ func redisHashToMap(v interface{}) map[string]string {
 }
 
 func redisString(v interface{}) string {
+	if vv, ok := v.(*gvar.Var); ok && vv != nil {
+		return redisString(vv.Val())
+	}
 	switch t := v.(type) {
 	case string:
 		return t
@@ -287,6 +295,26 @@ func sortAPIList(list []APIListItem) {
 	}
 }
 
+func sortAPIListByLastAt(list []APIListItem) {
+	for i := 0; i < len(list); i++ {
+		for j := i + 1; j < len(list); j++ {
+			if list[j].LastAt > list[i].LastAt ||
+				(list[j].LastAt == list[i].LastAt && list[j].Count > list[i].Count) ||
+				(list[j].LastAt == list[i].LastAt && list[j].Count == list[i].Count && list[j].ApiKey < list[i].ApiKey) {
+				list[i], list[j] = list[j], list[i]
+			}
+		}
+	}
+}
+
+func applyAPISort(list []APIListItem, sortBy string) {
+	if sortBy == SortByLastAt {
+		sortAPIListByLastAt(list)
+		return
+	}
+	sortAPIList(list)
+}
+
 func sortUserList(list []UserListItem) {
 	for i := 0; i < len(list); i++ {
 		for j := i + 1; j < len(list); j++ {
@@ -297,6 +325,26 @@ func sortUserList(list []UserListItem) {
 	}
 }
 
+func sortUserListByLastAt(list []UserListItem) {
+	for i := 0; i < len(list); i++ {
+		for j := i + 1; j < len(list); j++ {
+			if list[j].LastAt > list[i].LastAt ||
+				(list[j].LastAt == list[i].LastAt && list[j].Count > list[i].Count) ||
+				(list[j].LastAt == list[i].LastAt && list[j].Count == list[i].Count && list[j].WxId < list[i].WxId) {
+				list[i], list[j] = list[j], list[i]
+			}
+		}
+	}
+}
+
+func applyUserSort(list []UserListItem, sortBy string) {
+	if sortBy == SortByLastAt {
+		sortUserListByLastAt(list)
+		return
+	}
+	sortUserList(list)
+}
+
 func sortUserAPIList(list []UserAPIItem) {
 	for i := 0; i < len(list); i++ {
 		for j := i + 1; j < len(list); j++ {
@@ -305,4 +353,24 @@ func sortUserAPIList(list []UserAPIItem) {
 			}
 		}
 	}
+}
+
+func sortUserAPIListByLastAt(list []UserAPIItem) {
+	for i := 0; i < len(list); i++ {
+		for j := i + 1; j < len(list); j++ {
+			if list[j].LastAt > list[i].LastAt ||
+				(list[j].LastAt == list[i].LastAt && list[j].Count > list[i].Count) ||
+				(list[j].LastAt == list[i].LastAt && list[j].Count == list[i].Count && list[j].ApiKey < list[i].ApiKey) {
+				list[i], list[j] = list[j], list[i]
+			}
+		}
+	}
+}
+
+func applyUserAPISort(list []UserAPIItem, sortBy string) {
+	if sortBy == SortByLastAt {
+		sortUserAPIListByLastAt(list)
+		return
+	}
+	sortUserAPIList(list)
 }

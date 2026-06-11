@@ -151,6 +151,16 @@ func (c *httpDeviceAdminClient) ListUsersPage(ctx context.Context, page, pageSiz
 	return out, err
 }
 
+func (c *httpDeviceAdminClient) ListWxPage(ctx context.Context, page, pageSize int, q string) (contracts.WxPageResult, error) {
+	var out contracts.WxPageResult
+	err := c.doJSON(ctx, http.MethodGet, "/device/admin/api/wx/list", map[string]string{
+		"page":     fmt.Sprintf("%d", page),
+		"pageSize": fmt.Sprintf("%d", pageSize),
+		"q":        strings.TrimSpace(q),
+	}, nil, &out)
+	return out, err
+}
+
 func (c *httpDeviceAdminClient) TouchLastAPIAccess(ctx context.Context, deviceNo, apiPath string, atUnixSec int64) error {
 	return c.doJSON(ctx, http.MethodPost, "/device/internal/api/user/touch-api-access", nil, map[string]interface{}{
 		"deviceNo": strings.TrimSpace(deviceNo),

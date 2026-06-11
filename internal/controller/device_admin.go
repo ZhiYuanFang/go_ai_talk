@@ -75,6 +75,33 @@ func (c *AdminCtrl) UserList(ctx context.Context, req *v1.DeviceAdminUserListReq
 	}, nil
 }
 
+// WxList wx 账号分页列表。
+func (c *AdminCtrl) WxList(ctx context.Context, req *v1.DeviceAdminWxListReq) (res *v1.DeviceAdminWxListRes, err error) {
+	if err := c.requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	result, err := c.Admin.ListWxPage(ctx, req.Page, req.PageSize, req.Q)
+	if err != nil {
+		return nil, err
+	}
+	list := make([]v1.DeviceAdminWxListItem, 0, len(result.List))
+	for _, it := range result.List {
+		list = append(list, v1.DeviceAdminWxListItem{
+			Id:       it.Id,
+			DeviceNo: it.DeviceNo,
+			Unionid:  it.Unionid,
+			Platform: it.Platform,
+			Account:  it.Account,
+		})
+	}
+	return &v1.DeviceAdminWxListRes{
+		List:     list,
+		Total:    result.Total,
+		Page:     result.Page,
+		PageSize: result.PageSize,
+	}, nil
+}
+
 // List 设备列表。
 func (c *AdminCtrl) List(ctx context.Context, req *v1.DeviceAdminListReq) (res *v1.DeviceAdminListRes, err error) {
 	_ = req

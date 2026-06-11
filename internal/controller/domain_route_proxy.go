@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"hello/internal/services/gatewayapp"
+	"hello/internal/services/gatewayapp/usagestats"
 
 	"github.com/gogf/gf/v2/net/ghttp"
 )
@@ -121,6 +122,9 @@ func buildReverseProxy(target string) *httputil.ReverseProxy {
 			return nil
 		}
 		_ = gatewayapp.ApplyGatewayAppCORSHeaders(resp.Header, resp.Request.Header.Get("Origin"))
+		if resp.Request != nil {
+			usagestats.RecordHTTPRequest(resp.Request, resp.StatusCode)
+		}
 		return nil
 	}
 	return p

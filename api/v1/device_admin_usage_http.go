@@ -6,8 +6,9 @@ import "github.com/gogf/gf/v2/frame/g"
 
 // DeviceAdminUsageListReq API 频率列表。
 type DeviceAdminUsageListReq struct {
-	g.Meta `path:"/device/admin/api/usage/list" method:"get" tags:"admin" summary:"App API 使用频率列表"`
-	Days   int `json:"days" p:"days" d:"7" dc:"统计天数，默认 7；0 表示 TTL 内全部"`
+	g.Meta  `path:"/device/admin/api/usage/list" method:"get" tags:"admin" summary:"App API 使用频率列表"`
+	Days    int    `json:"days" p:"days" d:"7" dc:"统计天数，默认 7；0 表示 TTL 内全部"`
+	SortBy  string `json:"sortBy" p:"sortBy" d:"count" dc:"排序：count 调用次数（默认）| lastAt 最近调用"`
 }
 
 // DeviceAdminUsageListItem 单条 API 统计。
@@ -20,8 +21,9 @@ type DeviceAdminUsageListItem struct {
 
 // DeviceAdminUsageListRes API 列表响应。
 type DeviceAdminUsageListRes struct {
-	List []DeviceAdminUsageListItem `json:"list"`
-	Days int                        `json:"days"`
+	List   []DeviceAdminUsageListItem `json:"list"`
+	Days   int                        `json:"days"`
+	SortBy string                     `json:"sortBy"`
 }
 
 // DeviceAdminUsageDetailReq 某 API 的 wxId 调用分布。
@@ -29,6 +31,7 @@ type DeviceAdminUsageDetailReq struct {
 	g.Meta  `path:"/device/admin/api/usage/detail" method:"get" tags:"admin" summary:"App API 按接口下钻用户"`
 	ApiKey  string `json:"apiKey" p:"apiKey" v:"required" dc:"METHOD /path 归一化键"`
 	Days    int    `json:"days" p:"days" d:"7" dc:"统计天数，默认 7；0 表示 TTL 内全部"`
+	SortBy  string `json:"sortBy" p:"sortBy" d:"count" dc:"排序：count | lastAt"`
 }
 
 // DeviceAdminUsageDetailItem wxId 调用项。
@@ -44,13 +47,15 @@ type DeviceAdminUsageDetailRes struct {
 	Summary string                       `json:"summary"`
 	List    []DeviceAdminUsageDetailItem `json:"list"`
 	Days    int                          `json:"days"`
+	SortBy  string                       `json:"sortBy"`
 }
 
 // DeviceAdminUsageUserReq 某 wxId 的 API 调用分布。
 type DeviceAdminUsageUserReq struct {
 	g.Meta `path:"/device/admin/api/usage/user" method:"get" tags:"admin" summary:"App API 按用户查看调用"`
-	WxId   int64 `json:"wxId" p:"wxId" v:"required|min:1" dc:"微信用户主键"`
-	Days   int   `json:"days" p:"days" d:"7" dc:"统计天数，默认 7；0 表示 TTL 内全部"`
+	WxId   int64  `json:"wxId" p:"wxId" v:"required|min:1" dc:"微信用户主键"`
+	Days   int    `json:"days" p:"days" d:"7" dc:"统计天数，默认 7；0 表示 TTL 内全部"`
+	SortBy string `json:"sortBy" p:"sortBy" d:"count" dc:"排序：count | lastAt"`
 }
 
 // DeviceAdminUsageUserItem 用户 API 项。
@@ -63,7 +68,8 @@ type DeviceAdminUsageUserItem struct {
 
 // DeviceAdminUsageUserRes 用户视图响应。
 type DeviceAdminUsageUserRes struct {
-	WxId int64                      `json:"wxId"`
-	List []DeviceAdminUsageUserItem `json:"list"`
-	Days int                        `json:"days"`
+	WxId   int64                      `json:"wxId"`
+	List   []DeviceAdminUsageUserItem `json:"list"`
+	Days   int                        `json:"days"`
+	SortBy string                     `json:"sortBy"`
 }

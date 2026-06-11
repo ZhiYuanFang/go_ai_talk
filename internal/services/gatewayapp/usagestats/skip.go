@@ -25,6 +25,9 @@ func ShouldSkipRecord(r *ghttp.Request) bool {
 	if isStaticOrShellPath(path) {
 		return true
 	}
+	if isMaintenanceAPI(r.Method, path) {
+		return true
+	}
 	return false
 }
 

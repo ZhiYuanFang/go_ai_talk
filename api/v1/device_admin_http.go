@@ -46,6 +46,31 @@ type DeviceAdminUserListRes struct {
 	PageSize int           `json:"pageSize"`
 }
 
+// DeviceAdminWxListReq wx 账号分页列表。
+type DeviceAdminWxListReq struct {
+	g.Meta   `path:"/device/admin/api/wx/list" method:"get" tags:"admin" summary:"wx 账号分页列表"`
+	Page     int    `json:"page" p:"page" dc:"页码，从 1 开始"`
+	PageSize int    `json:"pageSize" p:"pageSize" dc:"每页条数，默认 20，最大 100"`
+	Q        string `json:"q" p:"q" dc:"id/deviceNo/unionid/account 模糊搜索"`
+}
+
+// DeviceAdminWxListItem wx 列表项（不含 password）。
+type DeviceAdminWxListItem struct {
+	Id       int64  `json:"id"`
+	DeviceNo string `json:"deviceNo"`
+	Unionid  string `json:"unionid"`
+	Platform string `json:"platform"`
+	Account  string `json:"account"`
+}
+
+// DeviceAdminWxListRes wx 账号分页响应。
+type DeviceAdminWxListRes struct {
+	List     []DeviceAdminWxListItem `json:"list"`
+	Total    int           `json:"total"`
+	Page     int           `json:"page"`
+	PageSize int           `json:"pageSize"`
+}
+
 // DeviceAdminEventListReq 事件字典列表。
 type DeviceAdminEventListReq struct {
 	g.Meta `path:"/device/admin/api/event/list" method:"get" tags:"admin" summary:"事件列表"`
