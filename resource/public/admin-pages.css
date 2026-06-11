@@ -356,7 +356,7 @@ tr.row-selected td {
 
 /* UCG 动态审查：九宫格缩略图 + 行间分割线 + 预览 modal */
 #panelPosts #postsTbody tr {
-	border-bottom: 1px solid rgba(148, 163, 184, 0.38);
+	border-bottom: 1px dashed rgba(160, 170, 185, 0.801);
 }
 
 #panelPosts #postsTbody tr:last-child {
