@@ -13,6 +13,8 @@
 
 - [x] 3.1 媒体格 flex 布局、视频 ▶ 角标、modal 内大图/视频尺寸（`ucg-admin.html` 或 `admin-pages.css`）
 - [x] 3.2 列表缩略图固定 48×48（`#panelPosts` 作用域 + `object-fit: cover`），表格 `table-wrap` 防撑破布局
+- [x] 3.3 媒体列 3×3 九宫格（最多 9 张），行间浅灰分割线
+- [x] 3.4 视频预览：modal 可见后再 load；`<source>` + 错误提示，修复黑屏
 
 ## 4. 校验
 

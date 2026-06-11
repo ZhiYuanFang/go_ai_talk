@@ -119,7 +119,8 @@
 				<img id="mediaPreviewImage" alt="原图预览" />
 			</div>
 			<div id="mediaPreviewVideoWrap" class="media-preview-body hidden">
-				<video id="mediaPreviewVideo" controls playsinline></video>
+				<video id="mediaPreviewVideo" controls playsinline preload="metadata"></video>
+				<p id="mediaPreviewVideoErr" class="media-preview-err hidden"></p>
 			</div>
 		</div>
 	</div>
@@ -163,11 +164,11 @@ function truncate(s, n){
 	return t.length > n ? t.slice(0, n) + '…' : t;
 }
 
-// 动态审查：渲染帖子全量媒体缩略图（图片/视频区分）。
+// 动态审查：最多 9 格缩略图（3×3 九宫格），超出不再堆叠占位。
 function renderMediaCell(mediaList){
 	const wrap = document.createElement('div');
 	wrap.className = 'media-grid';
-	const list = mediaList || [];
+	const list = (mediaList || []).slice(0, 9);
 	if(!list.length){
 		wrap.textContent = '-';
 		return wrap;
@@ -199,16 +200,51 @@ function renderMediaCell(mediaList){
 		wrap.appendChild(btn);
 	});
 	if(!wrap.children.length) wrap.textContent = '-';
+	else if((mediaList || []).length > 9){
+		const more = document.createElement('span');
+		more.className = 'media-grid-more';
+		more.textContent = '+' + ((mediaList || []).length - 9);
+		wrap.appendChild(more);
+	}
 	return wrap;
+}
+
+function guessVideoMime(url){
+	const base = String(url || '').toLowerCase().split('?')[0];
+	if(base.endsWith('.mov')) return 'video/quicktime';
+	if(base.endsWith('.webm')) return 'video/webm';
+	return 'video/mp4';
+}
+
+function resetPreviewVideo(video){
+	if(!video) return;
+	video.pause();
+	video.onerror = null;
+	video.removeAttribute('src');
+	while(video.firstChild) video.removeChild(video.firstChild);
+	video.load();
+}
+
+function setVideoPreviewError(msg){
+	const el = document.getElementById('mediaPreviewVideoErr');
+	if(!el) return;
+	if(msg){
+		el.textContent = msg;
+		el.classList.remove('hidden');
+	} else {
+		el.textContent = '';
+		el.classList.add('hidden');
+	}
 }
 
 function closeMediaPreview(){
 	const modal = document.getElementById('mediaPreviewModal');
-	const video = document.getElementById('mediaPreviewVideo');
-	video.pause();
-	video.removeAttribute('src');
-	video.load();
+	resetPreviewVideo(document.getElementById('mediaPreviewVideo'));
+	setVideoPreviewError('');
 	modal.classList.remove('show');
+	document.getElementById('mediaPreviewImageWrap').classList.add('hidden');
+	document.getElementById('mediaPreviewVideoWrap').classList.add('hidden');
+	document.getElementById('mediaPreviewImage').removeAttribute('src');
 }
 
 function openMediaPreview(kind, url){
@@ -219,21 +255,27 @@ function openMediaPreview(kind, url){
 	const videoWrap = document.getElementById('mediaPreviewVideoWrap');
 	const img = document.getElementById('mediaPreviewImage');
 	const video = document.getElementById('mediaPreviewVideo');
-	video.pause();
-	video.removeAttribute('src');
+	resetPreviewVideo(video);
+	setVideoPreviewError('');
+	// 先展示 modal，再在可见 DOM 内加载视频，避免 display:none 时 decode 黑屏。
+	modal.classList.add('show');
 	if(Number(kind) === 2){
 		imgWrap.classList.add('hidden');
 		videoWrap.classList.remove('hidden');
-		video.src = url;
-		video.load();
+		requestAnimationFrame(function(){
+			const source = document.createElement('source');
+			source.src = url;
+			source.type = guessVideoMime(url);
+			video.appendChild(source);
+			video.onerror = function(){
+				setVideoPreviewError('视频无法播放，请检查 CDN 或编码格式（建议 H.264 mp4）');
+			};
+			video.load();
+		});
 	} else {
 		videoWrap.classList.add('hidden');
 		imgWrap.classList.remove('hidden');
 		img.src = url;
-	}
-	modal.classList.add('show');
-	if(Number(kind) === 2){
-		video.play().catch(function(){});
 	}
 }
 
