@@ -249,27 +249,51 @@ func AddComment(ctx context.Context, wxID int64, postID uint64, content string) 
 	return dto, nil
 }
 
-// ListComments 评论分页。
-func ListComments(ctx context.Context, postID uint64, page, pageSize int) (*PageResult, error) {
+// ListComments 单次返回帖子下评论全量（created_at 升序）；profile 批量 IN 查询，总数取自帖子 comment_count。
+func ListComments(ctx context.Context, postID uint64) (*CommentsListResult, error) {
 	if postID == 0 {
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "postId 无效")
 	}
-	p := NormalizePage(page, pageSize)
-	model := dao.UcgPostComment.Ctx(ctx).Where(dao.UcgPostComment.Columns().PostId, postID)
-	total, err := model.Count()
+	post, err := loadPublishedPost(ctx, postID)
 	if err != nil {
 		return nil, err
 	}
-	rows, err := model.OrderAsc(dao.UcgPostComment.Columns().CreatedAt).Limit(p.PageSize).Offset(pageOffset(p)).All()
+	commentCount := int(post.CommentCount)
+	cap := commentsListMax(ctx)
+
+	model := dao.UcgPostComment.Ctx(ctx).
+		Where(dao.UcgPostComment.Columns().PostId, postID).
+		OrderAsc(dao.UcgPostComment.Columns().CreatedAt)
+	if cap > 0 {
+		model = model.Limit(cap)
+	}
+	rows, err := model.All()
 	if err != nil {
 		return nil, err
 	}
-	list := make([]*CommentDTO, 0, len(rows))
+
+	authorIDs := make([]uint64, 0, len(rows))
+	seenAuthor := make(map[uint64]struct{}, len(rows))
+	comments := make([]entity.UcgPostComment, 0, len(rows))
 	for _, row := range rows {
 		var c entity.UcgPostComment
 		if err = row.Struct(&c); err != nil {
 			return nil, err
 		}
+		comments = append(comments, c)
+		if _, ok := seenAuthor[c.AuthorWxId]; !ok {
+			seenAuthor[c.AuthorWxId] = struct{}{}
+			authorIDs = append(authorIDs, c.AuthorWxId)
+		}
+	}
+
+	profileMap, err := GetPublicProfilesByWxIDs(ctx, authorIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	list := make([]*CommentDTO, 0, len(comments))
+	for _, c := range comments {
 		dto := &CommentDTO{
 			Id:         c.Id,
 			PostId:     c.PostId,
@@ -277,12 +301,18 @@ func ListComments(ctx context.Context, postID uint64, page, pageSize int) (*Page
 			Content:    c.Content,
 			CreatedAt:  c.CreatedAt,
 		}
-		if prof, pErr := GetPublicProfile(ctx, c.AuthorWxId); pErr == nil {
+		if prof := profileMap[c.AuthorWxId]; prof != nil {
 			dto.Author = prof
 		}
 		list = append(list, dto)
 	}
-	return &PageResult{List: list, Total: total, Page: p.Page, PageSize: p.PageSize}, nil
+
+	total := commentCount
+	if total <= 0 {
+		total = len(list)
+	}
+	truncated := cap > 0 && commentCount > cap
+	return &CommentsListResult{List: list, Total: total, Truncated: truncated}, nil
 }
 
 // DeleteComment 删除自己的评论。
@@ -311,19 +341,34 @@ func DeleteComment(ctx context.Context, wxID int64, commentID uint64) error {
 }
 
 func ensurePublishedPost(ctx context.Context, postID uint64) error {
+	_, err := loadPublishedPost(ctx, postID)
+	return err
+}
+
+// loadPublishedPost 读取已发布帖子行（含 comment_count，供评论列表避免额外 COUNT）。
+func loadPublishedPost(ctx context.Context, postID uint64) (*entity.UcgPost, error) {
 	row, err := dao.UcgPost.Ctx(ctx).Where(dao.UcgPost.Columns().Id, postID).One()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if row.IsEmpty() {
-		return gerror.NewCode(gcode.CodeNotFound, "帖子不存在")
+		return nil, gerror.NewCode(gcode.CodeNotFound, "帖子不存在")
 	}
 	var post entity.UcgPost
 	if err = row.Struct(&post); err != nil {
-		return err
+		return nil, err
 	}
 	if post.Status != PostStatusPublished {
-		return gerror.NewCode(gcode.CodeInvalidParameter, "帖子未发布")
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "帖子未发布")
 	}
-	return nil
+	return &post, nil
+}
+
+// commentsListMax 评论列表硬上限；配置 ucg.comments.listMax，默认 500，0 表示不限制。
+func commentsListMax(ctx context.Context) int {
+	v := g.Cfg().MustGet(ctx, "ucg.comments.listMax")
+	if v.IsNil() || v.IsEmpty() {
+		return 500
+	}
+	return v.Int()
 }

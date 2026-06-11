@@ -279,10 +279,8 @@ type UcgLikesPageRes struct {
 }
 
 type UcgPostCommentsGetReq struct {
-	g.Meta   `path:"/ucg/app/api/posts/{id}/comments" method:"get" tags:"ucg" summary:"评论列表"`
-	Id       uint64 `json:"id" in:"path" v:"required|min:1"`
-	Page     int    `json:"page" in:"query" d:"1"`
-	PageSize int    `json:"pageSize" in:"query" d:"20"`
+	g.Meta `path:"/ucg/app/api/posts/{id}/comments" method:"get" tags:"ucg" summary:"评论列表"`
+	Id     uint64 `json:"id" in:"path" v:"required|min:1"`
 }
 
 type UcgPostCommentPostReq struct {
@@ -305,11 +303,10 @@ type UcgCommentItem struct {
 	Author     *UcgProfileRes `json:"author,omitempty"`
 }
 
-type UcgCommentsPageRes struct {
-	List     []UcgCommentItem `json:"list"`
-	Total    int              `json:"total"`
-	Page     int              `json:"page"`
-	PageSize int              `json:"pageSize"`
+type UcgCommentsListRes struct {
+	List      []UcgCommentItem `json:"list"`
+	Total     int              `json:"total"`
+	Truncated bool             `json:"truncated"`
 }
 
 type UcgCommentDeleteReq struct {

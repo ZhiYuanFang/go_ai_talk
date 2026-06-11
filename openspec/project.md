@@ -62,6 +62,7 @@
 - 评审检查项必须包含“是否存在 `hello/internal/service` 旧导入路径”与“`internal/service` 是否新增实现文件”两项硬性检查。
 - 评审检查项必须包含“运行文档是否同步更新”检查：凡涉及运行/发布/DAO 边界变更，必须同时更新 `docs/runbooks/dao-sync-by-domain.md` 与 `docs/runbooks/release-deploy-and-run.md`；若涉及**新进程或新库连接**，还须核对 **`manifest/docker/.env.example`** 与相关 **`manifest/config/config.*.yaml`** 顶部说明是否已包含对应 **`*_DB_LINK` / `APP_DB_LINK`** 约定（见上文「数据库连接与部署实例约定」）。
 - 评审检查项必须包含“是否引用并遵循 **`openspec/specs/v2.0.3/spec.md`** 基线”检查：涉及行为变更时必须可追溯到对应 Requirement/Scenario。
+- 评审检查项必须包含“**Redis 读缓存**”检查：涉及新读路径或 Redis 键变更时，是否已在 proposal/design 完成收益率评估、负责人确认结论，且实现与 design 一致（见「Redis 读缓存约定」）。
 - 在没有特别要求的情况下，不用生成关于当前变更需求的md文件。当有要求生成文档时，文档必须在`docs/`文件夹内生成md文件，不要生成到`docs/runbooks/`
 
 ### App API 使用统计约定（强制）
@@ -71,6 +72,22 @@
 - **用户确认「统计」**：确保 `api/v1` 已登记 `path`/`method`/`summary`（供 apiregistry 归一化与中文展示）；**不得**写入 `internal/services/gatewayapp/usagestats/maintenance_skip.go`。
 - **用户确认「不统计」**（维护型/探测型/运维型，如 token 刷新、版本探测）：在 **`maintenance_skip.go`** 增加精确 `METHOD + path` 或 path 前缀，并在变更 **proposal/tasks** 中列出排除项。
 - **proposal / tasks 检查项**：若变更新增 App HTTP 路由，MUST 包含一条「已与负责人确认是否计入 usage 统计」及结论（统计 / 不统计 + denylist 变更说明）。
+
+### Redis 读缓存约定（强制）
+
+- **默认立场**：业务数据以 **MySQL 为唯一权威**；Redis 用于读加速、临时态、纯统计或幂等等场景，**不是**新读路径的默认依赖。worker outbox 在独立 MySQL 库，不属于读缓存范畴。
+- **新引入 Redis 读缓存时 MUST 经负责人确认**：变更新增或改造读路径，且拟引入**新的** Redis 键空间、缓存粒度或整页/列表 JSON 快照时，**AI 在 propose / apply 阶段 MUST 向产品负责人完成收益率评估并确认**；未获明确答复前 **MUST NOT** 擅自加 Redis 键、TTL 或失效逻辑。
+- **负责人已确认「加 Redis」时 MUST 实现**：proposal/design/tasks 已记录确认结论（含键语义、TTL、失效方式）的，**实现阶段不得**以「默认不用 Redis」为由省略；与 usage 统计约定同理，约束是双向的。
+- **proposal / design 收益率评估（新 Redis 读缓存时）**须简要覆盖：
+  - **读特征**：是否热路径、读多写少程度（可估 QPS / P99）
+  - **共享度**：全站共享 vs 按用户/设备/分页/viewer 个性化
+  - **失效复杂度**：写操作触发点、整表重建 vs 细粒度 patch、跨服务共用键语义是否一致
+  - **替代方案**：索引、批量查询、SQL 优化是否应先做
+  - **建议结论**：加 / 不加 / 延后（及理由）
+- **可沿用既有模式、design 说明即可（免重复询问）**：与现有 **`internal/platform/cachekit`** 读模型（如 event/action options、history list + patch + version）、gateway refresh token、voice session、usage 统计、UCG 聊天 LIST 等**同族**的扩展；**但**须在 design 中写明沿用哪一模式，且 **Redis 内持久化格式须与 device/history 约定一致**（如 objectKey vs CDN URL 边界映射，见 event logo 教训）。
+- **倾向不加 Redis（须强理由 + 负责人确认才可加）**：分页列表（page/filter 组合多）、强个性化（如 `likedByMe`、关注 Feed）、写多读变/审核态频繁、整页 PostDTO 级大 JSON 缓存。
+- **倾向可考虑 Redis（仍须负责人确认或 proposal 已写明）**：小体积全站字典、设备维度热读且失效清晰、短 TTL 限流/幂等、会话与 token、纯统计类数据。
+- **proposal / tasks 检查项**：若变更新增或改造读路径且涉及 Redis，MUST 包含「已与负责人确认 Redis 策略」及结论（不加 / 沿用既有模式 / 加哪一层 + TTL + 失效）；若 design 已确认加 Redis，tasks 须含对应实现项且不得遗漏。
 
 ## 外部依赖
 - Redis

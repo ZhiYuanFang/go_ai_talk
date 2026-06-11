@@ -129,6 +129,64 @@ func UpdateMyProfile(ctx context.Context, wxID int64, nickname, avatarKey, bio s
 	return mergeProfileForAuthor(ctx, p)
 }
 
+// GetPublicProfilesByWxIDs 批量公开 profile；语义与 GetPublicProfile 一致，合并 ucg_profile 与 IP 属地 IO。
+// 无 profile 行的 wxId 不出现在返回 map 中，列表填充 author 时与单条 GetPublicProfile 失败一样省略 author。
+func GetPublicProfilesByWxIDs(ctx context.Context, wxIDs []uint64) (map[uint64]*ProfileDTO, error) {
+	out := make(map[uint64]*ProfileDTO)
+	if len(wxIDs) == 0 {
+		return out, nil
+	}
+	unique := make([]uint64, 0, len(wxIDs))
+	seen := make(map[uint64]struct{}, len(wxIDs))
+	for _, id := range wxIDs {
+		if id == 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		unique = append(unique, id)
+	}
+	if len(unique) == 0 {
+		return out, nil
+	}
+	rows, err := dao.UcgProfile.Ctx(ctx).WhereIn(dao.UcgProfile.Columns().WxId, unique).All()
+	if err != nil {
+		return nil, err
+	}
+	profiles := make([]entity.UcgProfile, 0, len(rows))
+	for _, row := range rows {
+		var p entity.UcgProfile
+		if err = row.Struct(&p); err != nil {
+			return nil, err
+		}
+		if err = refreshDefaultNicknameIfNeeded(ctx, int64(p.WxId), &p); err != nil {
+			g.Log().Warningf(ctx, "[ucg-profile] 批量刷新默认昵称失败 wxId=%d err=%v", p.WxId, err)
+		}
+		profiles = append(profiles, p)
+	}
+	locWxIDs := make([]int64, 0, len(profiles))
+	for _, p := range profiles {
+		locWxIDs = append(locWxIDs, int64(p.WxId))
+	}
+	locMap, locErr := IpLocationForWxIDs(ctx, locWxIDs)
+	if locErr != nil {
+		g.Log().Warningf(ctx, "[ucg-profile] 批量读取 IP 属地失败 err=%v", locErr)
+		locMap = nil
+	}
+	for _, p := range profiles {
+		dto := profileToDTO(p)
+		if locMap != nil {
+			if loc, ok := locMap[int64(p.WxId)]; ok {
+				dto.IpLocation = loc
+			}
+		}
+		out[p.WxId] = dto
+	}
+	return out, nil
+}
+
 // GetPublicProfile 公开 profile（不含敏感字段）。
 func GetPublicProfile(ctx context.Context, wxID uint64) (*ProfileDTO, error) {
 	row, err := dao.UcgProfile.Ctx(ctx).Where(dao.UcgProfile.Columns().WxId, wxID).One()

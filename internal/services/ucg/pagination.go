@@ -14,6 +14,13 @@ type PageResult struct {
 	PageSize int         `json:"pageSize"`
 }
 
+// CommentsListResult 评论全量列表出参（非分页；超长帖可能 truncated）。
+type CommentsListResult struct {
+	List      []*CommentDTO `json:"list"`
+	Total     int           `json:"total"`
+	Truncated bool          `json:"truncated"`
+}
+
 const (
 	defaultPageSize = 20
 	maxPageSize     = 50

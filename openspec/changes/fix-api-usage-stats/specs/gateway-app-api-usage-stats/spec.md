@@ -2,12 +2,22 @@
 
 ### Requirement: gateway-app SHALL record successful App HTTP API usage after response
 
-`gateway-app-server` MUST 在 HTTP 响应确定后（状态码已写入客户端方向）评估是否写入使用统计。实现 MUST 覆盖经领域反代（device/ucg/history/voice）短路 `ExitAll` 的路径，不得仅依赖 `BindMiddleware("/*")` 在 `Next()` 之后记录。仅当响应状态码满足 `200 <= status < 300` 时 SHALL 计数一次。统计路径 MUST 为归一化后的 `METHOD /path`（不含 query）。下列请求 MUST NOT 写入统计：WebSocket 升级、`/device/internal/` 前缀、`/device/admin/api/` 前缀（含本变更读 API 自身）、静态资源与 HTML 壳页，以及维护型 App API（`POST /device/app/api/token/refresh`、`GET /device/app/api/version/check`、`GET /device/app/api/site/home`、`/device/app/api/version/admin/*` 前缀）。登录、注册、绑定与各业务 App API SHALL 继续计入。写入 MUST 异步执行且 SHALL NOT 阻塞或改变业务响应。
+`gateway-app-server` MUST 在 HTTP 响应确定后（状态码已写入客户端方向）评估是否写入使用统计。实现 MUST 覆盖经领域反代（device/ucg/history/voice）短路 `ExitAll` 的路径，不得仅依赖 `BindMiddleware("/*")` 在 `Next()` 之后记录。仅当响应状态码满足 `200 <= status < 300` 时 SHALL 计数一次。统计路径 MUST 为归一化后的 `METHOD /path`（不含 query）。下列请求 MUST NOT 写入统计：WebSocket 升级、`/device/internal/` 前缀、`/device/admin/api/` 前缀（含本变更读 API 自身）、静态资源与 HTML 壳页，以及维护型 App API（`POST /device/app/api/token/refresh`、`GET /device/app/api/version/check`、`GET /device/app/api/site/home`、`/device/app/api/version/admin/*` 前缀、**`GET /ucg/app/api/posts/{id}/comments`**）。登录、注册、绑定、POST 评论与各业务 App API SHALL 继续计入。写入 MUST 异步执行且 SHALL NOT 阻塞或改变业务响应。
 
 #### Scenario: token 刷新不计入
 
 - **WHEN** 经 gateway-app 的 `POST /device/app/api/token/refresh` 返回 HTTP 200
 - **THEN** 系统 SHALL NOT 增加该 apiKey 的统计计数
+
+#### Scenario: GET 评论列表不计入
+
+- **WHEN** 经 gateway-app 的 `GET /ucg/app/api/posts/123/comments` 返回 HTTP 200
+- **THEN** 系统 SHALL NOT 增加该 apiKey 的统计计数
+
+#### Scenario: POST 评论仍计入
+
+- **WHEN** 经 gateway-app 的 `POST /ucg/app/api/posts/123/comments` 返回 HTTP 200
+- **THEN** 对应 apiKey 的全局日计数 SHALL 增加 1
 
 #### Scenario: 登录 API 仍计入
 
@@ -36,12 +46,17 @@
 
 ### Requirement: Admin usage list API SHALL return API frequency for a time window
 
-`GET /device/admin/api/usage/list` MUST 要求有效 **Admin JWT**（`Authorization: Bearer`，`aud=gateway-admin`）。查询参数 `days` 默认 `7`；`days=0` 表示聚合 TTL 内全部日桶。响应 MUST 包含 `list` 数组，每项至少含 `apiKey`、`summary`、`count`（窗口内合计）、`lastAt`（Unix 秒）。查询参数 `sortBy` 默认 `count`；`sortBy=lastAt` 时列表 SHALL 按 `lastAt` 降序，否则 SHALL 按 `count` 降序。当 Redis 日桶 Hash 中存在 field 时，读路径 MUST 正确解析 GoFrame Redis 返回值并 SHALL NOT 因类型解析失败返回空列表。
+`GET /device/admin/api/usage/list` MUST 要求有效 **Admin JWT**（`Authorization: Bearer`，`aud=gateway-admin`）。查询参数 `days` 默认 `7`；`days=0` 表示聚合 TTL 内全部日桶。响应 MUST 包含 `list` 数组，每项至少含 `apiKey`、`summary`、`count`（窗口内合计）、`lastAt`（Unix 秒）。查询参数 `sortBy` 默认 `count`；`sortBy=lastAt` 时列表 SHALL 按 `lastAt` 降序，否则 SHALL 按 `count` 降序。当 Redis 日桶 Hash 中存在 field 时，读路径 MUST 正确解析 GoFrame Redis 返回值（含 `HGETALL` 经 adapter 转为 flat `[]string` 的情形）并 SHALL NOT 因类型解析失败返回空列表。
 
 #### Scenario: Redis 有数据时列表非空
 
 - **WHEN** Redis 键 `gw:usage:d:{today}:g` 的 Hash 含至少一个 apiKey field，且管理员携带有效 Admin JWT 请求 `days=7`
 - **THEN** 响应 `list` SHALL 包含对应 apiKey 且 `count > 0`
+
+#### Scenario: GoFrame HGETALL flat []string 可读
+
+- **WHEN** `g.Redis().Do("HGETALL", key)` 返回的 `*gvar.Var` 经 adapter 内部表示为 flat `[]string`（非 map）
+- **THEN** `ListAPIs` 等读路径 SHALL 仍正确聚合 field 与计数，SHALL NOT 返回空 `list`
 
 #### Scenario: 默认近 7 天
 

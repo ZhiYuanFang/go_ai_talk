@@ -27,3 +27,8 @@
 ## App API 使用统计（OpenSpec / 实现强制）
 - 新增经 **gateway-app** 对外的 **App HTTP 接口**时，**必须先向负责人询问是否计入 usage 统计**；未获明确答复前不得修改 `usagestats/maintenance_skip.go` 或假定统计策略。
 - 细则见 **`openspec/project.md`**「App API 使用统计约定」；维护型排除列表在 **`internal/services/gatewayapp/usagestats/maintenance_skip.go`**。
+
+## Redis 读缓存（OpenSpec / 实现强制）
+- 新增或改造业务读路径时，**不得默认引入 Redis**；拟引入**新的** Redis 读缓存须先做收益率评估并**向负责人确认**；**负责人已确认要加的，实现阶段不得省略**。
+- 沿用 **`cachekit`** 等同族既有模式时，在 design 说明即可；Redis 持久化格式与 HTTP 边界映射须与现有约定一致。
+- 细则见 **`openspec/project.md`**「Redis 读缓存约定」。

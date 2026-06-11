@@ -1,8 +1,8 @@
 ## Context
 
 - 统计写入：`installGatewayAppAPIUsageStatsMiddleware` 在 `BindMiddleware("/*")` 中 `Next()` 之后记录；GoFrame 将更具体路径的反代中间件排在 `/*` 之前，反代 handler 直接 `ServeHTTP` + `ExitAll()` 不调用 `Next()`，导致 `usage_stats` 中间件永不执行。
-- 统计读取：`g.Redis().Do("HGETALL")` 返回 `*gvar.Var`，`redisHashToMap` 未 unwrap，始终返回空 map。
-- 已验证 test Redis：`gw:usage:d:20260611:g` 含 5 条网关本机 API，页面仍为 0。
+- 统计读取（初版）：`g.Redis().Do("HGETALL")` 返回 `*gvar.Var`，`redisHashToMap` 未 unwrap，始终返回空 map。
+- **补刀复现（test）**：写入已正常（`gw:usage:d:20260611:g`、`w:15` 等存在）；初版 unwrap 后 `Val()` 为 flat **`[]string`**（GoFrame `redis_conn.resultToVar` 对 `[]interface{}` 调用 `gconv.Strings`），`redisHashToMap` 只处理 `[]interface{}`，仍返回空 map，页面与 list API 均为 0 条。
 
 ## Goals / Non-Goals
 
@@ -26,13 +26,21 @@
 - **本机 Handler**：保留 `BindMiddleware("/*")` 在 `Next()` 之后调用 `RecordGHTTPRequest`
 - 两处共用 `ShouldSkip*` 与 `RecordAsync`，避免重复计数（反代不经过 middleware 的 Next 回写路径）
 
-### 2. 读取：统一 `redisHashToMap` 支持 `*gvar.Var`
+### 2. 读取：`HGETALL` 优先 `MapStrStr()`（补刀）
 
-对 `*gvar.Var` 调用 `.MapStrStr()` 或 `.Val()` 再递归解析；`HGET` 单值用 `.String()`。
+GoFrame Redis 测试用例对 `HGETALL` 使用 `r.MapStrStr()`；`gconv.MapStrStr` 可将 flat `[]string`（`k1,v1,k2,v2`）转为 map。
+
+- **`redisHashToMap`**：若入参为 `*gvar.Var`，**优先** `vv.MapStrStr()`；非空则直接返回
+- 保留现有 `map[string]string` / `map[string]interface{}` / `[]interface{}` fallback，兼容其它返回形态
+- **`HGET` 单值**：继续 `redisString`（含 `*gvar.Var` unwrap），不改动写入路径
+
+**不再依赖**「unwrap 后手写解析 `[]string`」——避免与 adapter 内部表示耦合。
 
 ### 3. 维护型 API denylist
 
 `usagestats/maintenance_skip.go` 集中维护不统计的路径（精确 METHOD+path 与前缀）。`ShouldSkipRecord` / `ShouldSkipHTTPRecord` 统一调用。登录、注册、绑定与各业务 API **不**在此列表。
+
+**已确认不统计**（负责人）：`GET /ucg/app/api/posts/{id}/comments`（帖子详情高频读；`isUcgPostCommentsListGET` 匹配数字 postId）。**POST 同路径仍统计**。
 
 ### 4. 读 API 排序
 

@@ -239,14 +239,18 @@ func dayRange(days int) []string {
 	return out
 }
 
+// redisHashToMap 解析 Redis HGETALL 结果。GoFrame adapter 对 HGETALL 的 []interface{}
+// 会转为 flat []string，须优先用 (*gvar.Var).MapStrStr()（见 gf redis_conn.resultToVar）。
 func redisHashToMap(v interface{}) map[string]string {
 	out := make(map[string]string)
 	if v == nil {
 		return out
 	}
-	// GoFrame Redis Do 返回 *gvar.Var，须 unwrap 后再解析。
 	if vv, ok := v.(*gvar.Var); ok && vv != nil {
-		return redisHashToMap(vv.Val())
+		if m := vv.MapStrStr(); len(m) > 0 {
+			return m
+		}
+		v = vv.Val()
 	}
 	if m, ok := v.(map[string]interface{}); ok {
 		for k, val := range m {
@@ -256,6 +260,15 @@ func redisHashToMap(v interface{}) map[string]string {
 	}
 	if m, ok := v.(map[string]string); ok {
 		return m
+	}
+	if arr, ok := v.([]string); ok {
+		for i := 0; i+1 < len(arr); i += 2 {
+			k := strings.TrimSpace(arr[i])
+			if k != "" {
+				out[k] = arr[i+1]
+			}
+		}
+		return out
 	}
 	arr, ok := v.([]interface{})
 	if !ok || len(arr) == 0 {

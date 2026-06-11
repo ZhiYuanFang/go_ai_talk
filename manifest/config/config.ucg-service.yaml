@@ -1,4 +1,5 @@
 # ucg-service：社交 UGC 域（ai_voice_ucg）。Docker/K8s 部署时设置 DEVICE_SERVICE_URL 与 DEVICE_GATEWAY_INTERNAL_SECRET。
+# 评论列表 GET 单次全量返回（非分页）；ucg.comments.listMax 为硬上限，超出时 truncated=true，0 表示不限制（仅内测慎用）。
 # 阿里云凭证 MUST 经环境变量注入（yaml 留空）：UCG_OSS_ACCESS_KEY_ID、UCG_OSS_ACCESS_KEY_SECRET、UCG_DASHSCOPE_API_KEY。
 # Green 内容审核复用 OSS AccessKey（ucg.green.accessKey* 留空即可）；见 manifest/docker/.env.example 与 runbook。
 # MySQL：UCG_DB_LINK + MYSQL_TCP_HOST；JWT 校验用 GATEWAY_APP_JWT_SECRET（与 gateway-app 同值）。
@@ -14,6 +15,8 @@ logger:
   stdout: true
 
 ucg:
+  comments:
+    listMax: 500
   deviceServiceUrl: ""
   deviceInternalSecret: ""
   # ip2region IPv4 离线库路径；Docker 内默认 /app/resource/ip2region/ip2region_v4.xdb，可用 IP2REGION_XDB_PATH 覆盖。

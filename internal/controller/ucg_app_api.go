@@ -351,13 +351,13 @@ func (c *UcgAppCtrl) PostLikesGet(ctx context.Context, req *v1.UcgPostLikesGetRe
 	return likesPageToRes(page), nil
 }
 
-func (c *UcgAppCtrl) PostCommentsGet(ctx context.Context, req *v1.UcgPostCommentsGetReq) (res *v1.UcgCommentsPageRes, err error) {
+func (c *UcgAppCtrl) PostCommentsGet(ctx context.Context, req *v1.UcgPostCommentsGetReq) (res *v1.UcgCommentsListRes, err error) {
 	_ = c
-	page, err := ucgsvc.ListComments(ctx, req.Id, req.Page, req.PageSize)
+	result, err := ucgsvc.ListComments(ctx, req.Id)
 	if err != nil {
 		return nil, err
 	}
-	return commentsPageToRes(page), nil
+	return commentsListToRes(result), nil
 }
 
 func (c *UcgAppCtrl) PostCommentPost(ctx context.Context, req *v1.UcgPostCommentPostReq) (res *v1.UcgPostCommentPostRes, err error) {
@@ -548,15 +548,13 @@ func likesPageToRes(page *ucgsvc.PageResult) *v1.UcgLikesPageRes {
 	return res
 }
 
-func commentsPageToRes(page *ucgsvc.PageResult) *v1.UcgCommentsPageRes {
-	res := &v1.UcgCommentsPageRes{
-		Total: page.Total, Page: page.Page, PageSize: page.PageSize,
+func commentsListToRes(result *ucgsvc.CommentsListResult) *v1.UcgCommentsListRes {
+	res := &v1.UcgCommentsListRes{
+		Total: result.Total, Truncated: result.Truncated,
 		List: []v1.UcgCommentItem{},
 	}
-	if cmts, ok := page.List.([]*ucgsvc.CommentDTO); ok {
-		for _, c := range cmts {
-			res.List = append(res.List, commentDTOToItem(c))
-		}
+	for _, c := range result.List {
+		res.List = append(res.List, commentDTOToItem(c))
 	}
 	return res
 }
