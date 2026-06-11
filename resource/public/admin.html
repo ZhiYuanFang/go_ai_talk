@@ -57,7 +57,6 @@
 			<input id="adminPwd" type="password" placeholder="密码" autocomplete="current-password" />
 			<button id="loginBtn">进入</button>
 		</div>
-		<p class="msg" style="color:#64748b;margin-top:0;">使用 <code>GATEWAY_APP_ADMIN_*</code> 配置的运维账号；登录后各管理模块共用 Admin JWT。</p>
 		<div id="loginMsg" class="msg"></div>
 	</div>
 
@@ -539,7 +538,7 @@ async function submitEventRowUpdate(row, opts){
 		const a = document.createElement('a');
 		a.className = 'link-btn';
 		a.href = m.pagePath;
-		a.target = '_blank';
+		// a.target = '_blank';
 		a.rel = 'noopener';
 		a.textContent = m.title;
 		if(m.showInNav && nav) nav.appendChild(a);
