@@ -355,11 +355,12 @@ tr.row-selected td {
 }
 
 /* UCG 动态审查：九宫格缩略图 + 行间分割线 + 预览 modal */
-#panelPosts #postsTbody tr {
-	border-bottom: 1px dashed rgba(0, 73, 182, 0.801);
+/* border-collapse 表格须在 td 上画线；全局 td 白边在玻璃背景上几乎不可见 */
+#panelPosts #postsTbody td {
+	border-bottom: 1px solid rgba(100, 116, 139, 0.45);
 }
 
-#panelPosts #postsTbody tr:last-child {
+#panelPosts #postsTbody tr:last-child td {
 	border-bottom: none;
 }
 
