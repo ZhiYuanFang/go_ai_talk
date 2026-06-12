@@ -119,7 +119,7 @@ func UpdatePost(ctx context.Context, wxID int64, postID uint64, content string, 
 	}
 	needPublish := false
 	if submit {
-		if post.Status == PostStatusPublished || post.Status == PostStatusRejected {
+		if post.Status == PostStatusPublished || post.Status == PostStatusRejected || post.Status == PostStatusApplyFailed {
 			auditVersion++
 		}
 		status = PostStatusPendingAudit
@@ -131,13 +131,23 @@ func UpdatePost(ctx context.Context, wxID int64, postID uint64, content string, 
 	finalAuditVersion := auditVersion
 	var outboxID uint64
 	err = dao.UcgPost.Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
-		_, uErr := tx.Model(dao.UcgPost.Table()).Ctx(ctx).Where(dao.UcgPost.Columns().Id, postID).Data(g.Map{
+		updateData := g.Map{
 			dao.UcgPost.Columns().Content:      strings.TrimSpace(content),
 			dao.UcgPost.Columns().Status:       status,
 			dao.UcgPost.Columns().MediaType:    mediaType,
 			dao.UcgPost.Columns().UpdatedAt:    now,
 			dao.UcgPost.Columns().AuditVersion: finalAuditVersion,
-		}).Update()
+		}
+		// 再提审须重置机审/apply 中间态，避免沿用上轮 verdict 跳过 Green。
+		if status == PostStatusPendingAudit {
+			updateData[dao.UcgPost.Columns().ModerationVerdict] = ModerationVerdictNone
+			updateData[dao.UcgPost.Columns().ModerationReason] = ""
+			updateData[dao.UcgPost.Columns().ModerationAt] = 0
+			updateData[dao.UcgPost.Columns().ApplyAttempts] = 0
+			updateData[dao.UcgPost.Columns().ApplyFailedAt] = 0
+			updateData[dao.UcgPost.Columns().RejectReason] = ""
+		}
+		_, uErr := tx.Model(dao.UcgPost.Table()).Ctx(ctx).Where(dao.UcgPost.Columns().Id, postID).Data(updateData).Update()
 		if uErr != nil {
 			return uErr
 		}

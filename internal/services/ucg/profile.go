@@ -295,6 +295,18 @@ func mergeProfileForAuthor(ctx context.Context, p entity.UcgProfile) (*ProfileDT
 		return dto, nil
 	}
 	if !ok {
+		// apply 超限失败：固定系统文案，避免作者永久见「审核中」
+		var applyFailed entity.UcgProfileAuditJob
+		_ = dao.UcgProfileAuditJob.Ctx(ctx).
+			Where(dao.UcgProfileAuditJob.Columns().WxId, p.WxId).
+			Where(dao.UcgProfileAuditJob.Columns().Status, ProfileJobStatusApplyFailed).
+			OrderDesc(dao.UcgProfileAuditJob.Columns().Id).
+			Limit(1).
+			Scan(&applyFailed)
+		if applyFailed.RejectReason != "" {
+			dto.RejectReason = applyFailed.RejectReason
+			return dto, nil
+		}
 		// 迁移期：读最近 rejected job 的 reason
 		var rejected entity.UcgProfileAuditJob
 		_ = dao.UcgProfileAuditJob.Ctx(ctx).

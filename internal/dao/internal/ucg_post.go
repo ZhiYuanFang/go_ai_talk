@@ -20,36 +20,46 @@ type UcgPostDao struct {
 
 // UcgPostColumns defines and stores column names for table ucg_post.
 type UcgPostColumns struct {
-	Id           string //
-	AuthorWxId   string //
-	Content      string //
-	IpLocation   string // 发帖时 IP属地快照
-	Status       string // 0 draft 1 pending_audit 2 published 3 rejected
-	AuditVersion string // 审核轮次
-	RejectReason string //
-	MediaType    string // 0 none 1 images 2 video
-	LikeCount    string //
-	CommentCount string //
-	CreatedAt    string //
-	UpdatedAt    string //
-	PublishedAt  string //
+	Id                string //
+	AuthorWxId        string //
+	Content           string //
+	IpLocation        string // 发帖时 IP属地快照
+	Status            string // 0 draft 1 pending_audit 2 published 3 rejected 4 apply_failed
+	AuditVersion      string // 审核轮次
+	ModerationVerdict string //
+	ModerationReason  string //
+	ModerationAt      string //
+	ApplyAttempts     string //
+	ApplyFailedAt     string //
+	RejectReason      string //
+	MediaType         string // 0 none 1 images 2 video
+	LikeCount         string //
+	CommentCount      string //
+	CreatedAt         string //
+	UpdatedAt         string //
+	PublishedAt       string //
 }
 
 // ucgPostColumns holds the columns for table ucg_post.
 var ucgPostColumns = UcgPostColumns{
-	Id:           "id",
-	AuthorWxId:   "author_wx_id",
-	Content:      "content",
-	IpLocation:   "ip_location",
-	Status:       "status",
-	AuditVersion: "audit_version",
-	RejectReason: "reject_reason",
-	MediaType:    "media_type",
-	LikeCount:    "like_count",
-	CommentCount: "comment_count",
-	CreatedAt:    "created_at",
-	UpdatedAt:    "updated_at",
-	PublishedAt:  "published_at",
+	Id:                "id",
+	AuthorWxId:        "author_wx_id",
+	Content:           "content",
+	IpLocation:        "ip_location",
+	Status:            "status",
+	AuditVersion:      "audit_version",
+	ModerationVerdict: "moderation_verdict",
+	ModerationReason:  "moderation_reason",
+	ModerationAt:      "moderation_at",
+	ApplyAttempts:     "apply_attempts",
+	ApplyFailedAt:     "apply_failed_at",
+	RejectReason:      "reject_reason",
+	MediaType:         "media_type",
+	LikeCount:         "like_count",
+	CommentCount:      "comment_count",
+	CreatedAt:         "created_at",
+	UpdatedAt:         "updated_at",
+	PublishedAt:       "published_at",
 }
 
 // NewUcgPostDao creates and returns a new DAO object for table data access.

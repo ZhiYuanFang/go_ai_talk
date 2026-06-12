@@ -20,29 +20,39 @@ type UcgProfileAuditJobDao struct {
 
 // UcgProfileAuditJobColumns defines and stores column names for table ucg_profile_audit_job.
 type UcgProfileAuditJobColumns struct {
-	Id           string //
-	WxId         string //
-	Nickname     string //
-	AvatarKey    string //
-	Bio          string //
-	Status       string // 1 pending 2 approved 3 rejected
-	AuditVersion string // 审核轮次
-	RejectReason string //
-	CreatedAt    string //
-	UpdatedAt    string //
+	Id                string //
+	WxId              string //
+	Nickname          string //
+	AvatarKey         string //
+	Bio               string //
+	Status            string // 1 pending 2 approved 3 rejected 4 apply_failed
+	AuditVersion      string // 审核轮次
+	ModerationVerdict string //
+	ModerationReason  string //
+	ModerationAt      string //
+	ApplyAttempts     string //
+	ApplyFailedAt     string //
+	RejectReason      string //
+	CreatedAt         string //
+	UpdatedAt         string //
 }
 
 var ucgProfileAuditJobColumns = UcgProfileAuditJobColumns{
-	Id:           "id",
-	WxId:         "wx_id",
-	Nickname:     "nickname",
-	AvatarKey:    "avatar_key",
-	Bio:          "bio",
-	Status:       "status",
-	AuditVersion: "audit_version",
-	RejectReason: "reject_reason",
-	CreatedAt:    "created_at",
-	UpdatedAt:    "updated_at",
+	Id:                "id",
+	WxId:              "wx_id",
+	Nickname:          "nickname",
+	AvatarKey:         "avatar_key",
+	Bio:               "bio",
+	Status:            "status",
+	AuditVersion:      "audit_version",
+	ModerationVerdict: "moderation_verdict",
+	ModerationReason:  "moderation_reason",
+	ModerationAt:      "moderation_at",
+	ApplyAttempts:     "apply_attempts",
+	ApplyFailedAt:     "apply_failed_at",
+	RejectReason:      "reject_reason",
+	CreatedAt:         "created_at",
+	UpdatedAt:         "updated_at",
 }
 
 // NewUcgProfileAuditJobDao creates and returns a new DAO object for table data access.

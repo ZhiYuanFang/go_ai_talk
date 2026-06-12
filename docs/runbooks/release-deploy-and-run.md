@@ -339,25 +339,34 @@ git add … && git commit -m "…"
 git push origin develop
 
 # 测试镜像仅由 tag 触发 CI（develop push 不再构建）
-git tag v1.0.0-rc.1    # 或 v1.0.0-beta.1 等（须含 - 后缀，push 至测试 ACR）
+git tag v1.0.0-rc.1    # 全量 6 服务 → 测试 ACR
 git push origin v1.0.0-rc.1
+
+# 小改动仅构建单服务（节省 GitHub Actions 分钟）：
+git tag v1.0.0-rc.2+ucg    # 仅 build/push ucg-service；git tag 名含 +ucg
+git push origin v1.0.0-rc.2+ucg
 ```
 
 **步骤 2 — 等待 CI**
 
-打开 GitHub → Actions → `docker-acr` 工作流，确认 **tag `v1.0.0-rc.1`** 构建全部成功（七服务镜像 push 至**测试**命名空间）。
+打开 GitHub → Actions → `docker-acr` 工作流：
 
-> **路由规则**：`vMAJOR.MINOR.PATCH`（如 `v1.0.0`）→ 生产 ACR；`v1.0.0-rc.1` 等预发布 tag → 测试 ACR。
+- 无 `+` 后缀 tag（如 `v1.0.0-rc.1`）：确认 **六服务** 镜像均 push 成功。
+- 带 `+` 后缀 tag（如 `v1.0.0-rc.2+ucg`）：确认 **仅列出的服务** build 成功；ACR **不会**为未构建服务创建该 tag 的镜像（**不 retag**）。
+
+> **路由规则**：`vMAJOR.MINOR.PATCH`（如 `v1.0.0`）→ 生产 ACR；`v1.0.0-rc.1` 等预发布 tag → 测试 ACR。环境路由看 **`+` 前的 base tag**（`v1.0.0-rc.2+ucg` 仍走测试）。
 
 **步骤 3 — 测试服务器：改 tag、拉镜像并更新**
 
 编辑 `manifest/docker/.env.test`：
 
 ```bash
-IMAGE_TAG=v1.0.0-rc.1
+IMAGE_TAG=v1.0.0-rc.1   # 或 v1.0.0-rc.2（与 git tag 的 + 前 base 一致，不含 +ucg）
 ```
 
-> 服务器只需保留 `manifest/docker/` 下 compose 与 `.env.test`，**无需**整仓源码。
+> **git tag 与 IMAGE_TAG**：push `v1.0.0-rc.2+ucg` 时，`.env` 中 `IMAGE_TAG` 写 **`v1.0.0-rc.2`**，不要写 `+ucg` 后缀。
+
+**全量发版**（六服务均在新 tag 下 rebuild 过）— 与原先相同：
 
 ```bash
 # 强制删除悬空镜像
@@ -391,7 +400,9 @@ docker compose --env-file manifest/docker/.env.test \
   up -d --no-build
 ```
 
-**只更新单个服务**
+**只更新单个服务**（配合 CI tag `v1.0.0-rc.2+ucg` 等部分构建）
+
+部分构建后 ACR **仅有**变更服务的 `:${IMAGE_TAG}` 镜像。须 **按服务** pull/up；对全栈执行 `compose pull` **会因缺 gateway 等镜像而失败**（表示应用了部分 tag 却做了全量拉取）。
 
 ```bash
 docker compose --env-file manifest/docker/.env.test \
@@ -1297,10 +1308,20 @@ docker compose -f manifest/docker/docker-compose.redis-cluster.yml up -d --force
 
 | 环境 | GitHub Environment | CI 触发 |
 |------|-------------------|---------|
-| **测试** | `test` | push tag `v*-*`（预发布，如 `v1.0.0-rc.1`） |
+| **测试** | `test` | push tag `v*-*`（预发布，如 `v1.0.0-rc.1`）；`v1.0.0-rc.2+ucg` 等 **`+服务` 后缀** 仅 build 列出服务 |
 | **生产** | `prod` | push tag `vMAJOR.MINOR.PATCH`（如 `v1.0.0`） |
 
-手动触发：Actions → **docker-acr** → Run workflow → 选择 `target_env` 与 `image_tag`。
+**构建范围后缀**（仅 tag push；**不 retag** 未构建服务）：
+
+| git tag 示例 | CI 行为 | ACR |
+|--------------|---------|-----|
+| `v1.0.0-rc.2` | 全量 6 服务 build | 六仓库均有 `:v1.0.0-rc.2` |
+| `v1.0.0-rc.2+ucg` | 仅 `ucg-service` | 仅 `ucg-service:v1.0.0-rc.2`（其他仓库无此 tag） |
+| `v1.0.0-rc.2+ucg,gateway` | 两项 | 对应两仓库 |
+
+别名：`gateway`、`gateway-app`、`history`/`history-service`、`voice`/`voice-service`、`device`/`device-service`、`ucg`/`ucg-service`、`all`（全量）。`.env` 中 `IMAGE_TAG` 用 **`+` 前 base tag**。
+
+手动触发：Actions → **docker-acr** → Run workflow → 选择 `target_env`、`image_tag`（base tag）；可选 `services`（如 `ucg`，留空=全量）。
 
 #### GitHub Secrets 配置（首次必做）
 
@@ -1321,7 +1342,7 @@ docker compose -f manifest/docker/docker-compose.redis-cluster.yml up -d --force
 
 CI push 地址由 workflow 从 `REGISTRY` **自动去掉 `-vpc`** 推导，无需单独维护公网域名。
 
-**验证 CI**：配置完成后，Actions → docker-acr → Run workflow → `target_env=test`、`image_tag=v0.0.0-test`（或当前预发布 tag），确认七服务 build + push 成功。
+**验证 CI**：配置完成后，Actions → docker-acr → Run workflow → `target_env=test`、`image_tag=v0.0.0-test`（或当前预发布 tag），确认六服务 build + push 成功。部分构建可填 `services=ucg` 验证单服务 matrix。
 
 #### ECS 本地 .env（部署用）
 
@@ -1401,6 +1422,70 @@ DDL 在 **device-service 默认库**（`DEVICE_DB_LINK`）执行：
 2. **配置**：ucg/voice 进程须配置 `DEVICE_SERVICE_URL` 与 `DEVICE_GATEWAY_INTERNAL_SECRET`（与 ucg `deviceInternalSecret` 同值）；gateway-app 已反代 `GET /device/app/api/ai-quota`
 3. **滚动** device-service → ucg-service → voice-service
 4. **Flutter**（`flutter_ai_talk` 独立仓库）：HTTP/WS 识别 `code=40302` 弹框「本月额度已用完」、`40301` 引导登录
+
+### UCG 审核 MQ 卡死 / apply 失败
+
+**背景**：资料/帖子审核拆为两阶段（Green 机审 → apply CAS）。`moderation_verdict` 落库后 MQ 重投不再调 Green；apply 失败有界重试（`UCG_AUDIT_APPLY_MAX_ATTEMPTS`，默认 5），超限标记 `apply_failed` 并 Ack。
+
+**DDL**（`UCG_DB_LINK` 库，须先于 ucg-service 滚动）：
+
+```bash
+mysql -h "$MYSQL_HOST" -u "$MYSQL_USER" -p"$MYSQL_PASSWORD" "$UCG_DB_NAME" < hack/sql/ucg_audit_moderation_apply.sql
+```
+
+**识别**：
+
+- RabbitMQ 队列 `ucg.profile.patch.submitted.q` / `ucg.post.created.q` 的 `messages_ready` 持续增长
+- ucg-service 日志含 `[ucg-audit-mq] profile/post apply retry` 或 `apply max exceeded`
+- 阿里云 Green 控制台对同一 `(job_id/post_id, audit_version)` 调用量异常
+
+**止血**：
+
+```bash
+# 暂停审核 consumer（推荐分 consumer 不受影响）
+UCG_AUDIT_MQ_CONSUMER_ENABLED=false
+# 滚动 ucg-service 使 env 生效，或临时 scale 0
+```
+
+**核对 DB**（`UCG_DB_LINK`）：
+
+```sql
+-- 机审已通过但 apply 未完成（可安全重试 apply，不会重复 Green）
+SELECT id, wx_id, status, audit_version, moderation_verdict, apply_attempts
+FROM ucg_profile_audit_job WHERE status=1 AND moderation_verdict=1;
+
+SELECT id, author_wx_id, status, audit_version, moderation_verdict, apply_attempts
+FROM ucg_post WHERE status=1 AND moderation_verdict=1;
+
+-- apply 超限终态（consumer 应 Ack，勿无限 requeue）
+SELECT id, status, apply_attempts, apply_failed_at FROM ucg_profile_audit_job WHERE status=4;
+SELECT id, status, apply_attempts, apply_failed_at FROM ucg_post WHERE status=4;
+```
+
+**清理队列**（仅当 DB 已为终态 `approved/rejected/published/apply_failed` 或 `status=1 AND moderation_verdict=1` 且已部署本修复）：
+
+- RabbitMQ Management → Queues → 对应队列 → Purge（**禁止**在 verdict 未落库时 purge 后丢弃未机审消息）
+- 或对单条 delivery：确认 DB 后手动 Ack
+
+**修复 pending job**（`moderation_verdict=1` 且 `status=1` 长期 pending）：
+
+1. 确认 Green 已通过（`moderation_at > 0`）
+2. 可选：重置 `apply_attempts=0` 后重发 outbox / 重启 consumer 让其仅 retry apply
+3. 或运维确认后直接手工 approve（更新 `ucg_profile` + job `status=2`）
+
+**修复 apply_failed**（`status=4`）：
+
+1. 排查根因（DB 连接、事务、profile 行缺失等）
+2. 修复后：用户重新提交资料/帖子，或运维重置 `apply_attempts=0`、`moderation_verdict=0`、`status=1` 并重发 MQ（须明确审批）
+
+**部署 checklist**：
+
+1. 执行 `hack/sql/ucg_audit_moderation_apply.sql`
+2. 滚动 ucg-service（含两阶段审核代码）
+3. 观察队列深度下降、Green 调用量恢复正常
+4. 可选 env：`UCG_AUDIT_APPLY_MAX_ATTEMPTS=5`（默认）
+
+**手工验证**（非 CI）：模拟 apply 失败（如临时断 DB）后同一条 MQ redelivery，日志应出现 `moderation skip green` 且 Green 控制台无重复调用。
 
 ### 文档治理
 
