@@ -106,7 +106,7 @@ func AdminBatchRejectPosts(ctx context.Context, postIDs []uint64, reason string)
 			out.Skipped = append(out.Skipped, id)
 			continue
 		}
-		if err = rejectPostByID(ctx, id, reason); err != nil {
+		if err = rejectPostByIDAdmin(ctx, post, reason); err != nil {
 			out.Failed = append(out.Failed, id)
 			continue
 		}

@@ -12,6 +12,7 @@ import (
 	"hello/internal/dao"
 	"hello/internal/model/entity"
 
+	"github.com/gogf/gf/v2/database/gdb"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/glog"
 )
@@ -53,19 +54,28 @@ func redisChatRebuildLockKey(convID uint64) string {
 
 // enqueueChatMessageOutbox 同步写入 MySQL outbox，供 persist worker 异步落 ucg_chat_message。
 func enqueueChatMessageOutbox(ctx context.Context, convID uint64, msg ChatMessage) error {
+	return enqueueChatMessageOutboxTx(ctx, nil, convID, msg)
+}
+
+func enqueueChatMessageOutboxTx(ctx context.Context, tx gdb.TX, convID uint64, msg ChatMessage) error {
 	raw, err := json.Marshal(msg)
 	if err != nil {
 		return err
 	}
 	now := time.Now().Unix()
-	_, err = dao.UcgChatMessageOutbox.Ctx(ctx).Data(g.Map{
+	data := g.Map{
 		dao.UcgChatMessageOutbox.Columns().ConversationId: convID,
 		dao.UcgChatMessageOutbox.Columns().Payload:        string(raw),
 		dao.UcgChatMessageOutbox.Columns().Status:         chatOutboxStatusPending,
-		dao.UcgChatMessageOutbox.Columns().Attempts:     0,
-		dao.UcgChatMessageOutbox.Columns().LastError:    "",
-		dao.UcgChatMessageOutbox.Columns().CreatedAt:    now,
-	}).Insert()
+		dao.UcgChatMessageOutbox.Columns().Attempts:       0,
+		dao.UcgChatMessageOutbox.Columns().LastError:      "",
+		dao.UcgChatMessageOutbox.Columns().CreatedAt:      now,
+	}
+	if tx != nil {
+		_, err = tx.Model(dao.UcgChatMessageOutbox.Table()).Ctx(ctx).Data(data).Insert()
+	} else {
+		_, err = dao.UcgChatMessageOutbox.Ctx(ctx).Data(data).Insert()
+	}
 	return err
 }
 
@@ -129,16 +139,27 @@ func lastChatMessageMySQL(ctx context.Context, convID uint64) (ChatMessage, bool
 }
 
 func chatMessageFromEntity(row entity.UcgChatMessage) ChatMessage {
+	auditStatus := strings.TrimSpace(row.AuditStatus)
+	if auditStatus == "" {
+		auditStatus = ChatAuditStatusApproved
+	}
+	auditVersion := row.AuditVersion
+	if auditVersion <= 0 {
+		auditVersion = 1
+	}
 	return ChatMessage{
-		ID:          row.Id,
-		ClientMsgID: row.ClientMsgId,
-		SenderWxID:  int64(row.SenderWxId),
-		Content:     row.Content,
-		ImageKey:    row.ImageKey,
-		VideoKey:    row.VideoKey,
-		MediaCdnUrl: row.MediaCdnUrl,
-		CreatedAt:   row.CreatedAt,
-		Status:      row.Status,
+		ID:           row.Id,
+		ClientMsgID:  row.ClientMsgId,
+		SenderWxID:   int64(row.SenderWxId),
+		Content:      row.Content,
+		ImageKey:     row.ImageKey,
+		VideoKey:     row.VideoKey,
+		MediaCdnUrl:  row.MediaCdnUrl,
+		CreatedAt:    row.CreatedAt,
+		Status:       row.Status,
+		AuditStatus:  auditStatus,
+		AuditVersion: auditVersion,
+		RejectReason: row.RejectReason,
 	}
 }
 
@@ -159,6 +180,14 @@ func persistChatMessageRow(ctx context.Context, convID uint64, msg ChatMessage) 
 	if status == "" {
 		status = "delivered"
 	}
+	auditStatus := strings.TrimSpace(msg.AuditStatus)
+	if auditStatus == "" {
+		auditStatus = ChatAuditStatusPending
+	}
+	auditVersion := msg.AuditVersion
+	if auditVersion <= 0 {
+		auditVersion = 1
+	}
 	_, err = dao.UcgChatMessage.Ctx(ctx).Data(g.Map{
 		cols.Id:             msg.ID,
 		cols.ConversationId: convID,
@@ -170,6 +199,9 @@ func persistChatMessageRow(ctx context.Context, convID uint64, msg ChatMessage) 
 		cols.MediaCdnUrl:    strings.TrimSpace(msg.MediaCdnUrl),
 		cols.CreatedAt:      msg.CreatedAt,
 		cols.Status:         status,
+		cols.AuditStatus:    auditStatus,
+		cols.AuditVersion:   auditVersion,
+		cols.RejectReason:   strings.TrimSpace(msg.RejectReason),
 	}).Insert()
 	return err
 }

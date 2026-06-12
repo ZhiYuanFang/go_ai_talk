@@ -28,8 +28,8 @@ func main() {
 	s := g.Server("ucg-service")
 	applyUcgServiceAddress(s)
 	controller.RegisterUcgServiceHTTP(s)
-	ucgsvc.StartAuditWorker(ctx)
-	ucgsvc.StartRecommendWorker(ctx)
+	ucgsvc.StartUcgMQConsumers(ctx)
+	ucgsvc.StartAuditPublishRelayWorker(ctx)
 	ucgsvc.StartChatPersistWorker(ctx)
 	s.Run()
 }

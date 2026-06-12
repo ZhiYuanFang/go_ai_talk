@@ -275,6 +275,10 @@ services:
       MQ_HTTP_API_BASE: "http://rabbitmq:15672/api"
       MQ_USER: "guest"
       MQ_PASSWORD: "guest"
+      # 审核 Publisher 用 HTTP 15672；Consumer 用 AMQP 5672 push + manual ack
+      RABBITMQ_AMQP_URL: "amqp://guest:guest@rabbitmq:5672/"
+      UCG_AUDIT_MQ_CONSUMER_ENABLED: "true"
+      UCG_AUDIT_MQ_PREFETCH: "5"
       GF_REDIS_DEFAULT_ADDRESS: "${GF_REDIS_DEFAULT_ADDRESS:-}"
       # 可选：覆盖 yaml 中 ucg.ip2regionXdbPath；默认镜像内 /app/resource/ip2region/ip2region_v4.xdb
       IP2REGION_XDB_PATH: "${IP2REGION_XDB_PATH:-/app/resource/ip2region/ip2region_v4.xdb}"

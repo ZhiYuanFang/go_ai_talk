@@ -9,16 +9,18 @@ import (
 	"hello/internal/model/entity"
 
 	"github.com/gogf/gf/v2/frame/g"
-	"github.com/gogf/gf/v2/os/glog"
 )
 
 // RecommendConfig 推荐算法参数（见 design.md）。
 type RecommendConfig struct {
-	WNew                 float64
-	TauHours             float64
-	WLike                float64
-	WComment             float64
-	RefreshIntervalSeconds int
+	WNew                   float64
+	TauHours               float64
+	WLike                  float64
+	WComment               float64
+	HotWindowHours         float64
+	HotScanPageSize        int
+	HotScanIntervalSeconds int
+	LikeThrottleMs         int
 }
 
 func LoadRecommendConfig(ctx context.Context) RecommendConfig {
@@ -27,7 +29,10 @@ func LoadRecommendConfig(ctx context.Context) RecommendConfig {
 		TauHours:               g.Cfg().MustGet(ctx, "ucg.recommend.tauHours").Float64(),
 		WLike:                  g.Cfg().MustGet(ctx, "ucg.recommend.wLike").Float64(),
 		WComment:               g.Cfg().MustGet(ctx, "ucg.recommend.wComment").Float64(),
-		RefreshIntervalSeconds: g.Cfg().MustGet(ctx, "ucg.recommend.refreshIntervalSeconds").Int(),
+		HotWindowHours:         g.Cfg().MustGet(ctx, "ucg.recommend.hotWindowHours").Float64(),
+		HotScanPageSize:        g.Cfg().MustGet(ctx, "ucg.recommend.hotScanPageSize").Int(),
+		HotScanIntervalSeconds: g.Cfg().MustGet(ctx, "ucg.recommend.hotScanIntervalSeconds").Int(),
+		LikeThrottleMs:         g.Cfg().MustGet(ctx, "ucg.recommend.likeThrottleMs").Int(),
 	}
 	if cfg.WNew <= 0 {
 		cfg.WNew = 1.0
@@ -41,8 +46,17 @@ func LoadRecommendConfig(ctx context.Context) RecommendConfig {
 	if cfg.WComment <= 0 {
 		cfg.WComment = 0.5
 	}
-	if cfg.RefreshIntervalSeconds <= 0 {
-		cfg.RefreshIntervalSeconds = 300
+	if cfg.HotWindowHours <= 0 {
+		cfg.HotWindowHours = cfg.TauHours
+	}
+	if cfg.HotScanPageSize <= 0 {
+		cfg.HotScanPageSize = 200
+	}
+	if cfg.HotScanIntervalSeconds <= 0 {
+		cfg.HotScanIntervalSeconds = 60
+	}
+	if cfg.LikeThrottleMs <= 0 {
+		cfg.LikeThrottleMs = 500
 	}
 	return cfg
 }
@@ -61,49 +75,41 @@ func computeRecommendScore(cfg RecommendConfig, post entity.UcgPost, now time.Ti
 	return newScore + engagement
 }
 
-// RefreshRecommendScores 重算 published 帖 score 写入 ucg_post_recommend。
-func RefreshRecommendScores(ctx context.Context) error {
-	cfg := LoadRecommendConfig(ctx)
-	now := time.Now()
-	rows, err := dao.UcgPost.Ctx(ctx).Where(dao.UcgPost.Columns().Status, PostStatusPublished).All()
+// RecomputeRecommendScore 读库重算单帖 score 并 UPSERT；非 published 或帖不存在时静默跳过。
+func RecomputeRecommendScore(ctx context.Context, postID uint64) error {
+	if postID == 0 {
+		return nil
+	}
+	row, err := dao.UcgPost.Ctx(ctx).Where(dao.UcgPost.Columns().Id, postID).One()
 	if err != nil {
 		return err
 	}
-	for _, row := range rows {
-		var post entity.UcgPost
-		if err = row.Struct(&post); err != nil {
-			return err
-		}
-		score := computeRecommendScore(cfg, post, now)
-		_, err = dao.UcgPostRecommend.Ctx(ctx).Data(g.Map{
-			dao.UcgPostRecommend.Columns().PostId:     post.Id,
-			dao.UcgPostRecommend.Columns().Score:      score,
-			dao.UcgPostRecommend.Columns().ComputedAt: now.Unix(),
-		}).Save()
-		if err != nil {
-			return err
-		}
+	if row.IsEmpty() {
+		return nil
 	}
-	return nil
+	var post entity.UcgPost
+	if err = row.Struct(&post); err != nil {
+		return err
+	}
+	if post.Status != PostStatusPublished {
+		return nil
+	}
+	cfg := LoadRecommendConfig(ctx)
+	now := time.Now()
+	score := computeRecommendScore(cfg, post, now)
+	_, err = dao.UcgPostRecommend.Ctx(ctx).Data(g.Map{
+		dao.UcgPostRecommend.Columns().PostId:     post.Id,
+		dao.UcgPostRecommend.Columns().Score:      score,
+		dao.UcgPostRecommend.Columns().ComputedAt: now.Unix(),
+	}).Save()
+	return err
 }
 
-// StartRecommendWorker 后台刷新推荐 score。
-func StartRecommendWorker(ctx context.Context) {
-	cfg := LoadRecommendConfig(ctx)
-	interval := time.Duration(cfg.RefreshIntervalSeconds) * time.Second
-	go func() {
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				if err := RefreshRecommendScores(ctx); err != nil {
-					glog.Warningf(ctx, "ucg recommend refresh failed: %v", err)
-				}
-			}
-		}
-	}()
-	glog.Infof(ctx, "ucg recommend worker started, interval=%s", interval)
+// RemoveRecommendScore 下架/删帖时删除推荐行；0 行 affected 视为成功。
+func RemoveRecommendScore(ctx context.Context, postID uint64) error {
+	if postID == 0 {
+		return nil
+	}
+	_, err := dao.UcgPostRecommend.Ctx(ctx).Where(dao.UcgPostRecommend.Columns().PostId, postID).Delete()
+	return err
 }

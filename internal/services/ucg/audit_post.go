@@ -8,17 +8,35 @@ import (
 	"hello/internal/model/entity"
 
 	"github.com/gogf/gf/v2/frame/g"
+	"github.com/gogf/gf/v2/os/glog"
 )
 
-// auditPost 对单条 pending 帖子执行 Green 审核并更新状态。
-func auditPost(ctx context.Context, post entity.UcgPost) error {
+// auditPostFromEvent MQ 消费者：Green 审核 + CAS 更新帖态（不递增 audit_version）。
+func auditPostFromEvent(ctx context.Context, postID uint64, auditVersion int) error {
+	row, err := dao.UcgPost.Ctx(ctx).Where(dao.UcgPost.Columns().Id, postID).One()
+	if err != nil {
+		return err
+	}
+	if row.IsEmpty() {
+		glog.Infof(ctx, "[ucg-audit-mq] post skip missing id=%d version=%d", postID, auditVersion)
+		return nil
+	}
+	var post entity.UcgPost
+	if err = row.Struct(&post); err != nil {
+		return err
+	}
+	if post.Status != PostStatusPendingAudit || post.AuditVersion != auditVersion {
+		glog.Infof(ctx, "[ucg-audit-mq] post skip stale id=%d curStatus=%d curVersion=%d eventVersion=%d",
+			postID, post.Status, post.AuditVersion, auditVersion)
+		return nil
+	}
 	moderator := EffectiveGreen()
 	cfg := LoadOSSConfig(ctx)
 
-	if verdict, err := moderator.ModerateText(ctx, "comment_detection", post.Content); err != nil {
-		return err
+	if verdict, mErr := moderator.ModerateText(ctx, "comment_detection", post.Content); mErr != nil {
+		return mErr
 	} else if !verdict.Pass {
-		return rejectPostByID(ctx, post.Id, verdict.Reason)
+		return rejectPostCAS(ctx, postID, auditVersion, verdict.Reason)
 	}
 
 	media, err := loadPostMedia(ctx, post.Id)
@@ -41,99 +59,90 @@ func auditPost(ctx context.Context, post entity.UcgPost) error {
 			return err
 		}
 		if !verdict.Pass {
-			return rejectPostByID(ctx, post.Id, verdict.Reason)
+			return rejectPostCAS(ctx, postID, auditVersion, verdict.Reason)
 		}
 	}
-	return publishPost(ctx, post.Id)
+	return publishPostCAS(ctx, postID, auditVersion)
 }
 
-func publishPost(ctx context.Context, postID uint64) error {
+func publishPostCAS(ctx context.Context, postID uint64, auditVersion int) error {
 	now := time.Now().Unix()
-	_, err := dao.UcgPost.Ctx(ctx).Where(dao.UcgPost.Columns().Id, postID).Data(g.Map{
-		dao.UcgPost.Columns().Status:       PostStatusPublished,
-		dao.UcgPost.Columns().PublishedAt: now,
-		dao.UcgPost.Columns().UpdatedAt:    now,
-		dao.UcgPost.Columns().RejectReason: "",
-	}).Update()
-	return err
-}
-
-// rejectPostByID 将帖子置为 rejected；reason 空时用默认文案。Green 机审与管理端共用。
-func rejectPostByID(ctx context.Context, postID uint64, reason string) error {
-	if reason == "" {
-		reason = rejectReasonDefault
-	}
-	_, err := dao.UcgPost.Ctx(ctx).Where(dao.UcgPost.Columns().Id, postID).Data(g.Map{
-		dao.UcgPost.Columns().Status:       PostStatusRejected,
-		dao.UcgPost.Columns().RejectReason: reason,
-		dao.UcgPost.Columns().UpdatedAt:    time.Now().Unix(),
-	}).Update()
-	return err
-}
-
-func auditProfilePatch(ctx context.Context, wxID int64) error {
-	patch, ok, err := LoadProfilePending(ctx, wxID)
-	if err != nil || !ok {
-		return err
-	}
-	moderator := EffectiveGreen()
-	cfg := LoadOSSConfig(ctx)
-
-	if patch.Nickname != "" {
-		if verdict, mErr := moderator.ModerateText(ctx, "nickname_detection", patch.Nickname); mErr != nil {
-			return mErr
-		} else if !verdict.Pass {
-			return failProfileAudit(ctx, wxID, verdict.Reason)
-		}
-	}
-	if patch.Bio != "" {
-		if verdict, mErr := moderator.ModerateText(ctx, "comment_detection", patch.Bio); mErr != nil {
-			return mErr
-		} else if !verdict.Pass {
-			return failProfileAudit(ctx, wxID, verdict.Reason)
-		}
-	}
-	if patch.AvatarKey != "" {
-		url := cfg.CdnBaseURL + "/" + patch.AvatarKey
-		if verdict, mErr := moderator.ModerateImageURL(ctx, url); mErr != nil {
-			return mErr
-		} else if !verdict.Pass {
-			return failProfileAudit(ctx, wxID, verdict.Reason)
-		}
-	}
-	if err = applyProfilePending(ctx, patch); err != nil {
-		return err
-	}
-	return clearProfilePending(ctx, wxID)
-}
-
-func failProfileAudit(ctx context.Context, wxID int64, reason string) error {
-	if reason == "" {
-		reason = rejectReasonDefault
-	}
-	_ = setProfileRejectReason(ctx, wxID, reason)
-	return clearProfilePending(ctx, wxID)
-}
-
-func listPendingAuditPosts(ctx context.Context, limit int) ([]entity.UcgPost, error) {
-	if limit <= 0 {
-		limit = 20
-	}
-	rows, err := dao.UcgPost.Ctx(ctx).
-		Where(dao.UcgPost.Columns().Status, PostStatusPendingAudit).
-		OrderAsc(dao.UcgPost.Columns().UpdatedAt).
-		Limit(limit).
-		All()
+	affected, err := CasAuditTransition(ctx, CasAuditInput{
+		Table:       dao.UcgPost.Table(),
+		ID:          postID,
+		Kind:        AuditCasKindStatus,
+		FromStatus:  PostStatusPendingAudit,
+		ToStatus:    PostStatusPublished,
+		FromVersion: auditVersion,
+		Extra: g.Map{
+			dao.UcgPost.Columns().PublishedAt:  now,
+			dao.UcgPost.Columns().UpdatedAt:    now,
+			dao.UcgPost.Columns().RejectReason: "",
+		},
+	})
 	if err != nil {
-		return nil, err
+		return err
 	}
-	out := make([]entity.UcgPost, 0, len(rows))
-	for _, row := range rows {
-		var post entity.UcgPost
-		if err = row.Struct(&post); err != nil {
-			return nil, err
-		}
-		out = append(out, post)
+	if affected == 0 {
+		glog.Infof(ctx, "[ucg-audit-mq] post publish cas skip id=%d version=%d", postID, auditVersion)
+		return nil
 	}
-	return out, nil
+	PublishPostPublished(ctx, postID)
+	return nil
+}
+
+// rejectPostCAS 机审/管理端驳回：CAS 带 audit_version。
+func rejectPostCAS(ctx context.Context, postID uint64, auditVersion int, reason string) error {
+	if reason == "" {
+		reason = rejectReasonDefault
+	}
+	now := time.Now().Unix()
+	affected, err := CasAuditTransition(ctx, CasAuditInput{
+		Table:       dao.UcgPost.Table(),
+		ID:          postID,
+		Kind:        AuditCasKindStatus,
+		FromStatus:  PostStatusPendingAudit,
+		ToStatus:    PostStatusRejected,
+		FromVersion: auditVersion,
+		Extra: g.Map{
+			dao.UcgPost.Columns().RejectReason: reason,
+			dao.UcgPost.Columns().UpdatedAt:    now,
+		},
+	})
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		glog.Infof(ctx, "[ucg-audit-mq] post reject cas skip id=%d version=%d", postID, auditVersion)
+	}
+	return nil
+}
+
+// rejectPostByIDAdmin 管理端驳回：允许 pending 或 published，仍带 audit_version CAS。
+func rejectPostByIDAdmin(ctx context.Context, post entity.UcgPost, reason string) error {
+	if reason == "" {
+		reason = rejectReasonDefault
+	}
+	ver := post.AuditVersion
+	if ver <= 0 {
+		ver = 1
+	}
+	now := time.Now().Unix()
+	wasPublished := post.Status == PostStatusPublished
+	affected, err := CasAuditTransitionInStatuses(ctx, dao.UcgPost.Table(), post.Id,
+		[]int{PostStatusPendingAudit, PostStatusPublished}, ver, PostStatusRejected, g.Map{
+			dao.UcgPost.Columns().RejectReason: reason,
+			dao.UcgPost.Columns().UpdatedAt:    now,
+		})
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		glog.Infof(ctx, "[ucg-audit-mq] admin reject cas skip id=%d version=%d", post.Id, ver)
+		return nil
+	}
+	if wasPublished {
+		PublishPostUnpublished(ctx, post.Id)
+	}
+	return nil
 }

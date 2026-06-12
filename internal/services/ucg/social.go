@@ -7,7 +7,9 @@ import (
 
 	"hello/internal/dao"
 	"hello/internal/model/entity"
+	"hello/internal/platform/eventkit"
 
+	"github.com/gogf/gf/v2/database/gdb"
 	"github.com/gogf/gf/v2/errors/gcode"
 	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/frame/g"
@@ -122,7 +124,11 @@ func LikePost(ctx context.Context, wxID int64, postID uint64) error {
 		return err
 	}
 	_, err = dao.UcgPost.Ctx(ctx).Where(dao.UcgPost.Columns().Id, postID).Increment(dao.UcgPost.Columns().LikeCount, 1)
-	return err
+	if err != nil {
+		return err
+	}
+	PublishPostLiked(ctx, postID)
+	return nil
 }
 
 // LikerDTO 点赞用户视图（昵称与头像经 GetPublicProfile 填充）。
@@ -187,18 +193,25 @@ func UnlikePost(ctx context.Context, wxID int64, postID uint64) error {
 		_, err = dao.UcgPost.Ctx(ctx).Where(dao.UcgPost.Columns().Id, postID).
 			WhereGT(dao.UcgPost.Columns().LikeCount, 0).
 			Decrement(dao.UcgPost.Columns().LikeCount, 1)
+		if err != nil {
+			return err
+		}
+		PublishPostUnliked(ctx, postID)
 	}
 	return err
 }
 
 // CommentDTO 评论视图。
 type CommentDTO struct {
-	Id         uint64       `json:"id"`
-	PostId     uint64       `json:"postId"`
-	AuthorWxId uint64       `json:"authorWxId"`
-	Content    string       `json:"content"`
-	CreatedAt  int64        `json:"createdAt"`
-	Author     *ProfileDTO  `json:"author,omitempty"`
+	Id           uint64      `json:"id"`
+	PostId       uint64      `json:"postId"`
+	AuthorWxId   uint64      `json:"authorWxId"`
+	Content      string      `json:"content"`
+	Status       int         `json:"status,omitempty"`
+	RejectReason string      `json:"rejectReason,omitempty"`
+	AuditVersion int         `json:"auditVersion,omitempty"`
+	CreatedAt    int64       `json:"createdAt"`
+	Author       *ProfileDTO `json:"author,omitempty"`
 }
 
 // AddComment 发表评论（published 帖）。
@@ -217,40 +230,48 @@ func AddComment(ctx context.Context, wxID int64, postID uint64, content string) 
 		return nil, err
 	}
 	now := time.Now().Unix()
-	res, err := dao.UcgPostComment.Ctx(ctx).Data(g.Map{
-		dao.UcgPostComment.Columns().PostId:     postID,
-		dao.UcgPostComment.Columns().AuthorWxId: wxID,
-		dao.UcgPostComment.Columns().Content:    content,
-		dao.UcgPostComment.Columns().CreatedAt:  now,
-	}).Insert()
+	auditVersion := 1
+	var commentID uint64
+	var outboxID uint64
+	err := dao.UcgPostComment.Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
+		res, insErr := tx.Model(dao.UcgPostComment.Table()).Ctx(ctx).Data(g.Map{
+			dao.UcgPostComment.Columns().PostId:       postID,
+			dao.UcgPostComment.Columns().AuthorWxId:   wxID,
+			dao.UcgPostComment.Columns().Content:      content,
+			dao.UcgPostComment.Columns().Status:       CommentStatusPendingAudit,
+			dao.UcgPostComment.Columns().AuditVersion: auditVersion,
+			dao.UcgPostComment.Columns().CreatedAt:    now,
+		}).Insert()
+		if insErr != nil {
+			return insErr
+		}
+		id, _ := res.LastInsertId()
+		commentID = uint64(id)
+		outboxID, insErr = enqueueAuditPublishOutboxTx(ctx, tx, eventkit.RoutingUcgCommentCreated.String(),
+			auditPublishCommentPayload(commentID, auditVersion))
+		return insErr
+	})
 	if err != nil {
 		return nil, err
 	}
-	id, _ := res.LastInsertId()
-	_, _ = dao.UcgPost.Ctx(ctx).Where(dao.UcgPost.Columns().Id, postID).Increment(dao.UcgPost.Columns().CommentCount, 1)
-	commentID := uint64(id)
+	scheduleAuditPublishAfterCommit(ctx, outboxID)
 	dto := &CommentDTO{
-		Id:         commentID,
-		PostId:     postID,
-		AuthorWxId: uint64(wxID),
-		Content:    content,
-		CreatedAt:  now,
+		Id:           commentID,
+		PostId:       postID,
+		AuthorWxId:   uint64(wxID),
+		Content:      content,
+		Status:       CommentStatusPendingAudit,
+		AuditVersion: auditVersion,
+		CreatedAt:    now,
 	}
 	if prof, pErr := GetPublicProfile(ctx, uint64(wxID)); pErr == nil {
 		dto.Author = prof
 	}
-	postRow, pErr := dao.UcgPost.Ctx(ctx).Where(dao.UcgPost.Columns().Id, postID).One()
-	if pErr == nil && !postRow.IsEmpty() {
-		var post entity.UcgPost
-		if sErr := postRow.Struct(&post); sErr == nil {
-			NotifyOnComment(ctx, wxID, post.AuthorWxId, postID, commentID, content)
-		}
-	}
 	return dto, nil
 }
 
-// ListComments 单次返回帖子下评论全量（created_at 升序）；profile 批量 IN 查询，总数取自帖子 comment_count。
-func ListComments(ctx context.Context, postID uint64) (*CommentsListResult, error) {
+// ListComments 按 viewer 过滤审态：公众仅见 published；作者可见 pending/rejected+reason。
+func ListComments(ctx context.Context, postID uint64, viewerWxID int64) (*CommentsListResult, error) {
 	if postID == 0 {
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "postId 无效")
 	}
@@ -264,6 +285,9 @@ func ListComments(ctx context.Context, postID uint64) (*CommentsListResult, erro
 	model := dao.UcgPostComment.Ctx(ctx).
 		Where(dao.UcgPostComment.Columns().PostId, postID).
 		OrderAsc(dao.UcgPostComment.Columns().CreatedAt)
+	if viewerWxID <= 0 {
+		model = model.Where(dao.UcgPostComment.Columns().Status, CommentStatusPublished)
+	}
 	if cap > 0 {
 		model = model.Limit(cap)
 	}
@@ -294,12 +318,18 @@ func ListComments(ctx context.Context, postID uint64) (*CommentsListResult, erro
 
 	list := make([]*CommentDTO, 0, len(comments))
 	for _, c := range comments {
+		if !commentVisibleToViewer(c, viewerWxID) {
+			continue
+		}
 		dto := &CommentDTO{
-			Id:         c.Id,
-			PostId:     c.PostId,
-			AuthorWxId: c.AuthorWxId,
-			Content:    c.Content,
-			CreatedAt:  c.CreatedAt,
+			Id:           c.Id,
+			PostId:       c.PostId,
+			AuthorWxId:   c.AuthorWxId,
+			Content:      c.Content,
+			Status:       c.Status,
+			RejectReason: c.RejectReason,
+			AuditVersion: c.AuditVersion,
+			CreatedAt:    c.CreatedAt,
 		}
 		if prof := profileMap[c.AuthorWxId]; prof != nil {
 			dto.Author = prof
@@ -334,9 +364,15 @@ func DeleteComment(ctx context.Context, wxID int64, commentID uint64) error {
 	if _, err = dao.UcgPostComment.Ctx(ctx).Where(dao.UcgPostComment.Columns().Id, commentID).Delete(); err != nil {
 		return err
 	}
-	_, err = dao.UcgPost.Ctx(ctx).Where(dao.UcgPost.Columns().Id, c.PostId).
-		WhereGT(dao.UcgPost.Columns().CommentCount, 0).
-		Decrement(dao.UcgPost.Columns().CommentCount, 1)
+	if c.Status == CommentStatusPublished {
+		_, err = dao.UcgPost.Ctx(ctx).Where(dao.UcgPost.Columns().Id, c.PostId).
+			WhereGT(dao.UcgPost.Columns().CommentCount, 0).
+			Decrement(dao.UcgPost.Columns().CommentCount, 1)
+		if err != nil {
+			return err
+		}
+		PublishCommentRemoved(ctx, c.PostId, commentID)
+	}
 	return err
 }
 
@@ -362,6 +398,14 @@ func loadPublishedPost(ctx context.Context, postID uint64) (*entity.UcgPost, err
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "帖子未发布")
 	}
 	return &post, nil
+}
+
+// commentVisibleToViewer 公众仅见 published；评论作者可见自己的 pending/rejected。
+func commentVisibleToViewer(c entity.UcgPostComment, viewerWxID int64) bool {
+	if c.Status == CommentStatusPublished {
+		return true
+	}
+	return viewerWxID > 0 && int64(c.AuthorWxId) == viewerWxID
 }
 
 // commentsListMax 评论列表硬上限；配置 ucg.comments.listMax，默认 500，0 表示不限制。

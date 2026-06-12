@@ -25,6 +25,7 @@ type UcgPostColumns struct {
 	Content      string //
 	IpLocation   string // 发帖时 IP属地快照
 	Status       string // 0 draft 1 pending_audit 2 published 3 rejected
+	AuditVersion string // 审核轮次
 	RejectReason string //
 	MediaType    string // 0 none 1 images 2 video
 	LikeCount    string //
@@ -41,6 +42,7 @@ var ucgPostColumns = UcgPostColumns{
 	Content:      "content",
 	IpLocation:   "ip_location",
 	Status:       "status",
+	AuditVersion: "audit_version",
 	RejectReason: "reject_reason",
 	MediaType:    "media_type",
 	LikeCount:    "like_count",

@@ -12,6 +12,8 @@ const (
 	RoutingPrefixDevice = "device."
 	// RoutingPrefixVoiceTask 语音任务事件前缀。
 	RoutingPrefixVoiceTask = "voice.task."
+	// RoutingPrefixUcg UCG 审核事件前缀。
+	RoutingPrefixUcg = "ucg."
 
 	RoutingHistoryRecordCreated RouteKey = RouteKey(RoutingPrefixHistoryRecord + "created")
 	RoutingHistoryRecordUpdated RouteKey = RouteKey(RoutingPrefixHistoryRecord + "updated")
@@ -24,6 +26,18 @@ const (
 	RoutingVoiceTaskRequested RouteKey = RouteKey(RoutingPrefixVoiceTask + "requested")
 	RoutingVoiceTaskCompleted RouteKey = RouteKey(RoutingPrefixVoiceTask + "completed")
 	RoutingVoiceTaskFailed    RouteKey = RouteKey(RoutingPrefixVoiceTask + "failed")
+
+	RoutingUcgPostCreated          RouteKey = RouteKey(RoutingPrefixUcg + "post.created")
+	RoutingUcgCommentCreated       RouteKey = RouteKey(RoutingPrefixUcg + "comment.created")
+	RoutingUcgProfilePatchSubmitted RouteKey = RouteKey(RoutingPrefixUcg + "profile.patch.submitted")
+	RoutingUcgChatMsgCreated       RouteKey = RouteKey(RoutingPrefixUcg + "chat.msg.created")
+
+	RoutingUcgPostPublished   RouteKey = RouteKey(RoutingPrefixUcg + "post.published")
+	RoutingUcgPostUnpublished   RouteKey = RouteKey(RoutingPrefixUcg + "post.unpublished")
+	RoutingUcgPostLiked         RouteKey = RouteKey(RoutingPrefixUcg + "post.liked")
+	RoutingUcgPostUnliked       RouteKey = RouteKey(RoutingPrefixUcg + "post.unliked")
+	RoutingUcgCommentPublished  RouteKey = RouteKey(RoutingPrefixUcg + "comment.published")
+	RoutingUcgCommentRemoved    RouteKey = RouteKey(RoutingPrefixUcg + "comment.removed")
 )
 
 var registeredRoutingKeys = map[RouteKey]struct{}{
@@ -33,9 +47,19 @@ var registeredRoutingKeys = map[RouteKey]struct{}{
 	RoutingDeviceEventChanged:       {},
 	RoutingDeviceActionChanged:      {},
 	RoutingDeviceUserProfileUpdated: {},
-	RoutingVoiceTaskRequested:       {},
-	RoutingVoiceTaskCompleted:       {},
-	RoutingVoiceTaskFailed:          {},
+	RoutingVoiceTaskRequested:        {},
+	RoutingVoiceTaskCompleted:        {},
+	RoutingVoiceTaskFailed:           {},
+	RoutingUcgPostCreated:            {},
+	RoutingUcgCommentCreated:         {},
+	RoutingUcgProfilePatchSubmitted:  {},
+	RoutingUcgChatMsgCreated:         {},
+	RoutingUcgPostPublished:          {},
+	RoutingUcgPostUnpublished:        {},
+	RoutingUcgPostLiked:              {},
+	RoutingUcgPostUnliked:            {},
+	RoutingUcgCommentPublished:       {},
+	RoutingUcgCommentRemoved:         {},
 }
 
 func (k RouteKey) String() string {

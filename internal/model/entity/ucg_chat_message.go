@@ -16,4 +16,7 @@ type UcgChatMessage struct {
 	MediaCdnUrl    string `json:"mediaCdnUrl"    ` //
 	CreatedAt      int64  `json:"createdAt"      ` //
 	Status         string `json:"status"         ` //
+	AuditStatus    string `json:"auditStatus"    ` // pending|approved|rejected
+	AuditVersion   int    `json:"auditVersion"   ` // 审核轮次
+	RejectReason   string `json:"rejectReason"   ` //
 }

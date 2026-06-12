@@ -43,7 +43,17 @@ $queues = @(
     @{ Name = "voice.task.completed.q"; RoutingKey = "voice.task.completed" },
     @{ Name = "voice.task.failed.q"; RoutingKey = "voice.task.failed" },
     @{ Name = "notify.events.q"; RoutingKey = "notify.*" },
-    @{ Name = "history.events.q"; RoutingKey = "history.#" }
+    @{ Name = "history.events.q"; RoutingKey = "history.#" },
+    @{ Name = "ucg.post.created.q"; RoutingKey = "ucg.post.created" },
+    @{ Name = "ucg.comment.created.q"; RoutingKey = "ucg.comment.created" },
+    @{ Name = "ucg.profile.patch.submitted.q"; RoutingKey = "ucg.profile.patch.submitted" },
+    @{ Name = "ucg.chat.msg.created.q"; RoutingKey = "ucg.chat.msg.created" },
+    @{ Name = "ucg.recommend.score.q"; RoutingKey = "ucg.post.published" },
+    @{ Name = "ucg.recommend.score.q"; RoutingKey = "ucg.post.unpublished" },
+    @{ Name = "ucg.recommend.score.q"; RoutingKey = "ucg.post.liked" },
+    @{ Name = "ucg.recommend.score.q"; RoutingKey = "ucg.post.unliked" },
+    @{ Name = "ucg.recommend.score.q"; RoutingKey = "ucg.comment.published" },
+    @{ Name = "ucg.recommend.score.q"; RoutingKey = "ucg.comment.removed" }
 )
 
 if ($PrintOnly) {

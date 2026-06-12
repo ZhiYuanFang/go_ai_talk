@@ -105,19 +105,11 @@ func UpdateMyProfile(ctx context.Context, wxID int64, nickname, avatarKey, bio s
 	if !hasChange {
 		return base, nil
 	}
-	if err = EnqueueProfileAudit(ctx, wxID, nickname, avatarKey, bio); err != nil {
-		g.Log().Warningf(ctx, "[ucg-profile] 待审队列写入失败 wxId=%d err=%v，降级直写 profile", wxID, err)
-		patch := ProfilePendingPatch{
-			WxId:      wxID,
-			Nickname:  strings.TrimSpace(nickname),
-			AvatarKey: strings.TrimSpace(avatarKey),
-			Bio:       strings.TrimSpace(bio),
-			UpdatedAt: time.Now().Unix(),
-		}
-		if applyErr := applyProfilePending(ctx, patch); applyErr != nil {
-			return nil, applyErr
-		}
+	_, _, outboxID, err := EnqueueProfileAuditJob(ctx, wxID, nickname, avatarKey, bio)
+	if err != nil {
+		return nil, err
 	}
+	scheduleAuditPublishAfterCommit(ctx, outboxID)
 	row, err := dao.UcgProfile.Ctx(ctx).Where(dao.UcgProfile.Columns().WxId, wxID).One()
 	if err != nil {
 		return nil, err
@@ -297,34 +289,39 @@ func enrichProfileStats(ctx context.Context, wxID uint64, dto *ProfileDTO) {
 func mergeProfileForAuthor(ctx context.Context, p entity.UcgProfile) (*ProfileDTO, error) {
 	dto := profileToDTO(p)
 	enrichProfileStats(ctx, p.WxId, dto)
-	reason, err := LoadProfileRejectReason(ctx, int64(p.WxId))
+	job, ok, err := LoadLatestPendingProfileJob(ctx, int64(p.WxId))
 	if err != nil {
-		g.Log().Warningf(ctx, "[ucg-profile] 读取资料审核拒绝原因失败 wxId=%d err=%v", p.WxId, err)
-	} else {
-		dto.RejectReason = reason
-	}
-	patch, ok, err := LoadProfilePending(ctx, int64(p.WxId))
-	if err != nil {
-		g.Log().Warningf(ctx, "[ucg-profile] 读取待审资料失败 wxId=%d err=%v", p.WxId, err)
+		g.Log().Warningf(ctx, "[ucg-profile] 读取待审 job 失败 wxId=%d err=%v", p.WxId, err)
 		return dto, nil
 	}
 	if !ok {
+		// 迁移期：读最近 rejected job 的 reason
+		var rejected entity.UcgProfileAuditJob
+		_ = dao.UcgProfileAuditJob.Ctx(ctx).
+			Where(dao.UcgProfileAuditJob.Columns().WxId, p.WxId).
+			Where(dao.UcgProfileAuditJob.Columns().Status, ProfileJobStatusRejected).
+			OrderDesc(dao.UcgProfileAuditJob.Columns().Id).
+			Limit(1).
+			Scan(&rejected)
+		if rejected.RejectReason != "" {
+			dto.RejectReason = rejected.RejectReason
+		}
 		return dto, nil
 	}
 	dto.AuditPending = true
-	if patch.Nickname != "" {
-		dto.Nickname = patch.Nickname
+	if job.Nickname != "" {
+		dto.Nickname = job.Nickname
 	}
-	if patch.AvatarKey != "" {
-		dto.AvatarKey = patch.AvatarKey
-		dto.AvatarUrl = BuildCdnURL(patch.AvatarKey)
-		dto.AvatarThumbnailUrl = BuildImageThumbnailURL(patch.AvatarKey)
+	if job.AvatarKey != "" {
+		dto.AvatarKey = job.AvatarKey
+		dto.AvatarUrl = BuildCdnURL(job.AvatarKey)
+		dto.AvatarThumbnailUrl = BuildImageThumbnailURL(job.AvatarKey)
 	}
-	if patch.Bio != "" {
-		dto.Bio = patch.Bio
+	if job.Bio != "" {
+		dto.Bio = job.Bio
 	}
-	if patch.UpdatedAt > dto.UpdatedAt {
-		dto.UpdatedAt = patch.UpdatedAt
+	if job.UpdatedAt > dto.UpdatedAt {
+		dto.UpdatedAt = job.UpdatedAt
 	}
 	return dto, nil
 }

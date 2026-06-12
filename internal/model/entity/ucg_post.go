@@ -11,6 +11,7 @@ type UcgPost struct {
 	Content      string `json:"content"      ` //
 	IpLocation   string `json:"ipLocation"   ` // 发帖时 IP属地快照
 	Status       int    `json:"status"       ` // 0 draft 1 pending_audit 2 published 3 rejected
+	AuditVersion int    `json:"auditVersion" ` // 审核轮次，仅 submit/再提审时递增
 	RejectReason string `json:"rejectReason" ` //
 	MediaType    int    `json:"mediaType"    ` // 0 none 1 images 2 video
 	LikeCount    uint   `json:"likeCount"    ` //

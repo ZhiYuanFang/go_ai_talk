@@ -21,7 +21,10 @@ type ChatMessage struct {
 	MediaCdnUrl       string `json:"mediaCdnUrl,omitempty"`
 	MediaThumbnailUrl string `json:"mediaThumbnailUrl,omitempty"`
 	CreatedAt         int64  `json:"createdAt"`
-	Status            string `json:"status"` // pending | delivered
+	Status            string `json:"status"` // delivered（WS 投递态）
+	AuditStatus       string `json:"auditStatus,omitempty"` // pending|approved|rejected，与 MySQL 镜像
+	AuditVersion      int    `json:"auditVersion,omitempty"`
+	RejectReason      string `json:"rejectReason,omitempty"`
 }
 
 func appendChatMessage(ctx context.Context, convID uint64, msg ChatMessage) (ChatMessage, error) {
@@ -43,6 +46,37 @@ func appendChatMessage(ctx context.Context, convID uint64, msg ChatMessage) (Cha
 	// 永久保留：显式 PERSIST（若 key 曾误设 TTL 则清除）
 	_, _ = g.Redis().Do(ctx, "PERSIST", redisChatMsgListKey(convID))
 	return msg, nil
+}
+
+func listChatMessagesForViewer(ctx context.Context, convID uint64, viewerWxID int64, page, pageSize int) (total int, list []ChatMessage, err error) {
+	_, list, err = listChatMessages(ctx, convID, page, pageSize)
+	if err != nil {
+		return 0, nil, err
+	}
+	filtered := filterChatMessagesForViewer(list, viewerWxID)
+	return len(filtered), filtered, nil
+}
+
+// filterChatMessagesForViewer 收件人过滤 rejected；发送人保留 rejected+reason。
+func filterChatMessagesForViewer(msgs []ChatMessage, viewerWxID int64) []ChatMessage {
+	out := make([]ChatMessage, 0, len(msgs))
+	for _, msg := range msgs {
+		if chatMessageVisibleToViewer(msg, viewerWxID) {
+			out = append(out, msg)
+		}
+	}
+	return out
+}
+
+func chatMessageVisibleToViewer(msg ChatMessage, viewerWxID int64) bool {
+	audit := strings.TrimSpace(msg.AuditStatus)
+	if audit == "" || audit == ChatAuditStatusApproved || audit == ChatAuditStatusPending {
+		return true
+	}
+	if audit == ChatAuditStatusRejected {
+		return msg.SenderWxID == viewerWxID
+	}
+	return true
 }
 
 func listChatMessages(ctx context.Context, convID uint64, page, pageSize int) (total int, list []ChatMessage, err error) {

@@ -7,6 +7,7 @@ import (
 
 	"hello/internal/dao"
 	"hello/internal/model/entity"
+	"hello/internal/platform/eventkit"
 
 	"github.com/gogf/gf/v2/database/gdb"
 	"github.com/gogf/gf/v2/errors/gcode"
@@ -51,61 +52,109 @@ type PostMediaDTO struct {
 	SortOrder    int    `json:"sortOrder"`
 }
 
-// CreatePost 创建帖子；submit=true 时进入 pending_audit。clientIP 用于服务端快照 ip_location。
+// CreatePost 创建帖子；submit=true 时进入 pending_audit 并事务提交后发 MQ。clientIP 用于服务端快照 ip_location。
 func CreatePost(ctx context.Context, wxID int64, content string, mediaType int, submit bool, media []PostMediaInput, clientIP string) (*PostDTO, error) {
 	if wxID <= 0 {
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "wxId 无效")
 	}
 	status := PostStatusDraft
+	auditVersion := 0
 	if submit {
 		status = PostStatusPendingAudit
+		auditVersion = 1
 	}
 	now := time.Now().Unix()
 	ipLoc := SnapshotPostIpLocation(ctx, clientIP)
-	data := g.Map{
-		dao.UcgPost.Columns().AuthorWxId: wxID,
-		dao.UcgPost.Columns().Content:    strings.TrimSpace(content),
-		dao.UcgPost.Columns().Status:     status,
-		dao.UcgPost.Columns().MediaType:  mediaType,
-		dao.UcgPost.Columns().CreatedAt:  now,
-		dao.UcgPost.Columns().UpdatedAt:  now,
-	}
-	if ipLoc != "" {
-		data[dao.UcgPost.Columns().IpLocation] = ipLoc
-	}
-	res, err := dao.UcgPost.Ctx(ctx).Data(data).Insert()
+	var postID uint64
+	var outboxID uint64
+	err := dao.UcgPost.Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
+		data := g.Map{
+			dao.UcgPost.Columns().AuthorWxId: wxID,
+			dao.UcgPost.Columns().Content:    strings.TrimSpace(content),
+			dao.UcgPost.Columns().Status:     status,
+			dao.UcgPost.Columns().MediaType:  mediaType,
+			dao.UcgPost.Columns().CreatedAt:  now,
+			dao.UcgPost.Columns().UpdatedAt:  now,
+		}
+		if submit {
+			data[dao.UcgPost.Columns().AuditVersion] = auditVersion
+		}
+		if ipLoc != "" {
+			data[dao.UcgPost.Columns().IpLocation] = ipLoc
+		}
+		res, insErr := tx.Model(dao.UcgPost.Table()).Ctx(ctx).Data(data).Insert()
+		if insErr != nil {
+			return insErr
+		}
+		id, _ := res.LastInsertId()
+		postID = uint64(id)
+		if insErr = replacePostMediaTx(ctx, tx, postID, media); insErr != nil {
+			return insErr
+		}
+		if submit {
+			outboxID, insErr = enqueueAuditPublishOutboxTx(ctx, tx, eventkit.RoutingUcgPostCreated.String(),
+				auditPublishPostPayload(postID, auditVersion))
+		}
+		return insErr
+	})
 	if err != nil {
 		return nil, err
 	}
-	postID, _ := res.LastInsertId()
-	if err = replacePostMedia(ctx, uint64(postID), media); err != nil {
-		return nil, err
+	if submit {
+		scheduleAuditPublishAfterCommit(ctx, outboxID)
 	}
-	return GetPostByID(ctx, uint64(postID), wxID)
+	return GetPostByID(ctx, postID, wxID)
 }
 
-// UpdatePost 编辑自己的帖子。
+// UpdatePost 编辑自己的帖子；再提审递增 audit_version 并发 MQ。
 func UpdatePost(ctx context.Context, wxID int64, postID uint64, content string, mediaType int, submit bool, media []PostMediaInput) (*PostDTO, error) {
 	post, err := loadOwnedPost(ctx, wxID, postID)
 	if err != nil {
 		return nil, err
 	}
 	status := post.Status
-	if submit || status == PostStatusPublished {
+	auditVersion := post.AuditVersion
+	if auditVersion <= 0 {
+		auditVersion = 1
+	}
+	needPublish := false
+	if submit {
+		if post.Status == PostStatusPublished || post.Status == PostStatusRejected {
+			auditVersion++
+		}
+		status = PostStatusPendingAudit
+		needPublish = true
+	} else if status == PostStatusPublished {
 		status = PostStatusPendingAudit
 	}
 	now := time.Now().Unix()
-	_, err = dao.UcgPost.Ctx(ctx).Where(dao.UcgPost.Columns().Id, postID).Data(g.Map{
-		dao.UcgPost.Columns().Content:   strings.TrimSpace(content),
-		dao.UcgPost.Columns().Status:    status,
-		dao.UcgPost.Columns().MediaType: mediaType,
-		dao.UcgPost.Columns().UpdatedAt: now,
-	}).Update()
+	finalAuditVersion := auditVersion
+	var outboxID uint64
+	err = dao.UcgPost.Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
+		_, uErr := tx.Model(dao.UcgPost.Table()).Ctx(ctx).Where(dao.UcgPost.Columns().Id, postID).Data(g.Map{
+			dao.UcgPost.Columns().Content:      strings.TrimSpace(content),
+			dao.UcgPost.Columns().Status:       status,
+			dao.UcgPost.Columns().MediaType:    mediaType,
+			dao.UcgPost.Columns().UpdatedAt:    now,
+			dao.UcgPost.Columns().AuditVersion: finalAuditVersion,
+		}).Update()
+		if uErr != nil {
+			return uErr
+		}
+		if uErr = replacePostMediaTx(ctx, tx, postID, media); uErr != nil {
+			return uErr
+		}
+		if needPublish && status == PostStatusPendingAudit {
+			outboxID, uErr = enqueueAuditPublishOutboxTx(ctx, tx, eventkit.RoutingUcgPostCreated.String(),
+				auditPublishPostPayload(postID, finalAuditVersion))
+		}
+		return uErr
+	})
 	if err != nil {
 		return nil, err
 	}
-	if err = replacePostMedia(ctx, postID, media); err != nil {
-		return nil, err
+	if needPublish && status == PostStatusPendingAudit {
+		scheduleAuditPublishAfterCommit(ctx, outboxID)
 	}
 	return GetPostByID(ctx, postID, wxID)
 }
@@ -118,6 +167,7 @@ func DeletePost(ctx context.Context, wxID int64, postID uint64) error {
 	if _, err := dao.UcgPostMedia.Ctx(ctx).Where(dao.UcgPostMedia.Columns().PostId, postID).Delete(); err != nil {
 		return err
 	}
+	PublishPostUnpublished(ctx, postID)
 	_, err := dao.UcgPost.Ctx(ctx).Where(dao.UcgPost.Columns().Id, postID).Delete()
 	return err
 }
@@ -213,7 +263,13 @@ func loadOwnedPost(ctx context.Context, wxID int64, postID uint64) (*entity.UcgP
 }
 
 func replacePostMedia(ctx context.Context, postID uint64, media []PostMediaInput) error {
-	if _, err := dao.UcgPostMedia.Ctx(ctx).Where(dao.UcgPostMedia.Columns().PostId, postID).Delete(); err != nil {
+	return dao.UcgPost.Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
+		return replacePostMediaTx(ctx, tx, postID, media)
+	})
+}
+
+func replacePostMediaTx(ctx context.Context, tx gdb.TX, postID uint64, media []PostMediaInput) error {
+	if _, err := tx.Model(dao.UcgPostMedia.Table()).Ctx(ctx).Where(dao.UcgPostMedia.Columns().PostId, postID).Delete(); err != nil {
 		return err
 	}
 	for i, m := range media {
@@ -225,7 +281,7 @@ func replacePostMedia(ctx context.Context, postID uint64, media []PostMediaInput
 		if sortOrder == 0 {
 			sortOrder = i
 		}
-		if _, err := dao.UcgPostMedia.Ctx(ctx).Data(g.Map{
+		if _, err := tx.Model(dao.UcgPostMedia.Table()).Ctx(ctx).Data(g.Map{
 			dao.UcgPostMedia.Columns().PostId:     postID,
 			dao.UcgPostMedia.Columns().ObjectKey:  key,
 			dao.UcgPostMedia.Columns().MediaKind:  m.MediaKind,

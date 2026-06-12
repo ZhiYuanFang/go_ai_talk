@@ -7,7 +7,9 @@ import (
 
 	"hello/internal/dao"
 	"hello/internal/model/entity"
+	"hello/internal/platform/eventkit"
 
+	"github.com/gogf/gf/v2/database/gdb"
 	"github.com/gogf/gf/v2/errors/gcode"
 	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/frame/g"
@@ -236,7 +238,7 @@ func ListConversationMessages(ctx context.Context, wxID int64, convID uint64, pa
 	if err := ensureConversationMember(ctx, convID, wxID); err != nil {
 		return nil, err
 	}
-	total, msgs, err := listChatMessages(ctx, convID, page, pageSize)
+	total, msgs, err := listChatMessagesForViewer(ctx, convID, wxID, page, pageSize)
 	if err != nil {
 		return nil, err
 	}
@@ -323,22 +325,34 @@ func bumpMemberActivity(ctx context.Context, convID uint64, wxIDs ...int64) {
 		Data(g.Map{dao.UcgConversation.Columns().UpdatedAt: now}).Update()
 }
 
-// DeliverChatMessage Green 通过后持久化并推送（Option C 投递阶段）。
+// DeliverChatMessage 模式 A：先投递 pending 消息，异步 MQ Green 审核。
 func DeliverChatMessage(ctx context.Context, convID uint64, senderWxID, recipientWxID int64, clientMsgID, content, imageKey, videoKey, mediaCdnURL string) (ChatMessage, error) {
+	auditVersion := 1
 	msg, err := appendChatMessage(ctx, convID, ChatMessage{
-		ClientMsgID: clientMsgID,
-		SenderWxID:  senderWxID,
-		Content:     content,
-		ImageKey:    imageKey,
-		VideoKey:    videoKey,
-		MediaCdnUrl: mediaCdnURL,
-		Status:      "delivered",
+		ClientMsgID:  clientMsgID,
+		SenderWxID:   senderWxID,
+		Content:      content,
+		ImageKey:     imageKey,
+		VideoKey:     videoKey,
+		MediaCdnUrl:  mediaCdnURL,
+		Status:       "delivered",
+		AuditStatus:  ChatAuditStatusPending,
+		AuditVersion: auditVersion,
 	})
 	if err != nil {
 		return msg, err
 	}
 	enrichChatMessageMedia(&msg)
-	if oErr := enqueueChatMessageOutbox(ctx, convID, msg); oErr != nil {
+	var auditOutboxID uint64
+	if oErr := dao.UcgChatMessageOutbox.Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
+		if err := enqueueChatMessageOutboxTx(ctx, tx, convID, msg); err != nil {
+			return err
+		}
+		var txErr error
+		auditOutboxID, txErr = enqueueAuditPublishOutboxTx(ctx, tx, eventkit.RoutingUcgChatMsgCreated.String(),
+			auditPublishChatPayload(msg.ID, convID, auditVersion))
+		return txErr
+	}); oErr != nil {
 		glog.Errorf(ctx, "[ucg-chat] outbox 写入失败 conv=%d msgId=%d err=%v", convID, msg.ID, oErr)
 	}
 	_ = incrUnread(ctx, convID, recipientWxID)
@@ -347,16 +361,18 @@ func DeliverChatMessage(ctx context.Context, convID uint64, senderWxID, recipien
 		Where(dao.UcgConversationMember.Columns().ConversationId, convID).
 		Where(dao.UcgConversationMember.Columns().WxId, recipientWxID).
 		Increment(dao.UcgConversationMember.Columns().UnreadCount, 1)
-	payload := map[string]interface{}{
+	deliverPayload := map[string]interface{}{
 		"type":           "message_delivered",
 		"conversationId": convID,
 		"message":        msg,
 	}
-	ChatWSHub().SendJSON(recipientWxID, payload)
+	ChatWSHub().SendJSON(recipientWxID, deliverPayload)
+	ChatWSHub().SendJSON(senderWxID, deliverPayload)
+	scheduleAuditPublishAfterCommit(ctx, auditOutboxID)
 	return msg, nil
 }
 
-// ProcessOutboundChatMessage 发送消息：先 ACK，再 Green，通过后投递。
+// ProcessOutboundChatMessage 模式 A：先 ACK，再 Redis 投递 + MQ 异步审核（不在 WS 内同步 Green）。
 func ProcessOutboundChatMessage(ctx context.Context, senderWxID int64, convID uint64, clientMsgID, content, imageKey, videoKey string) error {
 	content = strings.TrimSpace(content)
 	imageKey = strings.TrimSpace(imageKey)
@@ -378,35 +394,12 @@ func ProcessOutboundChatMessage(ctx context.Context, senderWxID int64, convID ui
 		"type":        "message_ack",
 		"clientMsgId": clientMsgID,
 	})
-	moderator := EffectiveGreen()
-	if content != "" {
-		verdict, mErr := moderator.ModerateText(ctx, "comment_detection", content)
-		if mErr != nil {
-			return mErr
-		}
-		if !verdict.Pass {
-			sendChatAuditFailed(senderWxID, clientMsgID, verdict.Reason)
-			return nil
-		}
-	}
 	var mediaCdnURL string
 	if imageKey != "" {
 		mediaCdnURL = BuildCdnURL(imageKey)
-		if verdict, mErr := moderator.ModerateImageURL(ctx, mediaCdnURL); mErr != nil {
-			return mErr
-		} else if !verdict.Pass {
-			sendChatAuditFailed(senderWxID, clientMsgID, verdict.Reason)
-			return nil
-		}
 	}
 	if videoKey != "" {
 		mediaCdnURL = BuildCdnURL(videoKey)
-		if verdict, mErr := moderator.ModerateVideoURL(ctx, mediaCdnURL); mErr != nil {
-			return mErr
-		} else if !verdict.Pass {
-			sendChatAuditFailed(senderWxID, clientMsgID, verdict.Reason)
-			return nil
-		}
 	}
 	_, err = DeliverChatMessage(ctx, convID, senderWxID, int64(recipient), clientMsgID, content, imageKey, videoKey, mediaCdnURL)
 	return err

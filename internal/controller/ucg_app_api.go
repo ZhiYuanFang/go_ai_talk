@@ -353,7 +353,8 @@ func (c *UcgAppCtrl) PostLikesGet(ctx context.Context, req *v1.UcgPostLikesGetRe
 
 func (c *UcgAppCtrl) PostCommentsGet(ctx context.Context, req *v1.UcgPostCommentsGetReq) (res *v1.UcgCommentsListRes, err error) {
 	_ = c
-	result, err := ucgsvc.ListComments(ctx, req.Id)
+	viewerWxID, _ := wxIDFromUcgHeaderOptional(ghttp.RequestFromCtx(ctx))
+	result, err := ucgsvc.ListComments(ctx, req.Id, viewerWxID)
 	if err != nil {
 		return nil, err
 	}
@@ -596,6 +597,7 @@ func commentDTOToItem(c *ucgsvc.CommentDTO) v1.UcgCommentItem {
 	item := v1.UcgCommentItem{
 		Id: c.Id, PostId: c.PostId, AuthorWxId: c.AuthorWxId,
 		Content: c.Content, CreatedAt: c.CreatedAt,
+		Status: c.Status, RejectReason: c.RejectReason, AuditVersion: c.AuditVersion,
 	}
 	if c.Author != nil {
 		item.Author = profileDTOToRes(c.Author)
