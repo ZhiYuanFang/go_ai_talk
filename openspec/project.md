@@ -23,7 +23,7 @@
 - gateway-service 逐步收敛为流量与策略层，不承载领域业务实现。
 - voice、device、history 以领域边界划分服务职责。
 - 业务实现代码统一放置于 `internal/services/**`，禁止新增实现文件回流到 `internal/service`。
-- 配置边界必须与服务边界一致：`voice-service`、`device-service`、`history-service`、`worker-service`、`gateway-service`、`gateway-app-server` 使用各自默认配置文件（见 `manifest/config/config.*.yaml`）。
+- 配置边界必须与服务边界一致：`voice-service`、`device-service`、`history-service`、`gateway-service`、`gateway-app-server`、`ucg-service` 使用各自默认配置文件（见 `manifest/config/config.*.yaml`）。
 - 主配置 `manifest/config/config.yaml` 仅承载主网关与全局公共项，禁止承载 voice/device/history 领域专属配置，**禁止**出现 `database` 段。
 - 微服务架构遵循“一服务一数据库”原则；各业务服务配置文件仅维护本域库，一般以 `database.default` 为主。**例外**：`gateway-app-server` 仅允许配置 **`database.app`**（`ai_voice_app`，用于版本等只读场景），**不得**用其 `default` 直连他域库。
 - 当服务需要他域数据时，必须通过跨服务 API 获取，禁止跨库直查。
@@ -31,7 +31,7 @@
 - 若迁移期保留 `local|remote|canary` 双路径，必须显式配置 failover 语义并记录命中日志，避免隐式跨库回流。
 
 ### 数据库连接与部署实例约定（强制）
-- 任意需求变更若**新增、调整或迁移**某进程对 MySQL 的访问，OpenSpec **proposal / design / tasks** 中必须写清：**进程名**、**库与表域**、GoFrame **配置组**（如 `default`、`app`）、以及推荐覆盖方式（yaml 内 `*.link` 或 **`HISTORY_DB_LINK` / `DEVICE_DB_LINK` / `VOICE_DB_LINK` / `WORKER_OUTBOX_DB_LINK` / `APP_DB_LINK`** 等与 `cmd/*-service/main.go` 一致的环境变量名）。
+- 任意需求变更若**新增、调整或迁移**某进程对 MySQL 的访问，OpenSpec **proposal / design / tasks** 中必须写清：**进程名**、**库与表域**、GoFrame **配置组**（如 `default`、`app`）、以及推荐覆盖方式（yaml 内 `*.link` 或 **`HISTORY_DB_LINK` / `DEVICE_DB_LINK` / `VOICE_DB_LINK` / `APP_DB_LINK` / `UCG_DB_LINK`** 等与 `cmd/*-service/main.go` 一致的环境变量名）。
 - **`gateway-app-server`** 连 `ai_voice_app` 时**仅**通过 **`APP_DB_LINK`**（写入 `GF_DATABASE_APP_LINK`）或 `config.gateway-app-server.yaml` 的 **`database.app.link`**；不得与主网关 `gateway-service`（无 DB）混淆。
 - **新建或扩容部署实例**（新 Compose 栈、新集群、新环境）时，同一变更必须同步检查并更新 **`manifest/docker/.env.example`**、**`manifest/docker/docker-compose.microservices.yml`**（各服务 `environment` 中的 `${*_DB_LINK:-}` / `${APP_DB_LINK:-}` 等注入是否齐全）与 **`docs/runbooks/release-deploy-and-run.md`**，避免仅改代码或仅改 yaml 占位 DSN，导致实例上**未设置 `*_DB_LINK` / `APP_DB_LINK`** 仍连占位地址或漏配库；K8s 路径须在 overlay 或 Secret 挂载中同等落实。
 - **tasks 验收**：若本变更引入或可影响库连接，须勾选或描述「`.env.example` / runbook / 服务主配置顶部注释是否已反映新连接约定」；归档前评审须核对此项。
@@ -75,7 +75,14 @@
 
 ### Redis 读缓存约定（强制）
 
-- **默认立场**：业务数据以 **MySQL 为唯一权威**；Redis 用于读加速、临时态、纯统计或幂等等场景，**不是**新读路径的默认依赖。worker outbox 在独立 MySQL 库，不属于读缓存范畴。
+- **默认立场**：业务数据以 **MySQL 为唯一权威**；Redis 用于读加速、临时态、纯统计或幂等等场景，**不是**新读路径的默认依赖。
+
+### 背景循环任务约定（强制）
+
+- **默认禁止**：在 `internal/services/**` 业务实现中新增循环后台任务，包括 `time.NewTicker` / `time.Tick` 轮询、常驻 goroutine 扫描 MySQL/Redis/outbox 表、定时 reconciler、HTTP Management API Pull 轮询队列等。
+- **新增 MUST 经 OpenSpec 批准**：proposal 与 design 须写明任务名称、宿主进程、周期/触发条件、环境开关、失败语义、关闭方式，以及为何不能在请求内同步完成或使用 AMQP push consumer 替代。
+- **AMQP push consumer 例外**：经 RabbitMQ broker push（`autoAck=false`）的 consumer 不视为 ticker 扫表，但 MUST 在 OpenSpec 变更中声明队列名、routing key 与宿主进程（如 `ucg-service` 审核/推荐 consumer）。
+- **评审检查项**：PR 含 `Start*Reconciler`、ticker 扫表或 Pull 消费且无 OpenSpec 变更引用时 MUST 要求补充已批准变更或删除任务。
 - **新引入 Redis 读缓存时 MUST 经负责人确认**：变更新增或改造读路径，且拟引入**新的** Redis 键空间、缓存粒度或整页/列表 JSON 快照时，**AI 在 propose / apply 阶段 MUST 向产品负责人完成收益率评估并确认**；未获明确答复前 **MUST NOT** 擅自加 Redis 键、TTL 或失效逻辑。
 - **负责人已确认「加 Redis」时 MUST 实现**：proposal/design/tasks 已记录确认结论（含键语义、TTL、失效方式）的，**实现阶段不得**以「默认不用 Redis」为由省略；与 usage 统计约定同理，约束是双向的。
 - **proposal / design 收益率评估（新 Redis 读缓存时）**须简要覆盖：

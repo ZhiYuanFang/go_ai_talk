@@ -1,7 +1,7 @@
 # history 在 Docker/Kubernetes 等「一进程一网络命名空间」部署时，必须在环境中设置
 # VOICE_SERVICE_URL、DEVICE_SERVICE_URL，指向可达的 voice-service、device-service 基址；
-# OUTBOX_RELAY 开启时另需 WORKER_SERVICE_URL，将 domain_outbox 入队写入 worker 专用库 ai_voice_worker（见 history/local.go）。
-# 未设置时 Go 侧默认回退 http://127.0.0.1:9802/9803/9901，仅适用于本机同命名空间多进程联调。
+# 未设置时 Go 侧默认回退 http://127.0.0.1:9802/9803，仅适用于本机同命名空间多进程联调。
+# history/device 读模型缓存由写路径同步 patch + 读 miss 回源 MySQL 保证；运维可调用 RebuildHistoryCacheByDevice 手动修复。
 # MySQL：HISTORY_DB_LINK + MYSQL_TCP_HOST；Redis：GF_REDIS_DEFAULT_ADDRESS。
 server:
   address: ":9801"

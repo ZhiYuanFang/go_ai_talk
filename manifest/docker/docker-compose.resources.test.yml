@@ -18,9 +18,6 @@ services:
   device-service:
     mem_limit: 128m
     cpus: "0.15"
-  worker:
-    mem_limit: 128m
-    cpus: "0.15"
   ucg-service:
     mem_limit: 128m
     cpus: "0.15"

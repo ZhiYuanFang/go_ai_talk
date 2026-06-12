@@ -133,7 +133,6 @@ check_test_env go-ai-talk-gateway-app-test APP_DB_LINK
 check_test_env go-ai-talk-device-service-test DEVICE_DB_LINK
 check_test_env go-ai-talk-history-service-test HISTORY_DB_LINK
 check_test_env go-ai-talk-voice-service-test VOICE_DB_LINK
-check_test_env go-ai-talk-worker-test WORKER_OUTBOX_DB_LINK
 
 if container_running go-ai-talk-device-service-test && container_running go-ai-talk-gateway-app-test; then
   dsec=$(docker exec go-ai-talk-device-service-test printenv DEVICE_GATEWAY_INTERNAL_SECRET 2>/dev/null || true)

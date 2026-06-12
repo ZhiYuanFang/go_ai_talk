@@ -54,13 +54,6 @@ services:
       - "19803:9803"
     networks: [go-ai-talk-test-net]
 
-  worker:
-    image: ${REGISTRY}/worker:${IMAGE_TAG}
-    container_name: go-ai-talk-worker-test
-    ports:
-      - "19901:9901"
-    networks: [go-ai-talk-test-net]
-
   ucg-service:
     image: ${REGISTRY}/ucg-service:${IMAGE_TAG}
     container_name: go-ai-talk-ucg-service-test

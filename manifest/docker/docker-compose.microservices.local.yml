@@ -26,10 +26,6 @@ services:
     ports:
       - "9803:9803"
 
-  worker:
-    ports:
-      - "9901:9901"
-
   ucg-service:
     ports:
       - "9804:9804"

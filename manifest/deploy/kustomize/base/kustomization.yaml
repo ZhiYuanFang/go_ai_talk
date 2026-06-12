@@ -11,6 +11,4 @@ resources:
 - voice-service.yaml
 - device-deployment.yaml
 - device-service.yaml
-- worker-deployment.yaml
-- worker-service.yaml
 - ingress.yaml

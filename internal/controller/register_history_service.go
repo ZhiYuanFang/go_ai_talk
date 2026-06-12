@@ -14,6 +14,5 @@ func RegisterHistoryServiceHTTP(s *ghttp.Server) {
 		inner := NewHistoryCtrl(history.DeviceHistory(), voice.Voice())
 		group.Bind(inner)
 		group.Bind(NewHistoryAdminCtrl(inner))
-		group.Bind(NewHistoryInternalProjectionCtrl())
 	})
 }

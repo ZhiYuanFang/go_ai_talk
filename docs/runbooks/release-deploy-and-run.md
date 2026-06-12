@@ -1,6 +1,6 @@
 ## 部署与运行指南
 
-适用范围：gateway / gateway-app / voice-service / device-service / history-service / worker-service / ucg-service。
+适用范围：gateway / gateway-app / voice-service / device-service / history-service / ucg-service。
 
 **Redis 容灾与恢复**（容器重启、volume 备份/还原、数据分层）：见 [redis-disaster-recovery.md](./redis-disaster-recovery.md)。
 
@@ -41,7 +41,7 @@ docker ps --format 'table {{.Names}}\t{{.Status}}' | grep -E 'go-ai-talk-(gatewa
 ### 启动前清理（遇 Conflict / 端口占用）
 
 > **原则**：compose 固定了 `container_name`，用 **`docker rm -f <容器名>`** 一条命令即可删掉冲突容器（不管当初挂在哪个 project 下）。**不加 `-v`**，数据卷保留。  
-> 生产清理**只删无 `-test` 后缀的 7 个容器**，不会动测试栈。
+> 生产清理**只删无 `-test` 后缀的 6 个容器**，不会动测试栈。
 
 **工作目录**（以下所有命令前先执行）：
 
@@ -82,32 +82,32 @@ docker ps -a --filter name=go-ai-talk-rabbitmq-test --format '{{.Names}}' \
 #### ③ 测试微服务（go-ai-talk-*-test 冲突；**不影响生产**）
 
 ```bash
-# 删：7 个测试微服务固定容器名
+# 删：6 个测试微服务固定容器名
 docker rm -f \
   go-ai-talk-gateway-test go-ai-talk-gateway-app-test \
   go-ai-talk-history-service-test go-ai-talk-voice-service-test \
-  go-ai-talk-device-service-test go-ai-talk-worker-test \
+  go-ai-talk-device-service-test \
   go-ai-talk-ucg-service-test \
   2>/dev/null
 
-# 验：只查 7 个微服务名（go-ai-talk-rabbitmq-test 等中间件不算残留）
+# 验：只查 6 个微服务名（go-ai-talk-rabbitmq-test 等中间件不算残留）
 docker ps -a --format '{{.Names}}' \
-  | grep -E '^go-ai-talk-(gateway|gateway-app|history-service|voice-service|device-service|worker|ucg-service)-test$' \
+  | grep -E '^go-ai-talk-(gateway|gateway-app|history-service|voice-service|device-service|ucg-service)-test$' \
   && echo '仍有残留，见上表' || echo 'OK: 测试微服务容器已清空'
 ```
 
 #### ④ 生产微服务（**勿删 -test 容器**）
 
 ```bash
-# 删：7 个生产微服务固定容器名（无 -test 后缀）
+# 删：6 个生产微服务固定容器名（无 -test 后缀）
 docker rm -f \
   go-ai-talk-gateway go-ai-talk-gateway-app go-ai-talk-history-service \
-  go-ai-talk-voice-service go-ai-talk-device-service go-ai-talk-worker \
+  go-ai-talk-voice-service go-ai-talk-device-service \
   go-ai-talk-ucg-service \
   2>/dev/null
 
 # 验：无输出 = 已删（不应出现 -test 行）
-docker ps -a --format '{{.Names}}' | grep -E '^go-ai-talk-(gateway|gateway-app|history-service|voice-service|device-service|worker|ucg-service)$' \
+docker ps -a --format '{{.Names}}' | grep -E '^go-ai-talk-(gateway|gateway-app|history-service|voice-service|device-service|ucg-service)$' \
   && echo '仍有残留' || echo 'OK: 生产微服务容器已清空'
 ```
 
@@ -199,7 +199,7 @@ docker compose --env-file manifest/docker/.env.local \
   -f manifest/docker/docker-compose.microservices.yml \
   -f manifest/docker/docker-compose.microservices.local.yml \
   up -d --build voice-service
-# 同理：gateway / gateway-app / history-service / device-service / worker / ucg-service
+# 同理：gateway / gateway-app / history-service / device-service / ucg-service
 ```
 
 **只改了 compose 环境变量、未改代码**
@@ -219,16 +219,16 @@ curl -s http://127.0.0.1:9702/api.json    # gateway-app
 curl -s http://127.0.0.1:9801/api.json    # history
 curl -s http://127.0.0.1:9802/api.json    # voice
 curl -s http://127.0.0.1:9803/api.json    # device
-curl -s http://127.0.0.1:9901/healthz     # worker
+curl -s http://127.0.0.1:9804/api.json   # ucg-service
 ```
 
 ### A.4 可观测性栈（可选）
 
 > **仅本地开发调试用**；生产/测试 ECS 栈不依赖此 compose。与微服务独立 project，可随时 `up`/`down`，不影响业务容器。
 
-**用途**：Prometheus 抓指标、Loki 收日志、Tempo 收链路、Grafana 统一查看。配置文件在 `manifest/docker/observability/`（Prometheus 已预配 gateway / history / worker 三个 scrape target）。
+**用途**：Prometheus 抓指标、Loki 收日志、Tempo 收链路、Grafana 统一查看。配置文件在 `manifest/docker/observability/`（Prometheus 已预配 gateway / history 等 scrape target）。
 
-**前提**：须先按 [A.2](#a2-日常改了代码要跑起来) 启动微服务并暴露宿主机端口（`microservices.local.yml` 的 9701 / 9801 / 9901 等），Prometheus 经 `host.docker.internal` 抓取。
+**前提**：须先按 [A.2](#a2-日常改了代码要跑起来) 启动微服务并暴露宿主机端口（`microservices.local.yml` 的 9701 / 9801 等），Prometheus 经 `host.docker.internal` 抓取。
 
 **启动**
 
@@ -249,7 +249,7 @@ docker compose -f manifest/docker/docker-compose.observability.yml down
 | 组件 | 地址 | 说明 |
 |------|------|------|
 | Grafana | http://127.0.0.1:3000 | 默认账号 `admin` / `admin` |
-| Prometheus | http://127.0.0.1:9090 | Targets 页确认 gateway / history / worker 为 UP |
+| Prometheus | http://127.0.0.1:9090 | Targets 页确认 gateway / history 等为 UP |
 | Loki | http://127.0.0.1:3100 | 需在 Grafana 添加数据源 `http://loki:3100` |
 | Tempo | http://127.0.0.1:3200 | OTLP gRPC 宿主机 **4317**；Grafana 数据源 `http://tempo:3200` |
 
@@ -275,7 +275,7 @@ OTEL_EXPORTER_OTLP_INSECURE=true
 ```bash
 curl -s http://127.0.0.1:9090/-/healthy          # Prometheus
 curl -s http://127.0.0.1:3000/api/health       # Grafana
-# 浏览器打开 Prometheus → Status → Targets，确认 9701/9801/9901 为 UP
+# 浏览器打开 Prometheus → Status → Targets，确认 9701/9801 等为 UP
 ```
 
 ---
@@ -302,7 +302,7 @@ docker start $(docker ps -aq)
 # 1) 网络
 docker network create go-ai-talk-test-net
 
-# 2) MySQL 建库：ai_voice_history_test、ai_voice_device_test、…（各域 + worker + app + ucg）
+# 2) MySQL 建库：ai_voice_history_test、ai_voice_device_test、…（各域 + app + ucg）
 
 # 3) 静态目录
 sudo mkdir -p /ai_talk_images_test /apk/ai_talk_test && sudo chmod 755 /ai_talk_images_test /apk/ai_talk_test
@@ -371,10 +371,10 @@ cd /www/wwwroot/go/go_ai_talk/   # 仓库根目录
 # ① 清理（Conflict 时必做）— 见上文「③ 测试微服务」
 docker rm -f go-ai-talk-gateway-test go-ai-talk-gateway-app-test \
   go-ai-talk-history-service-test go-ai-talk-voice-service-test \
-  go-ai-talk-device-service-test go-ai-talk-worker-test \
+  go-ai-talk-device-service-test \
   go-ai-talk-ucg-service-test 2>/dev/null
 docker ps -a --format '{{.Names}}' \
-  | grep -E '^go-ai-talk-(gateway|gateway-app|history-service|voice-service|device-service|worker|ucg-service)-test$' \
+  | grep -E '^go-ai-talk-(gateway|gateway-app|history-service|voice-service|device-service|ucg-service)-test$' \
   && echo '仍有残留' || echo 'OK: 测试微服务容器已清空'
 
 # ② 拉镜像并启动
@@ -446,7 +446,7 @@ cd /www/wwwroot/go/go_ai_talk
 
 #### 停止测试环境（推荐顺序：微服务 → RabbitMQ → Redis）
 
-先停依赖中间件的 7 个微服务，再停中间件，避免 worker 仍在消费时出现大量连接错误。
+先停依赖中间件的 6 个微服务，再停中间件。
 
 ```bash
 # 1) 测试微服务（project=go-ai-talk-test）
@@ -469,9 +469,9 @@ docker compose -f manifest/docker/docker-compose.redis-standalone.test.yml down
 docker ps --format 'table {{.Names}}\t{{.Status}}' | grep -E 'test|1970|1980|19901|16379|5673' \
   && echo '仍有 test 容器' || echo 'OK: 测试栈已停止'
 
-docker ps --format 'table {{.Names}}\t{{.Status}}' | grep -E '^go-ai-talk-(gateway|gateway-app|history-service|voice-service|device-service|worker|ucg-service)$' \
+docker ps --format 'table {{.Names}}\t{{.Status}}' | grep -E '^go-ai-talk-(gateway|gateway-app|history-service|voice-service|device-service|ucg-service)$' \
   | head -7
-# 应仍看到 7 个生产微服务 Up（无 -test 后缀）
+# 应仍看到 6 个生产微服务 Up（无 -test 后缀）
 ```
 
 #### 恢复测试环境（推荐顺序：网络 → Redis → RabbitMQ → 微服务）
@@ -547,7 +547,7 @@ cd /www/wwwroot/go/go_ai_talk   # 部署目录（仓库根；勿 cd manifest/doc
 # 1) 网络（Redis / RabbitMQ / 生产微服务共用）
 docker network create go-ai-talk-net
 
-# 2) MySQL：创建各 ai_voice_* 生产库（history / device / voice / worker / app / ucg 等）
+# 2) MySQL：创建各 ai_voice_* 生产库（history / device / voice / app / ucg 等）
 
 # 3) 静态目录
 sudo mkdir -p /ai_talk_images /apk/ai_talk && sudo chmod 755 /ai_talk_images /apk/ai_talk
@@ -658,9 +658,9 @@ cd /path/to/deploy   # 仓库根目录
 
 # ① 清理（Conflict 时必做）— 见上文「④ 生产微服务」
 docker rm -f go-ai-talk-gateway go-ai-talk-gateway-app go-ai-talk-history-service \
-  go-ai-talk-voice-service go-ai-talk-device-service go-ai-talk-worker \
+  go-ai-talk-voice-service go-ai-talk-device-service \
   go-ai-talk-ucg-service 2>/dev/null
-docker ps -a --format '{{.Names}}' | grep -E '^go-ai-talk-(gateway|gateway-app|history-service|voice-service|device-service|worker|ucg-service)$' \
+docker ps -a --format '{{.Names}}' | grep -E '^go-ai-talk-(gateway|gateway-app|history-service|voice-service|device-service|ucg-service)$' \
   && echo '仍有残留' || echo 'OK: 生产微服务容器已清空'
 
 # ② 拉镜像并启动
@@ -682,7 +682,7 @@ docker compose --env-file manifest/docker/.env.prod \
 ```bash
 curl -s http://127.0.0.1:9701/api.json
 curl -s http://127.0.0.1:9702/api.json
-curl -s http://127.0.0.1:9901/healthz
+curl -s http://127.0.0.1:9804/api.json
 ```
 
 ### C.3 生产回滚
@@ -825,7 +825,7 @@ grep -E '^REGISTRY=|^IMAGE_TAG=' manifest/docker/.env.test
 | Repository secrets | `ACR_USERNAME`、`ACR_PASSWORD`（两环境通常相同） |
 | `REGISTRY` | ECS pull 用，**可用** `-vpc`；workflow 自动去掉 `-vpc` 作为 push 地址 |
 | 命名空间 | `REGISTRY` 中 `/pangbao-test` 等与目标环境一致 |
-| ACR 控制台 | 对应命名空间下已有 7 个镜像仓库且存在预发布/正式 tag（如 `:v1.0.0-rc.1`、`:v1.0.0`） |
+| ACR 控制台 | 对应命名空间下已有 6 个镜像仓库且存在预发布/正式 tag（如 `:v1.0.0-rc.1`、`:v1.0.0`） |
 
 ---
 
@@ -962,7 +962,7 @@ git pull
 # 删测试微服务（③ 清理块）后重建
 docker rm -f go-ai-talk-gateway-test go-ai-talk-gateway-app-test \
   go-ai-talk-history-service-test go-ai-talk-voice-service-test \
-  go-ai-talk-device-service-test go-ai-talk-worker-test \
+  go-ai-talk-device-service-test \
   go-ai-talk-ucg-service-test 2>/dev/null
 
 docker compose --env-file manifest/docker/.env.test \
@@ -1080,7 +1080,7 @@ docker network create go-ai-talk-test-net 2>/dev/null || true
 |------|----------|------|
 | gateway | `manifest/config/config.yaml` | 无数据库 |
 | gateway-app | `config.gateway-app-server.yaml` | `APP_DB_LINK`、`GF_REDIS_DEFAULT_ADDRESS`、`GATEWAY_APP_JWT_SECRET` |
-| voice / device / history / worker / ucg | 各 `config.*-service.yaml` | `*_DB_LINK`、`GF_REDIS_DEFAULT_ADDRESS`（ucg 另需 `GATEWAY_APP_JWT_SECRET` 与阿里云 env，见下表） |
+| voice / device / history / ucg | 各 `config.*-service.yaml` | `*_DB_LINK`、`GF_REDIS_DEFAULT_ADDRESS`（ucg 另需 `GATEWAY_APP_JWT_SECRET` 与阿里云 env，见下表） |
 | 跨服务 | Compose 环境变量 | 容器内勿用 `127.0.0.1` 访问他域；用服务名 |
 
 关键原则：
@@ -1112,7 +1112,6 @@ MySQL 经 `internal/platform/dbcfg`；Redis 经 `internal/platform/rediscfg`；�
 | device-service | `DEVICE_DB_LINK` | `default` |
 | voice-service | `VOICE_DB_LINK` | `default` |
 | ucg-service | `UCG_DB_LINK` | `default` |
-| worker | `WORKER_OUTBOX_DB_LINK` | `outbox` |
 | gateway-app | `APP_DB_LINK` | `app` |
 
 **验收**（测试栈示例）：
@@ -1120,7 +1119,7 @@ MySQL 经 `internal/platform/dbcfg`；Redis 经 `internal/platform/rediscfg`；�
 ```bash
 # 1) printenv 含 _test
 for c in go-ai-talk-history-service-test go-ai-talk-device-service-test go-ai-talk-voice-service-test \
-         go-ai-talk-worker-test go-ai-talk-ucg-service-test go-ai-talk-gateway-app-test; do
+         go-ai-talk-ucg-service-test go-ai-talk-gateway-app-test; do
   echo "== $c =="; docker exec "$c" printenv | grep -E '_DB_LINK|APP_DB_LINK' || true
 done
 
@@ -1346,7 +1345,7 @@ ACR_PASSWORD=<ACR 固定密码>
 
 换 ACR 密码时须**同时**更新 GitHub Repository secrets 与各 ECS `.env` 中的 `ACR_PASSWORD`。
 
-每个命名空间下须预先创建 7 个镜像仓库：`gateway`、`gateway-app`、`history-service`、`voice-service`、`device-service`、`worker`、`ucg-service`（或开启「自动创建仓库」）。
+每个命名空间下须预先创建 6 个镜像仓库：`gateway`、`gateway-app`、`history-service`、`voice-service`、`device-service`、`ucg-service`（或开启「自动创建仓库」）。
 
 push 报 `denied` 常见原因：① GitHub 或 ECS 缺 `ACR_USERNAME` / `ACR_PASSWORD`；② `REGISTRY` 缺命名空间；③ 测试/生产命名空间混用；④ 仓库未创建；⑤ ECS 未 `docker login`。详见 [D.2](#d2-acr-拉镜像-pull-access-denied)。
 
@@ -1356,7 +1355,7 @@ push 报 `denied` 常见原因：① GitHub 或 ECS 缺 `ACR_USERNAME` / `ACR_PA
 MYSQL_HOST=127.0.0.1 MYSQL_USER=root MYSQL_PASS='***' ./hack/mask-seed-data.sh
 ```
 
-发版前可选执行；导入后 recreate gateway-app / history / device / worker。
+发版前可选执行；导入后 recreate gateway-app / history / device。
 
 ### 发布前检查
 

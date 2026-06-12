@@ -1,4 +1,4 @@
-# 构建七微服务镜像并 push 至阿里云 ACR（不使用 ACR 控制台「构建规则」）。
+# 构建六微服务镜像并 push 至阿里云 ACR（不使用 ACR 控制台「构建规则」）。
 # 触发（仅 tag，develop push 不构建）：
 #   git tag v1.0.0-rc.1 && git push origin v1.0.0-rc.1  → 测试命名空间，tag :v1.0.0-rc.1 + :<sha>
 #   git tag v1.0.0 && git push origin v1.0.0            → 生产命名空间，tag :v1.0.0 + :<sha>
@@ -105,8 +105,6 @@ jobs:
             dockerfile: manifest/docker/Dockerfile.voice-service
           - id: device-service
             dockerfile: manifest/docker/Dockerfile.device-service
-          - id: worker
-            dockerfile: manifest/docker/Dockerfile.worker-service
           - id: ucg-service
             dockerfile: manifest/docker/Dockerfile.ucg-service
 

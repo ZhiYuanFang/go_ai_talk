@@ -10,8 +10,6 @@ const (
 	RoutingPrefixHistoryRecord = "history.record."
 	// RoutingPrefixDevice 设备域事件前缀。
 	RoutingPrefixDevice = "device."
-	// RoutingPrefixVoiceTask 语音任务事件前缀。
-	RoutingPrefixVoiceTask = "voice.task."
 	// RoutingPrefixUcg UCG 审核事件前缀。
 	RoutingPrefixUcg = "ucg."
 
@@ -22,10 +20,6 @@ const (
 	RoutingDeviceEventChanged       RouteKey = RouteKey(RoutingPrefixDevice + "event.changed")
 	RoutingDeviceActionChanged      RouteKey = RouteKey(RoutingPrefixDevice + "action.changed")
 	RoutingDeviceUserProfileUpdated RouteKey = RouteKey(RoutingPrefixDevice + "user.profile.updated")
-
-	RoutingVoiceTaskRequested RouteKey = RouteKey(RoutingPrefixVoiceTask + "requested")
-	RoutingVoiceTaskCompleted RouteKey = RouteKey(RoutingPrefixVoiceTask + "completed")
-	RoutingVoiceTaskFailed    RouteKey = RouteKey(RoutingPrefixVoiceTask + "failed")
 
 	RoutingUcgPostCreated          RouteKey = RouteKey(RoutingPrefixUcg + "post.created")
 	RoutingUcgCommentCreated       RouteKey = RouteKey(RoutingPrefixUcg + "comment.created")
@@ -47,9 +41,6 @@ var registeredRoutingKeys = map[RouteKey]struct{}{
 	RoutingDeviceEventChanged:       {},
 	RoutingDeviceActionChanged:      {},
 	RoutingDeviceUserProfileUpdated: {},
-	RoutingVoiceTaskRequested:        {},
-	RoutingVoiceTaskCompleted:        {},
-	RoutingVoiceTaskFailed:           {},
 	RoutingUcgPostCreated:            {},
 	RoutingUcgCommentCreated:         {},
 	RoutingUcgProfilePatchSubmitted:  {},

@@ -7,10 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"hello/internal/dao"
 	"hello/internal/model/entity"
 	"hello/internal/platform/cachekit"
-	"hello/internal/platform/eventkit"
 )
 
 const (
@@ -139,77 +137,4 @@ func (r *deviceCacheRepo) setUserProfile(ctx context.Context, profile cachedUser
 		return err
 	}
 	return r.cache.SetEX(ctx, key, string(body), userProfileTTL)
-}
-
-type deviceProjectionEvent struct {
-	EventID  string `json:"event_id"`
-	Version  int64  `json:"version"`
-	DeviceNo string `json:"device_no"`
-	BabyName string `json:"baby_name"`
-	Birthday int64  `json:"birthday"`
-	Sex      int    `json:"sex"`
-}
-
-// ApplyProjection 异步应用 device 侧缓存投影事件。
-func ApplyProjection(ctx context.Context, routingKey, payload string) error {
-	var evt deviceProjectionEvent
-	if err := json.Unmarshal([]byte(payload), &evt); err != nil {
-		return err
-	}
-	parsed, ok := eventkit.ParseRoutingKey(routingKey)
-	if !ok {
-		return nil
-	}
-	switch parsed {
-	case eventkit.RoutingDeviceEventChanged:
-		verKey, _ := cachekit.DeviceEventVersionKey()
-		if evt.Version > 0 && evt.Version < deviceCache.currentVersion(ctx, verKey) {
-			return nil
-		}
-		rows := make([]entity.Event, 0)
-		if err := dao.Event.Ctx(ctx).Fields(eventListFields()...).OrderAsc(dao.Event.Columns().Id).Scan(&rows); err != nil {
-			return err
-		}
-		normalizeEventRows(rows)
-		if err := deviceCache.setEventOptions(ctx, rows); err != nil {
-			return err
-		}
-		deviceCache.setVersion(ctx, verKey, evt.Version)
-	case eventkit.RoutingDeviceActionChanged:
-		verKey, _ := cachekit.DeviceActionVersionKey()
-		if evt.Version > 0 && evt.Version < deviceCache.currentVersion(ctx, verKey) {
-			return nil
-		}
-		rows := make([]entity.Action, 0)
-		if err := dao.Action.Ctx(ctx).Fields(
-			dao.Action.Columns().Id,
-			dao.Action.Columns().Name,
-			dao.Action.Columns().TargetType,
-		).OrderAsc(dao.Action.Columns().Id).Scan(&rows); err != nil {
-			return err
-		}
-		if err := deviceCache.setActionOptions(ctx, rows); err != nil {
-			return err
-		}
-		deviceCache.setVersion(ctx, verKey, evt.Version)
-	case eventkit.RoutingDeviceUserProfileUpdated:
-		evt.DeviceNo = strings.TrimSpace(evt.DeviceNo)
-		if evt.DeviceNo == "" {
-			return nil
-		}
-		verKey, _ := cachekit.UserProfileVersionKey(evt.DeviceNo)
-		if evt.Version > 0 && evt.Version < deviceCache.currentVersion(ctx, verKey) {
-			return nil
-		}
-		if err := deviceCache.setUserProfile(ctx, cachedUserProfile{
-			DeviceNo: evt.DeviceNo,
-			BabyName: strings.TrimSpace(evt.BabyName),
-			Birthday: evt.Birthday,
-			Sex:      evt.Sex,
-		}); err != nil {
-			return err
-		}
-		deviceCache.setVersion(ctx, verKey, evt.Version)
-	}
-	return nil
 }

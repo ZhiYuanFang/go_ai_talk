@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# RabbitMQ 基线：声明 voice.events（topic）及队列与绑定。与 hack/rabbitmq-init.ps1 语义一致。
+# RabbitMQ 基线：声明 voice.events（topic）及 UCG 队列与绑定。与 hack/rabbitmq-init.ps1 语义一致。
 # 用法（在仓库根目录）：
 #   chmod +x hack/rabbitmq-init.sh
 #   ./hack/rabbitmq-init.sh
@@ -56,7 +56,6 @@ echo "Declaring exchange and queues..."
 rabbit_put "/exchanges/%2F/voice.events" \
   '{"type":"topic","durable":true,"auto_delete":false}'
 
-# 队列名与路由键须与 internal/shared/mq 及 worker 消费约定一致。
 declare_queue_bind() {
   name="$1"
   rk="$2"
@@ -65,11 +64,6 @@ declare_queue_bind() {
     "{\"routing_key\":\"${rk}\",\"arguments\":{}}"
 }
 
-declare_queue_bind "voice.task.requested.q" "voice.task.requested"
-declare_queue_bind "voice.task.completed.q" "voice.task.completed"
-declare_queue_bind "voice.task.failed.q" "voice.task.failed"
-declare_queue_bind "notify.events.q" "notify.*"
-declare_queue_bind "history.events.q" "history.#"
 declare_queue_bind "ucg.post.created.q" "ucg.post.created"
 declare_queue_bind "ucg.comment.created.q" "ucg.comment.created"
 declare_queue_bind "ucg.profile.patch.submitted.q" "ucg.profile.patch.submitted"
@@ -85,11 +79,6 @@ echo ""
 echo "RabbitMQ baseline initialized."
 echo "Exchange: voice.events (topic)"
 echo "Queues:"
-echo " - voice.task.requested.q <= voice.task.requested"
-echo " - voice.task.completed.q <= voice.task.completed"
-echo " - voice.task.failed.q <= voice.task.failed"
-echo " - notify.events.q <= notify.*"
-echo " - history.events.q <= history.#"
 echo " - ucg.post.created.q <= ucg.post.created"
 echo " - ucg.comment.created.q <= ucg.comment.created"
 echo " - ucg.profile.patch.submitted.q <= ucg.profile.patch.submitted"

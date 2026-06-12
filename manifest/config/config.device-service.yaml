@@ -1,5 +1,5 @@
 # 容器/K8s 部署 MUST 设置 VOICE_SERVICE_URL（如 http://voice-service:9802），供管理后台「问答库」列表 HTTP 委派到 voice-service；
-# OUTBOX 开启时 MUST 设置 WORKER_SERVICE_URL（如 http://worker:9901），经 HTTP 将 domain_outbox 入队到 worker 专用库 ai_voice_worker（见 enqueueDomainOutboxToHistoryRelay）。
+# 事件/动作/画像写路径同步刷新 Redis 缓存（见 device/admin.go refreshEventOptionsCacheAfterMutate / setUserProfile）。
 # 事件 logo 上传 MUST 设置 UCG_SERVICE_BASE_URL（如 http://ucg-service:9804）与 DEVICE_GATEWAY_INTERNAL_SECRET。
 # MySQL：DEVICE_DB_LINK + MYSQL_TCP_HOST；Redis：GF_REDIS_DEFAULT_ADDRESS。
 

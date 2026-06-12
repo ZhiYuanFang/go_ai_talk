@@ -22,17 +22,14 @@
 
 - Exchange:
   - `voice.events`（type=`topic`, durable）
-- Queues:
-  - `voice.task.requested.q`（`voice.task.requested`）
-  - `voice.task.completed.q`（`voice.task.completed`）
-  - `voice.task.failed.q`（`voice.task.failed`）
-  - `notify.events.q`（`notify.`*）
-  - `history.events.q`（`history.#`）
+- Queues（UCG 审核与推荐分）:
   - `ucg.post.created.q`（`ucg.post.created`）
   - `ucg.comment.created.q`（`ucg.comment.created`）
   - `ucg.profile.patch.submitted.q`（`ucg.profile.patch.submitted`）
   - `ucg.chat.msg.created.q`（`ucg.chat.msg.created`）
   - `ucg.recommend.score.q`（`ucg.post.published` / `unpublished` / `liked` / `unliked` / `comment.published` / `comment.removed`）
+
+> **已移除**：`voice.task.*`、`history.events.q`、`notify.events.q` 等无 consumer 的 orphan 队列（原 worker fan-out 专用）。
 
 ### UCG 双协议说明（Publisher HTTP / Consumer AMQP）
 
@@ -79,6 +76,6 @@
 
 - RabbitMQ 管理台可访问
 - `voice.events` exchange 创建成功
-- 10 个基线队列创建成功并完成绑定（含 4 个 UCG 审核队列 + 1 个推荐分队列多 binding）
+- 5 个基线队列创建成功并完成绑定（4 个 UCG 审核队列 + 1 个推荐分队列多 binding）
 - 能在管理台观察到基础路由键流转
 

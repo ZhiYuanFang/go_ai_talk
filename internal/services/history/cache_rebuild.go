@@ -3,8 +3,6 @@ package history
 import (
 	"context"
 	"strings"
-
-	"hello/internal/model/entity"
 )
 
 // RebuildHistoryCacheByDevice 按设备重建历史读模型缓存。
@@ -42,18 +40,4 @@ func RebuildBirthdayCacheByDevice(ctx context.Context, deviceNo string) error {
 		return err
 	}
 	return historyCache.setBirthday(ctx, strings.TrimSpace(deviceNo), babyName, birthday, sex)
-}
-
-// BuildHistoryEntityFromProjection 从投影事件构建历史实体。
-func BuildHistoryEntityFromProjection(evt historyProjectionEvent) entity.History {
-	return entity.History{
-		Id:          evt.HistoryID,
-		DeviceNo:    strings.TrimSpace(evt.DeviceNo),
-		EventId:     evt.EventIDRef,
-		EventName:   strings.TrimSpace(evt.EventName),
-		EventNumber: evt.EventNum,
-		StartTime:   evt.StartTime,
-		EndTime:     evt.EndTime,
-		Remark:      strings.TrimSpace(evt.Remark),
-	}
 }

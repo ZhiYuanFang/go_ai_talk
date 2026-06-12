@@ -11,9 +11,7 @@ import (
 
 	"hello/internal/dao"
 	"hello/internal/model/entity"
-	"hello/internal/platform/eventkit"
 	"hello/internal/services/contracts"
-	"hello/internal/services/workeroutbox"
 	sharedtypes "hello/internal/shared/types"
 
 	"github.com/gogf/gf/v2/frame/g"
@@ -93,7 +91,7 @@ func (s *service) EnsureRegistered(ctx context.Context, deviceNo string) error {
 	return nil
 }
 
-// SaveUserProfile 更新 user 表画像字段；若开启 outbox 中继且配置了 WORKER_SERVICE_URL，则经 worker HTTP 写入 domain_outbox。
+// SaveUserProfile 更新 user 表画像字段并同步刷新 Redis 画像缓存。
 func (s *service) SaveUserProfile(ctx context.Context, deviceNo string, babyName string, birthdayUnixSec int64, sex int) error {
 	deviceNo = strings.TrimSpace(deviceNo)
 	babyName = strings.TrimSpace(babyName)
@@ -110,9 +108,6 @@ func (s *service) SaveUserProfile(ctx context.Context, deviceNo string, babyName
 	}).Update()
 	if err != nil {
 		return err
-	}
-	if isDeviceOutboxRelayEnabled() {
-		_ = enqueueUserProfileOutbox(ctx, deviceNo, babyName, birthdayUnixSec, sex)
 	}
 	_ = deviceCache.setUserProfile(ctx, cachedUserProfile{
 		DeviceNo: deviceNo,
@@ -143,11 +138,6 @@ func (s *service) InsertVoiceActionRecord(ctx context.Context, name, targetType 
 	if err != nil {
 		return err
 	}
-	_ = enqueueDeviceProjectionEvent(ctx, eventkit.RoutingDeviceActionChanged, map[string]interface{}{
-		"event_id":    fmt.Sprintf("device-action-changed-%d", time.Now().UnixNano()),
-		"version":     time.Now().UnixNano(),
-		"occurred_at": time.Now().Format(time.RFC3339Nano),
-	})
 	if rows, listErr := s.ListActions(ctx); listErr == nil {
 		_ = deviceCache.setActionOptions(ctx, rows)
 	}
@@ -169,11 +159,6 @@ func (s *service) InsertOrGetEventByNeedle(ctx context.Context, needle string, e
 		// 并发或重复名称可能导致唯一约束失败，后续回读仍可拿到已有行。
 		_ = insErr
 	}
-	_ = enqueueDeviceProjectionEvent(ctx, eventkit.RoutingDeviceEventChanged, map[string]interface{}{
-		"event_id":    fmt.Sprintf("device-event-changed-%d", time.Now().UnixNano()),
-		"version":     time.Now().UnixNano(),
-		"occurred_at": time.Now().Format(time.RFC3339Nano),
-	})
 	refreshEventOptionsCacheAfterMutate(ctx)
 	var inserted entity.Event
 	err := dao.Event.Ctx(ctx).Where(dao.Event.Columns().Name, needle).OrderDesc(dao.Event.Columns().Id).Limit(1).Scan(&inserted)
@@ -220,11 +205,6 @@ func (s *service) ApplyDeepSeekEventExtractPersistence(ctx context.Context, out 
 		if err != nil {
 			return entity.Event{}, "", err
 		}
-		_ = enqueueDeviceProjectionEvent(ctx, eventkit.RoutingDeviceEventChanged, map[string]interface{}{
-			"event_id":    fmt.Sprintf("device-event-changed-%d", time.Now().UnixNano()),
-			"version":     time.Now().UnixNano(),
-			"occurred_at": time.Now().Format(time.RFC3339Nano),
-		})
 		refreshEventOptionsCacheAfterMutate(ctx)
 		return out, targetName, nil
 	}
@@ -233,11 +213,6 @@ func (s *service) ApplyDeepSeekEventExtractPersistence(ctx context.Context, out 
 	if _, err := dao.Event.Ctx(ctx).Insert(&out); err != nil {
 		return entity.Event{}, "", err
 	}
-	_ = enqueueDeviceProjectionEvent(ctx, eventkit.RoutingDeviceEventChanged, map[string]interface{}{
-		"event_id":    fmt.Sprintf("device-event-changed-%d", time.Now().UnixNano()),
-		"version":     time.Now().UnixNano(),
-		"occurred_at": time.Now().Format(time.RFC3339Nano),
-	})
 	refreshEventOptionsCacheAfterMutate(ctx)
 	return out, targetName, nil
 }
@@ -401,11 +376,6 @@ func (s *service) AddEvent(ctx context.Context, name string, eventType string, e
 		return 0, err
 	}
 	id, _ := result.LastInsertId()
-	_ = enqueueDeviceProjectionEvent(ctx, eventkit.RoutingDeviceEventChanged, map[string]interface{}{
-		"event_id":    fmt.Sprintf("device-event-changed-%d", time.Now().UnixNano()),
-		"version":     time.Now().UnixNano(),
-		"occurred_at": time.Now().Format(time.RFC3339Nano),
-	})
 	// 事件元数据有变更时，从 DB 重建缓存快照（勿经 ListEvents，避免写回旧缓存）。
 	refreshEventOptionsCacheAfterMutate(ctx)
 	return id, err
@@ -491,11 +461,6 @@ func (s *service) UpdateEvent(ctx context.Context, id int64, name string, eventT
 		}
 	}
 	if err == nil {
-		_ = enqueueDeviceProjectionEvent(ctx, eventkit.RoutingDeviceEventChanged, map[string]interface{}{
-			"event_id":    fmt.Sprintf("device-event-changed-%d", time.Now().UnixNano()),
-			"version":     time.Now().UnixNano(),
-			"occurred_at": time.Now().Format(time.RFC3339Nano),
-		})
 		refreshEventOptionsCacheAfterMutate(ctx)
 	}
 	return err
@@ -521,11 +486,6 @@ func (s *service) DeleteEvent(ctx context.Context, id int64) error {
 	}
 	_, err = dao.Event.Ctx(ctx).Where(dao.Event.Columns().Id, id).Delete()
 	if err == nil {
-		_ = enqueueDeviceProjectionEvent(ctx, eventkit.RoutingDeviceEventChanged, map[string]interface{}{
-			"event_id":    fmt.Sprintf("device-event-changed-%d", time.Now().UnixNano()),
-			"version":     time.Now().UnixNano(),
-			"occurred_at": time.Now().Format(time.RFC3339Nano),
-		})
 		refreshEventOptionsCacheAfterMutate(ctx)
 	}
 	return err
@@ -598,11 +558,6 @@ func (s *service) UpdateAction(ctx context.Context, id int64, name, targetType s
 		dao.Action.Columns().TargetType: targetType,
 	}).Update()
 	if err == nil {
-		_ = enqueueDeviceProjectionEvent(ctx, eventkit.RoutingDeviceActionChanged, map[string]interface{}{
-			"event_id":    fmt.Sprintf("device-action-changed-%d", time.Now().UnixNano()),
-			"version":     time.Now().UnixNano(),
-			"occurred_at": time.Now().Format(time.RFC3339Nano),
-		})
 		if rows, listErr := s.ListActions(ctx); listErr == nil {
 			_ = deviceCache.setActionOptions(ctx, rows)
 		}
@@ -623,11 +578,6 @@ func (s *service) DeleteAction(ctx context.Context, id int64) error {
 	}
 	_, err = dao.Action.Ctx(ctx).Where(dao.Action.Columns().Id, id).Delete()
 	if err == nil {
-		_ = enqueueDeviceProjectionEvent(ctx, eventkit.RoutingDeviceActionChanged, map[string]interface{}{
-			"event_id":    fmt.Sprintf("device-action-changed-%d", time.Now().UnixNano()),
-			"version":     time.Now().UnixNano(),
-			"occurred_at": time.Now().Format(time.RFC3339Nano),
-		})
 		if rows, listErr := s.ListActions(ctx); listErr == nil {
 			_ = deviceCache.setActionOptions(ctx, rows)
 		}
@@ -704,33 +654,4 @@ func actionTargetTypeChinese(t string) string {
 	default:
 		return "未知"
 	}
-}
-
-func enqueueDeviceProjectionEvent(ctx context.Context, routingKey eventkit.RouteKey, payload map[string]interface{}) error {
-	return enqueueDomainOutboxToHistoryRelay(ctx, routingKey, payload)
-}
-
-func isDeviceOutboxRelayEnabled() bool {
-	v := strings.ToLower(strings.TrimSpace(os.Getenv("OUTBOX_RELAY_ENABLED")))
-	return v == "1" || v == "true" || v == "yes" || v == "on"
-}
-
-func enqueueUserProfileOutbox(ctx context.Context, deviceNo string, babyName string, birthdayUnixSec int64, sex int) error {
-	return enqueueDomainOutboxToHistoryRelay(ctx, eventkit.RoutingDeviceUserProfileUpdated, map[string]interface{}{
-		"event_id":    fmt.Sprintf("device-user-profile-updated-%d", time.Now().UnixNano()),
-		"version":     time.Now().UnixNano(),
-		"device_no":   deviceNo,
-		"baby_name":   strings.TrimSpace(babyName),
-		"birthday":    birthdayUnixSec,
-		"sex":         sex,
-		"occurred_at": time.Now().Format(time.RFC3339Nano),
-	})
-}
-
-// enqueueDomainOutboxToHistoryRelay 将领域事件经 worker HTTP 写入 worker 库 domain_outbox（依赖 WORKER_SERVICE_URL）。
-func enqueueDomainOutboxToHistoryRelay(ctx context.Context, routingKey eventkit.RouteKey, payload map[string]interface{}) error {
-	if !routingKey.IsValid() {
-		return errors.New("invalid routing key")
-	}
-	return workeroutbox.EnqueueDomainOutbox(ctx, routingKey, payload)
 }

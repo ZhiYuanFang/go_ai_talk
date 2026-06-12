@@ -36,7 +36,6 @@ services:
       DEVICE_API_PROXY_CANARY_PERCENT: "0"
       # 角色约束：gateway 不承载业务后台任务。
       MQ_CONSUMER_ENABLED: "false"
-      OUTBOX_RELAY_ENABLED: "false"
       MQ_HTTP_API_BASE: "http://rabbitmq:15672/api"
       MQ_USER: "guest"
       MQ_PASSWORD: "guest"
@@ -83,7 +82,6 @@ services:
       UCG_WS_ROUTE_MODE: proxy
       UCG_WS_PROXY_URL: http://ucg-service:9804
       MQ_CONSUMER_ENABLED: "false"
-      OUTBOX_RELAY_ENABLED: "false"
       MQ_HTTP_API_BASE: "http://rabbitmq:15672/api"
       MQ_USER: "guest"
       MQ_PASSWORD: "guest"
@@ -139,8 +137,6 @@ services:
       VOICE_SERVICE_URL: "http://voice-service:9802"
       DEVICE_PROFILE_SERVICE_MODE: "remote"
       DEVICE_SERVICE_URL: "http://device-service:9803"
-      WORKER_SERVICE_URL: "http://worker:9901"
-      OUTBOX_RELAY_ENABLED: "true"
       # 与 runtimecheck 探活一致：启动前校验 RabbitMQ 管理 API 可达。
       MQ_HTTP_API_BASE: "http://rabbitmq:15672/api"
       MQ_USER: "guest"
@@ -176,7 +172,6 @@ services:
       DEVICE_SERVICE_URL: "http://device-service:9803"
       DEVICE_PROFILE_SERVICE_CANARY_PERCENT: "0"
       DEVICE_PROFILE_SERVICE_REMOTE_FAILOVER_LOCAL: "true"
-      OUTBOX_RELAY_ENABLED: "false"
       MQ_HTTP_API_BASE: "http://rabbitmq:15672/api"
       MQ_USER: "guest"
       MQ_PASSWORD: "guest"
@@ -203,8 +198,6 @@ services:
       MYSQL_TCP_HOST: "${MYSQL_TCP_HOST:-}"
       DEVICE_SERVICE_ADDR: ":9803"
       VOICE_SERVICE_URL: "http://voice-service:9802"
-      WORKER_SERVICE_URL: "http://worker:9901"
-      OUTBOX_RELAY_ENABLED: "false"
       MQ_HTTP_API_BASE: "http://rabbitmq:15672/api"
       MQ_USER: "guest"
       MQ_PASSWORD: "guest"
@@ -219,37 +212,6 @@ services:
       timeout: 3s
       retries: 6
 
-
-  worker:
-    build:
-      context: ../..
-      dockerfile: manifest/docker/Dockerfile.worker-service
-    image: go-ai-talk/worker:local
-    container_name: go-ai-talk-worker
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    environment:
-      TZ: Asia/Shanghai
-      GF_GCFG_FILE: manifest/config/config.worker-service.yaml
-      # 非空时由 cmd/worker-service 写入 GF_DATABASE_OUTBOX_LINK，指向仅含 domain_outbox 的库。
-      WORKER_OUTBOX_DB_LINK: "${WORKER_OUTBOX_DB_LINK:-}"
-      MYSQL_TCP_HOST: "${MYSQL_TCP_HOST:-}"
-      WORKER_HEALTH_ADDR: ":9901"
-      HISTORY_SERVICE_URL: "http://history-service:9801"
-      DEVICE_SERVICE_URL: "http://device-service:9803"
-      # 角色约束：worker 独占异步消费与 outbox relay。
-      MQ_CONSUMER_ENABLED: "true"
-      OUTBOX_RELAY_ENABLED: "true"
-      MQ_HTTP_API_BASE: "http://rabbitmq:15672/api"
-      MQ_USER: "guest"
-      MQ_PASSWORD: "guest"
-      GF_REDIS_DEFAULT_ADDRESS: "${GF_REDIS_DEFAULT_ADDRESS:-}"
-    healthcheck:
-      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:9901/healthz > /dev/null || exit 1"]
-      interval: 10s
-      timeout: 3s
-      retries: 6
-    
 
   ucg-service:
     build:

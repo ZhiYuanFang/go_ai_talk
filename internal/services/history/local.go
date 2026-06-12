@@ -3,19 +3,15 @@ package history
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
 	"hello/internal/dao"
 	"hello/internal/model/entity"
-	"hello/internal/platform/eventkit"
 	contracts "hello/internal/services/contracts"
-	"hello/internal/services/workeroutbox"
 
 	"github.com/gogf/gf/v2/database/gdb"
 	"github.com/gogf/gf/v2/frame/g"
-	"github.com/gogf/gf/v2/os/glog"
 )
 
 type localService struct{}
@@ -290,25 +286,6 @@ func AddDeviceHistory(ctx context.Context, item entity.History) (int64, error) {
 		bumpPieceCacheEpoch(ctx, item.DeviceNo)
 		publishHistoryChange(ctx, item.DeviceNo, "create", historyToNotifyPayload(ctx, item))
 	}
-	if err == nil && id > 0 && isOutboxRelayEnabled() {
-		version := time.Now().UnixNano()
-		if e2 := workeroutbox.EnqueueDomainOutbox(ctx, eventkit.RoutingHistoryRecordCreated, map[string]interface{}{
-			"event_id":     fmt.Sprintf("history-created-%d", time.Now().UnixNano()),
-			"version":      version,
-			"history_id":   id,
-			"device_no":    item.DeviceNo,
-			"event_id_ref": item.EventId,
-			"event_name":   item.EventName,
-			"event_number": item.EventNumber,
-			"event_unit":   strings.TrimSpace(item.EventUnit),
-			"start_time":   item.StartTime,
-			"end_time":     item.EndTime,
-			"remark":       item.Remark,
-			"occurred_at":  time.Now().Format(time.RFC3339Nano),
-		}); e2 != nil {
-			glog.Warningf(ctx, "[history] worker outbox enqueue failed after insert history_id=%d err=%v", id, e2)
-		}
-	}
 	return id, err
 }
 
@@ -354,25 +331,6 @@ func UpdateDeviceHistory(ctx context.Context, item entity.History) error {
 		bumpPieceCacheEpoch(ctx, item.DeviceNo)
 		publishHistoryChange(ctx, item.DeviceNo, "update", historyToNotifyPayload(ctx, item))
 	}
-	if err == nil && isOutboxRelayEnabled() {
-		version := time.Now().UnixNano()
-		if e2 := workeroutbox.EnqueueDomainOutbox(ctx, eventkit.RoutingHistoryRecordUpdated, map[string]interface{}{
-			"event_id":     fmt.Sprintf("history-updated-%d", time.Now().UnixNano()),
-			"version":      version,
-			"history_id":   item.Id,
-			"device_no":    item.DeviceNo,
-			"event_id_ref": item.EventId,
-			"event_name":   item.EventName,
-			"event_number": item.EventNumber,
-			"event_unit":   strings.TrimSpace(item.EventUnit),
-			"start_time":   item.StartTime,
-			"end_time":     item.EndTime,
-			"remark":       item.Remark,
-			"occurred_at":  time.Now().Format(time.RFC3339Nano),
-		}); e2 != nil {
-			glog.Warningf(ctx, "[history] worker outbox enqueue failed after update history_id=%d err=%v", item.Id, e2)
-		}
-	}
 	return err
 }
 
@@ -396,22 +354,5 @@ func DeleteDeviceHistory(ctx context.Context, id int64, deviceNo string) error {
 			"deviceNo": deviceNo,
 		})
 	}
-	if err == nil && isOutboxRelayEnabled() {
-		version := time.Now().UnixNano()
-		if e2 := workeroutbox.EnqueueDomainOutbox(ctx, eventkit.RoutingHistoryRecordDeleted, map[string]interface{}{
-			"event_id":    fmt.Sprintf("history-deleted-%d", time.Now().UnixNano()),
-			"version":     version,
-			"history_id":  id,
-			"device_no":   deviceNo,
-			"occurred_at": time.Now().Format(time.RFC3339Nano),
-		}); e2 != nil {
-			glog.Warningf(ctx, "[history] worker outbox enqueue failed after delete history_id=%d err=%v", id, e2)
-		}
-	}
 	return err
-}
-
-func isOutboxRelayEnabled() bool {
-	v := strings.ToLower(strings.TrimSpace(os.Getenv("OUTBOX_RELAY_ENABLED")))
-	return v == "1" || v == "true" || v == "yes" || v == "on"
 }

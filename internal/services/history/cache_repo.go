@@ -9,7 +9,6 @@ import (
 
 	"hello/internal/model/entity"
 	"hello/internal/platform/cachekit"
-	"hello/internal/platform/eventkit"
 	"hello/internal/shared/eventlogo"
 
 	"github.com/gogf/gf/v2/os/glog"
@@ -94,30 +93,43 @@ func (r *cacheRepo) setLatestHistory(ctx context.Context, deviceNo string, item 
 	return r.cache.SetEX(ctx, key, string(body), historyLatestCacheTTL)
 }
 
-func (r *cacheRepo) patchHistoryOnAdd(ctx context.Context, item entity.History) {
-	items, ok, err := r.getHistoryList(ctx, item.DeviceNo)
-	if err != nil || !ok {
+func (r *cacheRepo) delHistoryListKeyBestEffort(ctx context.Context, deviceNo string) {
+	key, err := cachekit.HistoryListKey(deviceNo)
+	if err != nil {
 		return
 	}
-	items = append([]entity.History{item}, items...)
-	if err = r.setHistoryList(ctx, item.DeviceNo, items); err != nil {
-		glog.Warningf(ctx, "history cache add patch failed: deviceNo=%s err=%v", item.DeviceNo, err)
+	if err := r.cache.Del(ctx, key); err != nil {
+		glog.Warningf(ctx, "history cache del list key failed: deviceNo=%s err=%v", deviceNo, err)
 	}
+}
+
+func (r *cacheRepo) patchHistoryOnAdd(ctx context.Context, item entity.History) {
+	items, ok, err := r.getHistoryList(ctx, item.DeviceNo)
+	if err == nil && ok {
+		items = append([]entity.History{item}, items...)
+		if setErr := r.setHistoryList(ctx, item.DeviceNo, items); setErr != nil {
+			glog.Warningf(ctx, "history cache add patch failed: deviceNo=%s err=%v", item.DeviceNo, setErr)
+			r.delHistoryListKeyBestEffort(ctx, item.DeviceNo)
+		}
+	}
+	// 列表 cache miss 时仍更新 latest，避免冷缓存下 GetLatestHistory 长期 miss。
 	_ = r.setLatestHistory(ctx, item.DeviceNo, item)
 }
 
 func (r *cacheRepo) patchHistoryOnUpdate(ctx context.Context, item entity.History) {
 	items, ok, err := r.getHistoryList(ctx, item.DeviceNo)
-	if err != nil || !ok {
-		return
-	}
-	for i := range items {
-		if items[i].Id == item.Id {
-			items[i] = item
-			break
+	if err == nil && ok {
+		for i := range items {
+			if items[i].Id == item.Id {
+				items[i] = item
+				break
+			}
+		}
+		if setErr := r.setHistoryList(ctx, item.DeviceNo, items); setErr != nil {
+			glog.Warningf(ctx, "history cache update patch failed: deviceNo=%s err=%v", item.DeviceNo, setErr)
+			r.delHistoryListKeyBestEffort(ctx, item.DeviceNo)
 		}
 	}
-	_ = r.setHistoryList(ctx, item.DeviceNo, items)
 	latest, ok, err := r.getLatestHistory(ctx, item.DeviceNo)
 	if err == nil && ok && latest.Id == item.Id {
 		_ = r.setLatestHistory(ctx, item.DeviceNo, item)
@@ -135,7 +147,11 @@ func (r *cacheRepo) patchHistoryOnDelete(ctx context.Context, deviceNo string, i
 			next = append(next, item)
 		}
 	}
-	_ = r.setHistoryList(ctx, deviceNo, next)
+	if setErr := r.setHistoryList(ctx, deviceNo, next); setErr != nil {
+		glog.Warningf(ctx, "history cache delete patch failed: deviceNo=%s err=%v", deviceNo, setErr)
+		r.delHistoryListKeyBestEffort(ctx, deviceNo)
+		return
+	}
 	if len(next) > 0 {
 		_ = r.setLatestHistory(ctx, deviceNo, next[0])
 	}
@@ -238,73 +254,4 @@ func (r *cacheRepo) setBirthday(ctx context.Context, deviceNo string, babyName s
 		return err
 	}
 	return r.cache.SetEX(ctx, key, string(body), historyBirthdayCacheTTL)
-}
-
-type historyProjectionEvent struct {
-	EventID    string `json:"event_id"`
-	Version    int64  `json:"version"`
-	HistoryID  int64  `json:"history_id"`
-	DeviceNo   string `json:"device_no"`
-	EventIDRef int64  `json:"event_id_ref"`
-	EventName  string `json:"event_name"`
-	EventNum   int64  `json:"event_number"`
-	EventUnit  string `json:"event_unit"`
-	StartTime  int64  `json:"start_time"`
-	EndTime    int64  `json:"end_time"`
-	Remark     string `json:"remark"`
-}
-
-// ApplyProjection 处理 history.record.* 异步缓存投影。
-func ApplyProjection(ctx context.Context, routingKey string, payload string) error {
-	parsed, ok := eventkit.ParseRoutingKey(routingKey)
-	if !ok {
-		return nil
-	}
-	if !strings.HasPrefix(parsed.String(), "history.record.") {
-		return nil
-	}
-	var evt historyProjectionEvent
-	if err := json.Unmarshal([]byte(payload), &evt); err != nil {
-		return err
-	}
-	evt.DeviceNo = strings.TrimSpace(evt.DeviceNo)
-	if evt.DeviceNo == "" {
-		return nil
-	}
-	// 版本乱序保护：低版本事件直接跳过。
-	current := historyCache.currentVersion(ctx, evt.DeviceNo)
-	if evt.Version > 0 && evt.Version < current {
-		glog.Warningf(ctx, "history cache projection skipped by stale version: deviceNo=%s current=%d incoming=%d", evt.DeviceNo, current, evt.Version)
-		return nil
-	}
-	switch parsed {
-	case eventkit.RoutingHistoryRecordCreated:
-		historyCache.patchHistoryOnAdd(ctx, entity.History{
-			Id:          evt.HistoryID,
-			DeviceNo:    evt.DeviceNo,
-			EventId:     evt.EventIDRef,
-			EventName:   evt.EventName,
-			EventNumber: evt.EventNum,
-			EventUnit:   strings.TrimSpace(evt.EventUnit),
-			StartTime:   evt.StartTime,
-			EndTime:     evt.EndTime,
-			Remark:      strings.TrimSpace(evt.Remark),
-		})
-	case eventkit.RoutingHistoryRecordUpdated:
-		historyCache.patchHistoryOnUpdate(ctx, entity.History{
-			Id:          evt.HistoryID,
-			DeviceNo:    evt.DeviceNo,
-			EventId:     evt.EventIDRef,
-			EventName:   evt.EventName,
-			EventNumber: evt.EventNum,
-			EventUnit:   strings.TrimSpace(evt.EventUnit),
-			StartTime:   evt.StartTime,
-			EndTime:     evt.EndTime,
-			Remark:      strings.TrimSpace(evt.Remark),
-		})
-	case eventkit.RoutingHistoryRecordDeleted:
-		historyCache.patchHistoryOnDelete(ctx, evt.DeviceNo, evt.HistoryID)
-	}
-	historyCache.setVersion(ctx, evt.DeviceNo, evt.Version)
-	return nil
 }

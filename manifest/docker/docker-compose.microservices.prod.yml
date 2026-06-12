@@ -39,12 +39,6 @@ services:
       - "9803:9803"
     networks: [go-ai-talk-net]
 
-  worker:
-    image: ${REGISTRY}/worker:${IMAGE_TAG}
-    ports:
-      - "9901:9901"
-    networks: [go-ai-talk-net]
-
   ucg-service:
     image: ${REGISTRY}/ucg-service:${IMAGE_TAG}
     ports:

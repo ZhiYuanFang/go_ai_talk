@@ -50,8 +50,6 @@ spec:
               value: "gateway-internal-change-me"
             - name: MQ_CONSUMER_ENABLED
               value: "false"
-            - name: OUTBOX_RELAY_ENABLED
-              value: "false"
           livenessProbe:
             httpGet:
               path: /api.json

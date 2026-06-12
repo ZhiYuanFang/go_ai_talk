@@ -1,9 +1,0 @@
-# MySQL：WORKER_OUTBOX_DB_LINK + MYSQL_TCP_HOST；Redis：GF_REDIS_DEFAULT_ADDRESS。
-server:
-  address: ":9901"
-  openapiPath: "/api.json"
-  swaggerPath: "/swagger"
-
-logger:
-  level: "all"
-  stdout: true

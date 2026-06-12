@@ -13,7 +13,7 @@
 - 跨服务数据访问必须走服务接口契约（HTTP/RPC/事件），禁止在服务实现中直接访问他域 DAO 或数据库表。
 - 迁移期若使用 `local|remote|canary` 双路径，必须保留显式配置与 failover 语义，并输出可观测日志。
 - 代码评审时需显式检查：是否出现跨库直查、是否补齐契约路径与错误语义。
-- `internal/services/history` 不得 import 或调用 `dao.User`、`dao.Event`、`dao.Suggest` 等他域表；`domain_outbox` 权威在 **worker-service** 专用 MySQL 库（约定库名 **`ai_voice_worker`**），`history-service`/`device-service` 投递 MUST 经 `WORKER_SERVICE_URL` HTTP 入队（见 `internal/services/workeroutbox`），禁止用本进程 `default` 连接组误连他域库表。
+- `internal/services/history` 不得 import 或调用 `dao.User`、`dao.Event`、`dao.Suggest` 等他域表；history/device 读模型缓存由写路径同步 patch + 读 miss 回源 MySQL 保证，禁止跨库直查他域表。
 - `internal/services/voice` 不得 import `hello/internal/dao` 中 **user/event/action** 等他域表 DAO；设备域访问 MUST 经 `voice.DeviceAdmin()`（HTTP 实现）或经批准的契约，禁止在 voice 进程内直连 device 库表。评审可检索：`grep -r \"internal/dao\" internal/services/voice`（应仅出现 suggest/qa 等本域表）。
 - 服务默认配置必须按进程独立（`gateway`/`voice-service`/`device-service`/`history-service`），禁止回退到共享主配置承载他域业务项。
 - `manifest/config/config.yaml` 仅允许保留网关与全局公共配置；评审时必须检查是否有 voice/device/history 专属字段回流。
@@ -27,6 +27,11 @@
 ## App API 使用统计（OpenSpec / 实现强制）
 - 新增经 **gateway-app** 对外的 **App HTTP 接口**时，**必须先向负责人询问是否计入 usage 统计**；未获明确答复前不得修改 `usagestats/maintenance_skip.go` 或假定统计策略。
 - 细则见 **`openspec/project.md`**「App API 使用统计约定」；维护型排除列表在 **`internal/services/gatewayapp/usagestats/maintenance_skip.go`**。
+
+## 背景循环任务（OpenSpec / 实现强制）
+- 默认禁止在 `internal/services/**` 新增循环后台任务（`time.NewTicker`、扫 outbox/表 reconciler、HTTP Pull 轮询队列等）；新增 MUST 有 OpenSpec proposal/design 明确批准（任务名、宿主进程、周期、开关、失败语义）。
+- RabbitMQ **broker push** consumer（`autoAck=false`）不视为 ticker 扫表，但仍须在变更中声明队列与宿主进程。
+- 细则见 **`openspec/project.md`**「背景循环任务约定」；已批准的 UCG outbox relay / AMQP consumer 保留在 `ucg-service`。
 
 ## Redis 读缓存（OpenSpec / 实现强制）
 - 新增或改造业务读路径时，**不得默认引入 Redis**；拟引入**新的** Redis 读缓存须先做收益率评估并**向负责人确认**；**负责人已确认要加的，实现阶段不得省略**。
