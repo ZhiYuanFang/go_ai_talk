@@ -162,6 +162,26 @@ func (g *greenModerator) ModerateVideoURL(ctx context.Context, videoURL string) 
 	return parseVideoModeration(resp)
 }
 
+// normalizeGreenRejectReason 将 Green Data.Reason 转为用户可读驳回文案。
+// 文本机审违规时 Reason 常为 JSON（含 riskTips）；集中在此解析，供帖/评/资料/私信共用。
+// 纯文本 Reason 原样返回；JSON 解析失败或无 riskTips 时返回空串，由调用方回退 rejectReasonDefault。
+func normalizeGreenRejectReason(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	if !strings.HasPrefix(raw, "{") {
+		return raw
+	}
+	var parsed struct {
+		RiskTips string `json:"riskTips"`
+	}
+	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(parsed.RiskTips)
+}
+
 func parseTextModeration(resp *green.TextModerationResponse) (AuditVerdict, error) {
 	if resp == nil || resp.Body == nil {
 		return AuditVerdict{}, fmt.Errorf("green text: empty response")
@@ -181,10 +201,10 @@ func parseTextModeration(resp *green.TextModerationResponse) (AuditVerdict, erro
 		return AuditVerdict{}, fmt.Errorf("green text: code %d", code)
 	}
 	labels := strings.TrimSpace(tea.StringValue(resp.Body.Data.Labels))
-	reason := strings.TrimSpace(tea.StringValue(resp.Body.Data.Reason))
 	if labels == "" || labels == "nonLabel" {
 		return AuditVerdict{Pass: true}, nil
 	}
+	reason := normalizeGreenRejectReason(tea.StringValue(resp.Body.Data.Reason))
 	if reason == "" {
 		reason = rejectReasonDefault
 	}
