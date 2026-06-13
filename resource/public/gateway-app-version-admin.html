@@ -151,10 +151,6 @@
 			verBody.innerHTML = '<tr><td colspan="8">加载中…</td></tr>';
 			try {
 				const { code, items = [], total = 0 } =  await apiJson('/device/app/api/version/admin/list?limit=200&_=' + Date.now());
-				if (code !== 0) {
-					showErr(listMsg, 'API 返回错误：' + (data.message || '未知错误'));
-					return;
-				}
 				if (!items.length) {
 					if (total > 0) {
 						showErr(listMsg, '数据库有 ' + total + ' 条记录但页面未解析出列表，请查看 gateway-app 日志或联系运维');

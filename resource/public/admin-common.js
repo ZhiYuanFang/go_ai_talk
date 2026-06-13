@@ -49,6 +49,9 @@ window.AdminCommon = (function () {
 		if (!res.ok || data.code !== 0) {
 			throw new Error(data.message || ('HTTP ' + res.status));
 		}
+		if (!data.data){
+			return data
+		}
 		return data.data;
 	}
 
@@ -62,6 +65,9 @@ window.AdminCommon = (function () {
 		const data = await res.json().catch(function () { return {}; });
 		if (!res.ok || data.code !== 0) {
 			throw new Error(data.message || ('HTTP ' + res.status));
+		}
+		if (!data.data){
+			return data
 		}
 		return data.data;
 	}
