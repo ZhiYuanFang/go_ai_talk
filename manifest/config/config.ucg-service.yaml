@@ -31,7 +31,7 @@ ucg:
     # 展示 URL：CDN 域名（API cdnUrl / 客户端 objectKeyToCdn 均基于此）
     cdnBaseUrl: "https://resorce.cuplay.top"
   green:
-    enabled: false
+    enabled: true
     endpoint: "green-cip.cn-beijing.aliyuncs.com"
     region: "cn-beijing"
     accessKeyId: ""
