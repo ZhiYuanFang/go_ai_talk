@@ -12,30 +12,28 @@ import (
 )
 
 // auditPostFromEvent 帖子 MQ 审核入口：两阶段（Phase1 Green → Phase2 publish/reject CAS）。
-// 返回值：nil=Ack；err=Nack requeue。Phase1 失败且无 moderation_verdict 时与资料路径 A 同类风暴。
+// Phase1 失败写 moderation_failed 并 Ack，不再 requeue Green。
 func auditPostFromEvent(ctx context.Context, postID uint64, auditVersion int) error {
 	post, err := loadPostForAudit(ctx, postID)
 	if err != nil {
-		return err // DB 读失败 → requeue
+		return err
 	}
 	if post.Id == 0 {
 		glog.Infof(ctx, "[ucg-audit-mq] post skip missing id=%d version=%d", postID, auditVersion)
-		return nil // 无帖子 → Ack
+		return nil
 	}
 	if post.Status != PostStatusPendingAudit || post.AuditVersion != auditVersion {
 		glog.Infof(ctx, "[ucg-audit-mq] post skip stale id=%d curStatus=%d curVersion=%d eventVersion=%d",
 			postID, post.Status, post.AuditVersion, auditVersion)
-		return nil // 过期事件 → Ack
+		return nil
 	}
 
-	if err = runPostModerationPhase(ctx, ucgPostQueue, post, auditVersion); err != nil {
-		return err // Phase1 Green/persist 失败 → requeue
-	}
+	runPostModerationPhase(ctx, ucgPostQueue, post, auditVersion)
 	post, err = loadPostForAudit(ctx, postID)
 	if err != nil {
 		return err
 	}
-	return runPostApplyPhase(ctx, ucgPostQueue, post, auditVersion) // Phase2 有界 apply 重试
+	return runPostApplyPhase(ctx, ucgPostQueue, post, auditVersion)
 }
 
 // publishPostCAS Phase2 通过：pending_audit → published。

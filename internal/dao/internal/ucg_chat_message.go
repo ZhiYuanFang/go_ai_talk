@@ -30,9 +30,14 @@ type UcgChatMessageColumns struct {
 	MediaCdnUrl    string //
 	CreatedAt      string //
 	Status         string //
-	AuditStatus    string // pending|approved|rejected
-	AuditVersion   string // 审核轮次
-	RejectReason   string //
+	AuditStatus       string // pending|approved|rejected|moderation_failed
+	AuditVersion      string // 审核轮次
+	ModerationVerdict string //
+	ModerationReason  string //
+	ModerationAt      string //
+	ApplyAttempts     string //
+	ApplyFailedAt     string //
+	RejectReason      string //
 }
 
 // ucgChatMessageColumns holds the columns for table ucg_chat_message.
@@ -47,9 +52,14 @@ var ucgChatMessageColumns = UcgChatMessageColumns{
 	MediaCdnUrl:    "media_cdn_url",
 	CreatedAt:      "created_at",
 	Status:         "status",
-	AuditStatus:    "audit_status",
-	AuditVersion:   "audit_version",
-	RejectReason:   "reject_reason",
+	AuditStatus:       "audit_status",
+	AuditVersion:      "audit_version",
+	ModerationVerdict: "moderation_verdict",
+	ModerationReason:  "moderation_reason",
+	ModerationAt:      "moderation_at",
+	ApplyAttempts:     "apply_attempts",
+	ApplyFailedAt:     "apply_failed_at",
+	RejectReason:      "reject_reason",
 }
 
 // NewUcgChatMessageDao creates and returns a new DAO object for table data access.

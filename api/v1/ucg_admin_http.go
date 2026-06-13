@@ -84,3 +84,46 @@ type UcgAdminPostsRejectRes struct {
 	Skipped  []uint64 `json:"skipped"`
 	Failed   []uint64 `json:"failed"`
 }
+
+// UcgAdminProfileAuditJobsListReq 资料机审失败 job 列表。
+type UcgAdminProfileAuditJobsListReq struct {
+	g.Meta   `path:"/ucg/admin/api/profile-audit-jobs/list" method:"get" tags:"ucg-admin" summary:"资料机审失败 job 分页列表"`
+	Page     int  `json:"page" p:"page"`
+	PageSize int  `json:"pageSize" p:"pageSize"`
+	Status   *int `json:"status" p:"status" dc:"默认 5=moderation_failed"`
+}
+
+// UcgAdminProfileAuditJobItem 列表项。
+type UcgAdminProfileAuditJobItem struct {
+	JobId        uint64 `json:"jobId"`
+	WxId         int64  `json:"wxId"`
+	AuditVersion int    `json:"auditVersion"`
+	Status       int    `json:"status"`
+	Nickname     string `json:"nickname,omitempty"`
+	AvatarKey    string `json:"avatarKey,omitempty"`
+	Bio          string `json:"bio,omitempty"`
+	RejectReason string `json:"rejectReason,omitempty"`
+	CreatedAt    int64  `json:"createdAt"`
+	UpdatedAt    int64  `json:"updatedAt"`
+}
+
+// UcgAdminProfileAuditJobsListRes 列表响应。
+type UcgAdminProfileAuditJobsListRes struct {
+	List     []UcgAdminProfileAuditJobItem `json:"list"`
+	Total    int                           `json:"total"`
+	Page     int                           `json:"page"`
+	PageSize int                           `json:"pageSize"`
+}
+
+// UcgAdminProfileAuditJobResolveReq 人工通过/驳回。
+type UcgAdminProfileAuditJobResolveReq struct {
+	g.Meta `path:"/ucg/admin/api/profile-audit-jobs/resolve" method:"post" tags:"ucg-admin" summary:"资料机审失败 job 人工处理"`
+	JobId  uint64 `json:"jobId" v:"required"`
+	Action string `json:"action" v:"required|in:approve,reject"`
+	Reason string `json:"reason"`
+}
+
+// UcgAdminProfileAuditJobResolveRes 处理结果。
+type UcgAdminProfileAuditJobResolveRes struct {
+	Ok bool `json:"ok"`
+}

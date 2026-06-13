@@ -1,14 +1,11 @@
 // Package ucg 资料/帖子内容审核两阶段编排（Phase1 Green 机审 → Phase2 apply 落库）。
 //
-// 【Green 风暴两条典型路径 — 排查时对照日志与 DB moderation_verdict】
+// 【Green 风暴排查 — 对照日志与 DB moderation_verdict / moderation_failed 终态】
 //
-// 路径 A（Phase1 失败，verdict 一直为 0，无限调 Green）：
+// 路径 A（Phase1 Green/API 失败 — 已修复，不再 requeue Green）：
 //
-//	runProfileGreenChecks 返回 err（额度/网络/body.code≠200）
-//	→ runProfileModerationPhase 返回 err
-//	→ auditProfileJobFromEvent 返回 err
-//	→ amqp_consumer.handleDelivery Nack(requeue=true)
-//	→ moderation_verdict 仍为 0 → 下次消费再次调 Green（Phase1 无重试上限）
+//	run*GreenChecks 返回 err → mark*ModerationFailed → status=moderation_failed → handler Ack
+//	→ 后续 delivery 因 status≠pending 跳过 Green
 //
 // 路径 B（Phase1 成功，Phase2 apply 失败，有界重试、不再调 Green）：
 //
@@ -216,12 +213,13 @@ func runProfileModerationPhase(ctx context.Context, queueName string, job entity
 		// 【关键】verdict 已落库 → 重投不再调 Green（路径 B 的 retry apply）
 		glog.Infof(ctx, "[ucg-audit-mq] profile moderation skip green queue=%s jobId=%d wxId=%d auditVersion=%d verdict=%d apply_attempts=%d",
 			queueName, job.Id, job.WxId, auditVersion, job.ModerationVerdict, job.ApplyAttempts)
+		return
 	}
 	pass, reason, err := runProfileGreenChecks(ctx, job)
 	if err != nil {
-		// 【风暴点】Green/API 失败 → 返回 err → MQ Nack requeue，verdict 仍为 0
 		fromReason := fmt.Sprintf("[ucg-audit-mq] profile moderation green checks failed jobId=%d auditVersion=%d err=%v", job.Id, auditVersion, err)
-		markProfileModerationFailed(ctx, job.Id, fromReason, err)
+		markProfileModerationFailed(ctx, job.Id, fromReason)
+		return
 	}
 	verdict := ModerationVerdictPass
 	if !pass {
@@ -230,24 +228,23 @@ func runProfileModerationPhase(ctx context.Context, queueName string, job entity
 			reason = rejectReasonDefault
 		}
 	}
-
 	if err := persistModerationVerdictProfile(ctx, job.Id, auditVersion, verdict, reason); err != nil {
 		fromReason := fmt.Sprintf("[ucg-audit-mq] profile moderation persist verdict failed jobId=%d auditVersion=%d err=%v", job.Id, auditVersion, err)
-		markProfileModerationFailed(ctx, job.Id, fromReason, err)
+		markProfileModerationFailed(ctx, job.Id, fromReason)
 	}
 }
 
-func markProfileModerationFailed(ctx context.Context, jobID uint64, fromReason string, err error) error {
+func markProfileModerationFailed(ctx context.Context, jobID uint64, fromReason string) {
 	now := time.Now().Unix()
 	cols := dao.UcgProfileAuditJob.Columns()
-	dao.UcgProfileAuditJob.Ctx(ctx).
+	_, _ = dao.UcgProfileAuditJob.Ctx(ctx).
 		Where(cols.Id, jobID).
+		Where(cols.Status, ProfileJobStatusPending).
 		Data(g.Map{
 			cols.Status:       ProfileJobStatusModerationFailed,
 			cols.RejectReason: fromReason,
 			cols.UpdatedAt:    now,
 		}).Update()
-	return nil
 }
 
 // runProfileApplyPhase Phase2：基于已持久化 verdict 执行 approve/reject CAS；失败走有界重试。
@@ -272,16 +269,18 @@ func runProfileApplyPhase(ctx context.Context, queueName string, job entity.UcgP
 	return nil // 成功 → handler nil → Ack
 }
 
-// runPostModerationPhase 帖子 Phase1。
-func runPostModerationPhase(ctx context.Context, queueName string, post entity.UcgPost, auditVersion int) error {
+// runPostModerationPhase 帖子 Phase1；Green/persist 失败写 moderation_failed 并 Ack，不再 requeue Green。
+func runPostModerationPhase(ctx context.Context, queueName string, post entity.UcgPost, auditVersion int) {
 	if post.ModerationVerdict != ModerationVerdictNone {
 		glog.Infof(ctx, "[ucg-audit-mq] post moderation skip green queue=%s postId=%d authorWxId=%d auditVersion=%d verdict=%d apply_attempts=%d",
 			queueName, post.Id, post.AuthorWxId, auditVersion, post.ModerationVerdict, post.ApplyAttempts)
-		return nil
+		return
 	}
 	pass, reason, err := runPostGreenChecks(ctx, post)
 	if err != nil {
-		return err
+		fromReason := fmt.Sprintf("[ucg-audit-mq] post moderation green checks failed postId=%d auditVersion=%d err=%v", post.Id, auditVersion, err)
+		markPostModerationFailed(ctx, post.Id, auditVersion, fromReason)
+		return
 	}
 	verdict := ModerationVerdictPass
 	if !pass {
@@ -290,7 +289,24 @@ func runPostModerationPhase(ctx context.Context, queueName string, post entity.U
 			reason = rejectReasonDefault
 		}
 	}
-	return persistModerationVerdictPost(ctx, post.Id, auditVersion, verdict, reason)
+	if err := persistModerationVerdictPost(ctx, post.Id, auditVersion, verdict, reason); err != nil {
+		fromReason := fmt.Sprintf("[ucg-audit-mq] post moderation persist verdict failed postId=%d auditVersion=%d err=%v", post.Id, auditVersion, err)
+		markPostModerationFailed(ctx, post.Id, auditVersion, fromReason)
+	}
+}
+
+func markPostModerationFailed(ctx context.Context, postID uint64, auditVersion int, fromReason string) {
+	now := time.Now().Unix()
+	cols := dao.UcgPost.Columns()
+	_, _ = dao.UcgPost.Ctx(ctx).
+		Where(cols.Id, postID).
+		Where(cols.Status, PostStatusPendingAudit).
+		Where(cols.AuditVersion, auditVersion).
+		Data(g.Map{
+			cols.Status:        PostStatusModerationFailed,
+			cols.RejectReason:  fromReason,
+			cols.UpdatedAt:     now,
+		}).Update()
 }
 
 // runPostApplyPhase 帖子 Phase2。
@@ -420,6 +436,365 @@ func handlePostApplyFailure(ctx context.Context, queueName string, post entity.U
 	glog.Warningf(ctx, "[ucg-audit-mq] post apply retry queue=%s postId=%d authorWxId=%d auditVersion=%d apply_attempts=%d err=%v",
 		queueName, post.Id, post.AuthorWxId, auditVersion, attempts, applyErr)
 	return applyErr
+}
+
+// --- 评论 Phase1/Phase2 ---
+
+func persistModerationVerdictComment(ctx context.Context, commentID uint64, auditVersion, verdict int, reason string) error {
+	now := time.Now().Unix()
+	cols := dao.UcgPostComment.Columns()
+	result, err := dao.UcgPostComment.Ctx(ctx).
+		Where(cols.Id, commentID).
+		Where(cols.Status, CommentStatusPendingAudit).
+		Where(cols.AuditVersion, auditVersion).
+		Where(cols.ModerationVerdict, ModerationVerdictNone).
+		Data(g.Map{
+			cols.ModerationVerdict: verdict,
+			cols.ModerationReason:  reason,
+			cols.ModerationAt:      now,
+		}).Update()
+	if err != nil {
+		return err
+	}
+	affected, _ := result.RowsAffected()
+	if affected > 0 {
+		return nil
+	}
+	var comment entity.UcgPostComment
+	if scanErr := dao.UcgPostComment.Ctx(ctx).Where(cols.Id, commentID).Scan(&comment); scanErr != nil {
+		return scanErr
+	}
+	if comment.ModerationVerdict == ModerationVerdictNone {
+		return fmt.Errorf("comment moderation verdict cas lost id=%d version=%d", commentID, auditVersion)
+	}
+	return nil
+}
+
+func runCommentGreenChecks(ctx context.Context, comment entity.UcgPostComment) (pass bool, reason string, err error) {
+	moderator := EffectiveGreen()
+	verdict, mErr := moderator.ModerateText(ctx, "comment_detection", comment.Content)
+	if mErr != nil {
+		return false, "", mErr
+	}
+	if !verdict.Pass {
+		return false, verdict.Reason, nil
+	}
+	return true, "", nil
+}
+
+func runCommentModerationPhase(ctx context.Context, queueName string, comment entity.UcgPostComment, auditVersion int) {
+	if comment.ModerationVerdict != ModerationVerdictNone {
+		glog.Infof(ctx, "[ucg-audit-mq] comment moderation skip green queue=%s commentId=%d auditVersion=%d verdict=%d",
+			queueName, comment.Id, auditVersion, comment.ModerationVerdict)
+		return
+	}
+	pass, reason, err := runCommentGreenChecks(ctx, comment)
+	if err != nil {
+		fromReason := fmt.Sprintf("[ucg-audit-mq] comment moderation green failed commentId=%d auditVersion=%d err=%v", comment.Id, auditVersion, err)
+		markCommentModerationFailed(ctx, comment.Id, auditVersion, fromReason)
+		return
+	}
+	verdict := ModerationVerdictPass
+	if !pass {
+		verdict = ModerationVerdictReject
+		if reason == "" {
+			reason = rejectReasonDefault
+		}
+	}
+	if err := persistModerationVerdictComment(ctx, comment.Id, auditVersion, verdict, reason); err != nil {
+		fromReason := fmt.Sprintf("[ucg-audit-mq] comment moderation persist failed commentId=%d auditVersion=%d err=%v", comment.Id, auditVersion, err)
+		markCommentModerationFailed(ctx, comment.Id, auditVersion, fromReason)
+	}
+}
+
+func markCommentModerationFailed(ctx context.Context, commentID uint64, auditVersion int, fromReason string) {
+	cols := dao.UcgPostComment.Columns()
+	_, _ = dao.UcgPostComment.Ctx(ctx).
+		Where(cols.Id, commentID).
+		Where(cols.Status, CommentStatusPendingAudit).
+		Where(cols.AuditVersion, auditVersion).
+		Data(g.Map{
+			cols.Status:       CommentStatusModerationFailed,
+			cols.RejectReason: fromReason,
+		}).Update()
+}
+
+func runCommentApplyPhase(ctx context.Context, queueName string, comment entity.UcgPostComment, auditVersion int) error {
+	if comment.Status != CommentStatusPendingAudit {
+		return nil
+	}
+	if comment.ModerationVerdict == ModerationVerdictNone {
+		glog.Errorf(ctx, "[ucg-audit-mq] comment apply without verdict queue=%s commentId=%d auditVersion=%d", queueName, comment.Id, auditVersion)
+		return fmt.Errorf("comment apply: moderation verdict missing commentId=%d", comment.Id)
+	}
+	var applyErr error
+	if comment.ModerationVerdict == ModerationVerdictReject {
+		applyErr = rejectCommentCAS(ctx, comment.Id, auditVersion, comment.ModerationReason)
+	} else {
+		applyErr = publishCommentCAS(ctx, comment)
+	}
+	if applyErr != nil {
+		return handleCommentApplyFailure(ctx, queueName, comment, auditVersion, applyErr)
+	}
+	return nil
+}
+
+func incrementCommentApplyAttempts(ctx context.Context, commentID uint64, auditVersion int) (int, error) {
+	cols := dao.UcgPostComment.Columns()
+	_, err := dao.UcgPostComment.Ctx(ctx).
+		Where(cols.Id, commentID).
+		Where(cols.AuditVersion, auditVersion).
+		Increment(cols.ApplyAttempts, 1)
+	if err != nil {
+		return 0, err
+	}
+	var comment entity.UcgPostComment
+	if scanErr := dao.UcgPostComment.Ctx(ctx).Where(cols.Id, commentID).Scan(&comment); scanErr != nil {
+		return 0, scanErr
+	}
+	return comment.ApplyAttempts, nil
+}
+
+func markCommentApplyFailed(ctx context.Context, commentID uint64, auditVersion int) error {
+	now := time.Now().Unix()
+	cols := dao.UcgPostComment.Columns()
+	_, err := dao.UcgPostComment.Ctx(ctx).
+		Where(cols.Id, commentID).
+		Where(cols.Status, CommentStatusPendingAudit).
+		Where(cols.AuditVersion, auditVersion).
+		Data(g.Map{
+			cols.Status:        CommentStatusApplyFailed,
+			cols.RejectReason:  applyFailedSystemReason,
+			cols.ApplyFailedAt: now,
+		}).Update()
+	return err
+}
+
+func handleCommentApplyFailure(ctx context.Context, queueName string, comment entity.UcgPostComment, auditVersion int, applyErr error) error {
+	attempts, incErr := incrementCommentApplyAttempts(ctx, comment.Id, auditVersion)
+	if incErr != nil {
+		return incErr
+	}
+	max := auditApplyMaxAttempts()
+	if attempts >= max {
+		if mErr := markCommentApplyFailed(ctx, comment.Id, auditVersion); mErr != nil {
+			return mErr
+		}
+		glog.Errorf(ctx, "[ucg-audit-mq] comment apply max exceeded queue=%s commentId=%d auditVersion=%d attempts=%d err=%v",
+			queueName, comment.Id, auditVersion, attempts, applyErr)
+		return nil
+	}
+	glog.Warningf(ctx, "[ucg-audit-mq] comment apply retry queue=%s commentId=%d auditVersion=%d attempts=%d err=%v",
+		queueName, comment.Id, auditVersion, attempts, applyErr)
+	return applyErr
+}
+
+func loadCommentForAudit(ctx context.Context, commentID uint64) (entity.UcgPostComment, error) {
+	var comment entity.UcgPostComment
+	err := dao.UcgPostComment.Ctx(ctx).Where(dao.UcgPostComment.Columns().Id, commentID).Scan(&comment)
+	return comment, err
+}
+
+// --- 私信 Phase1/Phase2 ---
+
+func persistModerationVerdictChat(ctx context.Context, conversationID, messageID uint64, auditVersion, verdict int, reason string) error {
+	now := time.Now().Unix()
+	cols := dao.UcgChatMessage.Columns()
+	result, err := dao.UcgChatMessage.Ctx(ctx).
+		Where(cols.ConversationId, conversationID).
+		Where(cols.Id, messageID).
+		Where(cols.AuditStatus, ChatAuditStatusPending).
+		Where(cols.AuditVersion, auditVersion).
+		Where(cols.ModerationVerdict, ModerationVerdictNone).
+		Data(g.Map{
+			cols.ModerationVerdict: verdict,
+			cols.ModerationReason:  reason,
+			cols.ModerationAt:      now,
+		}).Update()
+	if err != nil {
+		return err
+	}
+	affected, _ := result.RowsAffected()
+	if affected > 0 {
+		return nil
+	}
+	var msg entity.UcgChatMessage
+	if scanErr := dao.UcgChatMessage.Ctx(ctx).
+		Where(cols.ConversationId, conversationID).
+		Where(cols.Id, messageID).
+		Scan(&msg); scanErr != nil {
+		return scanErr
+	}
+	if msg.ModerationVerdict == ModerationVerdictNone {
+		return fmt.Errorf("chat moderation verdict cas lost msgId=%d version=%d", messageID, auditVersion)
+	}
+	return nil
+}
+
+func runChatGreenChecks(ctx context.Context, msg entity.UcgChatMessage) (pass bool, reason string, err error) {
+	moderator := EffectiveGreen()
+	cfg := LoadOSSConfig(ctx)
+	if msg.Content != "" {
+		var verdict AuditVerdict
+		verdict, err = moderator.ModerateText(ctx, "comment_detection", msg.Content)
+		if err != nil {
+			return false, "", err
+		}
+		if !verdict.Pass {
+			return false, verdict.Reason, nil
+		}
+	}
+	if msg.ImageKey != "" {
+		url := msg.MediaCdnUrl
+		if url == "" {
+			url = cfg.CdnBaseURL + "/" + msg.ImageKey
+		}
+		var verdict AuditVerdict
+		verdict, err = moderator.ModerateImageURL(ctx, url)
+		if err != nil {
+			return false, "", err
+		}
+		if !verdict.Pass {
+			return false, verdict.Reason, nil
+		}
+	}
+	if msg.VideoKey != "" {
+		url := msg.MediaCdnUrl
+		if url == "" {
+			url = cfg.CdnBaseURL + "/" + msg.VideoKey
+		}
+		var verdict AuditVerdict
+		verdict, err = moderator.ModerateVideoURL(ctx, url)
+		if err != nil {
+			return false, "", err
+		}
+		if !verdict.Pass {
+			return false, verdict.Reason, nil
+		}
+	}
+	return true, "", nil
+}
+
+func runChatModerationPhase(ctx context.Context, queueName string, msg entity.UcgChatMessage, auditVersion int) {
+	if msg.ModerationVerdict != ModerationVerdictNone {
+		glog.Infof(ctx, "[ucg-audit-mq] chat moderation skip green queue=%s msgId=%d auditVersion=%d verdict=%d",
+			queueName, msg.Id, auditVersion, msg.ModerationVerdict)
+		return
+	}
+	pass, reason, err := runChatGreenChecks(ctx, msg)
+	if err != nil {
+		fromReason := fmt.Sprintf("[ucg-audit-mq] chat moderation green failed msgId=%d auditVersion=%d err=%v", msg.Id, auditVersion, err)
+		markChatModerationFailed(ctx, msg.ConversationId, msg.Id, auditVersion, fromReason)
+		return
+	}
+	verdict := ModerationVerdictPass
+	if !pass {
+		verdict = ModerationVerdictReject
+		if reason == "" {
+			reason = rejectReasonDefault
+		}
+	}
+	if err := persistModerationVerdictChat(ctx, msg.ConversationId, msg.Id, auditVersion, verdict, reason); err != nil {
+		fromReason := fmt.Sprintf("[ucg-audit-mq] chat moderation persist failed msgId=%d auditVersion=%d err=%v", msg.Id, auditVersion, err)
+		markChatModerationFailed(ctx, msg.ConversationId, msg.Id, auditVersion, fromReason)
+	}
+}
+
+func markChatModerationFailed(ctx context.Context, conversationID, messageID uint64, auditVersion int, fromReason string) {
+	cols := dao.UcgChatMessage.Columns()
+	_, _ = dao.UcgChatMessage.Ctx(ctx).
+		Where(cols.ConversationId, conversationID).
+		Where(cols.Id, messageID).
+		Where(cols.AuditStatus, ChatAuditStatusPending).
+		Where(cols.AuditVersion, auditVersion).
+		Data(g.Map{
+			cols.AuditStatus:   ChatAuditStatusModerationFailed,
+			cols.RejectReason:  fromReason,
+		}).Update()
+}
+
+func runChatApplyPhase(ctx context.Context, queueName string, msg entity.UcgChatMessage, auditVersion int) error {
+	if msg.AuditStatus != ChatAuditStatusPending {
+		return nil
+	}
+	if msg.ModerationVerdict == ModerationVerdictNone {
+		glog.Errorf(ctx, "[ucg-audit-mq] chat apply without verdict queue=%s msgId=%d auditVersion=%d", queueName, msg.Id, auditVersion)
+		return fmt.Errorf("chat apply: moderation verdict missing msgId=%d", msg.Id)
+	}
+	var applyErr error
+	if msg.ModerationVerdict == ModerationVerdictReject {
+		applyErr = rejectChatMessageCAS(ctx, msg.ConversationId, msg.Id, auditVersion, int64(msg.SenderWxId), msg.ClientMsgId, msg.ModerationReason)
+	} else {
+		applyErr = approveChatMessageCAS(ctx, msg.ConversationId, msg.Id, auditVersion)
+	}
+	if applyErr != nil {
+		return handleChatApplyFailure(ctx, queueName, msg, auditVersion, applyErr)
+	}
+	return nil
+}
+
+func incrementChatApplyAttempts(ctx context.Context, conversationID, messageID uint64, auditVersion int) (int, error) {
+	cols := dao.UcgChatMessage.Columns()
+	_, err := dao.UcgChatMessage.Ctx(ctx).
+		Where(cols.ConversationId, conversationID).
+		Where(cols.Id, messageID).
+		Where(cols.AuditVersion, auditVersion).
+		Increment(cols.ApplyAttempts, 1)
+	if err != nil {
+		return 0, err
+	}
+	var msg entity.UcgChatMessage
+	if scanErr := dao.UcgChatMessage.Ctx(ctx).
+		Where(cols.ConversationId, conversationID).
+		Where(cols.Id, messageID).
+		Scan(&msg); scanErr != nil {
+		return 0, scanErr
+	}
+	return msg.ApplyAttempts, nil
+}
+
+func markChatApplyFailed(ctx context.Context, conversationID, messageID uint64, auditVersion int) error {
+	now := time.Now().Unix()
+	cols := dao.UcgChatMessage.Columns()
+	_, err := dao.UcgChatMessage.Ctx(ctx).
+		Where(cols.ConversationId, conversationID).
+		Where(cols.Id, messageID).
+		Where(cols.AuditStatus, ChatAuditStatusPending).
+		Where(cols.AuditVersion, auditVersion).
+		Data(g.Map{
+			cols.AuditStatus:   ChatAuditStatusRejected,
+			cols.RejectReason:  applyFailedSystemReason,
+			cols.ApplyFailedAt: now,
+		}).Update()
+	return err
+}
+
+func handleChatApplyFailure(ctx context.Context, queueName string, msg entity.UcgChatMessage, auditVersion int, applyErr error) error {
+	attempts, incErr := incrementChatApplyAttempts(ctx, msg.ConversationId, msg.Id, auditVersion)
+	if incErr != nil {
+		return incErr
+	}
+	max := auditApplyMaxAttempts()
+	if attempts >= max {
+		if mErr := markChatApplyFailed(ctx, msg.ConversationId, msg.Id, auditVersion); mErr != nil {
+			return mErr
+		}
+		glog.Errorf(ctx, "[ucg-audit-mq] chat apply max exceeded queue=%s msgId=%d auditVersion=%d attempts=%d err=%v",
+			queueName, msg.Id, auditVersion, attempts, applyErr)
+		return nil
+	}
+	glog.Warningf(ctx, "[ucg-audit-mq] chat apply retry queue=%s msgId=%d auditVersion=%d attempts=%d err=%v",
+		queueName, msg.Id, auditVersion, attempts, applyErr)
+	return applyErr
+}
+
+func loadChatMessageForAudit(ctx context.Context, conversationID, messageID uint64) (entity.UcgChatMessage, error) {
+	var msg entity.UcgChatMessage
+	err := dao.UcgChatMessage.Ctx(ctx).
+		Where(dao.UcgChatMessage.Columns().ConversationId, conversationID).
+		Where(dao.UcgChatMessage.Columns().Id, messageID).
+		Scan(&msg)
+	return msg, err
 }
 
 func loadProfileAuditJob(ctx context.Context, jobID uint64) (entity.UcgProfileAuditJob, error) {

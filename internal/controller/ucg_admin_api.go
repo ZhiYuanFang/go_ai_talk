@@ -204,3 +204,49 @@ func mapAdminPostItem(dto *ucgsvc.PostDTO) v1.UcgAdminPostItem {
 	}
 	return item
 }
+
+// ProfileAuditJobsList GET /ucg/admin/api/profile-audit-jobs/list
+func (c *UcgAdminCtrl) ProfileAuditJobsList(ctx context.Context, req *v1.UcgAdminProfileAuditJobsListReq) (res *v1.UcgAdminProfileAuditJobsListRes, err error) {
+	if err = c.requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	result, err := ucgsvc.ListProfileAuditJobsForAdmin(ctx, req.Page, req.PageSize, req.Status)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]v1.UcgAdminProfileAuditJobItem, 0)
+	if rows, ok := result.List.([]ucgsvc.ProfileAuditJobAdminItem); ok {
+		items = make([]v1.UcgAdminProfileAuditJobItem, 0, len(rows))
+		for _, row := range rows {
+			items = append(items, v1.UcgAdminProfileAuditJobItem{
+				JobId:        row.JobId,
+				WxId:         row.WxId,
+				AuditVersion: row.AuditVersion,
+				Status:       row.Status,
+				Nickname:     row.Nickname,
+				AvatarKey:    row.AvatarKey,
+				Bio:          row.Bio,
+				RejectReason: row.RejectReason,
+				CreatedAt:    row.CreatedAt,
+				UpdatedAt:    row.UpdatedAt,
+			})
+		}
+	}
+	return &v1.UcgAdminProfileAuditJobsListRes{
+		List:     items,
+		Total:    result.Total,
+		Page:     result.Page,
+		PageSize: result.PageSize,
+	}, nil
+}
+
+// ProfileAuditJobResolve POST /ucg/admin/api/profile-audit-jobs/resolve
+func (c *UcgAdminCtrl) ProfileAuditJobResolve(ctx context.Context, req *v1.UcgAdminProfileAuditJobResolveReq) (res *v1.UcgAdminProfileAuditJobResolveRes, err error) {
+	if err = c.requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	if err = ucgsvc.ResolveProfileAuditJobAdmin(ctx, req.JobId, req.Action, req.Reason); err != nil {
+		return nil, err
+	}
+	return &v1.UcgAdminProfileAuditJobResolveRes{Ok: true}, nil
+}

@@ -5,12 +5,15 @@ const (
 	PostStatusPendingAudit = 1
 	PostStatusPublished    = 2
 	PostStatusRejected     = 3
-	PostStatusApplyFailed  = 4 // 机审已完成但 apply 超限失败
+	PostStatusApplyFailed       = 4 // 机审已完成但 apply 超限失败
+	PostStatusModerationFailed  = 5 // Green/写 verdict 失败，不再 requeue Green
 
-	CommentStatusDraft        = 0
-	CommentStatusPendingAudit = 1
-	CommentStatusPublished    = 2
-	CommentStatusRejected     = 3
+	CommentStatusDraft             = 0
+	CommentStatusPendingAudit      = 1
+	CommentStatusPublished         = 2
+	CommentStatusRejected          = 3
+	CommentStatusApplyFailed       = 4
+	CommentStatusModerationFailed  = 5
 
 	ProfileJobStatusPending          = 1
 	ProfileJobStatusApproved         = 2
@@ -26,9 +29,10 @@ const (
 	// applyFailedSystemReason apply 超限后作者可见固定文案（非 Green reason）。
 	applyFailedSystemReason = "审核异常，请稍后重试"
 
-	ChatAuditStatusPending  = "pending"
-	ChatAuditStatusApproved = "approved"
-	ChatAuditStatusRejected = "rejected"
+	ChatAuditStatusPending          = "pending"
+	ChatAuditStatusApproved         = "approved"
+	ChatAuditStatusRejected         = "rejected"
+	ChatAuditStatusModerationFailed = "moderation_failed" // Green/写 verdict 失败
 
 	MediaTypeNone   = 0
 	MediaTypeImages = 1

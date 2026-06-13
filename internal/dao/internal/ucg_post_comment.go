@@ -20,26 +20,36 @@ type UcgPostCommentDao struct {
 
 // UcgPostCommentColumns defines and stores column names for table ucg_post_comment.
 type UcgPostCommentColumns struct {
-	Id         string //
-	PostId     string //
-	AuthorWxId string //
-	Content      string //
-	Status       string // 0 draft 1 pending_audit 2 published 3 rejected
-	AuditVersion string // 审核轮次
-	RejectReason string //
-	CreatedAt    string //
+	Id                string //
+	PostId            string //
+	AuthorWxId        string //
+	Content           string //
+	Status            string // 0 draft 1 pending_audit 2 published 3 rejected
+	AuditVersion      string // 审核轮次
+	ModerationVerdict string //
+	ModerationReason  string //
+	ModerationAt      string //
+	ApplyAttempts     string //
+	ApplyFailedAt     string //
+	RejectReason      string //
+	CreatedAt         string //
 }
 
 // ucgPostCommentColumns holds the columns for table ucg_post_comment.
 var ucgPostCommentColumns = UcgPostCommentColumns{
-	Id:         "id",
-	PostId:     "post_id",
-	AuthorWxId: "author_wx_id",
-	Content:      "content",
-	Status:       "status",
-	AuditVersion: "audit_version",
-	RejectReason: "reject_reason",
-	CreatedAt:    "created_at",
+	Id:                "id",
+	PostId:            "post_id",
+	AuthorWxId:        "author_wx_id",
+	Content:           "content",
+	Status:            "status",
+	AuditVersion:      "audit_version",
+	ModerationVerdict: "moderation_verdict",
+	ModerationReason:  "moderation_reason",
+	ModerationAt:      "moderation_at",
+	ApplyAttempts:     "apply_attempts",
+	ApplyFailedAt:     "apply_failed_at",
+	RejectReason:      "reject_reason",
+	CreatedAt:         "created_at",
 }
 
 // NewUcgPostCommentDao creates and returns a new DAO object for table data access.

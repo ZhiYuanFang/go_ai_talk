@@ -48,7 +48,7 @@ func dispatchUcgAuditPayload(ctx context.Context, queueName, payload string) err
 		if commentID == 0 {
 			return nil
 		}
-		return auditCommentFromEvent(ctx, commentID, auditVersion) // 旧路径：Green+一步 CAS，无两阶段
+		return auditCommentFromEvent(ctx, commentID, auditVersion) // 两阶段 Green → apply
 	case ucgProfileQueue:
 		jobID := uint64(jsonInt(raw, "jobId"))
 		if jobID == 0 {

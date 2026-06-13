@@ -127,7 +127,7 @@ func auditProfileJobFromEvent(ctx context.Context, jobID uint64, auditVersion in
 		return nil // 过期消息（版本已变）→ Ack
 	}
 
-	// Phase1：可能调 Green；失败返回 err → 【路径 A 风暴】
+	// Phase1：可能调 Green；失败写 moderation_failed，不向上抛 err
 	runProfileModerationPhase(ctx, ucgProfileQueue, job, auditVersion)
 
 	job, err = loadProfileAuditJob(ctx, jobID)

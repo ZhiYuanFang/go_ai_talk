@@ -13,13 +13,14 @@
 		<div class="logo">UCG</div>
 		<div>
 			<h1>UCG 管理</h1>
-			<p>AI 配置与动态审查 · 须先在 <a href="/device/admin">运维 Hub</a> 登录</p>
+			<p>AI 配置、动态审查与资料机审 · 须先在 <a href="/device/admin">运维 Hub</a> 登录</p>
 		</div>
 	</header>
 	<div class="card glass hidden" id="mainCard">
 		<div class="tabs">
 			<button type="button" class="tab active" id="tabAi">AI 配置</button>
 			<button type="button" class="tab" id="tabPosts">动态审查</button>
+			<button type="button" class="tab" id="tabProfileAudit">资料机审失败</button>
 		</div>
 
 		<div id="panelAi">
@@ -108,6 +109,34 @@
 				<button type="button" class="secondary" id="postsNextBtn">下一页</button>
 			</div>
 		</div>
+
+		<div id="panelProfileAudit" class="hidden">
+			<div class="row">
+				<button type="button" class="secondary" id="profileAuditRefreshBtn">刷新</button>
+			</div>
+			<div id="profileAuditMsg" class="msg"></div>
+			<div class="table-wrap">
+			<table>
+				<thead>
+					<tr>
+						<th>Job</th>
+						<th>wxId</th>
+						<th>昵称</th>
+						<th>简介</th>
+						<th>失败原因</th>
+						<th>时间</th>
+						<th>操作</th>
+					</tr>
+				</thead>
+				<tbody id="profileAuditTbody"></tbody>
+			</table>
+			</div>
+			<div class="pager">
+				<button type="button" class="secondary" id="profileAuditPrevBtn">上一页</button>
+				<span id="profileAuditPagerInfo"></span>
+				<button type="button" class="secondary" id="profileAuditNextBtn">下一页</button>
+			</div>
+		</div>
 	</div>
 
 	<div id="mediaPreviewModal" class="modal" role="dialog" aria-modal="true" aria-label="媒体预览">
@@ -132,6 +161,11 @@ const postsPageSize = 20;
 let postsTotal = 0;
 let postsRows = [];
 const selectedPostIds = new Set();
+
+let profileAuditPage = 1;
+const profileAuditPageSize = 20;
+let profileAuditTotal = 0;
+let profileAuditRows = [];
 
 function api(path, options={}){ return AdminCommon.adminFetch(path, options); }
 
@@ -324,12 +358,14 @@ async function loadQuotaUser(){
 }
 
 function switchTab(which){
-	const ai = which === 'ai';
-	document.getElementById('tabAi').classList.toggle('active', ai);
-	document.getElementById('tabPosts').classList.toggle('active', !ai);
-	document.getElementById('panelAi').classList.toggle('hidden', !ai);
-	document.getElementById('panelPosts').classList.toggle('hidden', ai);
-	if(!ai) loadPostsList();
+	document.getElementById('tabAi').classList.toggle('active', which === 'ai');
+	document.getElementById('tabPosts').classList.toggle('active', which === 'posts');
+	document.getElementById('tabProfileAudit').classList.toggle('active', which === 'profileAudit');
+	document.getElementById('panelAi').classList.toggle('hidden', which !== 'ai');
+	document.getElementById('panelPosts').classList.toggle('hidden', which !== 'posts');
+	document.getElementById('panelProfileAudit').classList.toggle('hidden', which !== 'profileAudit');
+	if(which === 'posts') loadPostsList();
+	if(which === 'profileAudit') loadProfileAuditJobs();
 }
 
 function updatePostsSelectionUI(){
@@ -385,6 +421,72 @@ async function loadPostsList(){
 	postsTotal = data.total || 0;
 	postsPage = data.page || postsPage;
 	renderPostsTable();
+}
+
+function renderProfileAuditTable(){
+	const tbody = document.getElementById('profileAuditTbody');
+	tbody.innerHTML = '';
+	profileAuditRows.forEach(row => {
+		const tr = document.createElement('tr');
+		tr.innerHTML =
+			'<td>'+row.jobId+'</td>' +
+			'<td>'+row.wxId+'</td>' +
+			'<td>'+escapeHtml(truncate(row.nickname, 40))+'</td>' +
+			'<td class="content-cell">'+escapeHtml(truncate(row.bio, 80))+'</td>' +
+			'<td class="content-cell">'+escapeHtml(truncate(row.rejectReason, 120))+'</td>' +
+			'<td>'+formatUnix(row.updatedAt)+'</td>' +
+			'<td class="profile-audit-actions"></td>';
+		const actions = tr.querySelector('.profile-audit-actions');
+		const approveBtn = document.createElement('button');
+		approveBtn.type = 'button';
+		approveBtn.className = 'secondary';
+		approveBtn.textContent = '通过';
+		approveBtn.dataset.jobId = String(row.jobId);
+		approveBtn.dataset.action = 'approve';
+		const rejectBtn = document.createElement('button');
+		rejectBtn.type = 'button';
+		rejectBtn.className = 'danger';
+		rejectBtn.textContent = '驳回';
+		rejectBtn.style.marginLeft = '6px';
+		rejectBtn.dataset.jobId = String(row.jobId);
+		rejectBtn.dataset.action = 'reject';
+		actions.appendChild(approveBtn);
+		actions.appendChild(rejectBtn);
+		tbody.appendChild(tr);
+	});
+	const totalPages = Math.max(1, Math.ceil(profileAuditTotal / profileAuditPageSize));
+	document.getElementById('profileAuditPagerInfo').textContent = '第 '+profileAuditPage+' / '+totalPages+' 页，共 '+profileAuditTotal+' 条';
+	document.getElementById('profileAuditPrevBtn').disabled = profileAuditPage <= 1;
+	document.getElementById('profileAuditNextBtn').disabled = profileAuditPage >= totalPages;
+}
+
+async function loadProfileAuditJobs(){
+	const url = '/ucg/admin/api/profile-audit-jobs/list?page='+profileAuditPage+'&pageSize='+profileAuditPageSize+'&status=5';
+	const data = await api(url);
+	profileAuditRows = data.list || [];
+	profileAuditTotal = data.total || 0;
+	profileAuditPage = data.page || profileAuditPage;
+	renderProfileAuditTable();
+}
+
+async function resolveProfileAuditJob(jobId, action){
+	if(action === 'reject'){
+		const reason = prompt('请输入驳回原因：');
+		if(reason === null) return;
+		if(!String(reason).trim()){ showMsg(document.getElementById('profileAuditMsg'), '须填写驳回原因', false); return; }
+		await api('/ucg/admin/api/profile-audit-jobs/resolve', {
+			method:'POST',
+			body: JSON.stringify({jobId: jobId, action: 'reject', reason: String(reason).trim()})
+		});
+	} else {
+		if(!confirm('确认人工通过 job '+jobId+'？')) return;
+		await api('/ucg/admin/api/profile-audit-jobs/resolve', {
+			method:'POST',
+			body: JSON.stringify({jobId: jobId, action: 'approve'})
+		});
+	}
+	showMsg(document.getElementById('profileAuditMsg'), '操作成功', true);
+	await loadProfileAuditJobs();
 }
 
 async function enterMain(){
@@ -456,6 +558,7 @@ document.getElementById('saveQuotaUserBtn').addEventListener('click', async () =
 
 document.getElementById('tabAi').addEventListener('click', () => switchTab('ai'));
 document.getElementById('tabPosts').addEventListener('click', () => switchTab('posts'));
+document.getElementById('tabProfileAudit').addEventListener('click', () => switchTab('profileAudit'));
 
 document.getElementById('postStatusFilter').addEventListener('change', () => {
 	postsPage = 1;
@@ -506,6 +609,28 @@ document.getElementById('postsRejectBtn').addEventListener('click', async () => 
 	} finally {
 		updatePostsSelectionUI();
 	}
+});
+
+document.getElementById('profileAuditRefreshBtn').addEventListener('click', () => {
+	loadProfileAuditJobs().then(() => showMsg(document.getElementById('profileAuditMsg'), '已刷新', true))
+		.catch(e => showMsg(document.getElementById('profileAuditMsg'), e.message, false));
+});
+
+document.getElementById('profileAuditPrevBtn').addEventListener('click', () => {
+	if(profileAuditPage > 1){ profileAuditPage--; loadProfileAuditJobs().catch(e => showMsg(document.getElementById('profileAuditMsg'), e.message, false)); }
+});
+
+document.getElementById('profileAuditNextBtn').addEventListener('click', () => {
+	const totalPages = Math.max(1, Math.ceil(profileAuditTotal / profileAuditPageSize));
+	if(profileAuditPage < totalPages){ profileAuditPage++; loadProfileAuditJobs().catch(e => showMsg(document.getElementById('profileAuditMsg'), e.message, false)); }
+});
+
+document.getElementById('profileAuditTbody').addEventListener('click', (ev) => {
+	const btn = ev.target.closest('button[data-job-id]');
+	if(!btn) return;
+	const jobId = Number(btn.dataset.jobId);
+	const action = btn.dataset.action;
+	resolveProfileAuditJob(jobId, action).catch(e => showMsg(document.getElementById('profileAuditMsg'), e.message || '操作失败', false));
 });
 
 document.getElementById('postsTbody').addEventListener('click', (ev) => {

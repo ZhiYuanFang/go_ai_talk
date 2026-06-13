@@ -1425,12 +1425,13 @@ DDL 在 **device-service 默认库**（`DEVICE_DB_LINK`）执行：
 
 ### UCG 审核 MQ 卡死 / apply 失败
 
-**背景**：资料/帖子审核拆为两阶段（Green 机审 → apply CAS）。`moderation_verdict` 落库后 MQ 重投不再调 Green；apply 失败有界重试（`UCG_AUDIT_APPLY_MAX_ATTEMPTS`，默认 5），超限标记 `apply_failed` 并 Ack。
+**背景**：资料/帖子/评论/私信审核拆为两阶段（Green 机审 → apply CAS）。**Green 单次**：对每个 `(entity_id, audit_version)` 一旦 Phase1 已发起 Green（含 API 失败），后续 MQ 消费 MUST NOT 再次调 Green；Green/API 或 persist verdict 失败进入 **机审失败终态**（profile/post/comment `status=5`，chat `audit_status=moderation_failed`）并 Ack。`moderation_verdict` 落库后 MQ 重投仅 retry apply；apply 超限 `apply_failed` 并 Ack。
 
 **DDL**（`UCG_DB_LINK` 库，须先于 ucg-service 滚动）：
 
 ```bash
 mysql -h "$MYSQL_HOST" -u "$MYSQL_USER" -p"$MYSQL_PASSWORD" "$UCG_DB_NAME" < hack/sql/ucg_audit_moderation_apply.sql
+mysql -h "$MYSQL_HOST" -u "$MYSQL_USER" -p"$MYSQL_PASSWORD" "$UCG_DB_NAME" < hack/ddl/ucg-audit-comment-chat-moderation.sql
 ```
 
 **识别**：
@@ -1460,9 +1461,19 @@ FROM ucg_post WHERE status=1 AND moderation_verdict=1;
 -- apply 超限终态（consumer 应 Ack，勿无限 requeue）
 SELECT id, status, apply_attempts, apply_failed_at FROM ucg_profile_audit_job WHERE status=4;
 SELECT id, status, apply_attempts, apply_failed_at FROM ucg_post WHERE status=4;
+
+-- 机审失败待人工（资料 job status=5；作者 App 无专用展示）
+SELECT id, wx_id, audit_version, reject_reason, updated_at FROM ucg_profile_audit_job WHERE status=5;
 ```
 
-**清理队列**（仅当 DB 已为终态 `approved/rejected/published/apply_failed` 或 `status=1 AND moderation_verdict=1` 且已部署本修复）：
+**资料机审失败人工处理**（UCG 管理页 `/device/admin/ucg-admin.html` →「资料机审失败」Tab，或 API）：
+
+- `GET /ucg/admin/api/profile-audit-jobs/list?status=5` — 列表
+- `POST /ucg/admin/api/profile-audit-jobs/resolve` — body `{ "jobId", "action": "approve"|"reject", "reason"? }`
+- **approve**：CAS `status 5→2` 并按 job patch 更新 `ucg_profile`
+- **reject**：CAS `status 5→3`，不更新已发布 profile
+
+**清理队列**（仅当 DB 已为终态 `approved/rejected/published/apply_failed/moderation_failed` 或 `status=1 AND moderation_verdict=1` 且已部署本修复）：
 
 - RabbitMQ Management → Queues → 对应队列 → Purge（**禁止**在 verdict 未落库时 purge 后丢弃未机审消息）
 - 或对单条 delivery：确认 DB 后手动 Ack
@@ -1481,7 +1492,8 @@ SELECT id, status, apply_attempts, apply_failed_at FROM ucg_post WHERE status=4;
 **部署 checklist**：
 
 1. 执行 `hack/sql/ucg_audit_moderation_apply.sql`
-2. 滚动 ucg-service（含两阶段审核代码）
+2. 执行 `hack/ddl/ucg-audit-comment-chat-moderation.sql`
+3. 滚动 ucg-service（含两阶段审核代码）
 3. 观察队列深度下降、Green 调用量恢复正常
 4. 可选 env：`UCG_AUDIT_APPLY_MAX_ATTEMPTS=5`（默认）
 
