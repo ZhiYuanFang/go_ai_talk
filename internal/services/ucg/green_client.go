@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 
@@ -19,7 +20,57 @@ import (
 	"github.com/alibabacloud-go/tea/tea"
 )
 
-const rejectReasonDefault = "违规已下架"
+const (
+	rejectReasonDefault = "违规已下架"
+	greenDataIDMaxLen   = 64 // 阿里云 ImageModeration/VideoModeration dataId 上限
+)
+
+// greenDataIDFromMediaURL 从 CDN URL 的 path 推导合规 dataId（≤64，字符集 A-Za-z0-9_.-）。
+// 完整 HTTP(S) URL 含 : / 等非法字符且常超 64 字符，不得作为 dataId；path 与 objectKey 一致（如 social/2026/06/xxx.jpg）。
+// 无法推导时返回空串，调用方 MUST 省略 dataId 字段而非传非法值。
+func greenDataIDFromMediaURL(rawURL string) string {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return ""
+	}
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+	path := strings.Trim(u.Path, "/")
+	if path == "" {
+		return ""
+	}
+	var b strings.Builder
+	for _, r := range path {
+		switch {
+		case r >= 'A' && r <= 'Z', r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '_', r == '-', r == '.':
+			b.WriteRune(r)
+		case r == '/':
+			b.WriteRune('_')
+		}
+	}
+	id := b.String()
+	if id == "" {
+		return ""
+	}
+	if len(id) > greenDataIDMaxLen {
+		id = id[:greenDataIDMaxLen]
+	}
+	return id
+}
+
+// greenServiceParamsJSON 序列化 ServiceParameters；mediaURL 非空时尝试附加合规 dataId。
+func greenServiceParamsJSON(base map[string]interface{}, mediaURL string) (string, error) {
+	if dataID := greenDataIDFromMediaURL(mediaURL); dataID != "" {
+		base["dataId"] = dataID
+	}
+	b, err := json.Marshal(base)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
 
 // AuditVerdict Green 单次机审结论；Pass=false 为内容违规（非 API 错误）。
 type AuditVerdict struct {
@@ -129,10 +180,9 @@ func (g *greenModerator) ModerateImageURL(ctx context.Context, imageURL string) 
 	if imageURL == "" {
 		return AuditVerdict{Pass: true}, nil
 	}
-	params, err := json.Marshal(map[string]interface{}{
+	params, err := greenServiceParamsJSON(map[string]interface{}{
 		"imageUrl": imageURL,
-		"dataId":   imageURL,
-	})
+	}, imageURL)
 	if err != nil {
 		return AuditVerdict{}, err
 	}
@@ -152,10 +202,9 @@ func (g *greenModerator) ModerateVideoURL(ctx context.Context, videoURL string) 
 	if videoURL == "" {
 		return AuditVerdict{Pass: true}, nil
 	}
-	params, err := json.Marshal(map[string]interface{}{
-		"url":    videoURL,
-		"dataId": videoURL,
-	})
+	params, err := greenServiceParamsJSON(map[string]interface{}{
+		"url": videoURL,
+	}, videoURL)
 	if err != nil {
 		return AuditVerdict{}, err
 	}
@@ -225,10 +274,22 @@ func parseImageModeration(resp *green.ImageModerationResponse) (AuditVerdict, er
 		return AuditVerdict{}, fmt.Errorf("green image: empty response")
 	}
 	if resp.StatusCode == nil || *resp.StatusCode != http.StatusOK {
-		return AuditVerdict{}, fmt.Errorf("green image: http status not ok")
+		code := int32(0)
+		if resp.StatusCode != nil {
+			code = *resp.StatusCode
+		}
+		return AuditVerdict{}, fmt.Errorf("green image: http %d", code)
 	}
 	if resp.Body.Code == nil || *resp.Body.Code != 200 {
-		return AuditVerdict{}, fmt.Errorf("green image: code not ok")
+		code := int32(0)
+		if resp.Body.Code != nil {
+			code = *resp.Body.Code
+		}
+		msg := strings.TrimSpace(tea.StringValue(resp.Body.Msg))
+		if msg != "" {
+			return AuditVerdict{}, fmt.Errorf("green image: code %d msg %s", code, msg)
+		}
+		return AuditVerdict{}, fmt.Errorf("green image: code %d", code)
 	}
 	for _, r := range resp.Body.Data.Result {
 		label := strings.TrimSpace(tea.StringValue(r.Label))
@@ -245,10 +306,22 @@ func parseVideoModeration(resp *green.VideoModerationResponse) (AuditVerdict, er
 		return AuditVerdict{}, fmt.Errorf("green video: empty response")
 	}
 	if resp.StatusCode == nil || *resp.StatusCode != http.StatusOK {
-		return AuditVerdict{}, fmt.Errorf("green video: http status not ok")
+		code := int32(0)
+		if resp.StatusCode != nil {
+			code = *resp.StatusCode
+		}
+		return AuditVerdict{}, fmt.Errorf("green video: http %d", code)
 	}
 	if resp.Body.Code == nil || *resp.Body.Code != 200 {
-		return AuditVerdict{}, fmt.Errorf("green video: code not ok")
+		code := int32(0)
+		if resp.Body.Code != nil {
+			code = *resp.Body.Code
+		}
+		msg := strings.TrimSpace(tea.StringValue(resp.Body.Message))
+		if msg != "" {
+			return AuditVerdict{}, fmt.Errorf("green video: code %d msg %s", code, msg)
+		}
+		return AuditVerdict{}, fmt.Errorf("green video: code %d", code)
 	}
 	return AuditVerdict{Pass: true}, nil
 }

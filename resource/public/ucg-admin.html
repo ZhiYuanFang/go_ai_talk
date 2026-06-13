@@ -184,7 +184,7 @@ function postStatusLabel(status){
 		case 1: return {text:'待审', cls:'status-pending'};
 		case 2: return {text:'已发布', cls:'status-published'};
 		case 3: return {text:'已驳回', cls:'status-rejected'};
-		default: return {text:String(status), cls:''};
+		default: return {text:'未过审', cls:''};
 	}
 }
 

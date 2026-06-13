@@ -1427,6 +1427,12 @@ DDL 在 **device-service 默认库**（`DEVICE_DB_LINK`）执行：
 
 **背景**：资料/帖子/评论/私信审核拆为两阶段（Green 机审 → apply CAS）。**Green 单次**：对每个 `(entity_id, audit_version)` 一旦 Phase1 已发起 Green（含 API 失败），后续 MQ 消费 MUST NOT 再次调 Green；Green/API 或 persist verdict 失败进入 **机审失败终态**（profile/post/comment `status=5`，chat `audit_status=moderation_failed`）并 Ack。`moderation_verdict` 落库后 MQ 重投仅 retry apply；apply 超限 `apply_failed` 并 Ack。
 
+**Green 图片/视频 dataId 修复**（`fix-ucg-green-media-dataid`）：旧版将完整 CDN URL 作为 `dataId`（超长且含非法字符），导致 `ImageModeration` / `baselineCheck` 参数校验失败、纯图帖落入 `status=5`。修复后 `dataId` 由 URL path 规范为 `social_YYYY_MM_xxx.ext`（≤64）。**存量 `status=5` 帖子不会自动重审**（green-once）；须作者重新提交或运维人工处理。部署后验证：
+
+1. 新发带图帖 → 阿里云 Green 控制台应出现 `baselineCheck` 成功记录
+2. ucg-service 日志不应再出现仅 `green image: code not ok`（失败时应含 `code` + `msg`）
+3. 可选 SQL：`SELECT id, status, reject_reason FROM ucg_post WHERE status=5 ORDER BY id DESC LIMIT 10;`
+
 **DDL**（`UCG_DB_LINK` 库，须先于 ucg-service 滚动）：
 
 ```bash
