@@ -151,16 +151,19 @@ func (c *UcgAppCtrl) ProfileMeGet(ctx context.Context, req *v1.UcgProfileMeGetRe
 	return profileDTOToRes(p), nil
 }
 
+// ProfileMePut PUT /ucg/app/api/profile/me 更新我的资料
 func (c *UcgAppCtrl) ProfileMePut(ctx context.Context, req *v1.UcgProfileMePutReq) (res *v1.UcgProfileRes, err error) {
 	_ = c
 	wxID, err := wxIDFromUcgHeader(ghttp.RequestFromCtx(ctx))
 	if err != nil {
 		return nil, err
 	}
+	// 更新我的资料
 	p, err := ucgsvc.UpdateMyProfile(ctx, wxID, req.Nickname, req.AvatarKey, req.Bio)
 	if err != nil {
 		return nil, err
 	}
+	// 返回更新后的资料
 	return profileDTOToRes(p), nil
 }
 
@@ -629,6 +632,7 @@ func wxIDFromUcgHeaderOptional(r *ghttp.Request) (int64, bool) {
 	return wxID, true
 }
 
+// profileDTOToRes 将 ucgsvc.ProfileDTO 转换为 v1.UcgProfileRes
 func profileDTOToRes(p *ucgsvc.ProfileDTO) *v1.UcgProfileRes {
 	if p == nil {
 		return nil
@@ -640,14 +644,14 @@ func profileDTOToRes(p *ucgsvc.ProfileDTO) *v1.UcgProfileRes {
 		AvatarUrl:          p.AvatarUrl,
 		AvatarThumbnailUrl: p.AvatarThumbnailUrl,
 		Bio:                p.Bio,
-		FollowerCount:  p.FollowerCount,
-		FollowingCount: p.FollowingCount,
-		PostCount:      p.PostCount,
-		IpLocation:     p.IpLocation,
-		CreatedAt:      p.CreatedAt,
-		UpdatedAt:      p.UpdatedAt,
-		AuditPending:   p.AuditPending,
-		RejectReason:   p.RejectReason,
+		FollowerCount:      p.FollowerCount,
+		FollowingCount:     p.FollowingCount,
+		PostCount:          p.PostCount,
+		IpLocation:         p.IpLocation,
+		CreatedAt:          p.CreatedAt,
+		UpdatedAt:          p.UpdatedAt,
+		AuditPending:       p.AuditPending,
+		RejectReason:       p.RejectReason,
 	}
 }
 

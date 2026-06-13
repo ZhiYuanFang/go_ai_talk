@@ -14,22 +14,27 @@ import (
 const recommendHotScanTable = "ucg_recommend_hot_scan_state"
 
 type hotScanState struct {
-	LastPostID      uint64
-	RoundHotCutoff  int64
+	LastPostID     uint64
+	RoundHotCutoff int64
 }
 
 // StartRecommendHotReconciler 热区分页 reconciler：轮首固定 hotCutoff，无互动也 Recompute。
 func StartRecommendHotReconciler(ctx context.Context) {
+	// 加载推荐配置
 	cfg := LoadRecommendConfig(ctx)
+	// 计算间隔
 	interval := time.Duration(cfg.HotScanIntervalSeconds) * time.Second
+	// 启动 goroutine
 	go func() {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for {
 			select {
 			case <-ctx.Done():
+				// 上下文取消，退出 goroutine
 				return
 			case <-ticker.C:
+				// 定时执行推荐热区 reconciler
 				if err := tickRecommendHotReconciler(ctx); err != nil {
 					glog.Warningf(ctx, "[ucg-recommend-hot] tick failed: %v", err)
 				}
@@ -41,19 +46,23 @@ func StartRecommendHotReconciler(ctx context.Context) {
 }
 
 func tickRecommendHotReconciler(ctx context.Context) error {
+	// 加载推荐配置
 	cfg := LoadRecommendConfig(ctx)
+	// 加载热区状态
 	state, err := loadHotScanState(ctx)
 	if err != nil {
 		return err
 	}
+	// 如果热区状态为空，则设置热区截止时间
 	if state.LastPostID == 0 {
+		// 计算热区截止时间
 		windowSec := int64(cfg.HotWindowHours * 3600)
 		state.RoundHotCutoff = time.Now().Unix() - windowSec
 		if err = saveHotScanRoundCutoff(ctx, state.RoundHotCutoff); err != nil {
 			return err
 		}
 	}
-
+	// 加载热区状态
 	pageSize := cfg.HotScanPageSize
 	rows, err := dao.UcgPost.Ctx(ctx).
 		Where(dao.UcgPost.Columns().Status, PostStatusPublished).

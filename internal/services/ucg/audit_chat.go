@@ -11,7 +11,8 @@ import (
 	"github.com/gogf/gf/v2/os/glog"
 )
 
-// auditChatMessageFromEvent MQ 消费者：Green + MySQL CAS + Redis LSET 同步。
+// auditChatMessageFromEvent 私信 MQ 审核：单阶段 Green + MySQL CAS + Redis LSET 同步。
+// Green err → requeue → 重复调 Green；无 moderation_verdict 两阶段隔离。
 func auditChatMessageFromEvent(ctx context.Context, messageID, conversationID uint64, auditVersion int) error {
 	row, err := dao.UcgChatMessage.Ctx(ctx).
 		Where(dao.UcgChatMessage.Columns().ConversationId, conversationID).
@@ -21,7 +22,7 @@ func auditChatMessageFromEvent(ctx context.Context, messageID, conversationID ui
 		return err
 	}
 	if row.IsEmpty() {
-		// outbox 可能尚未落库：从 Redis 读消息做 Green（MySQL 权威缺失时仍尝试 Redis 路径）
+		// MySQL 尚未落库时尝试 Redis 路径（outbox 与 consumer 竞态）
 		return auditChatMessageFromRedis(ctx, conversationID, messageID, auditVersion)
 	}
 	var msg entity.UcgChatMessage
@@ -31,7 +32,7 @@ func auditChatMessageFromEvent(ctx context.Context, messageID, conversationID ui
 	if msg.AuditStatus != ChatAuditStatusPending || msg.AuditVersion != auditVersion {
 		glog.Infof(ctx, "[ucg-audit-mq] chat skip stale msgId=%d curAudit=%s curVer=%d eventVer=%d",
 			messageID, msg.AuditStatus, msg.AuditVersion, auditVersion)
-		return nil
+		return nil // 已处理 → Ack
 	}
 	return runChatGreenAndCAS(ctx, conversationID, messageID, auditVersion, msg.SenderWxId, msg.Content, msg.ImageKey, msg.VideoKey, msg.MediaCdnUrl, msg.ClientMsgId)
 }
@@ -40,7 +41,7 @@ func auditChatMessageFromRedis(ctx context.Context, conversationID, messageID ui
 	chatMsg, ok, err := findChatMessageInRedis(ctx, conversationID, messageID)
 	if err != nil || !ok {
 		glog.Infof(ctx, "[ucg-audit-mq] chat skip not found msgId=%d conv=%d version=%d", messageID, conversationID, auditVersion)
-		return err
+		return err // Redis 也找不到：err 可能 nil（ok=false）→ Ack；err 非 nil → requeue
 	}
 	if chatMsg.AuditStatus != ChatAuditStatusPending || chatMsg.AuditVersion != auditVersion {
 		glog.Infof(ctx, "[ucg-audit-mq] chat redis skip stale msgId=%d version=%d", messageID, auditVersion)
@@ -49,6 +50,7 @@ func auditChatMessageFromRedis(ctx context.Context, conversationID, messageID ui
 	return runChatGreenAndCAS(ctx, conversationID, messageID, auditVersion, uint64(chatMsg.SenderWxID), chatMsg.Content, chatMsg.ImageKey, chatMsg.VideoKey, chatMsg.MediaCdnUrl, chatMsg.ClientMsgID)
 }
 
+// runChatGreenAndCAS 串行：文本 → 图片 → 视频 Green；任一步 err 则整 handler err → requeue。
 func runChatGreenAndCAS(ctx context.Context, conversationID, messageID uint64, auditVersion int,
 	senderWxID uint64, content, imageKey, videoKey, mediaCdnURL, clientMsgID string) error {
 	moderator := EffectiveGreen()
@@ -103,7 +105,7 @@ func approveChatMessageCAS(ctx context.Context, conversationID, messageID uint64
 		},
 	})
 	if err != nil {
-		return err
+		return err // CAS 失败 → requeue → 可能重复 Green
 	}
 	if affected == 0 {
 		glog.Infof(ctx, "[ucg-audit-mq] chat approve cas skip msgId=%d version=%d", messageID, auditVersion)
@@ -157,7 +159,7 @@ func sendChatMsgHidden(recipientWxID int64, convID, msgID uint64) {
 	})
 }
 
-// syncChatAuditToRedis CAS 成功后 LSET 更新 Redis JSON 审态字段。
+// syncChatAuditToRedis CAS 成功后 LSET 更新 Redis 列表中对应消息的审态 JSON。
 func syncChatAuditToRedis(ctx context.Context, convID, msgID uint64, auditStatus string, auditVersion int, rejectReason string) error {
 	listKey := redisChatMsgListKey(convID)
 	lenRaw, err := g.Redis().Do(ctx, "LLEN", listKey)

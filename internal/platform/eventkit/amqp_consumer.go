@@ -214,10 +214,12 @@ func runSharedAMQPSession(ctx context.Context, url, defaultTagPrefix string, sub
 	}
 }
 
+// handleDelivery 统一 Ack/Nack 语义：handler 返回 err 则 Nack(requeue=true) 消息回队。
+// UCG 审核 Green 风暴：Phase1 Green 失败或 persist verdict 失败时 handler 返回 err → 无限 requeue → 重复调 Green。
 func handleDelivery(ctx context.Context, queueName string, d amqp.Delivery, handler AMQPMessageHandler) {
 	if err := handler(ctx, queueName, d.RoutingKey, d.Body); err != nil {
-		_ = d.Nack(false, true)
+		_ = d.Nack(false, true) // requeue=true：消息立即回到队列 ready，consumer 空闲时会再次投递
 		return
 	}
-	_ = d.Ack(false)
+	_ = d.Ack(false) // 成功处理，从队列删除
 }

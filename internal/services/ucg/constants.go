@@ -12,10 +12,11 @@ const (
 	CommentStatusPublished    = 2
 	CommentStatusRejected     = 3
 
-	ProfileJobStatusPending     = 1
-	ProfileJobStatusApproved    = 2
-	ProfileJobStatusRejected    = 3
-	ProfileJobStatusApplyFailed = 4 // 机审已完成但 apply 超限失败
+	ProfileJobStatusPending          = 1
+	ProfileJobStatusApproved         = 2
+	ProfileJobStatusRejected         = 3
+	ProfileJobStatusApplyFailed      = 4 // 机审已完成但 apply 超限失败
+	ProfileJobStatusModerationFailed = 5 // 尝试 Green 失败/写库失败
 
 	// ModerationVerdict Phase1 机审结论（MySQL 权威，MQ 重投时跳过 Green 的依据）。
 	ModerationVerdictNone   = 0

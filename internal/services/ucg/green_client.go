@@ -1,3 +1,9 @@
+// Package ucg 阿里云 Green 内容安全客户端。
+//
+// 【与 Green 风暴相关的返回值语义】
+// - ModerateText/Image 返回 err：上层视为 Phase1 失败 → MQ requeue → 可能重复调 API
+// - 返回 Pass=false：违规，上层 persist reject，handler 成功 Ack
+// - parseTextModeration 中 body.Code!=200（如额度 588）→ err，控制台可能有请求记录但 verdict 不落库
 package ucg
 
 import (
@@ -15,18 +21,18 @@ import (
 
 const rejectReasonDefault = "违规已下架"
 
-// AuditVerdict Green 审核结论。
+// AuditVerdict Green 单次机审结论；Pass=false 为内容违规（非 API 错误）。
 type AuditVerdict struct {
 	Pass   bool
 	Reason string
 }
 
-// GreenModerator 内容审核接口（帖子/资料）。
+// GreenModerator 内容审核接口（帖子/资料/评论/私信共用）。
 type GreenModerator interface {
 	ModerateText(ctx context.Context, service, content string) (AuditVerdict, error)
 	ModerateImageURL(ctx context.Context, imageURL string) (AuditVerdict, error)
 	ModerateVideoURL(ctx context.Context, videoURL string) (AuditVerdict, error)
-	Enabled() bool
+	Enabled() bool // true=真实调阿里云；false=noop
 }
 
 type greenModerator struct {
@@ -35,11 +41,11 @@ type greenModerator struct {
 }
 
 var (
-	greenOnce sync.Once
+	greenOnce sync.Once // 进程内单例；改 ucg.green.enabled 需 restart
 	greenIns  GreenModerator
 )
 
-// Green 返回 Green 审核客户端单例。
+// Green 返回 Green 客户端单例；enabled=false 或建连失败时用 noop（不调 API、全 pass）。
 func Green() GreenModerator {
 	greenOnce.Do(func() {
 		cfg := LoadGreenConfig(context.Background())
@@ -65,7 +71,7 @@ func (n *noopGreenModerator) ModerateText(ctx context.Context, service, content 
 	_ = ctx
 	_ = service
 	_ = content
-	return AuditVerdict{Pass: true}, nil
+	return AuditVerdict{Pass: true}, nil // 不调 API，直接 pass
 }
 
 func (n *noopGreenModerator) ModerateImageURL(ctx context.Context, imageURL string) (AuditVerdict, error) {
@@ -93,6 +99,7 @@ func newGreenClient(cfg GreenConfig) (*green.Client, error) {
 	return green.NewClient(conf)
 }
 
+// ModerateText 文本机审；service 常用 nickname_detection / comment_detection。
 func (g *greenModerator) ModerateText(ctx context.Context, service, content string) (AuditVerdict, error) {
 	content = strings.TrimSpace(content)
 	if content == "" {
@@ -111,6 +118,7 @@ func (g *greenModerator) ModerateText(ctx context.Context, service, content stri
 	}
 	resp, err := g.client.TextModeration(req)
 	if err != nil {
+		// SDK/网络错误 → err → Phase1 失败 → requeue → 风暴
 		return AuditVerdict{}, err
 	}
 	return parseTextModeration(resp)
@@ -162,9 +170,7 @@ func (g *greenModerator) ModerateVideoURL(ctx context.Context, videoURL string) 
 	return parseVideoModeration(resp)
 }
 
-// normalizeGreenRejectReason 将 Green Data.Reason 转为用户可读驳回文案。
-// 文本机审违规时 Reason 常为 JSON（含 riskTips）；集中在此解析，供帖/评/资料/私信共用。
-// 纯文本 Reason 原样返回；JSON 解析失败或无 riskTips 时返回空串，由调用方回退 rejectReasonDefault。
+// normalizeGreenRejectReason 将 Green Data.Reason JSON 中的 riskTips 提取为用户可读文案。
 func normalizeGreenRejectReason(raw string) string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -182,6 +188,8 @@ func normalizeGreenRejectReason(raw string) string {
 	return strings.TrimSpace(parsed.RiskTips)
 }
 
+// parseTextModeration 解析文本审核 HTTP 响应。
+// body.Code!=200 时返回 error（非 Pass=false）→ 不落 verdict → 可能 Green 风暴。
 func parseTextModeration(resp *green.TextModerationResponse) (AuditVerdict, error) {
 	if resp == nil || resp.Body == nil {
 		return AuditVerdict{}, fmt.Errorf("green text: empty response")
@@ -198,6 +206,7 @@ func parseTextModeration(resp *green.TextModerationResponse) (AuditVerdict, erro
 		if resp.Body.Code != nil {
 			code = *resp.Body.Code
 		}
+		// 额度不足/限流等常见为非 200 business code → err → requeue
 		return AuditVerdict{}, fmt.Errorf("green text: code %d", code)
 	}
 	labels := strings.TrimSpace(tea.StringValue(resp.Body.Data.Labels))
@@ -241,11 +250,10 @@ func parseVideoModeration(resp *green.VideoModerationResponse) (AuditVerdict, er
 	if resp.Body.Code == nil || *resp.Body.Code != 200 {
 		return AuditVerdict{}, fmt.Errorf("green video: code not ok")
 	}
-	// 视频审核多为异步任务；MVP 在 API 返回 200 且无即时 risk 信息时视为通过，后续可接 task 轮询。
 	return AuditVerdict{Pass: true}, nil
 }
 
-// EffectiveGreen 返回实际审核器：配置关闭时自动 pass（便于联调）。
+// EffectiveGreen 业务侧统一入口：配置关闭时用 noop（enabled=false 时不产生 Green 账单）。
 func EffectiveGreen() GreenModerator {
 	m := Green()
 	if m.Enabled() {

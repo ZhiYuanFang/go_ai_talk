@@ -76,14 +76,18 @@ func (p *HTTPPublisher) CheckDependency(ctx context.Context) error {
 	return nil
 }
 
+// Publish 发布事件
 func (p *HTTPPublisher) Publish(ctx context.Context, routingKey string, payload any) error {
+	// 修剪 routingKey
 	routingKey = strings.TrimSpace(routingKey)
+	// 如果 routingKey 为空，则返回错误
 	if routingKey == "" {
 		return ErrEmptyRoutingKey
 	}
 	if _, ok := ParseRoutingKey(routingKey); !ok {
 		return ErrInvalidRoutingKey
 	}
+	// 构建 body
 	bodyObj := map[string]any{
 		"properties":       map[string]any{},
 		"routing_key":      routingKey,
@@ -91,6 +95,7 @@ func (p *HTTPPublisher) Publish(ctx context.Context, routingKey string, payload 
 		"payload_encoding": "string",
 	}
 	bodyBytes, _ := json.Marshal(bodyObj)
+	// 构建请求
 	u := strings.TrimRight(p.cfg.APIBase, "/") + "/exchanges/%2F/" + p.cfg.Exchange + "/publish"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(bodyBytes))
 	if err != nil {
@@ -98,11 +103,13 @@ func (p *HTTPPublisher) Publish(ctx context.Context, routingKey string, payload 
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", p.basicAuth())
+	// 发送请求
 	resp, err := p.httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrUnavailable, err)
 	}
 	defer resp.Body.Close()
+	// 如果响应状态码不是 2xx，则返回错误
 	if resp.StatusCode >= 300 {
 		// 管理 API 返回非 2xx 视为发布被拒绝，需要上层走失败语义。
 		return fmt.Errorf("%w: status=%d", ErrPublishRejected, resp.StatusCode)
@@ -120,4 +127,3 @@ func mustJSON(v any) string {
 	b, _ := json.Marshal(v)
 	return string(b)
 }
-

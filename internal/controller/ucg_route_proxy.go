@@ -17,6 +17,7 @@ var (
 	ucgProxy     *httputil.ReverseProxy
 )
 
+// 安装 ucg-service 反向代理中间件
 func installUcgProxyMiddleware(s *ghttp.Server) {
 	proxy := ucgProxyFromEnv()
 	if proxy == nil {
@@ -30,9 +31,12 @@ func installUcgProxyMiddleware(s *ghttp.Server) {
 			return
 		}
 		// Bearer 与 X-Internal-Wx-Id 由 gateway-app HookBeforeServe 统一注入，此处仅透传。
+		// 反向代理 ucg-service
 		proxy.ServeHTTP(r.Response.Writer, r.Request)
+		// 退出所有中间件
 		r.ExitAll()
 	}
+	// 绑定 ucg-service 反向代理中间件
 	s.BindMiddleware("/ucg/app/api/*", serve)
 	s.BindMiddleware("/ucg/admin/api/*", serve)
 }

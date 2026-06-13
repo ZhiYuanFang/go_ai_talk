@@ -34,10 +34,12 @@ func defaultUcgAuditPublisher(ctx context.Context) *UcgAuditPublisher {
 }
 
 func (p *UcgAuditPublisher) publish(ctx context.Context, key eventkit.RouteKey, payload map[string]any) error {
+	// 如果 publisher 为空，则不发布
 	if p == nil || p.pub == nil {
 		glog.Warningf(ctx, "[ucg-audit-mq] publish skipped (no publisher) key=%s payload=%v", key, payload)
 		return eventkit.ErrUnavailable
 	}
+	// 发布 outbox
 	return p.pub.Publish(ctx, key.String(), payload)
 }
 

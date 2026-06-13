@@ -16,20 +16,20 @@ import (
 
 // ProfileDTO App 侧 profile 视图。
 type ProfileDTO struct {
-	WxId                uint64 `json:"wxId"`
-	Nickname            string `json:"nickname"`
-	AvatarKey           string `json:"avatarKey"`
-	AvatarUrl           string `json:"avatarUrl"`
-	AvatarThumbnailUrl  string `json:"avatarThumbnailUrl,omitempty"`
-	Bio                 string `json:"bio"`
-	FollowerCount  int    `json:"followerCount,omitempty"`
-	FollowingCount int    `json:"followingCount,omitempty"`
-	PostCount      int    `json:"postCount,omitempty"`
-	CreatedAt      int64  `json:"createdAt"`
-	UpdatedAt      int64  `json:"updatedAt"`
-	AuditPending   bool   `json:"auditPending,omitempty"`
-	RejectReason   string `json:"rejectReason,omitempty"`
-	IpLocation     string `json:"ipLocation,omitempty"`
+	WxId               uint64 `json:"wxId"`
+	Nickname           string `json:"nickname"`
+	AvatarKey          string `json:"avatarKey"`
+	AvatarUrl          string `json:"avatarUrl"`
+	AvatarThumbnailUrl string `json:"avatarThumbnailUrl,omitempty"`
+	Bio                string `json:"bio"`
+	FollowerCount      int    `json:"followerCount,omitempty"`
+	FollowingCount     int    `json:"followingCount,omitempty"`
+	PostCount          int    `json:"postCount,omitempty"`
+	CreatedAt          int64  `json:"createdAt"`
+	UpdatedAt          int64  `json:"updatedAt"`
+	AuditPending       bool   `json:"auditPending,omitempty"`
+	RejectReason       string `json:"rejectReason,omitempty"`
+	IpLocation         string `json:"ipLocation,omitempty"`
 }
 
 // GetOrCreateMyProfile 获取当前用户 profile；不存在时经 device internal API 创建默认昵称。
@@ -95,29 +95,83 @@ func GetOrCreateMyProfile(ctx context.Context, wxID int64, clientIP string) (*Pr
 	return dto, nil
 }
 
-// UpdateMyProfile 提交资料变更至 Green 待审队列；公开 profile 在通过前保持旧值。
+// profileAuditPatch 相对已发布 ucg_profile 的待审 patch。
+// 空串字段表示「本次不提交机审」；Enqueue 后 job 只含变更字段，runProfileGreenChecks 再二次 diff。
+type profileAuditPatch struct {
+	Nickname  string
+	AvatarKey string
+	Bio       string
+}
+
+func (p profileAuditPatch) isEmpty() bool {
+	return p.Nickname == "" && p.AvatarKey == "" && p.Bio == ""
+}
+
+// profileAuditPatchFromPublished 对比已发布 profile，过滤 App 全量 PUT 中未变更的字段。
+// 避免仅改 bio 仍对 nickname 调 Green（历史风暴诱因之一：2 条消息 × 3 字段 × 高频 requeue）。
+func profileAuditPatchFromPublished(published entity.UcgProfile, nickname, avatarKey, bio string) profileAuditPatch {
+	nickname = strings.TrimSpace(nickname)
+	avatarKey = strings.TrimSpace(avatarKey)
+	bio = strings.TrimSpace(bio)
+	pubNick := strings.TrimSpace(published.Nickname)
+	pubAvatar := strings.TrimSpace(published.AvatarKey)
+	pubBio := strings.TrimSpace(published.Bio)
+	var patch profileAuditPatch
+	if nickname != "" && nickname != pubNick {
+		patch.Nickname = nickname // 昵称有变才入 job
+	}
+	if avatarKey != "" && avatarKey != pubAvatar {
+		patch.AvatarKey = avatarKey // avatar_key 空则 Phase1 不调图片 Green
+	}
+	if bio != "" && bio != pubBio {
+		patch.Bio = bio
+	}
+	return patch
+}
+
+// UpdateMyProfile HTTP 入口：写 audit job + outbox → relay publish → ucg.profile.patch.submitted.q。
+// ucg_profile 公开行在审核通过前不变；Green 仅在 MQ consumer 侧调用。
 func UpdateMyProfile(ctx context.Context, wxID int64, nickname, avatarKey, bio string) (*ProfileDTO, error) {
+	// 获取当前用户资料
 	base, err := GetOrCreateMyProfile(ctx, wxID, "")
 	if err != nil {
 		return nil, err
 	}
-	hasChange := strings.TrimSpace(nickname) != "" || strings.TrimSpace(avatarKey) != "" || strings.TrimSpace(bio) != ""
-	if !hasChange {
-		return base, nil
-	}
-	_, _, outboxID, err := EnqueueProfileAuditJob(ctx, wxID, nickname, avatarKey, bio)
-	if err != nil {
-		return nil, err
-	}
-	scheduleAuditPublishAfterCommit(ctx, outboxID)
+	// 获取当前用户资料
 	row, err := dao.UcgProfile.Ctx(ctx).Where(dao.UcgProfile.Columns().WxId, wxID).One()
 	if err != nil {
 		return nil, err
 	}
+	// 获取当前用户资料
+	var published entity.UcgProfile
+	if !row.IsEmpty() {
+		if err = row.Struct(&published); err != nil {
+			return nil, err
+		}
+	}
+	// 生成 patch
+	patch := profileAuditPatchFromPublished(published, nickname, avatarKey, bio)
+	// 如果 patch 为空，则不写 job、不发 MQ
+	if patch.isEmpty() {
+		return base, nil // 无实质变更，不写 job、不发 MQ
+	}
+	// 生成 patch 后，Enqueue 会重置 moderation_verdict=0，新提审必走 Phase1 Green
+	_, _, outboxID, err := EnqueueProfileAuditJob(ctx, wxID, patch.Nickname, patch.AvatarKey, patch.Bio)
+	if err != nil {
+		return nil, err
+	}
+	scheduleAuditPublishAfterCommit(ctx, outboxID) // 事务提交后 relay 发 MQ
+	// 获取当前用户资料
+	row, err = dao.UcgProfile.Ctx(ctx).Where(dao.UcgProfile.Columns().WxId, wxID).One()
+	if err != nil {
+		return nil, err
+	}
 	var p entity.UcgProfile
+	// 获取当前用户资料
 	if err = row.Struct(&p); err != nil {
 		return nil, err
 	}
+	// 合并 profile 与 author
 	return mergeProfileForAuthor(ctx, p)
 }
 
@@ -286,6 +340,7 @@ func enrichProfileStats(ctx context.Context, wxID uint64, dto *ProfileDTO) {
 	}
 }
 
+// mergeProfileForAuthor 合并 profile 与 author
 func mergeProfileForAuthor(ctx context.Context, p entity.UcgProfile) (*ProfileDTO, error) {
 	dto := profileToDTO(p)
 	enrichProfileStats(ctx, p.WxId, dto)

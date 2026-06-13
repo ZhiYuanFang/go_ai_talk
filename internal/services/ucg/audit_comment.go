@@ -11,7 +11,8 @@ import (
 	"github.com/gogf/gf/v2/os/glog"
 )
 
-// auditCommentFromEvent MQ 消费者：评论 Green + CAS；通过后 increment count 与通知。
+// auditCommentFromEvent 评论 MQ 审核：单阶段 Green + CAS（无 moderation_verdict 两阶段）。
+// Green err → return err → Nack requeue → 每次 requeue 都再调 Green（与资料路径 A 同类，无 apply 上限分离）。
 func auditCommentFromEvent(ctx context.Context, commentID uint64, auditVersion int) error {
 	row, err := dao.UcgPostComment.Ctx(ctx).Where(dao.UcgPostComment.Columns().Id, commentID).One()
 	if err != nil {
@@ -31,11 +32,11 @@ func auditCommentFromEvent(ctx context.Context, commentID uint64, auditVersion i
 	}
 	moderator := EffectiveGreen()
 	if verdict, mErr := moderator.ModerateText(ctx, "comment_detection", comment.Content); mErr != nil {
-		return mErr
+		return mErr // API/额度错误 → requeue → 风暴
 	} else if !verdict.Pass {
-		return rejectCommentCAS(ctx, commentID, auditVersion, verdict.Reason)
+		return rejectCommentCAS(ctx, commentID, auditVersion, verdict.Reason) // 违规 → CAS reject → 通常 Ack
 	}
-	return publishCommentCAS(ctx, comment)
+	return publishCommentCAS(ctx, comment) // 通过 → CAS publish
 }
 
 func publishCommentCAS(ctx context.Context, comment entity.UcgPostComment) error {
@@ -52,7 +53,7 @@ func publishCommentCAS(ctx context.Context, comment entity.UcgPostComment) error
 		},
 	})
 	if err != nil {
-		return err
+		return err // CAS 失败 → requeue → 可能重复 Green（评论无 verdict 缓存）
 	}
 	if affected == 0 {
 		glog.Infof(ctx, "[ucg-audit-mq] comment cas skip id=%d version=%d", comment.Id, comment.AuditVersion)
