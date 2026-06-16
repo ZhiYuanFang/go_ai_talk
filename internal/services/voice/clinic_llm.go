@@ -91,6 +91,10 @@ func (s *ClinicService) streamClinicLLM(ctx context.Context, summaryJSON, questi
 	buf := make([]byte, 0, 64*1024)
 	scanner.Buffer(buf, 1024*1024)
 	for scanner.Scan() {
+		// turnCtx 取消时及时停止读 DeepSeek 流，避免 disconnect/cancel 后仍占用连接。
+		if err := ctx.Err(); err != nil {
+			return thinkingBuf.String(), answerBuf.String(), err
+		}
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" || !strings.HasPrefix(line, "data:") {
 			continue

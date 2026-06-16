@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"sync"
@@ -36,8 +37,21 @@ func (f clinicAuthFrame) deviceNo() string {
 }
 
 type clinicQuestionFrame struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
+	Type   string `json:"type"`
+	Text   string `json:"text"`
+	TurnID string `json:"turnId"`
+}
+
+type clinicCancelFrame struct {
+	Type   string `json:"type"`
+	TurnID string `json:"turnId"`
+}
+
+// clinicConnState 连接级 active turn 状态；读循环非阻塞，LLM 在 goroutine 中处理。
+type clinicConnState struct {
+	activeTurnID string
+	cancelTurn   context.CancelFunc
+	turnMu       sync.Mutex
 }
 
 func registerVoiceClinicWS(s *ghttp.Server) {
@@ -46,7 +60,7 @@ func registerVoiceClinicWS(s *ghttp.Server) {
 }
 
 func voiceClinicWS(r *ghttp.Request) {
-	ctx := r.Context()
+	connCtx := r.Context()
 	ws, err := r.WebSocket()
 	if err != nil {
 		r.Response.Status = 400
@@ -69,6 +83,17 @@ func voiceClinicWS(r *ghttp.Request) {
 		return ws.WriteJSON(v)
 	}
 
+	connState := &clinicConnState{}
+	// WS 关闭时取消 active LLM ctx（disconnected）；连接已断，不下发 turn_cancelled。
+	defer func() {
+		connState.turnMu.Lock()
+		if connState.cancelTurn != nil {
+			connState.cancelTurn()
+			connState.cancelTurn = nil
+		}
+		connState.turnMu.Unlock()
+	}()
+
 	// 首帧 MUST 为 auth：解析 JWT 得 wxId>0，deviceNo 须与 JWT device_no 一致；禁止 ResolveVoiceWxID 反查替代登录。
 	_, firstMsg, err := ws.ReadMessage()
 	if err != nil {
@@ -86,7 +111,7 @@ func voiceClinicWS(r *ghttp.Request) {
 	}
 	token := authFrame.token()
 	clientDeviceNo := authFrame.deviceNo()
-	parsedWxID, deviceNoFromJWT, pErr := gatewayapp.ParseAccessClaims(ctx, token)
+	parsedWxID, deviceNoFromJWT, pErr := gatewayapp.ParseAccessClaims(connCtx, token)
 	if pErr != nil || parsedWxID <= 0 {
 		_ = writeJSON(map[string]interface{}{"type": "error", "code": contracts.CodeAINotLoggedIn, "message": "请先登录账号"})
 		return
@@ -108,15 +133,16 @@ func voiceClinicWS(r *ghttp.Request) {
 
 	svc := voice.Clinic()
 	// auth_ok 后立即下发 session_sync（每次重连重复）；读 Redis 失败时下发空 turns，不阻断后续 question。
-	syncPayload, syncErr := svc.BuildSessionSync(ctx, wxID)
+	syncPayload, syncErr := svc.BuildSessionSync(connCtx, wxID)
 	if syncErr != nil {
-		glog.Warningf(ctx, "[胖宝WS] session_sync 读取失败 wxId=%d err=%v", wxID, syncErr)
+		glog.Warningf(connCtx, "[胖宝WS] session_sync 读取失败 wxId=%d err=%v", wxID, syncErr)
 		syncPayload = voice.SessionSyncPayload{Type: "session_sync", Turns: []voice.SessionSyncTurn{}, ExpiresAt: 0}
 	}
 	if err := writeJSON(syncPayload); err != nil {
 		return
 	}
 
+	// 非阻塞读循环：question 在 goroutine 中处理，cancel/supersede 可即时打断 LLM。
 	for {
 		_, msg, rErr := ws.ReadMessage()
 		if rErr != nil {
@@ -140,8 +166,68 @@ func voiceClinicWS(r *ghttp.Request) {
 				_ = writeJSON(map[string]interface{}{"type": "error", "message": "question 帧格式错误"})
 				continue
 			}
-			if err := svc.HandleQuestion(ctx, wxID, deviceNo, q.Text, writeJSON); err != nil {
-				glog.Warningf(ctx, "[胖宝WS] 处理问题失败 wxId=%d err=%v", wxID, err)
+			turnID := strings.TrimSpace(q.TurnID)
+			if turnID == "" {
+				_ = writeJSON(map[string]interface{}{"type": "error", "code": 400, "message": "缺少 turnId"})
+				continue
+			}
+			text := strings.TrimSpace(q.Text)
+			if text == "" {
+				_ = writeJSON(map[string]interface{}{"type": "error", "code": 400, "message": "问题不能为空"})
+				continue
+			}
+			// 新 question supersede 旧 active turn：先 cancel 旧 ctx 并下发 turn_cancelled。
+			connState.turnMu.Lock()
+			if connState.activeTurnID != "" && connState.cancelTurn != nil {
+				oldTurnID := connState.activeTurnID
+				connState.cancelTurn()
+				connState.cancelTurn = nil
+				connState.activeTurnID = ""
+				connState.turnMu.Unlock()
+				_ = voice.EmitTurnCancelled(writeJSON, oldTurnID, "superseded")
+			} else {
+				connState.turnMu.Unlock()
+			}
+			turnCtx, cancelTurn := context.WithCancel(connCtx)
+			connState.turnMu.Lock()
+			connState.activeTurnID = turnID
+			connState.cancelTurn = cancelTurn
+			connState.turnMu.Unlock()
+			go func(tid, qText string, tCtx context.Context) {
+				defer func() {
+					connState.turnMu.Lock()
+					if connState.activeTurnID == tid {
+						connState.activeTurnID = ""
+						connState.cancelTurn = nil
+					}
+					connState.turnMu.Unlock()
+				}()
+				if err := svc.HandleQuestion(tCtx, wxID, deviceNo, qText, tid, writeJSON); err != nil {
+					glog.Warningf(connCtx, "[胖宝WS] 处理问题失败 wxId=%d turnId=%s err=%v", wxID, tid, err)
+				}
+			}(turnID, text, turnCtx)
+		case "cancel":
+			var c clinicCancelFrame
+			if err := json.Unmarshal(msg, &c); err != nil {
+				_ = writeJSON(map[string]interface{}{"type": "error", "message": "cancel 帧格式错误"})
+				continue
+			}
+			cancelTurnID := strings.TrimSpace(c.TurnID)
+			if cancelTurnID == "" {
+				_ = writeJSON(map[string]interface{}{"type": "error", "code": 400, "message": "缺少 turnId"})
+				continue
+			}
+			connState.turnMu.Lock()
+			if connState.activeTurnID == cancelTurnID && connState.cancelTurn != nil {
+				activeID := connState.activeTurnID
+				connState.cancelTurn()
+				connState.cancelTurn = nil
+				connState.activeTurnID = ""
+				connState.turnMu.Unlock()
+				_ = voice.EmitTurnCancelled(writeJSON, activeID, "cancelled")
+			} else {
+				// 已结束或不匹配的 turn：静默忽略
+				connState.turnMu.Unlock()
 			}
 		default:
 			_ = writeJSON(map[string]interface{}{"type": "error", "message": "未知帧类型"})

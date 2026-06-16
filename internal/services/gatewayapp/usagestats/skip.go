@@ -48,6 +48,7 @@ func isStaticOrShellPath(path string) bool {
 		"/device/admin/qa-records",
 		"/device/admin/feedback-records",
 		"/device/admin/ucg-admin.html",
+		"/device/admin/voice-admin.html",
 		"/device/admin/api-usage-stats",
 		"/device/app/version-admin.html",
 		"/user-agreement.html",
