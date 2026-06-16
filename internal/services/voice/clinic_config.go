@@ -7,7 +7,7 @@ import (
 	"github.com/gogf/gf/v2/frame/g"
 )
 
-// AIClinicConfig 胖宝 AI 诊室配置（manifest/config/config.voice-service.yaml aiClinic 块）。
+// AIClinicConfig 胖宝诊疗配置（manifest/config/config.voice-service.yaml aiClinic 块）。
 // DeepSeek endpoint/apiKey 从 voice-chat.shared.yaml 的 deepseek 段加载，不在此重复。
 type AIClinicConfig struct {
 	Model                  string

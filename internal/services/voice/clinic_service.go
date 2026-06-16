@@ -10,7 +10,7 @@ import (
 	gctx "github.com/gogf/gf/v2/os/gctx"
 )
 
-// ClinicService 胖宝 AI 诊室业务（WS 鉴权、摘要、LLM、会话 Redis）。
+// ClinicService 胖宝诊疗业务（WS 鉴权、摘要、LLM、会话 Redis）。
 type ClinicService struct {
 	cfg        AIClinicConfig
 	httpClient *http.Client
@@ -21,7 +21,7 @@ var (
 	clinicSvc  *ClinicService
 )
 
-// Clinic 返回胖宝诊室单例；endpoint/apiKey 来自 voice-chat.shared.yaml deepseek。
+// Clinic 返回胖宝诊疗单例；endpoint/apiKey 来自 voice-chat.shared.yaml deepseek。
 func Clinic() *ClinicService {
 	clinicOnce.Do(func() {
 		voiceCfg := loadVoiceConfig(gctx.New())
@@ -38,6 +38,11 @@ func Clinic() *ClinicService {
 		}
 	})
 	return clinicSvc
+}
+
+// BuildSessionSync 构建 auth_ok 后立即下发的 session_sync 帧（见 clinic_session.go 注释）。
+func (s *ClinicService) BuildSessionSync(ctx context.Context, wxID int64) (SessionSyncPayload, error) {
+	return BuildSessionSync(ctx, wxID, s.cfg.SessionTTLSeconds)
 }
 
 // HandleQuestion 处理 auth_ok 后的 question 帧：限流 → 额度 check → 摘要 → LLM 流 → consume → 写 session。

@@ -107,6 +107,16 @@ func voiceClinicWS(r *ghttp.Request) {
 	}
 
 	svc := voice.Clinic()
+	// auth_ok 后立即下发 session_sync（每次重连重复）；读 Redis 失败时下发空 turns，不阻断后续 question。
+	syncPayload, syncErr := svc.BuildSessionSync(ctx, wxID)
+	if syncErr != nil {
+		glog.Warningf(ctx, "[胖宝WS] session_sync 读取失败 wxId=%d err=%v", wxID, syncErr)
+		syncPayload = voice.SessionSyncPayload{Type: "session_sync", Turns: []voice.SessionSyncTurn{}, ExpiresAt: 0}
+	}
+	if err := writeJSON(syncPayload); err != nil {
+		return
+	}
+
 	for {
 		_, msg, rErr := ws.ReadMessage()
 		if rErr != nil {

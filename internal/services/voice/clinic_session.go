@@ -98,3 +98,48 @@ func clinicSessionMessages(sess clinicSession) []map[string]string {
 	}
 	return out
 }
+
+// SessionSyncTurn auth_ok 后 session_sync 帧中的单轮 Q&A；不含 thinking（Redis 未持久化 reasoning）。
+type SessionSyncTurn struct {
+	Question string `json:"question"`
+	Answer   string `json:"answer"`
+}
+
+// SessionSyncPayload auth_ok 成功后立即下发的会话同步帧。
+// 时序：auth 校验通过 → auth_ok → session_sync（每次 WS 重连重复）；之后客户端方可 question。
+// expiresAt 为首问时刻 + 12h 固定 TTL（非 sliding 续期）；无 session 时 turns 为空、expiresAt 为 0。
+type SessionSyncPayload struct {
+	Type      string            `json:"type"`
+	Turns     []SessionSyncTurn `json:"turns"`
+	ExpiresAt int64             `json:"expiresAt"`
+}
+
+// BuildSessionSync 读 Redis voice:clinic:session:{wxId}，过滤 question/answer 均非空的已完成轮次。
+func BuildSessionSync(ctx context.Context, wxID int64, sessionTTLSeconds int) (SessionSyncPayload, error) {
+	payload := SessionSyncPayload{
+		Type:      "session_sync",
+		Turns:     []SessionSyncTurn{},
+		ExpiresAt: 0,
+	}
+	sess, exists, err := loadClinicSession(ctx, wxID)
+	if err != nil {
+		return payload, err
+	}
+	if !exists || sess.FirstQuestionAt <= 0 {
+		return payload, nil
+	}
+	ttl := sessionTTLSeconds
+	if ttl <= 0 {
+		ttl = 12 * 3600
+	}
+	payload.ExpiresAt = sess.FirstQuestionAt + int64(ttl)
+	for _, t := range sess.Turns {
+		q := strings.TrimSpace(t.Question)
+		a := strings.TrimSpace(t.Answer)
+		if q == "" || a == "" {
+			continue
+		}
+		payload.Turns = append(payload.Turns, SessionSyncTurn{Question: q, Answer: a})
+	}
+	return payload, nil
+}

@@ -13,7 +13,7 @@ logger:
 
 # voiceChat 已迁至 manifest/config/voice-chat.shared.yaml（与 history-service 共用，避免重复维护）。
 
-# 胖宝 AI 诊室独立配置（endpoint/apiKey 复用 voice-chat.shared.yaml deepseek 段）。
+# 胖宝诊疗独立配置（endpoint/apiKey 复用 voice-chat.shared.yaml deepseek 段）。
 aiClinic:
   model: deepseek-v4-pro
   llmTimeoutSeconds: 120
