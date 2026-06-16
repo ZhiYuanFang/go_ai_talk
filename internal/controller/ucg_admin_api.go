@@ -118,9 +118,8 @@ func (c *UcgAdminCtrl) AIQuotaDefaultGet(ctx context.Context, req *v1.UcgAdminAI
 		return nil, err
 	}
 	return &v1.UcgAdminAIQuotaDefaultGetRes{
-		PolishMonthlyLimit:  dto.PolishMonthlyLimit,
-		VoiceAiMonthlyLimit: dto.VoiceAiMonthlyLimit,
-		UpdatedAt:           dto.UpdatedAt,
+		PolishMonthlyLimit: dto.PolishMonthlyLimit,
+		UpdatedAt:          dto.UpdatedAt,
 	}, nil
 }
 
@@ -129,14 +128,13 @@ func (c *UcgAdminCtrl) AIQuotaDefaultPut(ctx context.Context, req *v1.UcgAdminAI
 	if err = c.requireAdmin(ctx); err != nil {
 		return nil, err
 	}
-	dto, err := ucgsvc.UpdateAIQuotaDefaultAdmin(ctx, req.PolishMonthlyLimit, req.VoiceAiMonthlyLimit)
+	dto, err := ucgsvc.UpdateAIQuotaDefaultAdmin(ctx, req.PolishMonthlyLimit)
 	if err != nil {
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, err.Error())
 	}
 	return &v1.UcgAdminAIQuotaDefaultPutRes{
-		PolishMonthlyLimit:  dto.PolishMonthlyLimit,
-		VoiceAiMonthlyLimit: dto.VoiceAiMonthlyLimit,
-		UpdatedAt:           dto.UpdatedAt,
+		PolishMonthlyLimit: dto.PolishMonthlyLimit,
+		UpdatedAt:          dto.UpdatedAt,
 	}, nil
 }
 
@@ -150,10 +148,9 @@ func (c *UcgAdminCtrl) AIQuotaUserGet(ctx context.Context, req *v1.UcgAdminAIQuo
 		return nil, err
 	}
 	return &v1.UcgAdminAIQuotaUserGetRes{
-		WxId:                dto.WxId,
-		PolishMonthlyLimit:  dto.PolishMonthlyLimit,
-		VoiceAiMonthlyLimit: dto.VoiceAiMonthlyLimit,
-		UpdatedAt:           dto.UpdatedAt,
+		WxId:               dto.WxId,
+		PolishMonthlyLimit: dto.PolishMonthlyLimit,
+		UpdatedAt:          dto.UpdatedAt,
 	}, nil
 }
 
@@ -162,15 +159,18 @@ func (c *UcgAdminCtrl) AIQuotaUserPut(ctx context.Context, req *v1.UcgAdminAIQuo
 	if err = c.requireAdmin(ctx); err != nil {
 		return nil, err
 	}
-	dto, err := ucgsvc.UpdateAIQuotaUserOverrideAdmin(ctx, req.WxId, req.PolishMonthlyLimit, req.VoiceAiMonthlyLimit, req.ClearPolish, req.ClearVoiceAi)
+	polish := req.PolishMonthlyLimit
+	if req.ClearPolish {
+		polish = nil
+	}
+	dto, err := ucgsvc.UpdateAIQuotaUserOverrideAdmin(ctx, req.WxId, polish)
 	if err != nil {
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, err.Error())
 	}
 	return &v1.UcgAdminAIQuotaUserPutRes{
-		WxId:                dto.WxId,
-		PolishMonthlyLimit:  dto.PolishMonthlyLimit,
-		VoiceAiMonthlyLimit: dto.VoiceAiMonthlyLimit,
-		UpdatedAt:           dto.UpdatedAt,
+		WxId:               dto.WxId,
+		PolishMonthlyLimit: dto.PolishMonthlyLimit,
+		UpdatedAt:          dto.UpdatedAt,
 	}, nil
 }
 

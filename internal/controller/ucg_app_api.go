@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	v1 "hello/api/v1"
-	"hello/internal/services/device"
+	"hello/internal/services/contracts"
 	"hello/internal/services/gatewayapp"
 	ucgsvc "hello/internal/services/ucg"
 
@@ -110,30 +110,47 @@ func (c *UcgAppCtrl) PostsPolish(ctx context.Context, req *v1.UcgPostsPolishReq)
 	if err != nil {
 		return nil, err
 	}
-	snap, err := device.AIQuotaHTTP().RemoteCheck(ctx, wxID, device.AIQuotaPolish)
+	snap, err := ucgsvc.CheckPolishAIQuota(ctx, wxID)
 	if err != nil {
-		if errors.Is(err, device.ErrAINotLoggedIn) {
-			return nil, gerror.NewCode(device.GCodeAINotLoggedIn(), err.Error())
+		if errors.Is(err, contracts.ErrAINotLoggedIn) {
+			return nil, gerror.NewCode(contracts.GCodeAINotLoggedIn(), err.Error())
 		}
-		if errors.Is(err, device.ErrAIQuotaExhausted) {
-			return nil, gerror.NewCode(device.GCodeAIQuotaExhausted(), err.Error())
+		if errors.Is(err, contracts.ErrAIQuotaExhausted) {
+			return nil, gerror.NewCode(contracts.GCodeAIQuotaExhausted(), err.Error())
 		}
 		return nil, err
 	}
 	if !snap.Allowed {
-		return nil, gerror.NewCode(device.GCodeAIQuotaExhausted(), device.ErrAIQuotaExhausted.Error())
+		return nil, gerror.NewCode(contracts.GCodeAIQuotaExhausted(), contracts.ErrAIQuotaExhausted.Error())
 	}
 	polished, err := ucgsvc.PolishPostText(ctx, req.ImageKeys, req.Text)
 	if err != nil {
 		return nil, err
 	}
-	if _, err = device.AIQuotaHTTP().RemoteConsume(ctx, wxID, device.AIQuotaPolish); err != nil {
-		if errors.Is(err, device.ErrAIQuotaExhausted) {
-			return nil, gerror.NewCode(device.GCodeAIQuotaExhausted(), err.Error())
+	if _, err = ucgsvc.ConsumePolishAIQuota(ctx, wxID); err != nil {
+		if errors.Is(err, contracts.ErrAIQuotaExhausted) {
+			return nil, gerror.NewCode(contracts.GCodeAIQuotaExhausted(), err.Error())
 		}
 		return nil, err
 	}
 	return &v1.UcgPostsPolishRes{PolishedText: polished}, nil
+}
+
+// AIQuotaGet GET /ucg/app/api/ai-quota
+func (c *UcgAppCtrl) AIQuotaGet(ctx context.Context, req *v1.UcgAppAIQuotaGetReq) (res *v1.UcgAppAIQuotaGetRes, err error) {
+	_ = c
+	_ = req
+	wxID, err := wxIDFromUcgHeader(ghttp.RequestFromCtx(ctx))
+	if err != nil {
+		return nil, err
+	}
+	status, err := ucgsvc.GetPolishAIQuotaAppStatus(ctx, wxID)
+	if err != nil {
+		return nil, mapAIQuotaErr(err)
+	}
+	return &v1.UcgAppAIQuotaGetRes{
+		Polish: v1.UcgAppAIQuotaFeatureStatus{Used: status.Polish.Used, Limit: status.Polish.Limit},
+	}, nil
 }
 
 func (c *UcgAppCtrl) ProfileMeGet(ctx context.Context, req *v1.UcgProfileMeGetReq) (res *v1.UcgProfileRes, err error) {

@@ -3,14 +3,18 @@ package voice
 import (
 	"context"
 	"errors"
+	"os"
 	"strconv"
 	"strings"
 
+	"hello/internal/services/contracts"
 	"hello/internal/services/device"
 	"hello/internal/services/gatewayapp"
+
+	"github.com/gogf/gf/v2/frame/g"
 )
 
-// VoiceAIQuotaError 喂养 AI 额度/登录类错误，供 WS 层映射为固定 code。
+// VoiceAIQuotaError 喂养/胖宝 AI 额度/登录类错误，供 WS 层映射为固定 code。
 type VoiceAIQuotaError struct {
 	Code    int
 	Message string
@@ -42,17 +46,84 @@ func VoiceWxIDFromCtx(ctx context.Context) int64 {
 	return v
 }
 
-// ResolveVoiceWxID 优先 Header wxId，否则 deviceNo 反查。
+// ResolveVoiceWxID 优先 Header wxId，否则经 device user 域 internal API 按 deviceNo 反查。
 func ResolveVoiceWxID(ctx context.Context, headerWxID int64, deviceNo string) (int64, error) {
 	if headerWxID > 0 {
 		return headerWxID, nil
 	}
-	wxID, err := device.AIQuotaHTTP().RemoteWxIDByDeviceNo(ctx, strings.TrimSpace(deviceNo))
+	wxID, err := device.RemoteWxIDByDeviceNo(ctx, strings.TrimSpace(deviceNo))
 	if err != nil {
 		return 0, err
 	}
 	return wxID, nil
 }
+
+// CheckVoiceAIQuota 喂养 AI 预检（本地 voice 库 + Redis）。
+func CheckVoiceAIQuota(ctx context.Context, wxID int64) error {
+	return checkAIQuotaFeature(ctx, wxID, contracts.AIQuotaVoiceAI)
+}
+
+// CheckClinicAIQuota 胖宝 AI 预检；wxId≤0 返回 40301，禁止 deviceNo 反查替代登录。
+func CheckClinicAIQuota(ctx context.Context, wxID int64) error {
+	if wxID <= 0 {
+		return &VoiceAIQuotaError{Code: contracts.CodeAINotLoggedIn, Message: contracts.ErrAINotLoggedIn.Error()}
+	}
+	return checkAIQuotaFeature(ctx, wxID, contracts.AIQuotaClinicAI)
+}
+
+// ConsumeClinicAIQuota 胖宝 AI 流式成功完成后扣减 clinic_ai 额度。
+func ConsumeClinicAIQuota(ctx context.Context, wxID int64) error {
+	if wxID <= 0 {
+		return nil
+	}
+	_, err := ConsumeVoiceAIQuotaStore(ctx, wxID, contracts.AIQuotaClinicAI)
+	return mapQuotaStoreErr(err)
+}
+
+// ConsumeVoiceAIQuota 喂养 AI 成功扣减。
+func ConsumeVoiceAIQuota(ctx context.Context, wxID int64) error {
+	if wxID <= 0 {
+		return nil
+	}
+	_, err := ConsumeVoiceAIQuotaStore(ctx, wxID, contracts.AIQuotaVoiceAI)
+	return mapQuotaStoreErr(err)
+}
+
+func checkAIQuotaFeature(ctx context.Context, wxID int64, feature contracts.AIQuotaFeature) error {
+	if wxID <= 0 {
+		return &VoiceAIQuotaError{Code: contracts.CodeAINotLoggedIn, Message: contracts.ErrAINotLoggedIn.Error()}
+	}
+	snap, err := CheckVoiceAIQuotaStore(ctx, wxID, feature)
+	if err != nil {
+		return mapQuotaStoreErr(err)
+	}
+	if !snap.Allowed {
+		return &VoiceAIQuotaError{Code: contracts.CodeAIQuotaExhausted, Message: contracts.ErrAIQuotaExhausted.Error()}
+	}
+	return nil
+}
+
+func mapQuotaStoreErr(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, contracts.ErrAINotLoggedIn) {
+		return &VoiceAIQuotaError{Code: contracts.CodeAINotLoggedIn, Message: err.Error()}
+	}
+	if errors.Is(err, contracts.ErrAIQuotaExhausted) {
+		return &VoiceAIQuotaError{Code: contracts.CodeAIQuotaExhausted, Message: err.Error()}
+	}
+	return err
+}
+
+// VoiceWxIDFromRequest 从 ctx + deviceNo 解析 wxId。
+func VoiceWxIDFromRequest(ctx context.Context, deviceNo string) (int64, error) {
+	wxID := VoiceWxIDFromCtx(ctx)
+	return ResolveVoiceWxID(ctx, wxID, deviceNo)
+}
+
+// HeaderInternalWxID 与 gateway 注入头一致（供 controller 引用常量）。
+const HeaderInternalWxID = gatewayapp.HeaderInternalWxId
 
 // ParseHeaderWxID 解析 X-Internal-Wx-Id。
 func ParseHeaderWxID(header string) int64 {
@@ -67,47 +138,23 @@ func ParseHeaderWxID(header string) int64 {
 	return wxID
 }
 
-// CheckVoiceAIQuota 喂养 AI 预检。
-func CheckVoiceAIQuota(ctx context.Context, wxID int64) error {
-	if wxID <= 0 {
-		return &VoiceAIQuotaError{Code: device.CodeAINotLoggedIn, Message: device.ErrAINotLoggedIn.Error()}
+// VoiceAdminPassword 读取 voice admin 口令（env 优先）。
+func VoiceAdminPassword(ctx context.Context) string {
+	if v := strings.TrimSpace(os.Getenv("VOICE_ADMIN_PASSWORD")); v != "" {
+		return v
 	}
-	snap, err := device.AIQuotaHTTP().RemoteCheck(ctx, wxID, device.AIQuotaVoiceAI)
-	if err != nil {
-		if errors.Is(err, device.ErrAINotLoggedIn) {
-			return &VoiceAIQuotaError{Code: device.CodeAINotLoggedIn, Message: err.Error()}
-		}
-		if errors.Is(err, device.ErrAIQuotaExhausted) {
-			return &VoiceAIQuotaError{Code: device.CodeAIQuotaExhausted, Message: err.Error()}
-		}
-		return err
+	val, err := g.Cfg().Get(ctx, "voice.admin.password")
+	if err != nil || val == nil || val.IsEmpty() {
+		return ""
 	}
-	if !snap.Allowed {
-		return &VoiceAIQuotaError{Code: device.CodeAIQuotaExhausted, Message: device.ErrAIQuotaExhausted.Error()}
-	}
-	return nil
+	return strings.TrimSpace(val.String())
 }
 
-// ConsumeVoiceAIQuota 喂养 AI 成功扣减。
-func ConsumeVoiceAIQuota(ctx context.Context, wxID int64) error {
-	if wxID <= 0 {
-		return nil
+// VerifyVoiceAdminPassword 校验 X-Admin-Password。
+func VerifyVoiceAdminPassword(ctx context.Context, password string) bool {
+	expected := VoiceAdminPassword(ctx)
+	if expected == "" {
+		return false
 	}
-	_, err := device.AIQuotaHTTP().RemoteConsume(ctx, wxID, device.AIQuotaVoiceAI)
-	if err != nil {
-		if errors.Is(err, device.ErrAIQuotaExhausted) {
-			return &VoiceAIQuotaError{Code: device.CodeAIQuotaExhausted, Message: err.Error()}
-		}
-		return err
-	}
-	return nil
+	return gatewayapp.ConstantTimeEqual(strings.TrimSpace(password), expected)
 }
-
-// VoiceWxIDFromRequest 从 ctx + deviceNo 解析 wxId。
-func VoiceWxIDFromRequest(ctx context.Context, deviceNo string) (int64, error) {
-	wxID := VoiceWxIDFromCtx(ctx)
-	return ResolveVoiceWxID(ctx, wxID, deviceNo)
-}
-
-// HeaderInternalWxID 与 gateway 注入头一致（供 controller 引用常量）。
-const HeaderInternalWxID = gatewayapp.HeaderInternalWxId

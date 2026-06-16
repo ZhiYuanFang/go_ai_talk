@@ -56,7 +56,6 @@ func installDeviceProxyMiddleware(s *ghttp.Server) {
 		"/device/admin/api/*",
 		"/device/app/api/user/*",
 		"/device/app/api/feedback/*",
-		"/device/app/api/ai-quota",
 	} {
 		s.BindMiddleware(pattern, serve)
 	}

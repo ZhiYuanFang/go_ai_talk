@@ -1,0 +1,96 @@
+package v1
+
+import "github.com/gogf/gf/v2/frame/g"
+
+// VoiceInternalAIQuotaCheckReq 内部预检 voice_ai / clinic_ai 额度。
+type VoiceInternalAIQuotaCheckReq struct {
+	g.Meta  `path:"/voice/internal/api/ai-quota/check" method:"post" tags:"voice" summary:"内部-AI 额度预检"`
+	WxId    int64  `json:"wxId" v:"required|min:1"`
+	Feature string `json:"feature" v:"required|in:voice_ai,clinic_ai"`
+}
+
+// VoiceInternalAIQuotaCheckRes 预检结果。
+type VoiceInternalAIQuotaCheckRes struct {
+	Allowed bool `json:"allowed"`
+	Used    int  `json:"used"`
+	Limit   int  `json:"limit"`
+}
+
+// VoiceInternalAIQuotaConsumeReq 内部扣减 voice_ai / clinic_ai 额度。
+type VoiceInternalAIQuotaConsumeReq struct {
+	g.Meta  `path:"/voice/internal/api/ai-quota/consume" method:"post" tags:"voice" summary:"内部-AI 额度扣减"`
+	WxId    int64  `json:"wxId" v:"required|min:1"`
+	Feature string `json:"feature" v:"required|in:voice_ai,clinic_ai"`
+}
+
+// VoiceInternalAIQuotaConsumeRes 扣减后快照。
+type VoiceInternalAIQuotaConsumeRes struct {
+	Used  int `json:"used"`
+	Limit int `json:"limit"`
+}
+
+// VoiceAppAIQuotaGetReq App 读取 voice 域 AI 额度。
+type VoiceAppAIQuotaGetReq struct {
+	g.Meta `path:"/voice/app/api/ai-quota" method:"get" tags:"app" summary:"voice 域 AI 月度额度"`
+}
+
+// VoiceAppAIQuotaFeatureStatus 单 feature 用量。
+type VoiceAppAIQuotaFeatureStatus struct {
+	Used  int `json:"used"`
+	Limit int `json:"limit"`
+}
+
+// VoiceAppAIQuotaGetRes App 额度响应（voiceAi + clinicAi）。
+type VoiceAppAIQuotaGetRes struct {
+	VoiceAi  VoiceAppAIQuotaFeatureStatus `json:"voiceAi"`
+	ClinicAi VoiceAppAIQuotaFeatureStatus `json:"clinicAi"`
+}
+
+// VoiceAdminAIQuotaDefaultGetReq 读取 voice 域全局默认额度。
+type VoiceAdminAIQuotaDefaultGetReq struct {
+	g.Meta `path:"/voice/admin/api/ai-quota/default" method:"get" tags:"voice-admin" summary:"读取 voice AI 额度全局默认"`
+}
+
+// VoiceAdminAIQuotaDefaultGetRes 全局默认。
+type VoiceAdminAIQuotaDefaultGetRes struct {
+	VoiceAiMonthlyLimit  int   `json:"voiceAiMonthlyLimit"`
+	ClinicAiMonthlyLimit int   `json:"clinicAiMonthlyLimit"`
+	UpdatedAt            int64 `json:"updatedAt"`
+}
+
+// VoiceAdminAIQuotaDefaultPutReq 更新 voice 域全局默认额度。
+type VoiceAdminAIQuotaDefaultPutReq struct {
+	g.Meta               `path:"/voice/admin/api/ai-quota/default" method:"put" tags:"voice-admin" summary:"更新 voice AI 额度全局默认"`
+	VoiceAiMonthlyLimit  int `json:"voiceAiMonthlyLimit" v:"required|min:1"`
+	ClinicAiMonthlyLimit int `json:"clinicAiMonthlyLimit" v:"required|min:1"`
+}
+
+// VoiceAdminAIQuotaDefaultPutRes 更新后全局默认。
+type VoiceAdminAIQuotaDefaultPutRes = VoiceAdminAIQuotaDefaultGetRes
+
+// VoiceAdminAIQuotaUserGetReq 读取 wxId override。
+type VoiceAdminAIQuotaUserGetReq struct {
+	g.Meta `path:"/voice/admin/api/ai-quota/user" method:"get" tags:"voice-admin" summary:"读取 wxId voice AI 额度 override"`
+	WxId   int64 `json:"wxId" p:"wxId" v:"required|min:1"`
+}
+
+// VoiceAdminAIQuotaUserGetRes wxId override。
+type VoiceAdminAIQuotaUserGetRes struct {
+	WxId                 int64 `json:"wxId"`
+	VoiceAiMonthlyLimit  *int  `json:"voiceAiMonthlyLimit,omitempty"`
+	ClinicAiMonthlyLimit *int  `json:"clinicAiMonthlyLimit,omitempty"`
+	UpdatedAt            int64 `json:"updatedAt"`
+}
+
+// VoiceAdminAIQuotaUserPutReq 更新 wxId override。
+type VoiceAdminAIQuotaUserPutReq struct {
+	g.Meta               `path:"/voice/admin/api/ai-quota/user" method:"put" tags:"voice-admin" summary:"更新 wxId voice AI 额度 override"`
+	WxId                 int64 `json:"wxId" v:"required|min:1"`
+	VoiceAiMonthlyLimit  *int  `json:"voiceAiMonthlyLimit"`
+	ClinicAiMonthlyLimit *int  `json:"clinicAiMonthlyLimit"`
+	ClearVoiceAi         bool  `json:"clearVoiceAi"`
+	ClearClinicAi        bool  `json:"clearClinicAi"`
+}
+
+// VoiceAdminAIQuotaUserPutRes 更新后 override。
+type VoiceAdminAIQuotaUserPutRes = VoiceAdminAIQuotaUserGetRes

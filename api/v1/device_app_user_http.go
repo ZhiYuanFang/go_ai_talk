@@ -225,6 +225,17 @@ type DeviceWxInternalByIDRes struct {
 	UnionId string `json:"unionId"`
 }
 
+// DeviceWxInternalWxIDByDeviceNoReq 网关内部：按 device_no 反查 wx 主键。
+type DeviceWxInternalWxIDByDeviceNoReq struct {
+	g.Meta   `path:"/device/app/api/user/internal/wx-id-by-device-no" method:"get" tags:"device" summary:"内部按 deviceNo 查 wxId"`
+	DeviceNo string `json:"deviceNo" p:"deviceNo" dc:"设备号"`
+}
+
+// DeviceWxInternalWxIDByDeviceNoRes 内部 wxId 响应。
+type DeviceWxInternalWxIDByDeviceNoRes struct {
+	WxId int64 `json:"wxId"`
+}
+
 // DeviceWxInternalDeviceNoByWxIDReq 网关内部：按 wx 主键取 device_no（刷新 access 写 claim 等）。
 type DeviceWxInternalDeviceNoByWxIDReq struct {
 	g.Meta `path:"/device/app/api/user/internal/device-no-by-wx-id" method:"get" tags:"device" summary:"内部按 wxId 取 device_no"`

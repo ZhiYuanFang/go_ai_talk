@@ -37,6 +37,7 @@ var (
 		"/device/app/ws/history",
 		"/voice/chat/ws",
 		"/voice/asr/ws",
+		"/voice/clinic/ws",
 		"/ucg/app/ws/chat",
 	}
 

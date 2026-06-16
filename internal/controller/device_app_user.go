@@ -392,3 +392,16 @@ func (c *DeviceAppUserCtrl) InternalDeviceNoByWxID(ctx context.Context, req *v1.
 	}
 	return &v1.DeviceWxInternalDeviceNoByWxIDRes{DeviceNo: dn}, nil
 }
+
+// InternalWxIDByDeviceNo GET /device/app/api/user/internal/wx-id-by-device-no — voice 反查登录态。
+func (c *DeviceAppUserCtrl) InternalWxIDByDeviceNo(ctx context.Context, req *v1.DeviceWxInternalWxIDByDeviceNoReq) (res *v1.DeviceWxInternalWxIDByDeviceNoRes, err error) {
+	r := ghttp.RequestFromCtx(ctx)
+	if !device.ValidateGatewayInternalSecret(r.GetHeader("X-Gateway-Internal-Secret")) {
+		return nil, gerror.NewCode(gcode.CodeNotAuthorized, "内部接口未授权")
+	}
+	wxID, err := device.WxIDByDeviceNo(ctx, req.DeviceNo)
+	if err != nil {
+		return nil, err
+	}
+	return &v1.DeviceWxInternalWxIDByDeviceNoRes{WxId: wxID}, nil
+}

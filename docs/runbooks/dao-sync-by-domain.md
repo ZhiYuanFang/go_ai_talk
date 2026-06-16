@@ -14,10 +14,10 @@
 
 ### 2. 服务与数据库对应关系
 
-- `voice-service` -> `ai_voice_voice`
+- `voice-service` -> `ai_voice_voice`（含 `ai_quota_default` / `ai_quota_user_override`：voice_ai + clinic_ai）
 - `device-service` -> `ai_voice_device`
 - `history-service` -> `ai_voice_history`
-- `ucg-service` -> `ai_voice_ucg`
+- `ucg-service` -> `ai_voice_ucg`（含 `ai_quota_*`：polish only）
 - `gateway-app-server` -> `ai_voice_app`（`database.app`）
 - `gateway-service` -> 不访问数据库
 

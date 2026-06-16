@@ -8,7 +8,6 @@ import (
 	v1 "hello/api/v1"
 	"hello/internal/model/entity"
 	contracts "hello/internal/services/contracts"
-	device "hello/internal/services/device"
 	"hello/internal/services/gatewayapp"
 	histsvc "hello/internal/services/history"
 	voice "hello/internal/services/voice"
@@ -27,10 +26,10 @@ func mapVoiceAIQuotaErr(err error) error {
 	var qErr *voice.VoiceAIQuotaError
 	if errors.As(err, &qErr) && qErr != nil {
 		switch qErr.Code {
-		case device.CodeAINotLoggedIn:
-			return gerror.NewCode(device.GCodeAINotLoggedIn(), qErr.Message)
-		case device.CodeAIQuotaExhausted:
-			return gerror.NewCode(device.GCodeAIQuotaExhausted(), qErr.Message)
+		case contracts.CodeAINotLoggedIn:
+			return gerror.NewCode(contracts.GCodeAINotLoggedIn(), qErr.Message)
+		case contracts.CodeAIQuotaExhausted:
+			return gerror.NewCode(contracts.GCodeAIQuotaExhausted(), qErr.Message)
 		}
 	}
 	return err

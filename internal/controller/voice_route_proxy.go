@@ -24,14 +24,21 @@ func installVoiceProxyMiddleware(s *ghttp.Server) {
 	if proxy == nil {
 		return
 	}
-	s.BindMiddleware("/voice/text/*", func(r *ghttp.Request) {
+	serve := func(r *ghttp.Request) {
 		if !shouldProxyDomainRequest(cfg, routeKeyForDomainRequest(r)) {
 			r.Middleware.Next()
 			return
 		}
 		proxy.ServeHTTP(r.Response.Writer, r.Request)
 		r.ExitAll()
-	})
+	}
+	for _, pattern := range []string{
+		"/voice/text/*",
+		"/voice/app/api/*",
+		"/voice/admin/api/*",
+	} {
+		s.BindMiddleware(pattern, serve)
+	}
 }
 
 func voiceProxyFromEnv() (domainRouteProxyConfig, *httputil.ReverseProxy) {

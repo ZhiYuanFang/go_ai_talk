@@ -13,6 +13,8 @@ var maintenanceExactAPI = map[string]struct{}{
 	"POST /device/app/api/token/refresh": {},
 	"GET /device/app/api/version/check":  {},
 	"GET /device/app/api/site/home":      {},
+	"GET /voice/app/api/ai-quota":        {},
+	"GET /ucg/app/api/ai-quota":          {},
 }
 
 var maintenancePathPrefixes = []string{

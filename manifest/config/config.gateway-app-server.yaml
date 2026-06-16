@@ -1,5 +1,6 @@
 # gateway-app-server：App 专用入口（JWT、登录/刷新、版本库、历史 WS、下游代理）。
 # 部署时 MUST 设置 DEVICE_SERVICE_URL、HISTORY_SERVICE_URL 指向可达下游；JWT 与内部密钥禁止提交默认值到生产。
+# voice HTTP 反代：环境变量 VOICE_API_PROXY_URL + VOICE_API_ROUTE_MODE=proxy（/voice/app/api/*、/voice/admin/api/*）；VOICE_ADMIN_PASSWORD 注入下游口令。
 # MySQL：APP_DB_LINK + MYSQL_TCP_HOST；JWT：GATEWAY_APP_JWT_SECRET（ucg 须同值）。
 
 server:
@@ -35,5 +36,5 @@ gatewayApp:
   # 单包大小上限（字节），默认 200MB；可用 GATEWAY_APP_APK_MAX_BYTES 覆盖。
   apkMaxBytes: 209715200
   admin:
-    # Admin JWT 会话 TTL（秒），默认 8 小时；Hub 登录见 env GATEWAY_APP_ADMIN_* / DEVICE_ADMIN_PASSWORD / UCG_ADMIN_PASSWORD
+    # Admin JWT 会话 TTL（秒），默认 8 小时；Hub 登录见 env GATEWAY_APP_ADMIN_* / DEVICE_ADMIN_PASSWORD / UCG_ADMIN_PASSWORD / VOICE_ADMIN_PASSWORD
     sessionTtlSeconds: 28800

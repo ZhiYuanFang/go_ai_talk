@@ -37,6 +37,7 @@ var (
 var voiceWSProxyPaths = []string{
 	"/voice/chat/ws",
 	"/voice/asr/ws",
+	"/voice/clinic/ws",
 }
 
 // installVoiceWSProxyMiddleware 在网关挂载 voice WS 入口代理中间件。

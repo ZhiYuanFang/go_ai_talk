@@ -1414,14 +1414,15 @@ MYSQL_HOST=127.0.0.1 MYSQL_USER=root MYSQL_PASS='***' ./hack/mask-seed-data.sh
 
 **回滚**：下线新路由即可；`apple_sub` 列可保留，已创建的 Apple 账号行不受影响。
 
-### AI 月度额度（`ai_quota_*` 表）
+### AI 月度额度（分域 `ai_quota_*` 表）
 
-DDL 在 **device-service 默认库**（`DEVICE_DB_LINK`）执行：
+voice / ucg 各自在默认库维护配额配置；device-service **不再**承载 `ai_quota_*`：
 
-1. **DDL**：`manifest/sql/device_ai_quota.sql`（`ai_quota_default` singleton seed 5/5、`ai_quota_user_override`）
-2. **配置**：ucg/voice 进程须配置 `DEVICE_SERVICE_URL` 与 `DEVICE_GATEWAY_INTERNAL_SECRET`（与 ucg `deviceInternalSecret` 同值）；gateway-app 已反代 `GET /device/app/api/ai-quota`
-3. **滚动** device-service → ucg-service → voice-service
-4. **Flutter**（`flutter_ai_talk` 独立仓库）：HTTP/WS 识别 `code=40302` 弹框「本月额度已用完」、`40301` 引导登录
+1. **DDL voice**：`manifest/sql/voice_ai_quota.sql`（`ai_voice_voice`，默认 5/30）
+2. **DDL ucg**：`manifest/sql/ucg_ai_quota.sql`（`ai_voice_ucg`，默认 polish=5）
+3. **网关**：`VOICE_API_PROXY_URL` + `VOICE_API_ROUTE_MODE=proxy` 反代 `/voice/app/api/*`、`/voice/admin/api/*`；`VOICE_ADMIN_PASSWORD` 注入 voice admin
+4. **App API**：`GET /voice/app/api/ai-quota`、`GET /ucg/app/api/ai-quota`（不计入 usage 统计）
+5. **维护窗口后**：`manifest/sql/device_drop_ai_quota.sql` 于 device 库执行
 
 ### UCG 审核 MQ 卡死 / apply 失败
 

@@ -12,3 +12,23 @@ logger:
   stdout: true
 
 # voiceChat 已迁至 manifest/config/voice-chat.shared.yaml（与 history-service 共用，避免重复维护）。
+
+# 胖宝 AI 诊室独立配置（endpoint/apiKey 复用 voice-chat.shared.yaml deepseek 段）。
+aiClinic:
+  model: deepseek-v4-pro
+  llmTimeoutSeconds: 120
+  thinkingEnabled: true
+  reasoningEffort: high
+  rateLimitWindowSeconds: 60
+  rateLimitMaxRequests: 10
+  sessionTtlSeconds: 43200
+  summaryTtlSeconds: 86400
+  systemPrompt: |
+    你是「胖宝」AI 育儿助手，结合用户近 7 天喂养事件聚合摘要回答问题。
+    摘要仅含 count/amount/duration 统计，非完整原始记录；勿编造摘要中未出现的数据。
+    回答须温和、实用；涉及医疗诊断须提醒用户咨询专业医生。
+
+# voice admin 口令（生产由 VOICE_ADMIN_PASSWORD 环境变量覆盖）
+voice:
+  admin:
+    password: ""

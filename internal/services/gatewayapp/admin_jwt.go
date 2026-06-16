@@ -137,6 +137,14 @@ func UcgAdminPassword() string {
 	return AdminPassword()
 }
 
+// VoiceAdminPassword 网关注入 voice 反代用的 X-Admin-Password。
+func VoiceAdminPassword() string {
+	if v := strings.TrimSpace(os.Getenv("VOICE_ADMIN_PASSWORD")); v != "" {
+		return v
+	}
+	return AdminPassword()
+}
+
 // AdminLoginEnabled Hub 登录是否可用（须配置密码）。
 func AdminLoginEnabled() bool {
 	return AdminPassword() != ""

@@ -13,6 +13,12 @@ window.ADMIN_MODULES = [
 		showInNav: true
 	},
 	{
+		id: 'voice-admin',
+		title: 'Voice AI 额度',
+		pagePath: '/device/admin/voice-admin.html',
+		showInNav: true
+	},
+	{
 		id: 'swagger',
 		title: 'API 接口调试',
 		pagePath: '/swagger',

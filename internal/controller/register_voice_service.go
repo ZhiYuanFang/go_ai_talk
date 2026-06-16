@@ -14,10 +14,17 @@ func RegisterVoiceServiceHTTP(s *ghttp.Server) {
 	registerVoiceChatWS(s)
 	// 实时听写专用 WS，与对话 WS 分离（无 TTS/LLM/单设备连接互踢）。
 	registerVoiceAsrWS(s)
+	registerVoiceClinicWS(s)
 	s.Group("/", func(group *ghttp.RouterGroup) {
 		// voice-service 仅绑定语音文本域能力，避免引入非语音职责。
 		group.Bind(NewVoiceTextCtrl(voice.Voice(), voice.DeviceAdmin()), Voice)
 		group.Bind(NewVoiceSuggestInternalCtrl())
 		group.Bind(NewVoiceQaInternalCtrl())
+		group.Bind(NewVoiceAppAIQuotaCtrl())
+		group.Bind(NewVoiceAdminAIQuotaCtrl())
+	})
+	s.Group("/", func(group *ghttp.RouterGroup) {
+		group.Middleware(deviceUcgInternalSecretMiddleware)
+		group.Bind(NewVoiceAIQuotaInternalCtrl())
 	})
 }
