@@ -23,7 +23,7 @@ type clinicLLMMessage struct {
 }
 
 // streamClinicLLM 调用 DeepSeek 流式接口，区分 reasoning/content 映射 thinking_delta / answer_delta。
-func (s *ClinicService) streamClinicLLM(ctx context.Context, summaryJSON, question string, prior []map[string]string, cb clinicStreamCallbacks) (thinking, answer string, err error) {
+func (s *ClinicService) streamClinicLLM(ctx context.Context, baby clinicBabyProfile, summaryJSON, question string, prior []map[string]string, cb clinicStreamCallbacks) (thinking, answer string, err error) {
 	cfg := s.cfg
 	if strings.TrimSpace(cfg.Endpoint) == "" || strings.TrimSpace(cfg.APIKey) == "" {
 		return "", "", fmt.Errorf("DeepSeek 未配置")
@@ -32,6 +32,7 @@ func (s *ClinicService) streamClinicLLM(ctx context.Context, summaryJSON, questi
 	if system == "" {
 		system = "你是「胖宝」AI 育儿助手。"
 	}
+	system += "\n\n" + baby.promptLine()
 	system += "\n\n近7天喂养事件聚合摘要（JSON）：\n" + summaryJSON
 
 	messages := make([]clinicLLMMessage, 0, 2+len(prior)+1)

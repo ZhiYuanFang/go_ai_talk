@@ -76,9 +76,10 @@ func (s *ClinicService) HandleQuestion(turnCtx context.Context, wxID int64, devi
 	if err := turnCtx.Err(); err != nil {
 		return nil
 	}
+	baby := loadClinicBabyProfile(turnCtx, deviceNo)
 	sess, _, _ := loadClinicSession(turnCtx, wxID)
 	prior := clinicSessionMessages(sess)
-	thinking, answer, streamErr := s.streamClinicLLM(turnCtx, summary, question, prior, clinicStreamCallbacks{
+	thinking, answer, streamErr := s.streamClinicLLM(turnCtx, baby, summary, question, prior, clinicStreamCallbacks{
 		OnThinkingDelta: func(delta string) error {
 			if err := turnCtx.Err(); err != nil {
 				return err
