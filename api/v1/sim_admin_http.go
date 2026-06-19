@@ -71,3 +71,51 @@ type SimAdminStatusGetReq struct {
 type SimAdminStatusGetRes struct {
 	Status SimAdminStatusDTO `json:"status"`
 }
+
+// SimAdminRuntimeTaskSwitchesDTO 各任务 env 开关（只读）。
+type SimAdminRuntimeTaskSwitchesDTO struct {
+	Register  bool `json:"register"`
+	Comment   bool `json:"comment"`
+	PostImage bool `json:"postImage"`
+	PostVideo bool `json:"postVideo"`
+	Chat      bool `json:"chat"`
+	Follow    bool `json:"follow"`
+	VideoPoll bool `json:"videoPoll"`
+}
+
+// SimAdminRuntimeIntervalsDTO 各任务周期与相关 env 时长（只读）。
+type SimAdminRuntimeIntervalsDTO struct {
+	Register            string `json:"register"`
+	Comment             string `json:"comment"`
+	PostImage           string `json:"postImage"`
+	PostVideo           string `json:"postVideo"`
+	Chat                string `json:"chat"`
+	Follow              string `json:"follow"`
+	VideoPollIdle       string `json:"videoPollIdle"`
+	VideoPollActive     string `json:"videoPollActive"`
+	StartupStaggerMax   string `json:"startupStaggerMax"`
+	EphemeralChatLoop   string `json:"ephemeralChatLoop"`
+	EphemeralChatWindow string `json:"ephemeralChatWindow"`
+}
+
+// SimAdminRuntimeDTO 进程运行时配置快照（只读，不含密钥）。
+type SimAdminRuntimeDTO struct {
+	ServiceEnabled    bool                           `json:"serviceEnabled"`
+	DbEnabled         bool                           `json:"dbEnabled"`
+	DatabaseName      string                         `json:"databaseName"`
+	SimUserCount      int                            `json:"simUserCount"`
+	SimUserCountError string                         `json:"simUserCountError,omitempty"`
+	MaxSimUsers       int                            `json:"maxSimUsers"`
+	TaskSwitches      SimAdminRuntimeTaskSwitchesDTO `json:"taskSwitches"`
+	Intervals         SimAdminRuntimeIntervalsDTO    `json:"intervals"`
+	RateLimitRps      float64                        `json:"rateLimitRps"`
+	RateLimitBurst    int                            `json:"rateLimitBurst"`
+}
+
+type SimAdminRuntimeGetReq struct {
+	g.Meta `path:"/sim/admin/api/runtime" method:"get" tags:"sim-admin" summary:"读取模拟服务运行时配置（只读）"`
+}
+
+type SimAdminRuntimeGetRes struct {
+	Runtime SimAdminRuntimeDTO `json:"runtime"`
+}

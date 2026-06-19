@@ -11,16 +11,15 @@ import (
 // StartUcgMQConsumers ucg-service 启动时注册审核+推荐 AMQP consumer（共用一条 connection）。
 // 审核 consumer 关闭后队列消息仍积压，重启 ucg 不会 purge 队列。
 func StartUcgMQConsumers(ctx context.Context) {
+	// 热区 reconciler 与 recommend MQ consumer 解耦：进程启动始终跑批算任务。
+	StartRecommendHotReconciler(ctx)
+
 	// 如果审核 consumer 关闭，则不订阅审核队列，消息 ready 堆积但不调 Green
 	if !ucgAuditConsumerEnabled() {
 		// UCG_AUDIT_MQ_CONSUMER_ENABLED=false：不订阅审核队列，消息 ready 堆积但不调 Green
 		glog.Infof(ctx, "[ucg-audit-mq] consumer disabled by %s", ucgAuditConsumerEnabledEnv)
 	}
-
-	// 启动推荐热区 reconciler
-	if ucgRecommendConsumerEnabled() {
-		StartRecommendHotReconciler(ctx)
-	} else {
+	if !ucgRecommendConsumerEnabled() {
 		glog.Infof(ctx, "[ucg-recommend-mq] consumer disabled by %s", ucgRecommendConsumerEnabledEnv)
 	}
 

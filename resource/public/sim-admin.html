@@ -6,6 +6,15 @@
 	<title>模拟用户管理</title>
 	<link rel="stylesheet" href="/resource/public/pangbao-theme.css" />
 	<link rel="stylesheet" href="/resource/public/admin-pages.css" />
+	<style>
+		.runtime-grid { display: grid; grid-template-columns: 140px 1fr; gap: 6px 12px; font-size: 13px; margin: 12px 0; }
+		.runtime-grid dt { color: var(--muted); margin: 0; }
+		.runtime-grid dd { margin: 0; word-break: break-word; }
+		.badge-on { color: #059669; font-weight: 600; }
+		.badge-off { color: #dc2626; font-weight: 600; }
+		.runtime-hint { font-size: 12px; color: var(--muted); margin: 8px 0 0; line-height: 1.5; }
+		.runtime-err { color: #dc2626; font-size: 12px; }
+	</style>
 </head>
 <body>
 <div class="page page-narrow">
@@ -17,8 +26,9 @@
 		</div>
 	</header>
 	<div class="card glass hidden" id="mainCard">
+		<h4 style="margin:0 0 12px;font-size:15px;">数据库配置（可编辑）</h4>
 		<div class="field">
-			<label><input id="cfgEnabled" type="checkbox" /> 启用模拟服务</label>
+			<label><input id="cfgEnabled" type="checkbox" /> 启用模拟服务（DB sim_config.enabled）</label>
 		</div>
 		<div class="field">
 			<label for="maxSimUsers">模拟用户上限</label>
@@ -26,6 +36,21 @@
 		</div>
 		<button id="saveConfigBtn" type="button">保存配置</button>
 		<span id="cfgMsg" class="msg"></span>
+		<hr class="divider" />
+		<h4 style="margin:0 0 8px;font-size:15px;">运行配置（只读）</h4>
+		<p class="runtime-hint">来自容器环境变量，反映<strong>当前进程</strong>生效值。修改 <code>.env</code> 后须 <code>docker compose ... up -d --force-recreate sim-user-service</code>；任务首次执行延迟约为「启动错峰 + 一整轮周期」。</p>
+		<div id="runtimeErr" class="runtime-err hidden"></div>
+		<dl class="runtime-grid" id="runtimePanel">
+			<dt>进程总开关</dt><dd id="rtServiceEnabled">—</dd>
+			<dt>业务开关</dt><dd id="rtDbEnabled">—</dd>
+			<dt>数据库</dt><dd id="rtDatabase">—</dd>
+			<dt>模拟用户</dt><dd id="rtUserCount">—</dd>
+			<dt>启动错峰</dt><dd id="rtStagger">—</dd>
+			<dt>出站限速</dt><dd id="rtRateLimit">—</dd>
+			<dt>E1 聊天</dt><dd id="rtEphemeral">—</dd>
+			<dt>任务开关</dt><dd id="rtTaskSwitches">—</dd>
+			<dt>任务周期</dt><dd id="rtIntervals">—</dd>
+		</dl>
 		<hr class="divider" />
 		<h4>Prompt 模板</h4>
 		<div class="field">
@@ -44,8 +69,26 @@
 		<span id="promptMsg" class="msg"></span>
 		<hr class="divider" />
 		<h4>任务状态</h4>
-		<pre id="statusBox" style="white-space:pre-wrap;font-size:13px;"></pre>
-		<button id="refreshStatusBtn" type="button" class="secondary">刷新状态</button>
+		<p id="pendingVideo" class="msg" style="margin:0 0 8px;"></p>
+		<div class="table-wrap">
+			<table>
+				<thead>
+					<tr>
+						<th>任务</th>
+						<th>上次运行</th>
+						<th>成功</th>
+						<th>失败</th>
+						<th>最近错误</th>
+					</tr>
+				</thead>
+				<tbody id="statusTbody"></tbody>
+			</table>
+		</div>
+		<details style="margin-top:10px;font-size:13px;">
+			<summary>查看原始 JSON</summary>
+			<pre id="statusBox" style="white-space:pre-wrap;font-size:12px;margin:8px 0 0;"></pre>
+		</details>
+		<button id="refreshStatusBtn" type="button" class="secondary">刷新状态与运行配置</button>
 	</div>
 </div>
 <script src="/resource/public/admin-common.js"></script>
@@ -56,13 +99,100 @@
 	types.forEach(t => { const o = document.createElement('option'); o.value = t; o.textContent = t; sel.appendChild(o); });
 	function api(path, options={}) { return AdminCommon.adminFetch(path, options); }
 
+	function badge(on, onText, offText) {
+		const cls = on ? 'badge-on' : 'badge-off';
+		const txt = on ? (onText || '开启') : (offText || '关闭');
+		return '<span class="'+cls+'">'+txt+'</span>';
+	}
+	function fmtTime(ts) {
+		if (!ts) return '—';
+		const d = new Date(ts * 1000);
+		return isNaN(d.getTime()) ? '—' : d.toLocaleString('zh-CN');
+	}
+	function taskSwitchLabel(key, on) {
+		const names = {
+			register:'T1注册', comment:'T2评论', postImage:'T3图文', postVideo:'T4视频',
+			chat:'T5聊天', follow:'T6关注', videoPoll:'P1视频轮询'
+		};
+		return (names[key] || key) + (on ? '✅' : '❌');
+	}
+	function intervalLabel(key, val) {
+		const names = {
+			register:'T1', comment:'T2', postImage:'T3', postVideo:'T4', chat:'T5', follow:'T6',
+			videoPollIdle:'P1空闲', videoPollActive:'P1活跃', startupStaggerMax:'错峰',
+			ephemeralChatLoop:'E1循环', ephemeralChatWindow:'E1窗口'
+		};
+		return (names[key] || key) + ' ' + val;
+	}
+
+	function renderRuntime(rt) {
+		document.getElementById('runtimeErr').classList.add('hidden');
+		document.getElementById('rtServiceEnabled').innerHTML =
+			badge(rt.serviceEnabled, 'SIM_USER_SERVICE_ENABLED=true', 'SIM_USER_SERVICE_ENABLED=false');
+		document.getElementById('rtDbEnabled').innerHTML =
+			badge(rt.dbEnabled, 'sim_config.enabled=true', 'sim_config.enabled=false');
+		document.getElementById('rtDatabase').textContent = rt.databaseName || '（未解析）';
+		let userText = (rt.simUserCount >= 0 ? rt.simUserCount : '?') + ' / ' + (rt.maxSimUsers || 100);
+		if (rt.simUserCountError) userText += '（拉取失败：' + rt.simUserCountError + '）';
+		document.getElementById('rtUserCount').textContent = userText;
+		document.getElementById('rtStagger').textContent = rt.intervals.startupStaggerMax || '—';
+		document.getElementById('rtRateLimit').textContent =
+			(rt.rateLimitRps || 0) + ' rps，burst ' + (rt.rateLimitBurst || 0);
+		document.getElementById('rtEphemeral').textContent =
+			'循环 ' + (rt.intervals.ephemeralChatLoop || '—') + '，窗口 ' + (rt.intervals.ephemeralChatWindow || '—');
+		const sw = rt.taskSwitches || {};
+		document.getElementById('rtTaskSwitches').textContent =
+			Object.keys(sw).map(k => taskSwitchLabel(k, sw[k])).join(' · ');
+		const iv = rt.intervals || {};
+		const intervalKeys = ['register','comment','postImage','postVideo','chat','follow','videoPollIdle','videoPollActive'];
+		document.getElementById('rtIntervals').textContent =
+			intervalKeys.map(k => intervalLabel(k, iv[k] || '—')).join(' · ');
+	}
+
+	async function loadRuntime() {
+		try {
+			const d = await api('/sim/admin/api/runtime');
+			renderRuntime(d.runtime || {});
+		} catch (e) {
+			document.getElementById('runtimeErr').textContent = '运行配置不可用：' + e.message;
+			document.getElementById('runtimeErr').classList.remove('hidden');
+		}
+	}
+
+	function renderStatus(st) {
+		const tbody = document.getElementById('statusTbody');
+		tbody.innerHTML = '';
+		const tasks = (st && st.tasks) || [];
+		if (!tasks.length) {
+			const tr = document.createElement('tr');
+			tr.innerHTML = '<td colspan="5" style="color:var(--muted);">暂无任务执行记录</td>';
+			tbody.appendChild(tr);
+		} else {
+			tasks.forEach(t => {
+				const tr = document.createElement('tr');
+				tr.innerHTML =
+					'<td>'+escapeHtml(t.taskName || '')+'</td>'+
+					'<td>'+fmtTime(t.lastRunAt)+'</td>'+
+					'<td>'+(t.successCount ?? 0)+'</td>'+
+					'<td>'+(t.failCount ?? 0)+'</td>'+
+					'<td>'+escapeHtml(t.lastError || '—')+'</td>';
+				tbody.appendChild(tr);
+			});
+		}
+		document.getElementById('pendingVideo').textContent =
+			'Pending 视频任务：' + ((st && st.pendingVideoJobs) ?? 0);
+		document.getElementById('statusBox').textContent = JSON.stringify(st, null, 2);
+	}
+	function escapeHtml(s) {
+		return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+	}
+
 	async function enterMain(){
 		document.getElementById('mainCard').classList.remove('hidden');
 		const d = await api('/sim/admin/api/config');
 		document.getElementById('cfgEnabled').checked = !!d.config.enabled;
 		document.getElementById('maxSimUsers').value = d.config.maxSimUsers || 100;
-		await loadPrompt();
-		await loadStatus();
+		await Promise.all([loadPrompt(), loadRuntime(), loadStatus()]);
 	}
 	async function loadPrompt(){
 		const d = await api('/sim/admin/api/prompts/'+encodeURIComponent(sel.value));
@@ -71,7 +201,7 @@
 	}
 	async function loadStatus(){
 		const d = await api('/sim/admin/api/status');
-		document.getElementById('statusBox').textContent = JSON.stringify(d.status, null, 2);
+		renderStatus(d.status || {});
 	}
 	document.getElementById('saveConfigBtn').onclick = async () => {
 		try {
@@ -80,6 +210,7 @@
 				maxSimUsers: parseInt(document.getElementById('maxSimUsers').value,10)||100
 			})});
 			document.getElementById('cfgMsg').textContent = '已保存';
+			await loadRuntime();
 		} catch(e){ document.getElementById('cfgMsg').textContent = e.message; }
 	};
 	document.getElementById('savePromptBtn').onclick = async () => {
@@ -92,7 +223,11 @@
 		} catch(e){ document.getElementById('promptMsg').textContent = e.message; }
 	};
 	sel.onchange = () => loadPrompt().catch(e => alert(e.message));
-	document.getElementById('refreshStatusBtn').onclick = () => loadStatus().catch(e => alert(e.message));
+	document.getElementById('refreshStatusBtn').onclick = async () => {
+		try {
+			await Promise.all([loadRuntime(), loadStatus()]);
+		} catch(e) { alert(e.message); }
+	};
 	if(AdminCommon.requireAdmin()) enterMain().catch(e => alert(e.message));
 })();
 </script>

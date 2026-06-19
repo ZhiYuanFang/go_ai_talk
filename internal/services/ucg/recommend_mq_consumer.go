@@ -25,7 +25,8 @@ func ucgRecommendAMQPHandler(ctx context.Context, queueName, routingKey string, 
 	case eventkit.RoutingUcgPostUnpublished:
 		return handleRecommendUnpublished(ctx, body)
 	case eventkit.RoutingUcgPostPublished:
-		return handleRecommendRecompute(ctx, body, false)
+		// 新帖 score 由热区 reconciler 写入；遗留 published 消息直接 Ack 跳过。
+		return nil
 	case eventkit.RoutingUcgPostLiked, eventkit.RoutingUcgPostUnliked,
 		eventkit.RoutingUcgCommentPublished, eventkit.RoutingUcgCommentRemoved:
 		return handleRecommendRecompute(ctx, body, true)
@@ -60,8 +61,18 @@ func handleRecommendRecompute(ctx context.Context, body []byte, throttle bool) e
 	if postID == 0 {
 		return nil
 	}
-	if throttle && !tryRecommendThrottle(ctx, postID) {
-		return nil
+	if throttle {
+		hot, hotErr := isPostInRecommendHotZone(ctx, postID)
+		if hotErr != nil {
+			return hotErr
+		}
+		if hot {
+			// 热区互动由 reconciler 批量收敛；冷区保留 MQ 重算以支持翻红。
+			return nil
+		}
+		if !tryRecommendThrottle(ctx, postID) {
+			return nil
+		}
 	}
 	if err = RecomputeRecommendScore(ctx, postID); err != nil {
 		return err

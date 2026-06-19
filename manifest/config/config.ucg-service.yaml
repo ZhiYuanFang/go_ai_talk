@@ -47,7 +47,7 @@ ucg:
     wComment: 0.5      # 评论对数项权重
     hotWindowHours: 72       # 热区 published_at 窗口（默认与 tauHours 一致）
     hotScanPageSize: 200     # 热区 reconciler 每页条数
-    hotScanIntervalSeconds: 60  # 热区 reconciler tick 间隔（秒）
+    hotScanIntervalSeconds: 3600  # 热区 reconciler tick 间隔（秒）；可用 UCG_RECOMMEND_HOT_SCAN_INTERVAL_SECONDS 覆盖
     likeThrottleMs: 500      # like/unlike/comment 单 postId throttle（毫秒）
   # AI 润笔（polish lane）：provider/model/maxInFlight/maxWaiters 可由 Admin 热更新；API Key 仅 env。
   # zhipu → GLM_API_KEY；dashscope → UCG_DASHSCOPE_API_KEY。yaml 冷启动兜底见 default_*。

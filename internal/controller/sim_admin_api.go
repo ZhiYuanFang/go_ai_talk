@@ -114,3 +114,48 @@ func (c *SimAdminCtrl) StatusGet(ctx context.Context, req *v1.SimAdminStatusGetR
 	}
 	return &v1.SimAdminStatusGetRes{Status: out}, nil
 }
+
+// RuntimeGet GET /sim/admin/api/runtime
+func (c *SimAdminCtrl) RuntimeGet(ctx context.Context, req *v1.SimAdminRuntimeGetReq) (res *v1.SimAdminRuntimeGetRes, err error) {
+	_ = c
+	_ = req
+	if err = verifySimAdmin(ghttp.RequestFromCtx(ctx)); err != nil {
+		return nil, err
+	}
+	rt, err := simuser.GetRuntimeSnapshot(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &v1.SimAdminRuntimeGetRes{Runtime: v1.SimAdminRuntimeDTO{
+		ServiceEnabled:    rt.ServiceEnabled,
+		DbEnabled:         rt.DbEnabled,
+		DatabaseName:      rt.DatabaseName,
+		SimUserCount:      rt.SimUserCount,
+		SimUserCountError: rt.SimUserCountError,
+		MaxSimUsers:       rt.MaxSimUsers,
+		TaskSwitches: v1.SimAdminRuntimeTaskSwitchesDTO{
+			Register:  rt.TaskSwitches.Register,
+			Comment:   rt.TaskSwitches.Comment,
+			PostImage: rt.TaskSwitches.PostImage,
+			PostVideo: rt.TaskSwitches.PostVideo,
+			Chat:      rt.TaskSwitches.Chat,
+			Follow:    rt.TaskSwitches.Follow,
+			VideoPoll: rt.TaskSwitches.VideoPoll,
+		},
+		Intervals: v1.SimAdminRuntimeIntervalsDTO{
+			Register:            rt.Intervals.Register,
+			Comment:             rt.Intervals.Comment,
+			PostImage:           rt.Intervals.PostImage,
+			PostVideo:           rt.Intervals.PostVideo,
+			Chat:                rt.Intervals.Chat,
+			Follow:              rt.Intervals.Follow,
+			VideoPollIdle:       rt.Intervals.VideoPollIdle,
+			VideoPollActive:     rt.Intervals.VideoPollActive,
+			StartupStaggerMax:   rt.Intervals.StartupStaggerMax,
+			EphemeralChatLoop:   rt.Intervals.EphemeralChatLoop,
+			EphemeralChatWindow: rt.Intervals.EphemeralChatWindow,
+		},
+		RateLimitRps:   rt.RateLimitRps,
+		RateLimitBurst: rt.RateLimitBurst,
+	}}, nil
+}

@@ -279,6 +279,8 @@ curl -s http://127.0.0.1:9805/api.json   # sim-user-service
 - 初期关闭 `SIM_TASK_POST_VIDEO_ENABLED`、`SIM_VIDEO_POLL_ENABLED`、`SIM_TASK_CHAT_ENABLED`。
 - 使用温和周期（示例）：`SIM_INTERVAL_COMMENT=12h`、`SIM_INTERVAL_POST_IMAGE=6h`、`SIM_UCG_RATE_LIMIT_RPS=2`。
 - T2 评论已改走 ucg internal `posts/sample`，不再打 `feed/recommend`。
+- **UCG 推荐分（默认）**：热区 reconciler 每 **1h** 批算（`hotScanIntervalSeconds: 3600`）；热区点赞/评论不即时重算；**冷区**互动仍走 MQ 以支持老帖翻红；新帖 Feed 对无 `ucg_post_recommend` 行置顶直至 reconciler 首次算分。可选 env：`UCG_RECOMMEND_HOT_SCAN_INTERVAL_SECONDS`。`UCG_RECOMMEND_MQ_CONSUMER_ENABLED=false` 时 reconciler **仍运行**（仅停订阅 recommend 队列，冷区无法翻红）。
+- **UCG 推荐分验收（部署后）**：① 热区帖点赞后日志无 `[ucg-recommend-mq] recompute` 写库、MQ 无即时 score 更新；② 冷区（`published_at` 早于 72h）点赞后 `ucg_post_recommend.score` 上升且 Feed 可前排；③ 新过审帖在 recommend 行出现前 Feed 置顶；④ `UCG_RECOMMEND_MQ_CONSUMER_ENABLED=false` 重启 ucg 后日志仍有 `[ucg-recommend-hot]` reconciler 启动。
 - 观测：`SHOW GLOBAL STATUS LIKE 'Threads_running'`；`docker stats` ucg/sim 容器；`GET /sim/admin/api/status`。
 
 ```bash

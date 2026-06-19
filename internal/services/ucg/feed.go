@@ -10,7 +10,7 @@ import (
 	"github.com/gogf/gf/v2/errors/gerror"
 )
 
-// ListRecommendFeed 推荐 Feed：优先按 ucg_post_recommend.score 排序，无 score 时回退 published_at。
+// ListRecommendFeed 推荐 Feed：尚无 recommend 行的帖置顶，已算分帖按 score 排序。
 // viewerWxID>0 时填充 likedByMe。
 func ListRecommendFeed(ctx context.Context, viewerWxID int64, page, pageSize int) (*PageResult, error) {
 	p := NormalizePage(page, pageSize)
@@ -22,11 +22,15 @@ func ListRecommendFeed(ctx context.Context, viewerWxID int64, page, pageSize int
 	if err != nil {
 		return nil, err
 	}
+	pubCol := "p." + dao.UcgPost.Columns().PublishedAt
+	idCol := "p." + dao.UcgPost.Columns().Id
 	rows, err := model.
 		Fields("p.*").
+		OrderDesc("(r.post_id IS NULL)").
+		Order("CASE WHEN r.post_id IS NULL THEN " + pubCol + " ELSE NULL END DESC").
 		OrderDesc("r.score").
-		OrderDesc("p." + dao.UcgPost.Columns().PublishedAt).
-		OrderDesc("p." + dao.UcgPost.Columns().Id).
+		OrderDesc(pubCol).
+		OrderDesc(idCol).
 		Limit(p.PageSize).Offset(pageOffset(p)).All()
 	if err != nil {
 		return nil, err

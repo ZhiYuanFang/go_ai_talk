@@ -59,7 +59,7 @@ func publishPostCAS(ctx context.Context, postID uint64, auditVersion int) error 
 		glog.Infof(ctx, "[ucg-audit-mq] post publish cas skip id=%d version=%d", postID, auditVersion)
 		return nil // 已被其他 delivery 处理
 	}
-	PublishPostPublished(ctx, postID) // 下游事件，非 Green
+	// 推荐分：新帖由 Feed 未算分置顶 + 热区 reconciler 首次写入，不发 post.published MQ。
 	return nil
 }
 
@@ -114,7 +114,7 @@ func rejectPostByIDAdmin(ctx context.Context, post entity.UcgPost, reason string
 		return nil
 	}
 	if wasPublished {
-		PublishPostUnpublished(ctx, post.Id)
+		_ = RemoveRecommendScore(ctx, post.Id)
 	}
 	return nil
 }

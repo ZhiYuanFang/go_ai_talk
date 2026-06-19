@@ -177,7 +177,7 @@ func DeletePost(ctx context.Context, wxID int64, postID uint64) error {
 	if _, err := dao.UcgPostMedia.Ctx(ctx).Where(dao.UcgPostMedia.Columns().PostId, postID).Delete(); err != nil {
 		return err
 	}
-	PublishPostUnpublished(ctx, postID)
+	_ = RemoveRecommendScore(ctx, postID)
 	_, err := dao.UcgPost.Ctx(ctx).Where(dao.UcgPost.Columns().Id, postID).Delete()
 	return err
 }

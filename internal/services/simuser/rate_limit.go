@@ -16,17 +16,29 @@ var (
 	outboundLimiter     *rate.Limiter
 )
 
+// RateLimitSettings 出站 HTTP 限速配置（与 outboundRateLimiter 同源 env）。
+type RateLimitSettings struct {
+	RPS   float64
+	Burst int
+}
+
+// LoadRateLimitSettings 读取 SIM_UCG_RATE_LIMIT_* 生效值。
+func LoadRateLimitSettings() RateLimitSettings {
+	rps := envFloat("SIM_UCG_RATE_LIMIT_RPS", 2.0)
+	if rps <= 0 {
+		rps = 2.0
+	}
+	burst := envInt("SIM_UCG_RATE_LIMIT_BURST", 4)
+	if burst <= 0 {
+		burst = 4
+	}
+	return RateLimitSettings{RPS: rps, Burst: burst}
+}
+
 func outboundRateLimiter() *rate.Limiter {
 	outboundLimiterOnce.Do(func() {
-		rps := envFloat("SIM_UCG_RATE_LIMIT_RPS", 2.0)
-		if rps <= 0 {
-			rps = 2.0
-		}
-		burst := envInt("SIM_UCG_RATE_LIMIT_BURST", 4)
-		if burst <= 0 {
-			burst = 4
-		}
-		outboundLimiter = rate.NewLimiter(rate.Limit(rps), burst)
+		rl := LoadRateLimitSettings()
+		outboundLimiter = rate.NewLimiter(rate.Limit(rl.RPS), rl.Burst)
 	})
 	return outboundLimiter
 }

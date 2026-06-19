@@ -3,6 +3,9 @@ package ucg
 import (
 	"context"
 	"math"
+	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"hello/internal/dao"
@@ -10,6 +13,9 @@ import (
 
 	"github.com/gogf/gf/v2/frame/g"
 )
+
+// ucgRecommendHotScanIntervalEnv 热区 reconciler tick 间隔（秒），优先于 yaml。
+const ucgRecommendHotScanIntervalEnv = "UCG_RECOMMEND_HOT_SCAN_INTERVAL_SECONDS"
 
 // RecommendConfig 推荐算法参数（见 design.md）。
 type RecommendConfig struct {
@@ -52,8 +58,13 @@ func LoadRecommendConfig(ctx context.Context) RecommendConfig {
 	if cfg.HotScanPageSize <= 0 {
 		cfg.HotScanPageSize = 200
 	}
+	if v := strings.TrimSpace(os.Getenv(ucgRecommendHotScanIntervalEnv)); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.HotScanIntervalSeconds = n
+		}
+	}
 	if cfg.HotScanIntervalSeconds <= 0 {
-		cfg.HotScanIntervalSeconds = 60
+		cfg.HotScanIntervalSeconds = 3600
 	}
 	if cfg.LikeThrottleMs <= 0 {
 		cfg.LikeThrottleMs = 500
@@ -73,6 +84,42 @@ func computeRecommendScore(cfg RecommendConfig, post entity.UcgPost, now time.Ti
 	newScore := cfg.WNew * math.Exp(-ageHours/cfg.TauHours)
 	engagement := cfg.WLike*math.Log1p(float64(post.LikeCount)) + cfg.WComment*math.Log1p(float64(post.CommentCount))
 	return newScore + engagement
+}
+
+// recommendHotZoneCutoffUnix 返回热区下界 published_at（与 reconciler round_hot_cutoff 语义一致）。
+func recommendHotZoneCutoffUnix(cfg RecommendConfig, now time.Time) int64 {
+	windowSec := int64(cfg.HotWindowHours * 3600)
+	return now.Unix() - windowSec
+}
+
+// postPublishedAtForRecommend 取帖用于推荐分的时间戳（published_at 优先，否则 created_at）。
+func postPublishedAtForRecommend(post entity.UcgPost) int64 {
+	pub := post.PublishedAt
+	if pub <= 0 {
+		pub = post.CreatedAt
+	}
+	return pub
+}
+
+// isPostInRecommendHotZone 判断帖是否落在热区窗口内（published_at >= now - hotWindowHours）。
+func isPostInRecommendHotZone(ctx context.Context, postID uint64) (bool, error) {
+	if postID == 0 {
+		return false, nil
+	}
+	row, err := dao.UcgPost.Ctx(ctx).Where(dao.UcgPost.Columns().Id, postID).One()
+	if err != nil {
+		return false, err
+	}
+	if row.IsEmpty() {
+		return false, nil
+	}
+	var post entity.UcgPost
+	if err = row.Struct(&post); err != nil {
+		return false, err
+	}
+	cfg := LoadRecommendConfig(ctx)
+	pub := postPublishedAtForRecommend(post)
+	return pub >= recommendHotZoneCutoffUnix(cfg, time.Now()), nil
 }
 
 // RecomputeRecommendScore 读库重算单帖 score 并 UPSERT；非 published 或帖不存在时静默跳过。
