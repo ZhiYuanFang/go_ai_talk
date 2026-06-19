@@ -98,17 +98,19 @@ func RunCommentTask(ctx context.Context, password string) {
 		RecordTaskRun(ctx, "comment", false, err.Error())
 		return
 	}
-	var feed struct {
+	var sample struct {
 		List []struct {
-			Id      uint64 `json:"id"`
-			Content string `json:"content"`
+			PostId         uint64 `json:"postId"`
+			Content        string `json:"content"`
+			MediaType      int    `json:"mediaType"`
+			CoverObjectKey string `json:"coverObjectKey"`
 		} `json:"list"`
 	}
-	if err = appGet(ctx, sess.AccessToken, "/ucg/app/api/feed/recommend?page=1&pageSize=20", &feed); err != nil || len(feed.List) == 0 {
-		RecordTaskRun(ctx, "comment", false, "无推荐帖")
+	if err = ucgInternalPost(ctx, "/ucg/internal/api/posts/sample", g.Map{"limit": 20}, &sample); err != nil || len(sample.List) == 0 {
+		RecordTaskRun(ctx, "comment", false, "无已发布帖")
 		return
 	}
-	post := feed.List[rand.Intn(len(feed.List))]
+	post := sample.List[rand.Intn(len(sample.List))]
 	_, user, _ := LoadRenderedPrompt(ctx, "comment", map[string]string{"post_content": post.Content})
 	resp, err := aimodel.Invoke(ctx, aimodel.LaneSimVision, aimodel.ChatRequest{
 		Messages: []aimodel.Message{{Role: "user", Content: user}}, MaxTokens: 256,
@@ -117,7 +119,7 @@ func RunCommentTask(ctx context.Context, password string) {
 		RecordTaskRun(ctx, "comment", false, err.Error())
 		return
 	}
-	path := fmt.Sprintf("/ucg/app/api/posts/%d/comments", post.Id)
+	path := fmt.Sprintf("/ucg/app/api/posts/%d/comments", post.PostId)
 	if err = appPost(ctx, sess.AccessToken, path, g.Map{"content": strings.TrimSpace(resp.Content)}, nil); err != nil {
 		RecordTaskRun(ctx, "comment", false, err.Error())
 		return
@@ -200,11 +202,11 @@ func RunPostVideoSubmitTask(ctx context.Context, password string) {
 	RecordTaskRun(ctx, "post_video_submit", true, "")
 }
 
-// RunVideoPollTask P1：轮询视频任务。
-func RunVideoPollTask(ctx context.Context, password string) {
+// RunVideoPollTask P1：轮询视频任务；有 pending job 时返回 true 以缩短下一间隔。
+func RunVideoPollTask(ctx context.Context, password string) bool {
 	jobs, err := ListPendingVideoJobs(ctx)
 	if err != nil || len(jobs) == 0 {
-		return
+		return false
 	}
 	for _, job := range jobs {
 		res, pErr := aimodel.PollVideoGeneration(ctx, job.TaskId)
@@ -245,10 +247,11 @@ func RunVideoPollTask(ctx context.Context, password string) {
 			_ = UpdateVideoJobStatus(ctx, job.Id, "processing")
 		}
 	}
+	return true
 }
 
 // RunChatScanTask T5：聊天巡检，真人未读触发 E1。
-func RunChatScanTask(ctx context.Context, password string) {
+func RunChatScanTask(ctx context.Context, password string, flags RuntimeFlags) {
 	if !taskEnabled(ctx) {
 		return
 	}
@@ -276,12 +279,12 @@ func RunChatScanTask(ctx context.Context, password string) {
 		if isPeerSimulated(ctx, int64(c.PeerWxId)) {
 			continue
 		}
-		spawnEphemeralChat(ctx, sess, password, c.Id, int64(c.PeerWxId))
+		spawnEphemeralChat(ctx, sess, password, c.Id, int64(c.PeerWxId), flags)
 	}
 	RecordTaskRun(ctx, "chat_scan", true, "")
 }
 
-func spawnEphemeralChat(ctx context.Context, sess loginSession, password string, convID uint64, peerWxID int64) {
+func spawnEphemeralChat(ctx context.Context, sess loginSession, password string, convID uint64, peerWxID int64, flags RuntimeFlags) {
 	key := fmt.Sprintf("%d:%d", sess.WxID, peerWxID)
 	ephemeralMu.Lock()
 	if _, ok := ephemeralActive[key]; ok {
@@ -290,15 +293,23 @@ func spawnEphemeralChat(ctx context.Context, sess loginSession, password string,
 	}
 	ephemeralActive[key] = struct{}{}
 	ephemeralMu.Unlock()
+	loop := flags.EphemeralChatLoop
+	if loop <= 0 {
+		loop = 5 * time.Minute
+	}
+	window := flags.EphemeralChatWindow
+	if window <= 0 {
+		window = 15 * time.Minute
+	}
 	go func() {
 		defer func() {
 			ephemeralMu.Lock()
 			delete(ephemeralActive, key)
 			ephemeralMu.Unlock()
 		}()
-		deadline := time.Now().Add(30 * time.Minute)
+		deadline := time.Now().Add(window)
 		for time.Now().Before(deadline) {
-			time.Sleep(time.Minute)
+			time.Sleep(loop)
 			var conv struct {
 				List []struct {
 					Id          uint64 `json:"id"`

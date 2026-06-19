@@ -65,7 +65,10 @@ func deviceInternalPost(ctx context.Context, path string, body interface{}, out 
 	return parseEnvelope(resp.ReadAllString(), out)
 }
 
-func ucgInternalPost(ctx context.Context, path string, body interface{}) error {
+func ucgInternalPost(ctx context.Context, path string, body interface{}, out interface{}) error {
+	if err := waitOutboundRate(ctx, "ucg-internal"); err != nil {
+		return err
+	}
 	base := ucgBase(ctx)
 	if base == "" {
 		return fmt.Errorf("UCG_SERVICE_URL 未配置")
@@ -76,7 +79,11 @@ func ucgInternalPost(ctx context.Context, path string, body interface{}) error {
 	if err != nil {
 		return err
 	}
-	j := gjson.New(resp.ReadAllString())
+	raw := resp.ReadAllString()
+	if out != nil {
+		return parseEnvelope(raw, out)
+	}
+	j := gjson.New(raw)
 	if j.Get("code").Int() != 0 {
 		return fmt.Errorf("%s", j.Get("message").String())
 	}
@@ -107,6 +114,9 @@ func simRegister(ctx context.Context, account, password string) (int64, error) {
 }
 
 func appPut(ctx context.Context, token, path string, body interface{}, out interface{}) error {
+	if err := waitOutboundRate(ctx, "app-put"); err != nil {
+		return err
+	}
 	base := gatewayBase(ctx)
 	resp, err := gclient.New().
 		SetHeader("Authorization", "Bearer "+token).
@@ -186,6 +196,9 @@ func usernameLogin(ctx context.Context, account, password string) (loginSession,
 }
 
 func appGet(ctx context.Context, token, path string, out interface{}) error {
+	if err := waitOutboundRate(ctx, "app-get"); err != nil {
+		return err
+	}
 	base := gatewayBase(ctx)
 	resp, err := gclient.New().
 		SetHeader("Authorization", "Bearer "+token).
@@ -204,6 +217,9 @@ func appGet(ctx context.Context, token, path string, out interface{}) error {
 }
 
 func appPost(ctx context.Context, token, path string, body interface{}, out interface{}) error {
+	if err := waitOutboundRate(ctx, "app-post"); err != nil {
+		return err
+	}
 	base := gatewayBase(ctx)
 	resp, err := gclient.New().
 		SetHeader("Authorization", "Bearer "+token).
@@ -338,5 +354,5 @@ func sendInternalChat(ctx context.Context, senderWxID int64, convID uint64, cont
 	return ucgInternalPost(ctx, "/ucg/internal/api/chat/send", g.Map{
 		"senderWxId": senderWxID, "conversationId": convID,
 		"clientMsgId": newClientMsgID(), "content": content,
-	})
+	}, nil)
 }

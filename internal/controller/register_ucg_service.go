@@ -16,6 +16,7 @@ func RegisterUcgServiceHTTP(s *ghttp.Server) {
 		group.POST("/ucg/app/api/media/upload", ucgMediaUpload)
 		group.POST("/ucg/internal/api/media/upload", ucgInternalMediaUpload)
 		group.POST("/ucg/internal/api/chat/send", ucgInternalChatSend)
+		group.POST("/ucg/internal/api/posts/sample", ucgInternalPostsSample)
 	})
 	registerUcgChatWS(s)
 }

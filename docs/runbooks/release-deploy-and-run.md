@@ -271,10 +271,30 @@ curl -s http://127.0.0.1:9805/api.json   # sim-user-service
 
 **sim-user-service（可选）**：默认 `SIM_USER_SERVICE_ENABLED=false` 仅健康检查；开启后需配置 `SIM_DB_LINK`、`GATEWAY_APP_URL`、`GLM_API_KEY`、`SIM_ADMIN_PASSWORD`（管理页 `/device/admin/sim-admin.html`）。模拟用户 API 不计入 usage 统计（`wx.is_simulated=1`）。
 
+**长期开 sim + 共享 MySQL（同机双栈）**：测试与生产共用 MySQL 实例时，sim 任务会经 UCG 审核/推荐链放大 DB 压力。建议：
+
+- 生产栈运行 sim（非测试栈长期开）；`maxSimUsers` 从 20–30 起，经 sim-admin 调高。
+- 初期关闭 `SIM_TASK_POST_VIDEO_ENABLED`、`SIM_VIDEO_POLL_ENABLED`、`SIM_TASK_CHAT_ENABLED`。
+- 使用温和周期（示例）：`SIM_INTERVAL_COMMENT=12h`、`SIM_INTERVAL_POST_IMAGE=6h`、`SIM_UCG_RATE_LIMIT_RPS=2`。
+- T2 评论已改走 ucg internal `posts/sample`，不再打 `feed/recommend`。
+- 观测：`SHOW GLOBAL STATUS LIKE 'Threads_running'`；`docker stats` ucg/sim 容器；`GET /sim/admin/api/status`。
+
 ```bash
 # 本地启用示例（.env.local）
 SIM_USER_SERVICE_ENABLED=true
 SIM_ADMIN_PASSWORD=与网关 Hub 口令一致或单独配置
+
+# 生产长期运营温和配方（库不迁时参考）
+# SIM_INTERVAL_COMMENT=12h
+# SIM_INTERVAL_POST_IMAGE=6h
+# SIM_INTERVAL_VIDEO_POLL_IDLE=10m
+# SIM_INTERVAL_VIDEO_POLL_ACTIVE=2m
+# SIM_EPHEMERAL_CHAT_LOOP=5m
+# SIM_EPHEMERAL_CHAT_WINDOW=15m
+# SIM_STARTUP_STAGGER_MAX=30m
+# SIM_UCG_RATE_LIMIT_RPS=2
+# SIM_TASK_CHAT_ENABLED=false
+# SIM_VIDEO_POLL_ENABLED=false
 ```
 
 ### A.4 可观测性栈（可选）
