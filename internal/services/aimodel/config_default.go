@@ -26,6 +26,26 @@ func DefaultSeedProfile(lane Lane) Profile {
 			Lane: lane, Provider: ProviderZhipu, Model: "glm-4.6v-flash",
 			MaxInFlight: 1, MaxWaiters: 15, TimeoutSec: 60,
 		}
+	case LaneSimText:
+		return Profile{
+			Lane: lane, Provider: ProviderZhipu, Model: "glm-4.7-flash",
+			MaxInFlight: 1, MaxWaiters: 20, TimeoutSec: 60,
+		}
+	case LaneSimVision:
+		return Profile{
+			Lane: lane, Provider: ProviderZhipu, Model: "glm-4.6v-flash",
+			MaxInFlight: 1, MaxWaiters: 15, TimeoutSec: 60,
+		}
+	case LaneSimImageGen:
+		return Profile{
+			Lane: lane, Provider: ProviderZhipu, Model: "cogview-3-flash",
+			MaxInFlight: 1, MaxWaiters: 10, TimeoutSec: 120,
+		}
+	case LaneSimVideoGen:
+		return Profile{
+			Lane: lane, Provider: ProviderZhipu, Model: "cogvideox-flash",
+			MaxInFlight: 1, MaxWaiters: 5, TimeoutSec: 300,
+		}
 	default:
 		return Profile{Lane: lane, MaxInFlight: 1}
 	}

@@ -1,0 +1,73 @@
+package v1
+
+import "github.com/gogf/gf/v2/frame/g"
+
+type SimAdminConfigGetReq struct {
+	g.Meta `path:"/sim/admin/api/config" method:"get" tags:"sim-admin" summary:"读取模拟用户配置"`
+}
+
+type SimAdminConfigDTO struct {
+	Enabled     bool   `json:"enabled"`
+	MaxSimUsers int    `json:"maxSimUsers"`
+	UpdatedAt   int64  `json:"updatedAt"`
+	UpdatedBy   string `json:"updatedBy"`
+}
+
+type SimAdminConfigGetRes struct {
+	Config SimAdminConfigDTO `json:"config"`
+}
+
+type SimAdminConfigPutReq struct {
+	g.Meta      `path:"/sim/admin/api/config" method:"put" tags:"sim-admin" summary:"更新模拟用户配置"`
+	Enabled     bool `json:"enabled"`
+	MaxSimUsers int  `json:"maxSimUsers"`
+}
+
+type SimAdminConfigPutRes struct{}
+
+type SimAdminPromptDTO struct {
+	TaskType           string `json:"taskType"`
+	SystemPrompt       string `json:"systemPrompt"`
+	UserPromptTemplate string `json:"userPromptTemplate"`
+	UpdatedAt          int64  `json:"updatedAt"`
+	UpdatedBy          string `json:"updatedBy"`
+}
+
+type SimAdminPromptGetReq struct {
+	g.Meta   `path:"/sim/admin/api/prompts/{taskType}" method:"get" tags:"sim-admin" summary:"读取 Prompt 模板"`
+	TaskType string `json:"taskType" in:"path" p:"taskType"`
+}
+
+type SimAdminPromptGetRes struct {
+	Prompt SimAdminPromptDTO `json:"prompt"`
+}
+
+type SimAdminPromptPutReq struct {
+	g.Meta             `path:"/sim/admin/api/prompts/{taskType}" method:"put" tags:"sim-admin" summary:"更新 Prompt 模板"`
+	TaskType           string `json:"taskType" in:"path" p:"taskType"`
+	SystemPrompt       string `json:"systemPrompt"`
+	UserPromptTemplate string `json:"userPromptTemplate" v:"required"`
+}
+
+type SimAdminPromptPutRes struct{}
+
+type SimAdminTaskRunDTO struct {
+	TaskName     string `json:"taskName"`
+	LastRunAt    int64  `json:"lastRunAt"`
+	SuccessCount int64  `json:"successCount"`
+	FailCount    int64  `json:"failCount"`
+	LastError    string `json:"lastError,omitempty"`
+}
+
+type SimAdminStatusDTO struct {
+	Tasks            []SimAdminTaskRunDTO `json:"tasks"`
+	PendingVideoJobs int                  `json:"pendingVideoJobs"`
+}
+
+type SimAdminStatusGetReq struct {
+	g.Meta `path:"/sim/admin/api/status" method:"get" tags:"sim-admin" summary:"模拟任务运行状态"`
+}
+
+type SimAdminStatusGetRes struct {
+	Status SimAdminStatusDTO `json:"status"`
+}

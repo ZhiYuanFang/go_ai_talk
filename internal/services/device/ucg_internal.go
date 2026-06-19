@@ -12,11 +12,12 @@ import (
 
 // UcgWxDisplay device 域向 ucg 暴露的 wx 展示字段（不含 unionid 等敏感信息）。
 type UcgWxDisplay struct {
-	WxId       int64  `json:"wxId"`
-	Exists     bool   `json:"exists"`
-	DeviceNo   string `json:"deviceNo"`
-	BabyName   string `json:"babyName"`
-	IpLocation string `json:"ipLocation,omitempty"`
+	WxId        int64  `json:"wxId"`
+	Exists      bool   `json:"exists"`
+	DeviceNo    string `json:"deviceNo"`
+	BabyName    string `json:"babyName"`
+	IpLocation  string `json:"ipLocation,omitempty"`
+	IsSimulated bool   `json:"isSimulated"`
 }
 
 var ErrUcgWxIDInvalid = errors.New("wxId 无效")
@@ -35,11 +36,12 @@ func UcgWxValidate(ctx context.Context, wxID int64) (*UcgWxDisplay, error) {
 	}
 	babyName, _ := ucgBabyNameByDeviceNo(ctx, row.DeviceNo)
 	return &UcgWxDisplay{
-		WxId:       row.Id,
-		Exists:     true,
-		DeviceNo:   row.DeviceNo,
-		BabyName:   babyName,
-		IpLocation: strings.TrimSpace(row.IpLocation),
+		WxId:        row.Id,
+		Exists:      true,
+		DeviceNo:    row.DeviceNo,
+		BabyName:    babyName,
+		IpLocation:  strings.TrimSpace(row.IpLocation),
+		IsSimulated: row.IsSimulated == 1,
 	}, nil
 }
 

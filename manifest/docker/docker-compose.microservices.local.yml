@@ -29,3 +29,7 @@ services:
   ucg-service:
     ports:
       - "9804:9804"
+
+  sim-user-service:
+    ports:
+      - "9805:9805"

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"hello/internal/controller"
+	device "hello/internal/services/device"
 	"hello/internal/platform/dbcfg"
 	"hello/internal/platform/rediscfg"
 	"hello/internal/platform/runtimecheck"
@@ -22,6 +23,10 @@ func main() {
 	// device-service 与其他领域服务保持一致的 fail-fast 启动语义。
 	if err := runtimecheck.CheckDependencies(ctx, runtimecheck.DependencyOptions{RequireRabbitMQ: false}); err != nil {
 		glog.Fatalf(ctx, "dependency check failed: %v", err)
+		return
+	}
+	if err := device.EnsureWxIsSimulatedColumn(ctx); err != nil {
+		glog.Fatalf(ctx, "wx schema ensure failed: %v", err)
 		return
 	}
 	s := g.Server("device-service")

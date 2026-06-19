@@ -145,6 +145,14 @@ func VoiceAdminPassword() string {
 	return AdminPassword()
 }
 
+// SimAdminPassword 网关注入 sim-user-service 反代用的 X-Admin-Password。
+func SimAdminPassword() string {
+	if v := strings.TrimSpace(os.Getenv("SIM_ADMIN_PASSWORD")); v != "" {
+		return v
+	}
+	return AdminPassword()
+}
+
 // AdminLoginEnabled Hub 登录是否可用（须配置密码）。
 func AdminLoginEnabled() bool {
 	return AdminPassword() != ""
@@ -179,6 +187,9 @@ func IsGatewayAdminAPIPath(path string) bool {
 		return true
 	}
 	if strings.HasPrefix(path, "/ucg/admin/api/") {
+		return true
+	}
+	if strings.HasPrefix(path, "/sim/admin/api/") {
 		return true
 	}
 	if strings.HasPrefix(path, "/device/app/api/version/admin/") {

@@ -10,6 +10,14 @@ const (
 	LaneClinic Lane = "clinic"
 	// LanePolish UCG 润笔多模态 LLM。
 	LanePolish Lane = "polish"
+	// LaneSimText 模拟用户文本生成（昵称/文案/聊天）。
+	LaneSimText Lane = "simText"
+	// LaneSimVision 模拟用户读帖评论多模态。
+	LaneSimVision Lane = "simVision"
+	// LaneSimImageGen 模拟用户 CogView 生图。
+	LaneSimImageGen Lane = "simImageGen"
+	// LaneSimVideoGen 模拟用户 CogVideoX 生视频。
+	LaneSimVideoGen Lane = "simVideoGen"
 )
 
 // Provider 上游大模型供应商标识。

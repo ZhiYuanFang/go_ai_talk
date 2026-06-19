@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>模拟用户管理</title>
+	<link rel="stylesheet" href="/resource/public/pangbao-theme.css" />
+	<link rel="stylesheet" href="/resource/public/admin-pages.css" />
+</head>
+<body>
+<div class="page page-narrow">
+	<header class="admin-header glass">
+		<div class="logo">SIM</div>
+		<div>
+			<h1>模拟用户管理</h1>
+			<p>Prompt 模板、用户上限与任务状态 · 须先在 <a href="/device/admin">运维 Hub</a> 登录</p>
+		</div>
+	</header>
+	<div class="card glass hidden" id="mainCard">
+		<div class="field">
+			<label><input id="cfgEnabled" type="checkbox" /> 启用模拟服务</label>
+		</div>
+		<div class="field">
+			<label for="maxSimUsers">模拟用户上限</label>
+			<input id="maxSimUsers" type="number" min="1" max="1000" step="1" />
+		</div>
+		<button id="saveConfigBtn" type="button">保存配置</button>
+		<span id="cfgMsg" class="msg"></span>
+		<hr class="divider" />
+		<h4>Prompt 模板</h4>
+		<div class="field">
+			<label for="promptType">任务类型</label>
+			<select id="promptType"></select>
+		</div>
+		<div class="field">
+			<label for="systemPrompt">System Prompt（可选）</label>
+			<textarea id="systemPrompt" rows="2"></textarea>
+		</div>
+		<div class="field">
+			<label for="userPrompt">User Prompt 模板</label>
+			<textarea id="userPrompt" rows="6"></textarea>
+		</div>
+		<button id="savePromptBtn" type="button" class="secondary">保存 Prompt</button>
+		<span id="promptMsg" class="msg"></span>
+		<hr class="divider" />
+		<h4>任务状态</h4>
+		<pre id="statusBox" style="white-space:pre-wrap;font-size:13px;"></pre>
+		<button id="refreshStatusBtn" type="button" class="secondary">刷新状态</button>
+	</div>
+</div>
+<script src="/resource/public/admin-common.js"></script>
+<script>
+(function(){
+	const types = ['register_nickname','register_avatar','comment','post_image_text','post_video_text','chat_reply'];
+	const sel = document.getElementById('promptType');
+	types.forEach(t => { const o = document.createElement('option'); o.value = t; o.textContent = t; sel.appendChild(o); });
+	function api(path, options={}) { return AdminCommon.adminFetch(path, options); }
+
+	async function enterMain(){
+		document.getElementById('mainCard').classList.remove('hidden');
+		const d = await api('/sim/admin/api/config');
+		document.getElementById('cfgEnabled').checked = !!d.config.enabled;
+		document.getElementById('maxSimUsers').value = d.config.maxSimUsers || 100;
+		await loadPrompt();
+		await loadStatus();
+	}
+	async function loadPrompt(){
+		const d = await api('/sim/admin/api/prompts/'+encodeURIComponent(sel.value));
+		document.getElementById('systemPrompt').value = d.prompt.systemPrompt || '';
+		document.getElementById('userPrompt').value = d.prompt.userPromptTemplate || '';
+	}
+	async function loadStatus(){
+		const d = await api('/sim/admin/api/status');
+		document.getElementById('statusBox').textContent = JSON.stringify(d.status, null, 2);
+	}
+	document.getElementById('saveConfigBtn').onclick = async () => {
+		try {
+			await api('/sim/admin/api/config', { method:'PUT', body: JSON.stringify({
+				enabled: document.getElementById('cfgEnabled').checked,
+				maxSimUsers: parseInt(document.getElementById('maxSimUsers').value,10)||100
+			})});
+			document.getElementById('cfgMsg').textContent = '已保存';
+		} catch(e){ document.getElementById('cfgMsg').textContent = e.message; }
+	};
+	document.getElementById('savePromptBtn').onclick = async () => {
+		try {
+			await api('/sim/admin/api/prompts/'+encodeURIComponent(sel.value), { method:'PUT', body: JSON.stringify({
+				systemPrompt: document.getElementById('systemPrompt').value,
+				userPromptTemplate: document.getElementById('userPrompt').value
+			})});
+			document.getElementById('promptMsg').textContent = '已保存';
+		} catch(e){ document.getElementById('promptMsg').textContent = e.message; }
+	};
+	sel.onchange = () => loadPrompt().catch(e => alert(e.message));
+	document.getElementById('refreshStatusBtn').onclick = () => loadStatus().catch(e => alert(e.message));
+	if(AdminCommon.requireAdmin()) enterMain().catch(e => alert(e.message));
+})();
+</script>
+</body>
+</html>

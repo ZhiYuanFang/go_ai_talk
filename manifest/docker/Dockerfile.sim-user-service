@@ -1,0 +1,22 @@
+FROM m.daocloud.io/docker.io/library/golang:1.23-alpine AS builder
+
+ENV GOPROXY=https://goproxy.cn,https://goproxy.io,direct
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/sim-user-service ./cmd/sim-user-service
+
+FROM m.daocloud.io/docker.io/library/alpine:3.19
+
+ENV WORKDIR=/app
+ENV GF_GCFG_FILE=manifest/config/config.sim-user-service.yaml
+WORKDIR ${WORKDIR}
+
+COPY --from=builder /out/sim-user-service ${WORKDIR}/sim-user-service
+COPY manifest/config/config.sim-user-service.yaml ${WORKDIR}/manifest/config/config.sim-user-service.yaml
+
+EXPOSE 9805
+HEALTHCHECK --interval=10s --timeout=3s --retries=6 CMD wget -q -O - http://127.0.0.1:9805/api.json > /dev/null || exit 1
+CMD ["./sim-user-service"]

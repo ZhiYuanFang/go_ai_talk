@@ -1,0 +1,16 @@
+server:
+  address: ":9805"
+  openapiPath: "/api.json"
+  swaggerPath: "/swagger"
+
+logger:
+  level: "all"
+  stdout: true
+
+simUser:
+  defaultPassword: "123456"
+  gatewayAppUrl: ""
+  deviceServiceUrl: ""
+  ucgServiceUrl: ""
+  deviceInternalSecret: ""
+  adminPassword: ""

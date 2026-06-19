@@ -1,6 +1,6 @@
 ## 部署与运行指南
 
-适用范围：gateway / gateway-app / voice-service / device-service / history-service / ucg-service。
+适用范围：gateway / gateway-app / voice-service / device-service / history-service / ucg-service / **sim-user-service**。
 
 **Redis 容灾与恢复**（容器重启、volume 备份/还原、数据分层）：见 [redis-disaster-recovery.md](./redis-disaster-recovery.md)。
 
@@ -41,7 +41,7 @@ docker ps --format 'table {{.Names}}\t{{.Status}}' | grep -E 'go-ai-talk-(gatewa
 ### 启动前清理（遇 Conflict / 端口占用）
 
 > **原则**：compose 固定了 `container_name`，用 **`docker rm -f <容器名>`** 一条命令即可删掉冲突容器（不管当初挂在哪个 project 下）。**不加 `-v`**，数据卷保留。  
-> 生产清理**只删无 `-test` 后缀的 6 个容器**，不会动测试栈。
+> 生产清理**只删无 `-test` 后缀的 7 个容器**，不会动测试栈。
 
 **工作目录**（以下所有命令前先执行）：
 
@@ -82,32 +82,33 @@ docker ps -a --filter name=go-ai-talk-rabbitmq-test --format '{{.Names}}' \
 #### ③ 测试微服务（go-ai-talk-*-test 冲突；**不影响生产**）
 
 ```bash
-# 删：6 个测试微服务固定容器名
+# 删：7 个测试微服务固定容器名
 docker rm -f \
   go-ai-talk-gateway-test go-ai-talk-gateway-app-test \
   go-ai-talk-history-service-test go-ai-talk-voice-service-test \
   go-ai-talk-device-service-test \
   go-ai-talk-ucg-service-test \
+  go-ai-talk-sim-user-service-test \
   2>/dev/null
 
-# 验：只查 6 个微服务名（go-ai-talk-rabbitmq-test 等中间件不算残留）
+# 验：只查 7 个微服务名（go-ai-talk-rabbitmq-test 等中间件不算残留）
 docker ps -a --format '{{.Names}}' \
-  | grep -E '^go-ai-talk-(gateway|gateway-app|history-service|voice-service|device-service|ucg-service)-test$' \
+  | grep -E '^go-ai-talk-(gateway|gateway-app|history-service|voice-service|device-service|ucg-service|sim-user-service)-test$' \
   && echo '仍有残留，见上表' || echo 'OK: 测试微服务容器已清空'
 ```
 
 #### ④ 生产微服务（**勿删 -test 容器**）
 
 ```bash
-# 删：6 个生产微服务固定容器名（无 -test 后缀）
+# 删：7 个生产微服务固定容器名（无 -test 后缀）
 docker rm -f \
   go-ai-talk-gateway go-ai-talk-gateway-app go-ai-talk-history-service \
   go-ai-talk-voice-service go-ai-talk-device-service \
-  go-ai-talk-ucg-service \
+  go-ai-talk-ucg-service go-ai-talk-sim-user-service \
   2>/dev/null
 
 # 验：无输出 = 已删（不应出现 -test 行）
-docker ps -a --format '{{.Names}}' | grep -E '^go-ai-talk-(gateway|gateway-app|history-service|voice-service|device-service|ucg-service)$' \
+docker ps -a --format '{{.Names}}' | grep -E '^go-ai-talk-(gateway|gateway-app|history-service|voice-service|device-service|ucg-service|sim-user-service)$' \
   && echo '仍有残留' || echo 'OK: 生产微服务容器已清空'
 ```
 
@@ -265,6 +266,15 @@ curl -s http://127.0.0.1:9801/api.json    # history
 curl -s http://127.0.0.1:9802/api.json    # voice
 curl -s http://127.0.0.1:9803/api.json    # device
 curl -s http://127.0.0.1:9804/api.json   # ucg-service
+curl -s http://127.0.0.1:9805/api.json   # sim-user-service
+```
+
+**sim-user-service（可选）**：默认 `SIM_USER_SERVICE_ENABLED=false` 仅健康检查；开启后需配置 `SIM_DB_LINK`、`GATEWAY_APP_URL`、`GLM_API_KEY`、`SIM_ADMIN_PASSWORD`（管理页 `/device/admin/sim-admin.html`）。模拟用户 API 不计入 usage 统计（`wx.is_simulated=1`）。
+
+```bash
+# 本地启用示例（.env.local）
+SIM_USER_SERVICE_ENABLED=true
+SIM_ADMIN_PASSWORD=与网关 Hub 口令一致或单独配置
 ```
 
 ### A.4 可观测性栈（可选）
@@ -391,19 +401,22 @@ git add … && git commit -m "…"
 git push origin develop
 
 # 测试镜像仅由 tag 触发 CI（develop push 不再构建）
-git tag v1.0.0-rc.1    # 全量 6 服务 → 测试 ACR
+git tag v1.0.0-rc.1    # 全量 7 服务 → 测试 ACR
 git push origin v1.0.0-rc.1
 
 # 小改动仅构建单服务（节省 GitHub Actions 分钟）：
 git tag v1.0.0-rc.2+ucg    # 仅 build/push ucg-service；git tag 名含 +ucg
 git push origin v1.0.0-rc.2+ucg
+
+git tag v1.0.0-rc.3+sim    # 仅 build/push sim-user-service
+git push origin v1.0.0-rc.3+sim
 ```
 
 **步骤 2 — 等待 CI**
 
 打开 GitHub → Actions → `docker-acr` 工作流：
 
-- 无 `+` 后缀 tag（如 `v1.0.0-rc.1`）：确认 **六服务** 镜像均 push 成功。
+- 无 `+` 后缀 tag（如 `v1.0.0-rc.1`）：确认 **七服务** 镜像均 push 成功。
 - 带 `+` 后缀 tag（如 `v1.0.0-rc.2+ucg`）：确认 **仅列出的服务** build 成功；ACR **不会**为未构建服务创建该 tag 的镜像（**不 retag**）。
 
 > **路由规则**：`vMAJOR.MINOR.PATCH`（如 `v1.0.0`）→ 生产 ACR；`v1.0.0-rc.1` 等预发布 tag → 测试 ACR。环境路由看 **`+` 前的 base tag**（`v1.0.0-rc.2+ucg` 仍走测试）。
@@ -418,7 +431,7 @@ IMAGE_TAG=v1.0.0-rc.1   # 或 v1.0.0-rc.2（与 git tag 的 + 前 base 一致，
 
 > **git tag 与 IMAGE_TAG**：push `v1.0.0-rc.2+ucg` 时，`.env` 中 `IMAGE_TAG` 写 **`v1.0.0-rc.2`**，不要写 `+ucg` 后缀。
 
-**全量发版**（六服务均在新 tag 下 rebuild 过）— 与原先相同：
+**全量发版**（七服务均在新 tag 下 rebuild 过）— 与原先相同：
 
 ```bash
 # 强制删除悬空镜像
@@ -433,9 +446,9 @@ cd /www/wwwroot/go/go_ai_talk/   # 仓库根目录
 docker rm -f go-ai-talk-gateway-test go-ai-talk-gateway-app-test \
   go-ai-talk-history-service-test go-ai-talk-voice-service-test \
   go-ai-talk-device-service-test \
-  go-ai-talk-ucg-service-test 2>/dev/null
+  go-ai-talk-ucg-service-test go-ai-talk-sim-user-service-test 2>/dev/null
 docker ps -a --format '{{.Names}}' \
-  | grep -E '^go-ai-talk-(gateway|gateway-app|history-service|voice-service|device-service|ucg-service)-test$' \
+  | grep -E '^go-ai-talk-(gateway|gateway-app|history-service|voice-service|device-service|ucg-service|sim-user-service)-test$' \
   && echo '仍有残留' || echo 'OK: 测试微服务容器已清空'
 
 # ② 拉镜像并启动
@@ -509,7 +522,7 @@ cd /www/wwwroot/go/go_ai_talk
 
 #### 停止测试环境（推荐顺序：微服务 → RabbitMQ → Redis）
 
-先停依赖中间件的 6 个微服务，再停中间件。
+先停依赖中间件的 7 个微服务，再停中间件。
 
 ```bash
 # 1) 测试微服务（project=go-ai-talk-test）
@@ -532,9 +545,9 @@ docker compose -f manifest/docker/docker-compose.redis-standalone.test.yml down
 docker ps --format 'table {{.Names}}\t{{.Status}}' | grep -E 'test|1970|1980|19901|16379|5673' \
   && echo '仍有 test 容器' || echo 'OK: 测试栈已停止'
 
-docker ps --format 'table {{.Names}}\t{{.Status}}' | grep -E '^go-ai-talk-(gateway|gateway-app|history-service|voice-service|device-service|ucg-service)$' \
-  | head -7
-# 应仍看到 6 个生产微服务 Up（无 -test 后缀）
+docker ps --format 'table {{.Names}}\t{{.Status}}' | grep -E '^go-ai-talk-(gateway|gateway-app|history-service|voice-service|device-service|ucg-service|sim-user-service)$' \
+  | head -8
+# 应仍看到 7 个生产微服务 Up（无 -test 后缀）
 ```
 
 #### 恢复测试环境（推荐顺序：网络 → Redis → RabbitMQ → 微服务）
@@ -722,8 +735,8 @@ cd /path/to/deploy   # 仓库根目录
 # ① 清理（Conflict 时必做）— 见上文「④ 生产微服务」
 docker rm -f go-ai-talk-gateway go-ai-talk-gateway-app go-ai-talk-history-service \
   go-ai-talk-voice-service go-ai-talk-device-service \
-  go-ai-talk-ucg-service 2>/dev/null
-docker ps -a --format '{{.Names}}' | grep -E '^go-ai-talk-(gateway|gateway-app|history-service|voice-service|device-service|ucg-service)$' \
+  go-ai-talk-ucg-service go-ai-talk-sim-user-service 2>/dev/null
+docker ps -a --format '{{.Names}}' | grep -E '^go-ai-talk-(gateway|gateway-app|history-service|voice-service|device-service|ucg-service|sim-user-service)$' \
   && echo '仍有残留' || echo 'OK: 生产微服务容器已清空'
 
 # ② 拉镜像并启动
@@ -888,7 +901,7 @@ grep -E '^REGISTRY=|^IMAGE_TAG=' manifest/docker/.env.test
 | Repository secrets | `ACR_USERNAME`、`ACR_PASSWORD`（两环境通常相同） |
 | `REGISTRY` | ECS pull 用，**可用** `-vpc`；workflow 自动去掉 `-vpc` 作为 push 地址 |
 | 命名空间 | `REGISTRY` 中 `/pangbao-test` 等与目标环境一致 |
-| ACR 控制台 | 对应命名空间下已有 6 个镜像仓库且存在预发布/正式 tag（如 `:v1.0.0-rc.1`、`:v1.0.0`） |
+| ACR 控制台 | 对应命名空间下已有 7 个镜像仓库且存在预发布/正式 tag（如 `:v1.0.0-rc.1`、`:v1.0.0`） |
 
 ---
 
@@ -1026,7 +1039,7 @@ git pull
 docker rm -f go-ai-talk-gateway-test go-ai-talk-gateway-app-test \
   go-ai-talk-history-service-test go-ai-talk-voice-service-test \
   go-ai-talk-device-service-test \
-  go-ai-talk-ucg-service-test 2>/dev/null
+  go-ai-talk-ucg-service-test go-ai-talk-sim-user-service-test 2>/dev/null
 
 docker compose --env-file manifest/docker/.env.test \
   -f manifest/docker/docker-compose.microservices.yml \
@@ -1269,6 +1282,7 @@ docker exec go-ai-talk-gateway-app-test printenv GATEWAY_APP_PUBLIC_BASE_URL
 | Redis 容器内地址 | `redis-node-1:7001`（yaml 种子） | `redis-test:6379`（`GF_REDIS_DEFAULT_ADDRESS`） |
 | RabbitMQ | 5672 / 15672 | 5673 / 15673 |
 | gateway / gateway-app | 9701 / 9702 | 19701 / 19702 |
+| history / voice / device / ucg / sim-user | 9801–9805 | 19801–19805 |
 | MySQL | `ai_voice_*` | `ai_voice_*_test` |
 | 静态目录 | `/ai_talk_images`、`/apk/ai_talk` | `*_test` 后缀 |
 | `IMAGE_TAG` | semver（`.env.prod`，如 `v1.0.0`） | 预发布 semver（`.env.test`，如 `v1.0.0-rc.1`） |
@@ -1299,7 +1313,7 @@ compose 源文件中的策略（prod/test/local 共用基线，overlay 不覆盖
 
 | compose 文件 | logging 策略 | 备注 |
 |--------------|-------------|------|
-| `docker-compose.microservices.yml` | 10m × 3 | 六微服务 `logging: *docker-logging` |
+| `docker-compose.microservices.yml` | 10m × 3 | 七微服务 `logging: *docker-logging` |
 | `docker-compose.redis-cluster.yml` | 10m × 3 | 三 Redis 节点 |
 | `docker-compose.redis-standalone.test.yml` | 10m × 3 | 测试 standalone |
 | `docker-compose.rabbitmq.yml` / `.test.yml` | 20m × 3 | 挂载 `rabbitmq/rabbitmq.conf` |
@@ -1431,11 +1445,12 @@ docker compose -f manifest/docker/docker-compose.redis-cluster.yml up -d --force
 
 | git tag 示例 | CI 行为 | ACR |
 |--------------|---------|-----|
-| `v1.0.0-rc.2` | 全量 6 服务 build | 六仓库均有 `:v1.0.0-rc.2` |
+| `v1.0.0-rc.2` | 全量 7 服务 build | 七仓库均有 `:v1.0.0-rc.2` |
 | `v1.0.0-rc.2+ucg` | 仅 `ucg-service` | 仅 `ucg-service:v1.0.0-rc.2`（其他仓库无此 tag） |
 | `v1.0.0-rc.2+ucg,gateway` | 两项 | 对应两仓库 |
+| `v1.0.0-rc.3+sim` | 仅 `sim-user-service` | 仅 `sim-user-service:v1.0.0-rc.3` |
 
-别名：`gateway`、`gateway-app`、`history`/`history-service`、`voice`/`voice-service`、`device`/`device-service`、`ucg`/`ucg-service`、`all`（全量）。`.env` 中 `IMAGE_TAG` 用 **`+` 前 base tag**。
+别名：`gateway`、`gateway-app`、`history`/`history-service`、`voice`/`voice-service`、`device`/`device-service`、`ucg`/`ucg-service`、`sim`/`sim-user`/`sim-user-service`、`all`（全量）。`.env` 中 `IMAGE_TAG` 用 **`+` 前 base tag**。
 
 手动触发：Actions → **docker-acr** → Run workflow → 选择 `target_env`、`image_tag`（base tag）；可选 `services`（如 `ucg`，留空=全量）。
 
@@ -1458,7 +1473,7 @@ docker compose -f manifest/docker/docker-compose.redis-cluster.yml up -d --force
 
 CI push 地址由 workflow 从 `REGISTRY` **自动去掉 `-vpc`** 推导，无需单独维护公网域名。
 
-**验证 CI**：配置完成后，Actions → docker-acr → Run workflow → `target_env=test`、`image_tag=v0.0.0-test`（或当前预发布 tag），确认六服务 build + push 成功。部分构建可填 `services=ucg` 验证单服务 matrix。
+**验证 CI**：配置完成后，Actions → docker-acr → Run workflow → `target_env=test`、`image_tag=v0.0.0-test`（或当前预发布 tag），确认七服务 build + push 成功。部分构建可填 `services=ucg` 或 `services=sim` 验证单服务 matrix。
 
 #### ECS 本地 .env（部署用）
 
@@ -1482,7 +1497,7 @@ ACR_PASSWORD=<ACR 固定密码>
 
 换 ACR 密码时须**同时**更新 GitHub Repository secrets 与各 ECS `.env` 中的 `ACR_PASSWORD`。
 
-每个命名空间下须预先创建 6 个镜像仓库：`gateway`、`gateway-app`、`history-service`、`voice-service`、`device-service`、`ucg-service`（或开启「自动创建仓库」）。
+每个命名空间下须预先创建 7 个镜像仓库：`gateway`、`gateway-app`、`history-service`、`voice-service`、`device-service`、`ucg-service`、`sim-user-service`（或开启「自动创建仓库」）。
 
 push 报 `denied` 常见原因：① GitHub 或 ECS 缺 `ACR_USERNAME` / `ACR_PASSWORD`；② `REGISTRY` 缺命名空间；③ 测试/生产命名空间混用；④ 仓库未创建；⑤ ECS 未 `docker login`。详见 [D.2](#d2-acr-拉镜像-pull-access-denied)。
 

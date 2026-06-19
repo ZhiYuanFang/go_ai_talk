@@ -49,6 +49,9 @@ func RecordAsync(wxId int64, apiKey string, at time.Time) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
+		if wxId > 0 && IsSimulatedWx(ctx, wxId) {
+			return
+		}
 		if err := record(ctx, wxId, apiKey, at); err != nil {
 			glog.Warningf(ctx, "[usagestats] 写入 Redis 失败 apiKey=%s wxId=%d err=%v", apiKey, wxId, err)
 		}

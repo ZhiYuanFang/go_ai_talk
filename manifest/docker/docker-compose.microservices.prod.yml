@@ -45,6 +45,12 @@ services:
       - "9804:9804"
     networks: [go-ai-talk-net]
 
+  sim-user-service:
+    image: ${REGISTRY}/sim-user-service:${IMAGE_TAG}
+    ports:
+      - "9805:9805"
+    networks: [go-ai-talk-net]
+
 networks:
   go-ai-talk-net:
     external: true

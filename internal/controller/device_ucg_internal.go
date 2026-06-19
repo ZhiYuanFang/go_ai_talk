@@ -44,11 +44,12 @@ func (c *DeviceUcgInternalCtrl) WxBatch(ctx context.Context, req *v1.DeviceUcgWx
 	items := make([]v1.DeviceUcgWxBatchItem, 0, len(list))
 	for _, row := range list {
 		items = append(items, v1.DeviceUcgWxBatchItem{
-			WxId:       row.WxId,
-			Exists:     row.Exists,
-			DeviceNo:   row.DeviceNo,
-			BabyName:   row.BabyName,
-			IpLocation: row.IpLocation,
+			WxId:        row.WxId,
+			Exists:      row.Exists,
+			DeviceNo:    row.DeviceNo,
+			BabyName:    row.BabyName,
+			IpLocation:  row.IpLocation,
+			IsSimulated: row.IsSimulated,
 		})
 	}
 	return &v1.DeviceUcgWxBatchRes{List: items}, nil
