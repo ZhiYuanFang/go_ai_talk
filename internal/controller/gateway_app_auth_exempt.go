@@ -60,6 +60,7 @@ var (
 		"/device/app/version-admin.html",
 		"/device/admin/ucg-admin.html",
 		"/device/admin/voice-admin.html",
+		"/device/admin/sim-admin.html",
 		"/user-agreement.html",
 		"/privacy-policy.html",
 		"/favicon.ico",

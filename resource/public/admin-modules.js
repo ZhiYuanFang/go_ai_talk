@@ -19,6 +19,12 @@ window.ADMIN_MODULES = [
 		showInNav: true
 	},
 	{
+		id: 'sim-admin',
+		title: '模拟用户管理',
+		pagePath: '/device/admin/sim-admin.html',
+		showInNav: true
+	},
+	{
 		id: 'swagger',
 		title: 'API 接口调试',
 		pagePath: '/swagger',

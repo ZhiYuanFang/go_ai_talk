@@ -61,7 +61,14 @@
 - [x] 9.1 更新 `docs/runbooks/release-deploy-and-run.md`：sim-user-service 部署、开关、依赖 env
 - [x] 9.2 更新 `manifest/docker/.env.example` 与 test/prod example 中 sim 相关变量
 - [x] 9.3 运行 `openspec validate ucg-sim-user-service --strict` 并通过
-- [ ] 9.4 测试环境手工验收：注册 1 个 sim、发评论/图文、internal 发消息、usage 统计不含 sim wxId
+
+### 9.4 前补丁：sim-admin 运维入口
+
+- [x] 9.3.1 `resource/public/admin-modules.js`：增加 `sim-admin` 模块（`showInNav: true`，Hub 顶栏导航至 `/device/admin/sim-admin.html`，对齐 ucg-admin / voice-admin）
+- [x] 9.3.2 `internal/controller/gateway_app_auth_exempt.go`：将 `GET/HEAD /device/admin/sim-admin.html` 加入 App Bearer 白名单（HTML 可加载，鉴权由页面内 `AdminCommon.requireAdmin()` 完成）
+- [x] 9.3.3 `internal/services/gatewayapp/usagestats/skip.go`：`isStaticOrShellPath` 增加 `/device/admin/sim-admin.html`（与其它 Admin 壳页一致，不计入 usage）
+
+- [ ] 9.4 测试环境手工验收：Hub 导航进入 sim-admin；注册 1 个 sim、发评论/图文、internal 发消息、usage 统计不含 sim wxId
 
 ## 10. CI 与部署闭环
 
