@@ -177,6 +177,9 @@ services:
       MQ_USER: "guest"
       MQ_PASSWORD: "guest"
       GF_REDIS_DEFAULT_ADDRESS: "${GF_REDIS_DEFAULT_ADDRESS:-}"
+      GLM_API_KEY: "${GLM_API_KEY:-}"
+      DEEPSEEK_API_KEY: "${DEEPSEEK_API_KEY:-}"
+      VOICE_ADMIN_PASSWORD: "${VOICE_ADMIN_PASSWORD:-}"
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:9802/api.json > /dev/null || exit 1"]
       interval: 10s
@@ -234,6 +237,7 @@ services:
       UCG_OSS_ACCESS_KEY_ID: "${UCG_OSS_ACCESS_KEY_ID:-}"
       UCG_OSS_ACCESS_KEY_SECRET: "${UCG_OSS_ACCESS_KEY_SECRET:-}"
       UCG_DASHSCOPE_API_KEY: "${UCG_DASHSCOPE_API_KEY:-}"
+      GLM_API_KEY: "${GLM_API_KEY:-}"
       UCG_ADMIN_PASSWORD: "${UCG_ADMIN_PASSWORD:-}"
       MQ_HTTP_API_BASE: "http://rabbitmq:15672/api"
       MQ_USER: "guest"

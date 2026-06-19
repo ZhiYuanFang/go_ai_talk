@@ -105,9 +105,9 @@
 			<section class="section">
 				<h2>3. 第三方 AI 与内容审核</h2>
 				<ul>
-					<li>AI 润笔（ 发帖）：当您在社区发帖页使用「AI 润笔」功能时，您所选图片及当前正文将发送至<strong>阿里云 DashScope</strong>（通义千问系列服务），用于生成润色文案。该功能与喂养 AI 对话、胖宝诊疗为<strong>独立场景</strong>，适用不同的告知与同意流程。</li>
-					<li>喂养 AI 对话：当您在首页使用 AI 对话或语音输入时，您输入的内容及近期喂养记录将发送至第三方 AI 服务（<strong>DeepSeek</strong>），用于分析与回复。</li>
-					<li>胖宝诊疗：当您在「胖宝诊疗」页面提问时，您输入的问题、宝宝<strong>出生日期与性别</strong>（用于按月龄与性别提供适龄建议）及近 <strong>7 天</strong>喂养事件<strong>聚合摘要</strong>（按事件统计次数、用量、时长等，非完整原始记录）将发送至 <strong>DeepSeek</strong> 用于生成回答。App 可能<strong>展示 AI 思考过程</strong>（流式 reasoning 文本），该内容仅在当次会话界面展示，服务端不持久化 thinking 全文。</li>
+					<li>AI 润笔（发帖）：当您在社区发帖页使用「AI 润笔」功能时，您所选图片及当前正文将发送至第三方大模型服务（默认可为<strong>智谱 GLM</strong>或<strong>阿里云 DashScope</strong>，具体以运营配置为准），用于生成润色文案。该功能与喂养 AI 对话、胖宝诊疗为<strong>独立场景</strong>，适用不同的告知与同意流程。</li>
+					<li>喂养 AI 对话：当您在首页使用 AI 对话或语音输入时，您输入的内容及近期喂养记录将发送至第三方 AI 服务（默认可为<strong>智谱 GLM</strong>或 <strong>DeepSeek</strong>，具体以运营配置为准），用于分析与回复。</li>
+					<li>胖宝诊疗：当您在「胖宝诊疗」页面提问时，您输入的问题、宝宝<strong>出生日期与性别</strong>（用于按月龄与性别提供适龄建议）及近 <strong>7 天</strong>喂养事件<strong>聚合摘要</strong>（按事件统计次数、用量、时长等，非完整原始记录）将发送至第三方大模型服务（默认可为<strong>智谱 GLM</strong>或 <strong>DeepSeek</strong>）用于生成回答。App 可能<strong>展示 AI 思考过程</strong>（流式 reasoning 文本），该内容仅在当次会话界面展示，服务端不持久化 thinking 全文。</li>
 					<li>内容安全审核：您发布的文本与图片可能发送至<strong>阿里云内容安全 Green</strong> 进行合规审核，以维护社区秩序。</li>
 				</ul>
 			</section>
@@ -129,8 +129,9 @@
 				<h2>5. 第三方服务与利害关系</h2>
 				<p>为实现上述功能，我们可能委托以下第三方服务处理相关数据：</p>
 				<ul>
-					<li><strong>阿里云 DashScope</strong>：提供社区 AI 润笔能力；我们与其为独立的服务提供关系，其仅按我们的指令处理您授权发送的数据。</li>
-					<li><strong>DeepSeek</strong>：提供首页喂养 AI 对话与「胖宝诊疗」能力；我们与其为独立的服务提供关系，其仅按我们的指令处理您授权发送的数据。</li>
+					<li><strong>智谱 AI（GLM）</strong>：可提供喂养 AI 对话、胖宝诊疗与社区 AI 润笔能力；我们与其为独立的服务提供关系，其仅按我们的指令处理您授权发送的数据。</li>
+					<li><strong>阿里云 DashScope</strong>：可提供社区 AI 润笔能力；我们与其为独立的服务提供关系，其仅按我们的指令处理您授权发送的数据。</li>
+					<li><strong>DeepSeek</strong>：可提供首页喂养 AI 对话与「胖宝诊疗」能力；我们与其为独立的服务提供关系，其仅按我们的指令处理您授权发送的数据。</li>
 					<li><strong>阿里云内容安全 Green</strong>：提供文本与图片内容审核能力；审核结果用于判定内容是否合规。</li>
 					<li><strong>对象存储与 CDN</strong>：用于存储与分发您上传的社区媒体文件。</li>
 				</ul>

@@ -1,18 +1,15 @@
 package voice
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"math"
-	"net/http"
 	"strings"
 	"time"
 
 	"hello/internal/dao"
+	"hello/internal/services/aimodel"
 
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/glog"
@@ -214,49 +211,31 @@ func (s *VoiceService) buildGrowthSuggestPayload(ctx context.Context, deviceNo s
 	}, nil
 }
 
-// callDeepSeekGrowthSuggestion 成长建议：按结构化 child_info + history 请求 DeepSeek。
+// callDeepSeekGrowthSuggestion 成长建议：经 LaneVoiceUnderstanding 调用上游。
 func (s *VoiceService) callDeepSeekGrowthSuggestion(ctx context.Context, deviceNo string) (string, error) {
-	if s.cfg.DeepSeek.Endpoint == "" {
-		return "", StageError{Stage: "chat", Detail: "DeepSeek endpoint 未配置"}
-	}
 	payload, err := s.buildGrowthSuggestPayload(ctx, deviceNo)
 	if err != nil {
 		return "", err
 	}
-	bodyBytes, err := json.Marshal(payload)
-	if err != nil {
-		return "", err
+	msgs := make([]aimodel.Message, 0, len(payload.Messages))
+	for _, m := range payload.Messages {
+		msgs = append(msgs, aimodel.Message{Role: m.Role, Content: m.Content})
 	}
 	if s.cfg.DebugLog {
-		glog.Infof(ctx, "[大模型请求] 发送 DeepSeek 请求（成长建议）。deviceNo=%s 请求体=%s", deviceNo, string(bodyBytes))
+		bodyBytes, _ := json.Marshal(payload)
+		glog.Infof(ctx, "[大模型请求] 发送 LLM 请求（成长建议）。deviceNo=%s 请求体=%s", deviceNo, string(bodyBytes))
 	}
-	cctx, cancel := context.WithTimeout(ctx, time.Duration(s.cfg.DeepSeek.TimeoutSeconds)*time.Second)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(cctx, http.MethodPost, s.cfg.DeepSeek.Endpoint, bytes.NewReader(bodyBytes))
+	resp, err := aimodel.Invoke(ctx, aimodel.LaneVoiceUnderstanding, aimodel.ChatRequest{
+		Messages:   msgs,
+		TimeoutSec: s.cfg.DeepSeek.TimeoutSeconds,
+	})
 	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if s.cfg.DeepSeek.APIKey != "" {
-		req.Header.Set("Authorization", "Bearer "+s.cfg.DeepSeek.APIKey)
-	}
-	resp, err := s.httpClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-	if resp.StatusCode >= 300 {
-		return "", fmt.Errorf("status %d: %s", resp.StatusCode, string(body))
+		return "", mapVoiceLLMError(err)
 	}
 	if s.cfg.DebugLog {
-		glog.Infof(ctx, "[大模型响应] 收到 DeepSeek 原始响应（成长建议）。deviceNo=%s 响应体=%s", deviceNo, string(body))
+		glog.Infof(ctx, "[大模型响应] 收到 LLM 原始响应（成长建议）。deviceNo=%s 响应体=%s", deviceNo, string(resp.RawBody))
 	}
-	rawContent, replyNormalized, _, err := extractChatReplyRaw(body)
+	rawContent, replyNormalized, _, err := extractChatReplyRaw(resp.RawBody)
 	if err != nil {
 		return "", err
 	}
@@ -265,7 +244,6 @@ func (s *VoiceService) callDeepSeekGrowthSuggestion(ctx context.Context, deviceN
 		glog.Infof(ctx, "[大模型解析] 解析回复完成（成长建议）。deviceNo=%s 回复文本=%s", deviceNo, reply)
 	}
 
-	// 将成长建议回复存入数据库，便于后续查询和分析。
 	_, insertErr := dao.Suggest.Ctx(ctx).Data(g.Map{
 		dao.Suggest.Columns().DeviceNo: deviceNo,
 		dao.Suggest.Columns().Suggest:  reply,
@@ -279,46 +257,23 @@ func (s *VoiceService) callDeepSeekGrowthSuggestion(ctx context.Context, deviceN
 }
 
 func (s *VoiceService) callDeepSeekRaw(ctx context.Context, deviceNo, prompt string, historyLimit int, systemMessage ...string) (rawContent string, reply string, exit bool, err error) {
-	if s.cfg.DeepSeek.Endpoint == "" {
-		return "", "", false, StageError{Stage: "chat", Detail: "DeepSeek endpoint 未配置"}
-	}
 	messages := s.buildChatMessagesWithLimit(deviceNo, prompt, historyLimit, systemMessage...)
-	payload := map[string]interface{}{
-		"model":    s.cfg.DeepSeek.Model,
-		"messages": messages,
-		"stream":   false,
-	}
-	bodyBytes, _ := json.Marshal(payload)
+	msgs := mapVoiceChatMessages(messages)
 	if s.cfg.DebugLog {
-		glog.Infof(ctx, "[大模型请求] 发送 DeepSeek 请求（统一调用）。deviceNo=%s historyLimit=%d 请求体=%s", deviceNo, historyLimit, string(bodyBytes))
+		bodyBytes, _ := json.Marshal(map[string]interface{}{"messages": messages, "stream": false})
+		glog.Infof(ctx, "[大模型请求] 发送 LLM 请求（统一调用）。deviceNo=%s historyLimit=%d 请求体=%s", deviceNo, historyLimit, string(bodyBytes))
 	}
-	cctx, cancel := context.WithTimeout(ctx, time.Duration(s.cfg.DeepSeek.TimeoutSeconds)*time.Second)
-	defer cancel()
-
-	req, reqErr := http.NewRequestWithContext(cctx, http.MethodPost, s.cfg.DeepSeek.Endpoint, bytes.NewReader(bodyBytes))
-	if reqErr != nil {
-		return "", "", false, reqErr
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if s.cfg.DeepSeek.APIKey != "" {
-		req.Header.Set("Authorization", "Bearer "+s.cfg.DeepSeek.APIKey)
-	}
-	resp, doErr := s.httpClient.Do(req)
-	if doErr != nil {
-		return "", "", false, doErr
-	}
-	defer resp.Body.Close()
-	body, readErr := io.ReadAll(resp.Body)
-	if readErr != nil {
-		return "", "", false, readErr
-	}
-	if resp.StatusCode >= 300 {
-		return "", "", false, fmt.Errorf("status %d: %s", resp.StatusCode, string(body))
+	resp, invokeErr := aimodel.Invoke(ctx, aimodel.LaneVoiceUnderstanding, aimodel.ChatRequest{
+		Messages:   msgs,
+		TimeoutSec: s.cfg.DeepSeek.TimeoutSeconds,
+	})
+	if invokeErr != nil {
+		return "", "", false, mapVoiceLLMError(invokeErr)
 	}
 	if s.cfg.DebugLog {
-		glog.Infof(ctx, "[大模型响应] 收到 DeepSeek 原始响应（统一调用）。deviceNo=%s 响应体=%s", deviceNo, string(body))
+		glog.Infof(ctx, "[大模型响应] 收到 LLM 原始响应（统一调用）。deviceNo=%s 响应体=%s", deviceNo, string(resp.RawBody))
 	}
-	return extractChatReplyRaw(body)
+	return extractChatReplyRaw(resp.RawBody)
 }
 
 func (s *VoiceService) callDeepSeekDirectReply(ctx context.Context, deviceNo, transcript string) (string, error) {
@@ -365,35 +320,12 @@ func (s *VoiceService) streamCasualReplyWithBaiduTTS(
 		return reply, nil
 	}
 	messages := s.buildChatMessagesWithLimit(deviceNo, transcript, 6, "你是闲聊助手，请直接回答用户问题，语言自然简洁。不要使用表情符号或特殊颜文字。")
-	payload := map[string]interface{}{
-		"model":    s.cfg.DeepSeek.Model,
-		"messages": messages,
-		"stream":   true,
-	}
-	bodyBytes, _ := json.Marshal(payload)
-	cctx, cancel := context.WithTimeout(ctx, time.Duration(s.cfg.DeepSeek.TimeoutSeconds)*time.Second)
-	defer cancel()
-
-	req, reqErr := http.NewRequestWithContext(cctx, http.MethodPost, s.cfg.DeepSeek.Endpoint, bytes.NewReader(bodyBytes))
-	if reqErr != nil {
-		return "", reqErr
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if s.cfg.DeepSeek.APIKey != "" {
-		req.Header.Set("Authorization", "Bearer "+s.cfg.DeepSeek.APIKey)
-	}
-	resp, doErr := s.httpClient.Do(req)
-	if doErr != nil {
-		return "", doErr
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 300 {
-		respBody, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("status %d: %s", resp.StatusCode, string(respBody))
+	msgs := mapVoiceChatMessages(messages)
+	if s.cfg.DebugLog {
+		bodyBytes, _ := json.Marshal(map[string]interface{}{"messages": messages, "stream": true})
+		glog.Infof(ctx, "[大模型请求] 发送 LLM 流式请求（闲聊）。deviceNo=%s 请求体=%s", deviceNo, string(bodyBytes))
 	}
 
-	scanner := bufio.NewScanner(resp.Body)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	var fullReply strings.Builder
 	var sentenceBuf strings.Builder
 	seq := 0
@@ -419,47 +351,41 @@ func (s *VoiceService) streamCasualReplyWithBaiduTTS(
 		return ttsSession.WriteText(trimmed)
 	}
 
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || !strings.HasPrefix(line, "data:") {
-			continue
-		}
-		event := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
-		if event == "" {
-			continue
-		}
-		if event == "[DONE]" {
-			break
-		}
-		chunk, chunkErr := extractChatStreamChunk(event)
-		if chunkErr != nil {
-			return "", chunkErr
-		}
-		chunk = sanitizeModelReplyText(chunk)
-		if chunk == "" {
-			continue
-		}
-		fullReply.WriteString(chunk)
-		if onTextDelta != nil {
-			if cbErr := onTextDelta(chunk); cbErr != nil {
-				return "", cbErr
+	streamRes, streamErr := aimodel.InvokeStream(ctx, aimodel.LaneVoiceUnderstanding, aimodel.ChatRequest{
+		Messages:   msgs,
+		TimeoutSec: s.cfg.DeepSeek.TimeoutSeconds,
+	}, aimodel.StreamCallbacks{
+		OnContentDelta: func(chunk string) error {
+			chunk = sanitizeModelReplyText(chunk)
+			if chunk == "" {
+				return nil
 			}
-		}
-		sentenceBuf.WriteString(chunk)
-		parts := splitBySentence(sentenceBuf.String())
-		if len(parts) == 0 {
-			continue
-		}
-		for i := 0; i < len(parts)-1; i++ {
-			if err := flushSentence(parts[i]); err != nil {
-				return "", err
+			fullReply.WriteString(chunk)
+			if onTextDelta != nil {
+				if cbErr := onTextDelta(chunk); cbErr != nil {
+					return cbErr
+				}
 			}
-		}
-		sentenceBuf.Reset()
-		sentenceBuf.WriteString(parts[len(parts)-1])
+			sentenceBuf.WriteString(chunk)
+			parts := splitBySentence(sentenceBuf.String())
+			if len(parts) == 0 {
+				return nil
+			}
+			for i := 0; i < len(parts)-1; i++ {
+				if err := flushSentence(parts[i]); err != nil {
+					return err
+				}
+			}
+			sentenceBuf.Reset()
+			sentenceBuf.WriteString(parts[len(parts)-1])
+			return nil
+		},
+	})
+	if streamErr != nil {
+		return "", mapVoiceLLMError(streamErr)
 	}
-	if err := scanner.Err(); err != nil {
-		return "", err
+	if fullReply.Len() == 0 && strings.TrimSpace(streamRes.Content) != "" {
+		fullReply.WriteString(streamRes.Content)
 	}
 	if err := flushSentence(sentenceBuf.String()); err != nil {
 		return "", err
@@ -472,6 +398,14 @@ func (s *VoiceService) streamCasualReplyWithBaiduTTS(
 		reply = "我在，请继续说。"
 	}
 	return reply, nil
+}
+
+func mapVoiceChatMessages(messages []map[string]string) []aimodel.Message {
+	out := make([]aimodel.Message, 0, len(messages))
+	for _, m := range messages {
+		out = append(out, aimodel.Message{Role: m["role"], Content: m["content"]})
+	}
+	return out
 }
 
 func splitBySentence(input string) []string {

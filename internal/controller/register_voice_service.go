@@ -22,6 +22,7 @@ func RegisterVoiceServiceHTTP(s *ghttp.Server) {
 		group.Bind(NewVoiceQaInternalCtrl())
 		group.Bind(NewVoiceAppAIQuotaCtrl())
 		group.Bind(NewVoiceAdminAIQuotaCtrl())
+		group.Bind(NewVoiceAdminLLMLanesCtrl())
 	})
 	s.Group("/", func(group *ghttp.RouterGroup) {
 		group.Middleware(deviceUcgInternalSecretMiddleware)

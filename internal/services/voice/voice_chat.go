@@ -108,7 +108,6 @@ type VoiceService struct {
 	sttToken               baiduTokenCache
 	ttsToken               baiduTokenCache
 	sttLimiter             chan struct{}
-	chatLimiter            chan struct{}
 	modeMu                 sync.Mutex
 	deviceModes            map[string]string
 	pendingQuantityMu      sync.Mutex
@@ -164,7 +163,6 @@ func NewVoiceService(cfg VoiceChatConfig) *VoiceService {
 		},
 		cache:                  cachekit.WithObserver(cachekit.NewRedisCache(), cachekit.LoggingObserver{}),
 		sttLimiter:             newLimiter(cfg.STT.MaxConcurrency),
-		chatLimiter:            newLimiter(cfg.DeepSeek.MaxConcurrency),
 		deviceModes:            make(map[string]string),
 		pendingQuantity:        make(map[string]pendingQuantityState),
 		pendingChild:           make(map[string]pendingChildEventState),

@@ -161,6 +161,31 @@ systemctl status mysql-local.service
 - **`GATEWAY_APP_JWT_SECRET`**：App JWT 签名密钥（gateway-app 签发、ucg 校验须同值）
 - **`UCG_OSS_ACCESS_KEY_ID` / `UCG_OSS_ACCESS_KEY_SECRET`**：ucg OSS 直传与 Green 审核（Green 复用 OSS AK）；`config.ucg-service.yaml` 留空，见 `manifest/docker/.env.example`
 - **`UCG_DASHSCOPE_API_KEY`**：ucg AI 润笔（DashScope）；yaml 中 `dashscope_api_key` 留空
+- **`GLM_API_KEY`**：智谱 GLM（voice 喂养/clinic 默认种子、ucg 润笔 zhipu provider）；**生产部署前必须配置**
+- **`DEEPSEEK_API_KEY`**（可选）：覆盖 `voice-chat.shared.yaml` 中 deepseek 段；Admin 切回 deepseek provider 时需配置
+
+**LLM lane 数据表**（首次部署 voice/ucg 前在对应库执行；进程启动时 `EnsureDefaultRows` 会补种子行，但表须已存在）：
+
+```sql
+-- ai_voice_voice
+CREATE TABLE IF NOT EXISTS llm_lane_config (
+  lane VARCHAR(32) PRIMARY KEY,
+  provider VARCHAR(32) NOT NULL,
+  model VARCHAR(64) NOT NULL,
+  max_in_flight INT NOT NULL DEFAULT 1,
+  max_waiters INT NOT NULL DEFAULT 0,
+  updated_at BIGINT NOT NULL DEFAULT 0,
+  updated_by VARCHAR(64) NOT NULL DEFAULT ''
+);
+
+-- ai_voice_ucg：扩展 ucg_ai_config（若表已存在则 ALTER）
+ALTER TABLE ucg_ai_config
+  ADD COLUMN provider VARCHAR(32) NOT NULL DEFAULT 'zhipu' AFTER vision_model,
+  ADD COLUMN max_in_flight INT NOT NULL DEFAULT 1 AFTER max_images_per_request,
+  ADD COLUMN max_waiters INT NOT NULL DEFAULT 15 AFTER max_in_flight;
+```
+
+Admin 热更新：`GET/PUT /voice/admin/api/llm-lanes`（voice-admin.html「LLM 车道」Tab）、扩展后的 `GET/PUT /ucg/admin/api/ai-config`。
 
 完整变量清单见 **`manifest/docker/.env.example`**。
 
@@ -1112,6 +1137,8 @@ docker network create go-ai-talk-test-net 2>/dev/null || true
 | `UCG_OSS_ACCESS_KEY_ID` | ucg OSS AccessKey ID；yaml `ucg.oss.accessKeyId` 留空，Green 审核复用同一 AK |
 | `UCG_OSS_ACCESS_KEY_SECRET` | ucg OSS AccessKey Secret |
 | `UCG_DASHSCOPE_API_KEY` | ucg AI 润笔 DashScope API Key；yaml `ucg.ai.dashscope_api_key` 留空 |
+| `GLM_API_KEY` | 智谱 GLM；voice 默认 LLM lane 与 ucg zhipu 润笔 |
+| `DEEPSEEK_API_KEY` | 可选；Admin 切回 deepseek provider 时 voice LLM |
 
 占位符与注释见 **`manifest/docker/.env.example`**；真实值写入 `.env.local` / `.env.test` / `.env.prod`。
 

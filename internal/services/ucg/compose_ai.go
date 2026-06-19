@@ -1,14 +1,13 @@
 package ucg
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
-	"time"
+
+	"hello/internal/services/aimodel"
 
 	"github.com/gogf/gf/v2/errors/gcode"
 	"github.com/gogf/gf/v2/errors/gerror"
@@ -18,12 +17,9 @@ const polishUserPrompt = "作为宝宝家长，你正在发朋友圈，选择了
 
 const polishMaxTokens = 1024
 
-// PolishPostText calls DashScope Qwen vision (OpenAI-compatible chat) to polish compose text from uploaded image keys.
+// PolishPostText 经 LanePolish 调用多模态 LLM 润笔正文。
 func PolishPostText(ctx context.Context, imageKeys []string, draftText string) (string, error) {
 	cfg := LoadAIConfig(ctx)
-	if strings.TrimSpace(cfg.DashScopeAPIKey) == "" {
-		return "", gerror.NewCode(gcode.CodeNotImplemented, "AI 润笔未配置")
-	}
 	if len(imageKeys) == 0 {
 		return "", gerror.NewCode(gcode.CodeInvalidParameter, "imageKeys 不能为空")
 	}
@@ -65,60 +61,36 @@ func PolishPostText(ctx context.Context, imageKeys []string, draftText string) (
 		"text": prompt,
 	})
 
-	payload := map[string]interface{}{
-		"model": cfg.VisionModel,
-		"messages": []map[string]interface{}{
-			{"role": "user", "content": contentParts},
+	resp, err := aimodel.Invoke(ctx, aimodel.LanePolish, aimodel.ChatRequest{
+		Messages: []aimodel.Message{
+			{Role: "user", Content: contentParts},
 		},
-		"max_tokens": polishMaxTokens,
-		"stream":     false,
-	}
-	bodyBytes, err := json.Marshal(payload)
+		MaxTokens:  polishMaxTokens,
+		TimeoutSec: cfg.TimeoutSeconds,
+	})
 	if err != nil {
-		return "", gerror.WrapCode(gcode.CodeInternalError, err, "请求体序列化失败")
+		return "", mapPolishLLMError(err)
 	}
-
-	timeout := time.Duration(cfg.TimeoutSeconds) * time.Second
-	cctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(cctx, http.MethodPost, cfg.VisionEndpoint, bytes.NewReader(bodyBytes))
-	if err != nil {
-		return "", gerror.WrapCode(gcode.CodeInternalError, err, "创建请求失败")
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+cfg.DashScopeAPIKey)
-
-	client := &http.Client{Timeout: timeout}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", gerror.WrapCode(gcode.CodeOperationFailed, err, "AI 服务请求失败")
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", gerror.WrapCode(gcode.CodeInternalError, err, "读取 AI 响应失败")
-	}
-	if resp.StatusCode >= 300 {
-		if resp.StatusCode == 429 {
-			return "", gerror.NewCode(gcode.CodeOperationFailed, "AI 服务繁忙，请稍后再试")
+	text := strings.TrimSpace(resp.Content)
+	if text == "" {
+		if t, pErr := extractPolishReply(resp.RawBody); pErr == nil {
+			text = strings.TrimSpace(t)
 		}
-		msg := fmt.Sprintf("AI 服务错误: %d", resp.StatusCode)
-		if detail := strings.TrimSpace(string(body)); detail != "" && len(detail) <= 512 {
-			msg = msg + " — " + detail
-		}
-		return "", gerror.NewCode(gcode.CodeOperationFailed, msg)
 	}
-
-	text, err := extractPolishReply(body)
-	if err != nil {
-		return "", err
-	}
-	text = strings.TrimSpace(text)
 	if text == "" {
 		return "", gerror.NewCode(gcode.CodeOperationFailed, "AI 未返回有效正文")
 	}
 	return text, nil
+}
+
+func mapPolishLLMError(err error) error {
+	if aimodel.IsQueueFull(err) {
+		return gerror.NewCode(gcode.New(aimodel.CodeLLMQueueFull, err.Error(), nil), err.Error())
+	}
+	if errors.Is(err, aimodel.ErrProviderKeyMissing) {
+		return gerror.NewCode(gcode.CodeNotImplemented, "AI 润笔未配置")
+	}
+	return gerror.WrapCode(gcode.CodeOperationFailed, err, "AI 服务请求失败")
 }
 
 func extractPolishReply(body []byte) (string, error) {

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	v1 "hello/api/v1"
+	"hello/internal/services/aimodel"
 	ucgsvc "hello/internal/services/ucg"
 
 	"github.com/gogf/gf/v2/errors/gcode"
@@ -38,12 +39,27 @@ func (c *UcgAdminCtrl) AiConfigGet(ctx context.Context, req *v1.UcgAdminAiConfig
 	}
 	dto := ucgsvc.GetAIConfigForAdmin(ctx)
 	return &v1.UcgAdminAiConfigGetRes{
+		Provider:            dto.Provider,
 		VisionModel:         dto.VisionModel,
 		MaxImagesPerRequest: dto.MaxImagesPerRequest,
+		MaxInFlight:         dto.MaxInFlight,
+		MaxWaiters:          dto.MaxWaiters,
 		UpdatedAt:           dto.UpdatedAt,
 		UpdatedBy:           dto.UpdatedBy,
 		AllowedModels:       ucgsvc.AllowedVisionModels,
+		AllowedProviders:    ucgsvc.AllowedProviders,
+		ProviderModels:      buildUcgProviderModels(),
 	}, nil
+}
+
+func buildUcgProviderModels() map[string][]string {
+	imported := map[string][]string{}
+	for p, models := range aimodel.ProviderModels {
+		if p == aimodel.ProviderZhipu || p == aimodel.ProviderDashScope {
+			imported[string(p)] = models
+		}
+	}
+	return imported
 }
 
 // AiConfigPut PUT /ucg/admin/api/ai-config
@@ -55,13 +71,16 @@ func (c *UcgAdminCtrl) AiConfigPut(ctx context.Context, req *v1.UcgAdminAiConfig
 	if updatedBy == "" {
 		updatedBy = "admin"
 	}
-	if err = ucgsvc.UpdateAIConfigForAdmin(ctx, req.VisionModel, req.MaxImagesPerRequest, updatedBy); err != nil {
+	if err = ucgsvc.UpdateAIConfigForAdmin(ctx, req.Provider, req.VisionModel, req.MaxImagesPerRequest, req.MaxInFlight, req.MaxWaiters, updatedBy); err != nil {
 		return nil, err
 	}
 	dto := ucgsvc.GetAIConfigForAdmin(ctx)
 	return &v1.UcgAdminAiConfigPutRes{
+		Provider:            dto.Provider,
 		VisionModel:         dto.VisionModel,
 		MaxImagesPerRequest: dto.MaxImagesPerRequest,
+		MaxInFlight:         dto.MaxInFlight,
+		MaxWaiters:          dto.MaxWaiters,
 		UpdatedAt:           dto.UpdatedAt,
 		UpdatedBy:           dto.UpdatedBy,
 	}, nil

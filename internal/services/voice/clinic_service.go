@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"hello/internal/services/aimodel"
+
 	gctx "github.com/gogf/gf/v2/os/gctx"
 )
 
@@ -69,6 +71,15 @@ func (s *ClinicService) HandleQuestion(turnCtx context.Context, wxID int64, devi
 	if err := CheckClinicAIQuota(turnCtx, wxID); err != nil {
 		return clinicWriteQuotaErr(writeJSON, err)
 	}
+	profile, err := aimodel.LoadProfile(turnCtx, aimodel.LaneClinic)
+	if err != nil {
+		return writeJSON(map[string]interface{}{"type": "error", "code": 500, "message": err.Error()})
+	}
+	release, err := aimodel.Acquire(turnCtx, profile)
+	if err != nil {
+		return clinicWriteQuotaErr(writeJSON, mapVoiceLLMError(err))
+	}
+	defer release()
 	summary, err := s.ensureClinicSummary(turnCtx, wxID, deviceNo)
 	if err != nil {
 		return writeJSON(map[string]interface{}{"type": "error", "code": 500, "message": "喂养摘要加载失败"})
@@ -79,7 +90,7 @@ func (s *ClinicService) HandleQuestion(turnCtx context.Context, wxID int64, devi
 	baby := loadClinicBabyProfile(turnCtx, deviceNo)
 	sess, _, _ := loadClinicSession(turnCtx, wxID)
 	prior := clinicSessionMessages(sess)
-	thinking, answer, streamErr := s.streamClinicLLM(turnCtx, baby, summary, question, prior, clinicStreamCallbacks{
+	thinking, answer, streamErr := s.streamClinicLLMHeld(turnCtx, profile, baby, summary, question, prior, clinicStreamCallbacks{
 		OnThinkingDelta: func(delta string) error {
 			if err := turnCtx.Err(); err != nil {
 				return err

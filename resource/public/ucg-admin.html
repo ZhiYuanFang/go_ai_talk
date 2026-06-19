@@ -25,12 +25,24 @@
 
 		<div id="panelAi">
 			<div class="field">
+				<label for="aiProvider">Provider</label>
+				<select id="aiProvider"></select>
+			</div>
+			<div class="field">
 				<label for="visionModel">Vision 模型</label>
 				<select id="visionModel"></select>
 			</div>
 			<div class="field">
 				<label for="maxImages">单次润笔最大图片数 (1-9)</label>
 				<input id="maxImages" type="number" min="1" max="9" step="1" />
+			</div>
+			<div class="field">
+				<label for="maxInFlight">maxInFlight（并发槽位）</label>
+				<input id="maxInFlight" type="number" min="1" step="1" />
+			</div>
+			<div class="field">
+				<label for="maxWaiters">maxWaiters（等待队列）</label>
+				<input id="maxWaiters" type="number" min="0" step="1" />
 			</div>
 			<hr class="divider" />
 			<h4 style="margin:0 0 12px;font-size:15px;">AI 月度额度（全局默认）</h4>
@@ -304,10 +316,25 @@ function openMediaPreview(kind, url){
 	}
 }
 
-function fillModelOptions(models, current){
+let providerModels = {};
+
+function fillProviderOptions(providers, current){
+	const sel = document.getElementById('aiProvider');
+	sel.innerHTML = '';
+	(providers || []).forEach(p => {
+		const opt = document.createElement('option');
+		opt.value = p;
+		opt.textContent = p;
+		if(p === current) opt.selected = true;
+		sel.appendChild(opt);
+	});
+}
+
+function fillModelOptionsForProvider(provider, current){
+	const models = providerModels[provider] || [];
 	const sel = document.getElementById('visionModel');
 	sel.innerHTML = '';
-	(models || []).forEach(m => {
+	models.forEach(m => {
 		const opt = document.createElement('option');
 		opt.value = m;
 		opt.textContent = m;
@@ -316,10 +343,18 @@ function fillModelOptions(models, current){
 	});
 }
 
+function fillModelOptions(models, current){
+	fillModelOptionsForProvider(document.getElementById('aiProvider').value || 'zhipu', current);
+}
+
 async function loadConfig(){
 	const data = await api('/ucg/admin/api/ai-config');
-	fillModelOptions(data.allowedModels || [], data.visionModel);
+	providerModels = data.providerModels || {};
+	fillProviderOptions(data.allowedProviders || Object.keys(providerModels), data.provider || 'zhipu');
+	fillModelOptionsForProvider(data.provider || 'zhipu', data.visionModel);
 	document.getElementById('maxImages').value = data.maxImagesPerRequest || 9;
+	document.getElementById('maxInFlight').value = data.maxInFlight || 1;
+	document.getElementById('maxWaiters').value = data.maxWaiters != null ? data.maxWaiters : 15;
 	const meta = document.getElementById('meta');
 	if(data.updatedAt){
 		meta.textContent = '上次更新: ' + new Date(data.updatedAt * 1000).toLocaleString() + (data.updatedBy ? (' · ' + data.updatedBy) : '');
@@ -487,8 +522,11 @@ document.getElementById('saveBtn').addEventListener('click', async () => {
 	btn.disabled = true;
 	try {
 		const body = {
+			provider: document.getElementById('aiProvider').value,
 			visionModel: document.getElementById('visionModel').value,
 			maxImagesPerRequest: parseInt(document.getElementById('maxImages').value, 10) || 9,
+			maxInFlight: parseInt(document.getElementById('maxInFlight').value, 10) || 1,
+			maxWaiters: parseInt(document.getElementById('maxWaiters').value, 10),
 			updatedBy: 'ucg-admin.html'
 		};
 		await api('/ucg/admin/api/ai-config', {method:'PUT', body: JSON.stringify(body)});
@@ -632,6 +670,10 @@ document.addEventListener('keydown', (ev) => {
 	if(ev.key === 'Escape' && document.getElementById('mediaPreviewModal').classList.contains('show')){
 		closeMediaPreview();
 	}
+});
+
+document.getElementById('aiProvider').addEventListener('change', function() {
+	fillModelOptionsForProvider(this.value, '');
 });
 
 if(AdminCommon.requireAdmin()){

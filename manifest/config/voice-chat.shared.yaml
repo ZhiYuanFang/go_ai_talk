@@ -32,13 +32,26 @@ voiceChat:
     maxConcurrency: 50
   deepseek:
     endpoint: "https://api.deepseek.com/v1/chat/completions"
-    apiKey: "sk-e5685321acda4a3f8cb15abc5345c130"
+    apiKey: ""
     model: "deepseek-chat"
     systemPrompt: ""
     stream: true
     minTextLength: 2
     timeoutSeconds: 20
     maxConcurrency: 100
+  llmLanes:
+    voiceUnderstanding:
+      provider: zhipu
+      model: glm-4.7-flash
+      maxInFlight: 1
+      maxWaiters: 20
+      timeoutSec: 20
+    clinic:
+      provider: zhipu
+      model: glm-4.1v-thinking-flash
+      maxInFlight: 1
+      maxWaiters: 10
+      timeoutSec: 120
   tts:
     provider: "baidu"
     streamEnabled: true

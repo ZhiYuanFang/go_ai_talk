@@ -9,6 +9,7 @@ import (
 	"hello/internal/platform/dbcfg"
 	"hello/internal/platform/rediscfg"
 	"hello/internal/platform/runtimecheck"
+	voice "hello/internal/services/voice"
 	_ "hello/internal/shared/runtime"
 
 	"github.com/gogf/gf/v2/frame/g"
@@ -18,6 +19,7 @@ import (
 
 func main() {
 	prepareVoiceServiceRuntime()
+	voice.InitVoiceLLMProfileStore()
 	ctx := gctx.New()
 	// voice-service 启动前强制检查 Redis/MQ，保证会话缓存与事件发布链路可用。
 	if err := runtimecheck.CheckDependencies(ctx, runtimecheck.DependencyOptions{RequireRabbitMQ: false}); err != nil {
