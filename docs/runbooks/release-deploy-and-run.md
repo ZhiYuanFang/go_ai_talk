@@ -271,6 +271,8 @@ curl -s http://127.0.0.1:9805/api.json   # sim-user-service
 
 **sim-user-service（可选）**：默认 `SIM_USER_SERVICE_ENABLED=false` 仅健康检查；开启后需配置 `SIM_DB_LINK`、`GATEWAY_APP_URL`、`GLM_API_KEY`、`SIM_ADMIN_PASSWORD`（管理页 `/device/admin/sim-admin.html`）。模拟用户 API 不计入 usage 统计（`wx.is_simulated=1`）。
 
+`SIM_INTERVAL_*`、`SIM_TASK_*`、`SIM_STARTUP_STAGGER_MAX` 等周期/开关变量写在 **`--env-file` 对应 `.env.*`** 中，由 `docker-compose.microservices.yml` 的 `sim-user-service.environment` 透传进容器。修改后须 **`--force-recreate sim-user-service`**，仅 `restart` 不会更新 env。验收：`docker exec go-ai-talk-sim-user-service-test printenv SIM_INTERVAL_REGISTER`。
+
 **长期开 sim + 共享 MySQL（同机双栈）**：测试与生产共用 MySQL 实例时，sim 任务会经 UCG 审核/推荐链放大 DB 压力。建议：
 
 - 生产栈运行 sim（非测试栈长期开）；`maxSimUsers` 从 20–30 起，经 sim-admin 调高。
