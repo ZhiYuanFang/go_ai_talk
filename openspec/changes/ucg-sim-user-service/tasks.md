@@ -43,6 +43,8 @@
 - [x] 6.6 P1 video_poll：1min 轮询、成功发帖/失败 skipped
 - [x] 6.7 T5 chat_scan + E1 ephemeral window（30min×1min、真人 peer、去重 map）
 - [x] 6.8 T6 follow：随机两 sim、POST follow 幂等
+- [x] 6.9 media 上传对齐 UCG presign/register（extension、contentHash、transformVersion=sim-raw）
+- [x] 6.10 extractChatContent 回退 reasoning_content（修复 post_image 等 simText 文案为空）
 
 ## 7. sim-user-service Prompt 运行时
 

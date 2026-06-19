@@ -236,7 +236,8 @@ func extractChatContent(body []byte) (string, error) {
 	var parsed struct {
 		Choices []struct {
 			Message struct {
-				Content string `json:"content"`
+				Content          string `json:"content"`
+				ReasoningContent string `json:"reasoning_content"`
 			} `json:"message"`
 		} `json:"choices"`
 	}
@@ -246,7 +247,16 @@ func extractChatContent(body []byte) (string, error) {
 	if len(parsed.Choices) == 0 {
 		return "", fmt.Errorf("LLM 响应为空")
 	}
-	return strings.TrimSpace(parsed.Choices[0].Message.Content), nil
+	msg := parsed.Choices[0].Message
+	content := strings.TrimSpace(msg.Content)
+	if content == "" {
+		// GLM 4.7 系列非流式响应可能将正文放在 reasoning_content。
+		content = strings.TrimSpace(msg.ReasoningContent)
+	}
+	if content == "" {
+		return "", fmt.Errorf("LLM 正文为空")
+	}
+	return content, nil
 }
 
 func truncate(s string, n int) string {

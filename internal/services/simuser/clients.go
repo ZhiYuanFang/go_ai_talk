@@ -4,12 +4,15 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -274,28 +277,125 @@ func newClientMsgID() string {
 	return "sim-" + hex.EncodeToString(b[:])
 }
 
+// simMediaTransformVersion 服务端直传无客户端变换管线，与 UCG blob 索引键一致。
+const simMediaTransformVersion = "sim-raw"
+
 func uploadImageFromURL(ctx context.Context, token, imageURL string) (objectKey string, err error) {
-	imgResp, err := http.Get(imageURL)
+	data, contentType, err := downloadURLBytes(ctx, imageURL, 10<<20)
 	if err != nil {
 		return "", err
 	}
-	defer imgResp.Body.Close()
-	data, err := io.ReadAll(io.LimitReader(imgResp.Body, 10<<20))
+	ext := inferMediaExtension(contentType, imageURL, "png")
+	return uploadMediaBytes(ctx, token, 1, ext, data)
+}
+
+func uploadVideoFromURL(ctx context.Context, token, videoURL string) (objectKey string, err error) {
+	data, contentType, err := downloadURLBytes(ctx, videoURL, 100<<20)
 	if err != nil {
 		return "", err
 	}
+	ext := inferMediaExtension(contentType, videoURL, "mp4")
+	return uploadMediaBytes(ctx, token, 2, ext, data)
+}
+
+// downloadURLBytes 下载远程媒体并限制最大字节，返回 body 与 Content-Type。
+func downloadURLBytes(ctx context.Context, rawURL string, maxBytes int64) ([]byte, string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, "", err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, "", err
+	}
+	defer resp.Body.Close()
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes))
+	if err != nil {
+		return nil, "", err
+	}
+	if len(data) == 0 {
+		return nil, "", fmt.Errorf("下载内容为空")
+	}
+	return data, resp.Header.Get("Content-Type"), nil
+}
+
+// inferMediaExtension 从 Content-Type 或 URL 路径推断扩展名（不含点）；失败时回退 defaultExt。
+func inferMediaExtension(contentType, rawURL, defaultExt string) string {
+	if ext := extensionFromContentType(contentType); ext != "" {
+		return ext
+	}
+	if ext := extensionFromURL(rawURL); ext != "" {
+		return ext
+	}
+	return defaultExt
+}
+
+func extensionFromContentType(contentType string) string {
+	ct := strings.ToLower(strings.TrimSpace(strings.Split(contentType, ";")[0]))
+	switch ct {
+	case "image/png":
+		return "png"
+	case "image/jpeg", "image/jpg":
+		return "jpg"
+	case "image/webp":
+		return "webp"
+	case "image/gif":
+		return "gif"
+	case "video/mp4":
+		return "mp4"
+	case "video/quicktime":
+		return "mov"
+	default:
+		return ""
+	}
+}
+
+func extensionFromURL(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(u.Path), "."))
+	switch ext {
+	case "jpeg":
+		return "jpg"
+	case "png", "jpg", "webp", "gif", "mp4", "mov":
+		return ext
+	default:
+		return ""
+	}
+}
+
+func sha256HexLower(data []byte) string {
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
+}
+
+// uploadMediaBytes 对齐 UCG media presign/register：extension + contentHash + transformVersion。
+func uploadMediaBytes(ctx context.Context, token string, mediaKind int, ext string, data []byte) (string, error) {
 	var presign struct {
-		UploadUrl string `json:"uploadUrl"`
-		ObjectKey string `json:"objectKey"`
+		UploadUrl string            `json:"uploadUrl"`
+		ObjectKey string            `json:"objectKey"`
+		Headers   map[string]string `json:"headers"`
 	}
-	if err = appPost(ctx, token, "/ucg/app/api/media/presign", g.Map{"mediaKind": 1, "contentType": "image/png"}, &presign); err != nil {
+	if err := appPost(ctx, token, "/ucg/app/api/media/presign", g.Map{
+		"mediaKind": mediaKind,
+		"extension": ext,
+	}, &presign); err != nil {
 		return "", err
 	}
 	putReq, err := http.NewRequestWithContext(ctx, http.MethodPut, presign.UploadUrl, bytes.NewReader(data))
 	if err != nil {
 		return "", err
 	}
-	putReq.Header.Set("Content-Type", "image/png")
+	contentType := ""
+	if presign.Headers != nil {
+		contentType = strings.TrimSpace(presign.Headers["Content-Type"])
+	}
+	if contentType == "" {
+		contentType = contentTypeForSimMedia(mediaKind, ext)
+	}
+	putReq.Header.Set("Content-Type", contentType)
 	putResp, err := http.DefaultClient.Do(putReq)
 	if err != nil {
 		return "", err
@@ -305,49 +405,38 @@ func uploadImageFromURL(ctx context.Context, token, imageURL string) (objectKey 
 		return "", fmt.Errorf("OSS PUT %d", putResp.StatusCode)
 	}
 	if err = appPost(ctx, token, "/ucg/app/api/media/register", g.Map{
-		"objectKey": presign.ObjectKey, "mediaKind": 1, "sizeBytes": len(data),
+		"objectKey":        presign.ObjectKey,
+		"contentHash":      sha256HexLower(data),
+		"transformVersion": simMediaTransformVersion,
+		"mediaKind":        mediaKind,
+		"dedupHit":         false,
 	}, nil); err != nil {
 		return "", err
 	}
 	return presign.ObjectKey, nil
 }
 
-func uploadVideoFromURL(ctx context.Context, token, videoURL string) (objectKey string, err error) {
-	vResp, err := http.Get(videoURL)
-	if err != nil {
-		return "", err
+func contentTypeForSimMedia(mediaKind int, ext string) string {
+	if mediaKind == 2 {
+		switch ext {
+		case "mov":
+			return "video/quicktime"
+		default:
+			return "video/mp4"
+		}
 	}
-	defer vResp.Body.Close()
-	data, err := io.ReadAll(io.LimitReader(vResp.Body, 100<<20))
-	if err != nil {
-		return "", err
+	switch ext {
+	case "jpg", "jpeg":
+		return "image/jpeg"
+	case "png":
+		return "image/png"
+	case "webp":
+		return "image/webp"
+	case "gif":
+		return "image/gif"
+	default:
+		return "application/octet-stream"
 	}
-	var presign struct {
-		UploadUrl string `json:"uploadUrl"`
-		ObjectKey string `json:"objectKey"`
-	}
-	if err = appPost(ctx, token, "/ucg/app/api/media/presign", g.Map{"mediaKind": 2, "contentType": "video/mp4"}, &presign); err != nil {
-		return "", err
-	}
-	putReq, err := http.NewRequestWithContext(ctx, http.MethodPut, presign.UploadUrl, bytes.NewReader(data))
-	if err != nil {
-		return "", err
-	}
-	putReq.Header.Set("Content-Type", "video/mp4")
-	putResp, err := http.DefaultClient.Do(putReq)
-	if err != nil {
-		return "", err
-	}
-	putResp.Body.Close()
-	if putResp.StatusCode >= 300 {
-		return "", fmt.Errorf("OSS PUT %d", putResp.StatusCode)
-	}
-	if err = appPost(ctx, token, "/ucg/app/api/media/register", g.Map{
-		"objectKey": presign.ObjectKey, "mediaKind": 2, "sizeBytes": len(data),
-	}, nil); err != nil {
-		return "", err
-	}
-	return presign.ObjectKey, nil
 }
 
 func sendInternalChat(ctx context.Context, senderWxID int64, convID uint64, content string) error {
