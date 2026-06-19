@@ -27,7 +27,6 @@ func ListRecommendFeed(ctx context.Context, viewerWxID int64, page, pageSize int
 	rows, err := model.
 		Fields("p.*").
 		OrderDesc("(r.post_id IS NULL)").
-		Order("CASE WHEN r.post_id IS NULL THEN " + pubCol + " ELSE NULL END DESC").
 		OrderDesc("r.score").
 		OrderDesc(pubCol).
 		OrderDesc(idCol).
