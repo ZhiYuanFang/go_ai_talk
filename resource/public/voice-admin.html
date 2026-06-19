@@ -80,6 +80,8 @@
 </div>
 <script src="/resource/public/admin-common.js"></script>
 <script>
+function api(path, options={}) { return AdminCommon.adminFetch(path, options); }
+
 function showMsg(el, text, ok) {
 	if (!el) return;
 	el.textContent = text || '';
@@ -231,11 +233,10 @@ document.getElementById('saveLanesBtn').addEventListener('click', async function
 bindLaneProviderModel('vu');
 bindLaneProviderModel('cl');
 
-adminRequireLogin().then(function(ok) {
-	if (!ok) return;
+if (AdminCommon.requireAdmin()) {
 	document.getElementById('mainCard').classList.remove('hidden');
 	loadQuotaDefault().catch(e => showMsg(document.getElementById('quotaMsg'), e.message, false));
-});
+}
 </script>
 </body>
 </html>

@@ -6,6 +6,12 @@ version: "3.9"
 
 name: go-ai-talk-redis-test
 
+x-docker-logging: &docker-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   redis-test:
     image: redis:7.2-alpine
@@ -24,6 +30,7 @@ services:
       - "16379:6379"
     volumes:
       - redis-test-data:/data
+    logging: *docker-logging
     networks:
       - go-ai-talk-test-net
 

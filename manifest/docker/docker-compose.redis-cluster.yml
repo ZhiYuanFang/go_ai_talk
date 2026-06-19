@@ -10,11 +10,18 @@ version: "3.9"
 
 name: go-ai-talk-redis
 
+x-docker-logging: &docker-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 x-redis-node: &redis-node-defaults
   image: redis:7.2-alpine
   mem_limit: 96m
   cpus: "0.1"
   networks: [redis-cluster-net]
+  logging: *docker-logging
 
 services:
   redis-node-1:

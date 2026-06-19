@@ -48,12 +48,11 @@ func (s *UcgPolishProfileStore) Load(ctx context.Context, lane aimodel.Lane) (ai
 	return p, nil
 }
 
-// InvalidateCache Admin PUT 后失效。
+// InvalidateCache Admin PUT 后失效 store 本地 cache；不得再调用 aimodel.InvalidateLaneCache（由调用方统一触发）。
 func (s *UcgPolishProfileStore) InvalidateCache() {
 	s.mu.Lock()
 	s.cache = aimodel.Profile{}
 	s.mu.Unlock()
-	aimodel.InvalidateLaneCache()
 }
 
 type ucgAIConfigLaneRow struct {

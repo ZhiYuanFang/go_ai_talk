@@ -188,6 +188,25 @@ ALTER TABLE ucg_ai_config
 
 Admin 热更新：`GET/PUT /voice/admin/api/llm-lanes`（voice-admin.html「LLM 车道」Tab）、扩展后的 `GET/PUT /ucg/admin/api/ai-config`。
 
+**验收（ALTER 后 + 新镜像）**：
+
+```bash
+# ucg 仍 running（ExitCode=0；勿 stack overflow 退出）
+docker inspect go-ai-talk-ucg-service-test --format 'Status={{.State.Status}} Restarts={{.RestartCount}}'
+
+# 直连 ucg PUT ai-config（口令见 .env.test UCG_ADMIN_PASSWORD）
+curl -sS -o /dev/null -w "PUT ai-config HTTP %{http_code}\n" \
+  -X PUT http://127.0.0.1:19804/ucg/admin/api/ai-config \
+  -H "Content-Type: application/json" \
+  -H "X-Admin-Password: YOUR_UCG_ADMIN_PASSWORD" \
+  -d '{"provider":"zhipu","visionModel":"glm-4.6v-flash","maxImagesPerRequest":9,"maxInFlight":1,"maxWaiters":15,"updatedBy":"runbook"}'
+
+docker ps | grep ucg-service-test   # 仍 Up
+
+# voice-admin 页：Hub 登录后 /device/admin/voice-admin.html 须展示额度与 LLM 车道 Tab
+# 空 outbox 时 ucg 日志无周期性 [ucg-chat-persist]/[ucg-audit-outbox] flush/relay tick failed
+```
+
 完整变量清单见 **`manifest/docker/.env.example`**。
 
 **4. 静态资源目录**
@@ -312,13 +331,20 @@ curl -s http://127.0.0.1:3000/api/health       # Grafana
 镜像 tag：**与 git 预发布 tag 一致**（如 **`v1.0.0-rc.1`**，写在 `.env.test` 的 **`IMAGE_TAG`**）。  
 **停/启全栈**（给生产腾资源）：见 [B.3](#b3-日常停启测试全栈给生产腾资源)。
 
-### 清理磁盘空间
-```bash 清理docker日志,会导致容器停止
-sudo truncate -s 0 /var/lib/docker/containers/*/*-json.log
-# 要记得恢复被停止的容器
-docker start $(docker ps -aq) # 第一步恢复redis
-docker start $(docker ps -aq)
-```
+### Docker 容器日志轮转（prod/test 共用 compose 策略）
+
+长期运行的 prod/test 容器已在 compose 中配置 `json-file` 轮转，避免 `/var/lib/docker/containers/*/*-json.log` 无限增长：
+
+| 栈 | 单文件上限 | 保留文件数 | 约上限/容器 |
+|----|-----------|-----------|------------|
+| 微服务六件套 + Redis | 10m | 3 | ~30MB |
+| RabbitMQ | 20m | 3 | ~60MB |
+
+RabbitMQ 另挂载 `manifest/docker/rabbitmq/rabbitmq.conf`，将 console/connection/channel 日志降到 **warning**（仍保留 alarm 与认证失败）。详见 [附录：Docker 容器日志](#docker-容器日志轮转与验收)。
+
+**变更 compose 后须 `--force-recreate` 才生效**（仅 `up -d` 不会改已有容器的 LogConfig）。推荐顺序：RabbitMQ → Redis → 微服务。
+
+**历史巨型 log**：轮转只限制新写入，不会自动缩小已有文件。优先 `--force-recreate` 删旧容器释放 log；或对已知路径 `truncate -s 0`（见附录）。
 
 ### B.1 首次搭建测试栈（一次性，与生产同机且完全隔离）
 
@@ -1260,10 +1286,62 @@ docker exec go-ai-talk-gateway-app-test printenv GATEWAY_APP_PUBLIC_BASE_URL
 | `docker-compose.resources.test.yml` | 测试微服务 mem/cpu limits（voice 512M） |
 | `docker-compose.redis-cluster.yml` | 生产 Redis Cluster（3 主 0 从）+ limits |
 | `docker-compose.redis-standalone.test.yml` | 测试 Redis standalone |
-| `docker-compose.rabbitmq.yml` / `.test.yml` | RabbitMQ + limits |
+| `docker-compose.rabbitmq.yml` / `.test.yml` | RabbitMQ + limits + **logging 20m×3** + `rabbitmq.conf` |
 | `docker-compose.observability.yml` | 本地可选：Prometheus / Loki / Tempo / Grafana（见 [A.4](#a4-可观测性栈可选)） |
 
+**日志轮转**：微服务基线 `docker-compose.microservices.yml` 定义 `x-docker-logging`（10m×3）；`microservices.prod.yml` / `.test.yml` **不含 `logging`**，与基线无冲突。验收见 [Docker 容器日志轮转与验收](#docker-容器日志轮转与验收)。
+
 镜像引用：`${REGISTRY}/gateway:${IMAGE_TAG}`。`REGISTRY` = `<ACR域名>/<命名空间>`；仓库名单段（`gateway`、`device-service` 等，无 `go-ai-talk/` 前缀）。
+
+### Docker 容器日志轮转与验收
+
+compose 源文件中的策略（prod/test/local 共用基线，overlay 不覆盖 `logging`）：
+
+| compose 文件 | logging 策略 | 备注 |
+|--------------|-------------|------|
+| `docker-compose.microservices.yml` | 10m × 3 | 六微服务 `logging: *docker-logging` |
+| `docker-compose.redis-cluster.yml` | 10m × 3 | 三 Redis 节点 |
+| `docker-compose.redis-standalone.test.yml` | 10m × 3 | 测试 standalone |
+| `docker-compose.rabbitmq.yml` / `.test.yml` | 20m × 3 | 挂载 `rabbitmq/rabbitmq.conf` |
+
+**部署后 recreate**（测试栈示例，仓库根目录）：
+
+```bash
+docker compose -f manifest/docker/docker-compose.rabbitmq.test.yml up -d --force-recreate
+docker compose -f manifest/docker/docker-compose.redis-standalone.test.yml up -d --force-recreate
+docker compose --env-file manifest/docker/.env.test \
+  -f manifest/docker/docker-compose.microservices.yml \
+  -f manifest/docker/docker-compose.microservices.test.yml \
+  -f manifest/docker/docker-compose.resources.test.yml \
+  up -d --force-recreate --no-build
+```
+
+生产栈将上述 rabbit/redis 文件换为 `.yml` / `redis-cluster.yml`，微服务 overlay 换为 `microservices.prod.yml` + `resources.prod.yml`，`.env.test` 换为 `.env.prod`。
+
+**验收 LogConfig**：
+
+```bash
+docker inspect --format='{{.HostConfig.LogConfig}}' go-ai-talk-ucg-service-test
+# 期望 {json-file map[max-file:3 max-size:10m]}
+
+docker inspect --format='{{.HostConfig.LogConfig}}' go-ai-talk-rabbitmq-test
+# 期望 {json-file map[max-file:3 max-size:20m]}
+
+docker system df -v | grep -E 'json.log|CONTAINER'
+```
+
+**清理历史巨型 log**（配置轮转前已撑满的磁盘）：
+
+```bash
+docker system df
+sudo du -sh /var/lib/docker/containers/*/*-json.log 2>/dev/null | sort -h | tail
+
+# 方案 A（推荐）：对上述 stack force-recreate，删除旧容器时 log 一并移除
+# 方案 B：truncate 现有 log（一般无需停容器）
+sudo truncate -s 0 /var/lib/docker/containers/*/*-json.log
+```
+
+RabbitMQ 排障需连接/channel 细节时，临时将 `manifest/docker/rabbitmq/rabbitmq.conf` 中 `*.level` 改为 `info`，recreate Rabbit 容器，排障后改回 `warning`。更多说明见 `docs/runbooks/rabbitmq-local.md`。
 
 ### Redis 验收与 cluster create（仅生产）
 

@@ -4,8 +4,32 @@
 
 ### 文件位置
 
-- compose: `manifest/docker/docker-compose.rabbitmq.yml`
+- compose: `manifest/docker/docker-compose.rabbitmq.yml`（生产）、`docker-compose.rabbitmq.test.yml`（测试）
+- Rabbit 日志配置: `manifest/docker/rabbitmq/rabbitmq.conf`（挂载至容器 `/etc/rabbitmq/rabbitmq.conf`）
 - init script: `hack/rabbitmq-init.ps1`
+
+### 容器日志轮转与级别
+
+prod/test Rabbit compose 均配置：
+
+- **Docker logging**：`json-file`，`max-size: 20m`，`max-file: 3`（约 60MB/容器上限）
+- **rabbitmq.conf**：`log.console` / `log.connection` / `log.channel` 均为 **warning**，显著减少连接与 channel 建立时的 info 噪音
+
+变更 `rabbitmq.conf` 或 compose `logging` 后须 **`docker compose … up -d --force-recreate`** 才生效。
+
+排障时可临时将 conf 中 `*.level` 改为 `info`，recreate 后观察 stdout；完成后改回 `warning`。
+
+验收：
+
+```bash
+docker inspect --format='{{.HostConfig.LogConfig}}' go-ai-talk-rabbitmq
+# 期望 {json-file map[max-file:3 max-size:20m]}
+
+docker logs go-ai-talk-rabbitmq 2>&1 | tail
+# warning 下不应再刷屏 connection/channel info
+```
+
+部署与历史 log 清理见 [`release-deploy-and-run.md` — Docker 容器日志轮转与验收](release-deploy-and-run.md#docker-容器日志轮转与验收)。
 
 ### 启动与初始化
 

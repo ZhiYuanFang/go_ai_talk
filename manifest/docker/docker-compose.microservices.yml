@@ -14,6 +14,13 @@ version: "3.9"
 #   gateway-app     → /apk/ai_talk       （gatewayApp.apkStorageDir）
 # 首次部署建议在宿主机：sudo mkdir -p /apk/ai_talk && sudo chmod 755 /apk/ai_talk
 
+# json-file 轮转：单文件 10MB、保留 3 个，约 30MB/容器上限（prod/test/local 共用基线）。
+x-docker-logging: &docker-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   gateway:
     build:
@@ -55,7 +62,7 @@ services:
         condition: service_healthy
       device-service:
         condition: service_healthy
-    
+    logging: *docker-logging
 
   gateway-app:
     build:
@@ -116,7 +123,7 @@ services:
       - ../../resource/public:/app/resource/public:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    
+    logging: *docker-logging
 
   history-service:
     build:
@@ -147,7 +154,7 @@ services:
       interval: 10s
       timeout: 3s
       retries: 6
-    
+    logging: *docker-logging
 
   voice-service:
     build:
@@ -185,7 +192,7 @@ services:
       interval: 10s
       timeout: 3s
       retries: 6
-    
+    logging: *docker-logging
 
   device-service:
     build:
@@ -215,7 +222,7 @@ services:
       interval: 10s
       timeout: 3s
       retries: 6
-
+    logging: *docker-logging
 
   ucg-service:
     build:
@@ -266,3 +273,4 @@ services:
       interval: 10s
       timeout: 3s
       retries: 6
+    logging: *docker-logging

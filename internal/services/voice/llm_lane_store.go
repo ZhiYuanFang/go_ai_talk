@@ -49,12 +49,11 @@ func (s *VoiceLLMLaneStore) Load(ctx context.Context, lane aimodel.Lane) (aimode
 	return p, nil
 }
 
-// InvalidateCache 清空 store 内缓存（Admin PUT 后调用）。
+// InvalidateCache 清空 store 内缓存；不得再调用 aimodel.InvalidateLaneCache（由调用方统一触发）。
 func (s *VoiceLLMLaneStore) InvalidateCache() {
 	s.mu.Lock()
 	s.cache = make(map[aimodel.Lane]aimodel.Profile)
 	s.mu.Unlock()
-	aimodel.InvalidateLaneCache()
 }
 
 type llmLaneRow struct {

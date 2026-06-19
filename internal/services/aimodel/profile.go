@@ -45,7 +45,8 @@ func SetProfileStore(s ProfileStore) {
 	storeMu.Unlock()
 }
 
-// InvalidateLaneCache 清空进程内 profile 缓存；Admin PUT 后调用。
+// InvalidateLaneCache 清空进程内 profile 短 TTL 缓存，并令 ProfileStore 清空本地 cache。
+// ProfileStore.InvalidateCache 仅清本地，不得再回调本函数，否则 Admin PUT 会 stack overflow。
 func InvalidateLaneCache() {
 	storeMu.Lock()
 	profileCache = make(map[Lane]cachedProfile)

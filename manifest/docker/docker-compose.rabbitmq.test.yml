@@ -6,6 +6,12 @@ version: "3.9"
 
 name: go-ai-talk-rabbitmq-test
 
+x-docker-logging-rabbitmq: &docker-logging-rabbitmq
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "3"
+
 services:
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
@@ -20,6 +26,8 @@ services:
       RABBITMQ_DEFAULT_PASS: guest
     volumes:
       - rabbitmq-test-data:/var/lib/rabbitmq
+      - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+    logging: *docker-logging-rabbitmq
     networks:
       - go-ai-talk-test-net
 

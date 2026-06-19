@@ -3,6 +3,13 @@ version: "3.9"
 
 name: go-ai-talk-rabbitmq
 
+# RabbitMQ stdout 量大于微服务，单独放宽轮转上限；同时挂载 rabbitmq.conf 降日志级别。
+x-docker-logging-rabbitmq: &docker-logging-rabbitmq
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "3"
+
 services:
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
@@ -17,6 +24,8 @@ services:
       RABBITMQ_DEFAULT_PASS: guest
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq
+      - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+    logging: *docker-logging-rabbitmq
     # 与微服务/Redis 共用 go-ai-talk-net，容器名 rabbitmq 可被各服务解析。
     networks:
       - go-ai-talk-net

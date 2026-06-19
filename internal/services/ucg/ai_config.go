@@ -229,6 +229,7 @@ func UpdateAIConfigForAdmin(ctx context.Context, provider, visionModel string, m
 	}
 	InvalidateAIConfigCache()
 	NewUcgPolishProfileStore().InvalidateCache()
+	aimodel.InvalidateLaneCache()
 	return nil
 }
 

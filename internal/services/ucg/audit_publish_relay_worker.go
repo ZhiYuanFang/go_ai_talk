@@ -2,6 +2,8 @@ package ucg
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"time"
 
 	"github.com/gogf/gf/v2/frame/g"
@@ -39,6 +41,9 @@ func relayOneAuditPublishOutbox(ctx context.Context) error {
 		Limit(1).
 		Scan(&row)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
 		return err
 	}
 	if row.Id == 0 {

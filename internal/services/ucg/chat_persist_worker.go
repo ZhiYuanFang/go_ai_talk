@@ -2,7 +2,9 @@ package ucg
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 
@@ -43,6 +45,9 @@ func flushOneChatOutbox(ctx context.Context) error {
 		Limit(1).
 		Scan(&item)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
 		return err
 	}
 	if item.Id == 0 {
