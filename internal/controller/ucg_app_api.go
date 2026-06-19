@@ -506,6 +506,30 @@ func (c *UcgAppCtrl) ConversationDelete(ctx context.Context, req *v1.UcgConversa
 	return &v1.UcgConversationDeleteRes{}, nil
 }
 
+func (c *UcgAppCtrl) PushRegisterPost(ctx context.Context, req *v1.UcgPushRegisterPostReq) (res *v1.UcgPushRegisterPostRes, err error) {
+	_ = c
+	wxID, err := wxIDFromUcgHeader(ghttp.RequestFromCtx(ctx))
+	if err != nil {
+		return nil, err
+	}
+	if err = ucgsvc.RegisterPushDevice(ctx, wxID, req.Channel, req.Token, req.DeviceKey); err != nil {
+		return nil, err
+	}
+	return &v1.UcgPushRegisterPostRes{}, nil
+}
+
+func (c *UcgAppCtrl) PushUnregisterPost(ctx context.Context, req *v1.UcgPushUnregisterPostReq) (res *v1.UcgPushUnregisterPostRes, err error) {
+	_ = c
+	wxID, err := wxIDFromUcgHeader(ghttp.RequestFromCtx(ctx))
+	if err != nil {
+		return nil, err
+	}
+	if err = ucgsvc.UnregisterPushDevice(ctx, wxID, req.DeviceKey, req.Channel); err != nil {
+		return nil, err
+	}
+	return &v1.UcgPushUnregisterPostRes{}, nil
+}
+
 func conversationsPageToRes(page *ucgsvc.PageResult) *v1.UcgConversationsPageRes {
 	res := &v1.UcgConversationsPageRes{
 		Total: page.Total, Page: page.Page, PageSize: page.PageSize,

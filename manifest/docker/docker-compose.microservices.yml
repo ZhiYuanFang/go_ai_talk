@@ -223,6 +223,8 @@ services:
       dockerfile: manifest/docker/Dockerfile.ucg-service
     image: go-ai-talk/ucg-service:local
     container_name: go-ai-talk-ucg-service
+    volumes:
+      - manifest/docker/env/apns:/app/apns:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
@@ -239,6 +241,16 @@ services:
       UCG_DASHSCOPE_API_KEY: "${UCG_DASHSCOPE_API_KEY:-}"
       GLM_API_KEY: "${GLM_API_KEY:-}"
       UCG_ADMIN_PASSWORD: "${UCG_ADMIN_PASSWORD:-}"
+      UCG_APNS_KEY_ID: "${UCG_APNS_KEY_ID:-}"
+      UCG_APNS_TEAM_ID: "${UCG_APNS_TEAM_ID:-}"
+      UCG_APNS_BUNDLE_ID: "${UCG_APNS_BUNDLE_ID:-}"
+      UCG_APNS_KEY_PATH: "${UCG_APNS_KEY_PATH:-}"
+      UCG_APNS_PRODUCTION: "${UCG_APNS_PRODUCTION:-}"
+      UCG_HMS_APP_ID: "${UCG_HMS_APP_ID:-}"
+      UCG_HMS_APP_SECRET: "${UCG_HMS_APP_SECRET:-}"
+      UCG_MIPUSH_APP_ID: "${UCG_MIPUSH_APP_ID:-}"
+      UCG_MIPUSH_APP_KEY: "${UCG_MIPUSH_APP_KEY:-}"
+      UCG_MIPUSH_APP_SECRET: "${UCG_MIPUSH_APP_SECRET:-}"
       MQ_HTTP_API_BASE: "http://rabbitmq:15672/api"
       MQ_USER: "guest"
       MQ_PASSWORD: "guest"

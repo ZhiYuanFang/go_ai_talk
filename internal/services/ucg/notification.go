@@ -84,6 +84,10 @@ func InsertNotification(ctx context.Context, recipientWxID int64, nType string, 
 		"type":           "comment_notification",
 		"notificationId": notifyID,
 	})
+	switch nType {
+	case NotificationTypeCommentOnPost, NotificationTypeMentionInComment:
+		PushVisibleComment(ctx, recipientWxID, int64(actorWxID))
+	}
 	return notifyID, nil
 }
 
@@ -169,7 +173,11 @@ func MarkNotificationsRead(ctx context.Context, recipientWxID int64, ids []uint6
 		model = model.WhereIn(dao.UcgNotification.Columns().Id, ids)
 	}
 	_, err := model.Data(g.Map{dao.UcgNotification.Columns().ReadAt: now}).Update()
-	return err
+	if err != nil {
+		return err
+	}
+	PushSilentBadge(ctx, recipientWxID)
+	return nil
 }
 
 type mentionTarget struct {

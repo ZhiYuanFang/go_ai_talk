@@ -439,3 +439,20 @@ type UcgConversationDeleteReq struct {
 }
 
 type UcgConversationDeleteRes struct{}
+
+type UcgPushRegisterPostReq struct {
+	g.Meta    `path:"/ucg/app/api/push/register" method:"post" tags:"ucg" summary:"注册推送设备 token"`
+	Channel   string `json:"channel" v:"required|in:apns,hms,mipush"`
+	Token     string `json:"token" v:"required|max-length:512"`
+	DeviceKey string `json:"deviceKey" v:"required|max-length:64"`
+}
+
+type UcgPushRegisterPostRes struct{}
+
+type UcgPushUnregisterPostReq struct {
+	g.Meta    `path:"/ucg/app/api/push/unregister" method:"post" tags:"ucg" summary:"注销推送设备 token"`
+	DeviceKey string `json:"deviceKey" v:"required|max-length:64"`
+	Channel   string `json:"channel" v:"in:apns,hms,mipush"`
+}
+
+type UcgPushUnregisterPostRes struct{}

@@ -161,6 +161,7 @@ systemctl status mysql-local.service
 - **`GATEWAY_APP_JWT_SECRET`**：App JWT 签名密钥（gateway-app 签发、ucg 校验须同值）
 - **`UCG_OSS_ACCESS_KEY_ID` / `UCG_OSS_ACCESS_KEY_SECRET`**：ucg OSS 直传与 Green 审核（Green 复用 OSS AK）；`config.ucg-service.yaml` 留空，见 `manifest/docker/.env.example`
 - **`UCG_DASHSCOPE_API_KEY`**：ucg AI 润笔（DashScope）；yaml 中 `dashscope_api_key` 留空
+- **`UCG_APNS_*` / `UCG_HMS_*` / `UCG_MIPUSH_*`**：ucg 启动器角标推送（iOS APNs、华为 HMS、小米 MiPush）；yaml `ucg.push` 留空，见 `manifest/docker/.env.example`；Flutter 客户端见 `flutter_ai_talk/app/README.md`「UCG 启动器角标推送」
 - **`GLM_API_KEY`**：智谱 GLM（voice 喂养/clinic 默认种子、ucg 润笔 zhipu provider）；**生产部署前必须配置**
 - **`DEEPSEEK_API_KEY`**（可选）：覆盖 `voice-chat.shared.yaml` 中 deepseek 段；Admin 切回 deepseek provider 时需配置
 
@@ -1137,6 +1138,16 @@ docker network create go-ai-talk-test-net 2>/dev/null || true
 | `UCG_OSS_ACCESS_KEY_ID` | ucg OSS AccessKey ID；yaml `ucg.oss.accessKeyId` 留空，Green 审核复用同一 AK |
 | `UCG_OSS_ACCESS_KEY_SECRET` | ucg OSS AccessKey Secret |
 | `UCG_DASHSCOPE_API_KEY` | ucg AI 润笔 DashScope API Key；yaml `ucg.ai.dashscope_api_key` 留空 |
+| `UCG_APNS_KEY_ID` | iOS APNs Auth Key Key ID；yaml `ucg.push.apns.keyId` 留空 |
+| `UCG_APNS_TEAM_ID` | Apple Developer Team ID |
+| `UCG_APNS_BUNDLE_ID` | iOS Bundle ID（须与 APNs Key 授权一致） |
+| `UCG_APNS_KEY_PATH` | 容器内 AuthKey `*.p8` 绝对路径（挂载进 ucg-service，非 env 内嵌正文） |
+| `UCG_APNS_PRODUCTION` | `true`/`1` 走 production APNs；否则 sandbox |
+| `UCG_HMS_APP_ID` | 华为 Push Kit 应用 ID |
+| `UCG_HMS_APP_SECRET` | 华为 Push Kit Client Secret |
+| `UCG_MIPUSH_APP_ID` | 小米推送 AppId（与 Flutter `push.properties` 客户端 id 一致） |
+| `UCG_MIPUSH_APP_KEY` | 小米推送 AppKey |
+| `UCG_MIPUSH_APP_SECRET` | 小米推送 AppSecret |
 | `GLM_API_KEY` | 智谱 GLM；voice 默认 LLM lane 与 ucg zhipu 润笔 |
 | `DEEPSEEK_API_KEY` | 可选；Admin 切回 deepseek provider 时 voice LLM |
 

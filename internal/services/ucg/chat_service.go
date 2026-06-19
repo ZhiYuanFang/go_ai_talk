@@ -261,7 +261,11 @@ func MarkConversationRead(ctx context.Context, wxID int64, convID uint64, lastMs
 		Where(dao.UcgConversationMember.Columns().ConversationId, convID).
 		Where(dao.UcgConversationMember.Columns().WxId, wxID).
 		Data(data).Update()
-	return err
+	if err != nil {
+		return err
+	}
+	PushSilentBadge(ctx, wxID)
+	return nil
 }
 
 // SetConversationPinned 置顶/取消置顶。
@@ -368,6 +372,7 @@ func DeliverChatMessage(ctx context.Context, convID uint64, senderWxID, recipien
 	}
 	ChatWSHub().SendJSON(recipientWxID, deliverPayload)
 	ChatWSHub().SendJSON(senderWxID, deliverPayload)
+	PushVisibleDM(ctx, recipientWxID, senderWxID)
 	scheduleAuditPublishAfterCommit(ctx, auditOutboxID)
 	return msg, nil
 }

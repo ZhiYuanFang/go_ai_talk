@@ -61,3 +61,20 @@ ucg:
   admin:
     # 管理口令：生产 MUST 用 env UCG_ADMIN_PASSWORD 注入；yaml 留空。gateway-app 校验 Admin JWT 后注入 X-Admin-Password。
     password: ""
+  # UCG 启动器角标推送（APNs / HMS / MiPush）。凭证 MUST 经环境变量注入，yaml 留空。
+  # 环境变量优先于 yaml：UCG_APNS_*、UCG_HMS_*、UCG_MIPUSH_*；见 manifest/docker/.env.example
+  push:
+    apns:
+      keyId: ""       # env: UCG_APNS_KEY_ID
+      teamId: ""      # env: UCG_APNS_TEAM_ID
+      bundleId: ""    # env: UCG_APNS_BUNDLE_ID
+      keyPath: ""     # env: UCG_APNS_KEY_PATH（容器内 .p8 绝对路径，非密钥正文）
+      production: false  # env: UCG_APNS_PRODUCTION=true|1 覆盖为 production APNs
+    hms:
+      appId: ""       # env: UCG_HMS_APP_ID
+      appSecret: ""   # env: UCG_HMS_APP_SECRET
+    mipush:
+      appId: ""       # env: UCG_MIPUSH_APP_ID
+      appKey: ""      # env: UCG_MIPUSH_APP_KEY
+      appSecret: ""   # env: UCG_MIPUSH_APP_SECRET
+      packageName: "com.fzy.pangbao"  # 仅 yaml；须与 Flutter Android applicationId 一致

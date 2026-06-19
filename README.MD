@@ -231,4 +231,5 @@
 
 - 对话上下文缓存为进程内内存态，重启后丢失是预期行为。
 - 建议在生产环境通过环境变量/密钥管理替代硬编码管理口令与三方密钥。
+- **UCG 启动器角标推送**（APNs / HMS / MiPush）：服务端凭证经 `manifest/docker/.env.*` 注入 `UCG_APNS_*`、`UCG_HMS_*`、`UCG_MIPUSH_*`（`config.ucg-service.yaml` 的 `ucg.push` 留空）；字段说明见 `manifest/docker/.env.example`，部署清单见 `docs/runbooks/release-deploy-and-run.md`。Flutter 客户端 HMS/MiPush 见 `flutter_ai_talk/app/README.md`。
 
