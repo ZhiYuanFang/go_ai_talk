@@ -119,3 +119,16 @@ type SimAdminRuntimeGetReq struct {
 type SimAdminRuntimeGetRes struct {
 	Runtime SimAdminRuntimeDTO `json:"runtime"`
 }
+
+// SimAdminTaskRunPostReq 管理页手动触发一次周期任务（异步执行）。
+type SimAdminTaskRunPostReq struct {
+	g.Meta   `path:"/sim/admin/api/tasks/{taskName}/run" method:"post" tags:"sim-admin" summary:"手动执行模拟任务一次"`
+	TaskName string `json:"taskName" in:"path" p:"taskName" v:"required"`
+}
+
+// SimAdminTaskRunPostRes 手动触发已接受。
+type SimAdminTaskRunPostRes struct {
+	Accepted bool   `json:"accepted"`
+	TaskName string `json:"taskName"`
+	Message  string `json:"message"`
+}

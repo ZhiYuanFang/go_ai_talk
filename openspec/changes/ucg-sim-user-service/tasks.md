@@ -57,6 +57,7 @@
 - [x] 8.2 实现 `GET/PUT /sim/admin/api/prompts/{taskType}` 与种子默认 prompt
 - [x] 8.3 实现 `GET /sim/admin/api/status`（任务上次运行、计数、pending jobs）
 - [x] 8.4 编写 `resource/public/sim-admin.html`（配置、prompt 编辑、状态只读）
+- [x] 8.5 管理页手动触发：`POST /sim/admin/api/tasks/{taskName}/run`（异步、per-task 互斥）；`manual_run.go` 复用 `Run*Task` 并跳过 env/DB 开关；`sim-admin.html` 任务表「执行」按钮
 
 ## 9. 文档与验收
 

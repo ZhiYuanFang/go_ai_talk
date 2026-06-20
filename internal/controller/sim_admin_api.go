@@ -159,3 +159,24 @@ func (c *SimAdminCtrl) RuntimeGet(ctx context.Context, req *v1.SimAdminRuntimeGe
 		RateLimitBurst: rt.RateLimitBurst,
 	}}, nil
 }
+
+// TaskRunPost POST /sim/admin/api/tasks/{taskName}/run
+func (c *SimAdminCtrl) TaskRunPost(ctx context.Context, req *v1.SimAdminTaskRunPostReq) (res *v1.SimAdminTaskRunPostRes, err error) {
+	_ = c
+	if err = verifySimAdmin(ghttp.RequestFromCtx(ctx)); err != nil {
+		return nil, err
+	}
+	name := strings.TrimSpace(req.TaskName)
+	if simuser.NormalizeRunnableTaskPublic(name) == "" {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "未知任务名")
+	}
+	flags := simuser.LoadRuntimeFlags(ctx)
+	if !simuser.StartManualRunAsync(name, flags) {
+		return nil, gerror.NewCode(gcode.CodeInvalidOperation, "任务正在执行中")
+	}
+	return &v1.SimAdminTaskRunPostRes{
+		Accepted: true,
+		TaskName: name,
+		Message:  "已提交后台执行，请稍后刷新状态查看结果",
+	}, nil
+}

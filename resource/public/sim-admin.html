@@ -14,6 +14,9 @@
 		.badge-off { color: #dc2626; font-weight: 600; }
 		.runtime-hint { font-size: 12px; color: var(--muted); margin: 8px 0 0; line-height: 1.5; }
 		.runtime-err { color: #dc2626; font-size: 12px; }
+		.btn-run { font-size: 12px; padding: 4px 10px; }
+		.btn-run:disabled { opacity: 0.5; cursor: not-allowed; }
+		.task-run-msg { font-size: 12px; color: var(--muted); margin: 0 0 8px; min-height: 1.2em; }
 	</style>
 </head>
 <body>
@@ -69,6 +72,8 @@
 		<span id="promptMsg" class="msg"></span>
 		<hr class="divider" />
 		<h4>任务状态</h4>
+		<p class="runtime-hint" style="margin:0 0 8px;">手动测试：可将 <code>SIM_USER_SERVICE_ENABLED=false</code> 关闭自动调度，在此点击「执行」走与定时器相同的业务逻辑；忽略 env 任务开关与 DB <code>enabled</code>，结果写入下方状态表。</p>
+		<p id="taskRunMsg" class="task-run-msg"></p>
 		<p id="pendingVideo" class="msg" style="margin:0 0 8px;"></p>
 		<div class="table-wrap">
 			<table>
@@ -79,6 +84,7 @@
 						<th>成功</th>
 						<th>失败</th>
 						<th>最近错误</th>
+						<th>操作</th>
 					</tr>
 				</thead>
 				<tbody id="statusTbody"></tbody>
@@ -95,6 +101,18 @@
 <script>
 (function(){
 	const types = ['register_nickname','register_avatar','comment','post_image_text','post_video_text','chat_reply'];
+	const runnableTasks = [
+		{ name: 'register', label: 'T1 注册' },
+		{ name: 'comment', label: 'T2 评论' },
+		{ name: 'post_image', label: 'T3 图文' },
+		{ name: 'post_video_submit', label: 'T4 视频提交' },
+		{ name: 'chat_scan', label: 'T5 聊天扫描' },
+		{ name: 'follow', label: 'T6 关注' },
+		{ name: 'video_poll', label: 'P1 视频轮询' }
+	];
+	const runningTasks = new Set();
+	let statusPollTimer = null;
+	let pendingRunAt = {};
 	const sel = document.getElementById('promptType');
 	types.forEach(t => { const o = document.createElement('option'); o.value = t; o.textContent = t; sel.appendChild(o); });
 	function api(path, options={}) { return AdminCommon.adminFetch(path, options); }
@@ -162,26 +180,99 @@
 	function renderStatus(st) {
 		const tbody = document.getElementById('statusTbody');
 		tbody.innerHTML = '';
-		const tasks = (st && st.tasks) || [];
-		if (!tasks.length) {
+		const byName = {};
+		((st && st.tasks) || []).forEach(t => { if (t.taskName) byName[t.taskName] = t; });
+		runnableTasks.forEach(def => {
+			const t = byName[def.name] || {};
 			const tr = document.createElement('tr');
-			tr.innerHTML = '<td colspan="5" style="color:var(--muted);">暂无任务执行记录</td>';
+			const busy = runningTasks.has(def.name);
+			const btn = document.createElement('button');
+			btn.type = 'button';
+			btn.className = 'btn-run secondary';
+			btn.textContent = busy ? '执行中…' : '执行';
+			btn.disabled = busy;
+			btn.onclick = () => runTaskOnce(def.name, btn);
+			const tdRun = document.createElement('td');
+			tdRun.appendChild(btn);
+			tr.innerHTML =
+				'<td>'+escapeHtml(def.label)+' <code>'+escapeHtml(def.name)+'</code></td>'+
+				'<td>'+fmtTime(t.lastRunAt)+'</td>'+
+				'<td>'+(t.successCount ?? 0)+'</td>'+
+				'<td>'+(t.failCount ?? 0)+'</td>'+
+				'<td>'+escapeHtml(t.lastError || '—')+'</td>';
+			tr.appendChild(tdRun);
 			tbody.appendChild(tr);
-		} else {
-			tasks.forEach(t => {
-				const tr = document.createElement('tr');
-				tr.innerHTML =
-					'<td>'+escapeHtml(t.taskName || '')+'</td>'+
-					'<td>'+fmtTime(t.lastRunAt)+'</td>'+
-					'<td>'+(t.successCount ?? 0)+'</td>'+
-					'<td>'+(t.failCount ?? 0)+'</td>'+
-					'<td>'+escapeHtml(t.lastError || '—')+'</td>';
-				tbody.appendChild(tr);
-			});
-		}
+		});
 		document.getElementById('pendingVideo').textContent =
 			'Pending 视频任务：' + ((st && st.pendingVideoJobs) ?? 0);
 		document.getElementById('statusBox').textContent = JSON.stringify(st, null, 2);
+	}
+
+	async function runTaskOnce(taskName, btn) {
+		const msg = document.getElementById('taskRunMsg');
+		msg.textContent = '';
+		let prevRunAt = 0;
+		try {
+			const d = await api('/sim/admin/api/status');
+			const st = d.status || d;
+			const row = ((st && st.tasks) || []).find(t => t.taskName === taskName);
+			prevRunAt = row && row.lastRunAt || 0;
+		} catch (_) {}
+		runningTasks.add(taskName);
+		pendingRunAt[taskName] = prevRunAt;
+		btn.disabled = true;
+		btn.textContent = '执行中…';
+		try {
+			const d = await api('/sim/admin/api/tasks/'+encodeURIComponent(taskName)+'/run', { method: 'POST', body: '{}' });
+			msg.textContent = (d && d.message) || ('已提交 ' + taskName);
+			startStatusPoll();
+		} catch (e) {
+			msg.textContent = taskName + '：' + e.message;
+			runningTasks.delete(taskName);
+			delete pendingRunAt[taskName];
+			btn.disabled = false;
+			btn.textContent = '执行';
+		}
+	}
+
+	function clearTaskRunning(taskName) {
+		runningTasks.delete(taskName);
+		delete pendingRunAt[taskName];
+	}
+
+	function maybeClearRunningFromStatus(st) {
+		const tasks = (st && st.tasks) || [];
+		const byName = {};
+		tasks.forEach(t => { if (t.taskName) byName[t.taskName] = t; });
+		Object.keys(pendingRunAt).forEach(name => {
+			const row = byName[name];
+			if (row && row.lastRunAt && row.lastRunAt > pendingRunAt[name]) {
+				clearTaskRunning(name);
+			}
+		});
+		if (!runningTasks.size && statusPollTimer) {
+			clearInterval(statusPollTimer);
+			statusPollTimer = null;
+		}
+	}
+
+	function startStatusPoll() {
+		if (statusPollTimer) clearInterval(statusPollTimer);
+		let n = 0;
+		statusPollTimer = setInterval(async () => {
+			n++;
+			try {
+				const d = await api('/sim/admin/api/status');
+				renderStatus(d.status || d);
+				maybeClearRunningFromStatus(d.status || d);
+			} catch (_) {}
+			if (n >= 24) {
+				Object.keys(pendingRunAt).forEach(clearTaskRunning);
+				try { await loadStatus(); } catch (_) {}
+				clearInterval(statusPollTimer);
+				statusPollTimer = null;
+			}
+		}, 5000);
 	}
 	function escapeHtml(s) {
 		return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -201,7 +292,9 @@
 	}
 	async function loadStatus(){
 		const d = await api('/sim/admin/api/status');
-		renderStatus(d.status || {});
+		const st = d.status || d;
+		renderStatus(st);
+		maybeClearRunningFromStatus(st);
 	}
 	document.getElementById('saveConfigBtn').onclick = async () => {
 		try {

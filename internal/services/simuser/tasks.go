@@ -21,7 +21,7 @@ var ephemeralActive = map[string]struct{}{}
 // RunRegisterTask T1：注册模拟用户。
 func RunRegisterTask(ctx context.Context, password string) {
 	cfg, err := GetConfig(ctx)
-	if err != nil || !cfg.Enabled {
+	if err != nil || (!cfg.Enabled && !isManualRun(ctx)) {
 		return
 	}
 	total, err := countSimUsers(ctx)
@@ -381,6 +381,9 @@ func RunFollowTask(ctx context.Context, password string) {
 }
 
 func taskEnabled(ctx context.Context) bool {
+	if isManualRun(ctx) {
+		return true
+	}
 	cfg, err := GetConfig(ctx)
 	return err == nil && cfg.Enabled
 }
