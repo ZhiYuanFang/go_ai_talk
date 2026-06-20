@@ -79,12 +79,12 @@
 			<table>
 				<thead>
 					<tr>
+						<th>操作</th>
 						<th>任务</th>
 						<th>上次运行</th>
 						<th>成功</th>
 						<th>失败</th>
 						<th>最近错误</th>
-						<th>操作</th>
 					</tr>
 				</thead>
 				<tbody id="statusTbody"></tbody>
@@ -194,13 +194,22 @@
 			btn.onclick = () => runTaskOnce(def.name, btn);
 			const tdRun = document.createElement('td');
 			tdRun.appendChild(btn);
-			tr.innerHTML =
-				'<td>'+escapeHtml(def.label)+' <code>'+escapeHtml(def.name)+'</code></td>'+
-				'<td>'+fmtTime(t.lastRunAt)+'</td>'+
-				'<td>'+(t.successCount ?? 0)+'</td>'+
-				'<td>'+(t.failCount ?? 0)+'</td>'+
-				'<td>'+escapeHtml(t.lastError || '—')+'</td>';
 			tr.appendChild(tdRun);
+			const tdName = document.createElement('td');
+			tdName.innerHTML = escapeHtml(def.label)+' <code>'+escapeHtml(def.name)+'</code>';
+			tr.appendChild(tdName);
+			const tdLast = document.createElement('td');
+			tdLast.textContent = fmtTime(t.lastRunAt);
+			tr.appendChild(tdLast);
+			const tdOk = document.createElement('td');
+			tdOk.textContent = String(t.successCount ?? 0);
+			tr.appendChild(tdOk);
+			const tdFail = document.createElement('td');
+			tdFail.textContent = String(t.failCount ?? 0);
+			tr.appendChild(tdFail);
+			const tdErr = document.createElement('td');
+			tdErr.textContent = t.lastError || '—';
+			tr.appendChild(tdErr);
 			tbody.appendChild(tr);
 		});
 		document.getElementById('pendingVideo').textContent =
