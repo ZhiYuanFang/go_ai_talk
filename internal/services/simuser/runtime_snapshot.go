@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"hello/internal/platform/dbcfg"
+	"hello/internal/services/aimodel"
 )
 
 // RuntimeSnapshotDTO 管理页只读运行时快照（不含密码与完整 DSN）。
@@ -21,6 +22,13 @@ type RuntimeSnapshotDTO struct {
 	Intervals         RuntimeIntervalsDTO
 	RateLimitRps      float64
 	RateLimitBurst    int
+	LLMLanes          map[string]LLMLaneSnapshotDTO
+}
+
+// LLMLaneSnapshotDTO 单条 aimodel lane 只读快照。
+type LLMLaneSnapshotDTO struct {
+	Provider string `json:"provider"`
+	Model    string `json:"model"`
 }
 
 // RuntimeTaskSwitchesDTO 各任务 env 开关。
@@ -92,6 +100,7 @@ func GetRuntimeSnapshot(ctx context.Context) (RuntimeSnapshotDTO, error) {
 		},
 		RateLimitRps:   rl.RPS,
 		RateLimitBurst: rl.Burst,
+		LLMLanes:       mapLLMSnapshot(LoadAllLaneProfiles()),
 	}
 
 	count, countErr := countSimUsers(ctx)
@@ -102,6 +111,17 @@ func GetRuntimeSnapshot(ctx context.Context) (RuntimeSnapshotDTO, error) {
 		out.SimUserCount = count
 	}
 	return out, nil
+}
+
+func mapLLMSnapshot(in map[string]aimodel.LaneProfileDTO) map[string]LLMLaneSnapshotDTO {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]LLMLaneSnapshotDTO, len(in))
+	for k, v := range in {
+		out[k] = LLMLaneSnapshotDTO{Provider: v.Provider, Model: v.Model}
+	}
+	return out
 }
 
 // durationLabel 将 Duration 格式化为管理页可读字符串（如 5m、6h30m）。

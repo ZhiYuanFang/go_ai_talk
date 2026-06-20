@@ -150,6 +150,12 @@ func loadAIConfigFresh(ctx context.Context) RuntimeAIConfig {
 		}
 		cfg.UpdatedAt = row.UpdatedAt
 		cfg.UpdatedBy = row.UpdatedBy
+		if aimodel.IsSeedUpdatedBy(row.UpdatedBy) {
+			if p, ok := aimodel.ProfileFromEnv(aimodel.LanePolish); ok {
+				cfg.Provider = string(p.Provider)
+				cfg.VisionModel = p.Model
+			}
+		}
 	}
 	return cfg
 }

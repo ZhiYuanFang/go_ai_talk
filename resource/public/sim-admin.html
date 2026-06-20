@@ -53,6 +53,7 @@
 			<dt>E1 聊天</dt><dd id="rtEphemeral">—</dd>
 			<dt>任务开关</dt><dd id="rtTaskSwitches">—</dd>
 			<dt>任务周期</dt><dd id="rtIntervals">—</dd>
+			<dt>LLM 模型</dt><dd id="rtLLMLanes">—</dd>
 		</dl>
 		<hr class="divider" />
 		<h4>Prompt 模板</h4>
@@ -165,6 +166,15 @@
 		const intervalKeys = ['register','comment','postImage','postVideo','chat','follow','videoPollIdle','videoPollActive'];
 		document.getElementById('rtIntervals').textContent =
 			intervalKeys.map(k => intervalLabel(k, iv[k] || '—')).join(' · ');
+		const llm = rt.llmLanes || {};
+		const llmOrder = ['simText','simVision','simImageGen','simVideoGen'];
+		const llmNames = {simText:'文本',simVision:'视觉',simImageGen:'生图',simVideoGen:'生视频'};
+		document.getElementById('rtLLMLanes').textContent =
+			llmOrder.map(k => {
+				const row = llm[k];
+				if (!row) return (llmNames[k]||k)+' —';
+				return (llmNames[k]||k)+' '+row.provider+'/'+row.model;
+			}).join(' · ');
 	}
 
 	async function loadRuntime() {

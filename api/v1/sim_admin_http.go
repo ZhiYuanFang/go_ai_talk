@@ -98,6 +98,12 @@ type SimAdminRuntimeIntervalsDTO struct {
 	EphemeralChatWindow string `json:"ephemeralChatWindow"`
 }
 
+// SimAdminLLMLaneDTO 单条 LLM lane 只读快照。
+type SimAdminLLMLaneDTO struct {
+	Provider string `json:"provider"`
+	Model    string `json:"model"`
+}
+
 // SimAdminRuntimeDTO 进程运行时配置快照（只读，不含密钥）。
 type SimAdminRuntimeDTO struct {
 	ServiceEnabled    bool                           `json:"serviceEnabled"`
@@ -108,6 +114,7 @@ type SimAdminRuntimeDTO struct {
 	MaxSimUsers       int                            `json:"maxSimUsers"`
 	TaskSwitches      SimAdminRuntimeTaskSwitchesDTO `json:"taskSwitches"`
 	Intervals         SimAdminRuntimeIntervalsDTO    `json:"intervals"`
+	LLMLanes          map[string]SimAdminLLMLaneDTO  `json:"llmLanes"`
 	RateLimitRps      float64                        `json:"rateLimitRps"`
 	RateLimitBurst    int                            `json:"rateLimitBurst"`
 }

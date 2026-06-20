@@ -66,30 +66,43 @@ type llmLaneRow struct {
 	UpdatedBy   string `json:"updatedBy"`
 }
 
-// EnsureLLMLaneDefaultRows 保证 llm_lane_config 表存在种子 A 行（voiceUnderstanding + clinic）。
+// EnsureLLMLaneDefaultRows 保证 llm_lane_config 表存在种子行；种子行在启动时按 env 刷新 provider/model。
 func EnsureLLMLaneDefaultRows(ctx context.Context) error {
 	for _, lane := range []aimodel.Lane{aimodel.LaneVoiceUnderstanding, aimodel.LaneClinic} {
+		yamlP, yamlOK := loadLLMLaneYAMLProfile(ctx, lane)
+		cold := aimodel.MergeColdStartProfile(lane, yamlP, yamlOK)
 		n, err := g.DB().Model(llmLaneConfigTable).Ctx(ctx).Where("lane", string(lane)).Count()
 		if err != nil {
 			return err
 		}
-		if n > 0 {
+		now := time.Now().Unix()
+		if n == 0 {
+			_, err = g.DB().Model(llmLaneConfigTable).Ctx(ctx).Data(g.Map{
+				"lane":          string(lane),
+				"provider":      string(cold.Provider),
+				"model":         cold.Model,
+				"max_in_flight": cold.MaxInFlight,
+				"max_waiters":   cold.MaxWaiters,
+				"updated_at":    now,
+				"updated_by":    "seed",
+			}).Insert()
+			if err != nil {
+				return err
+			}
 			continue
 		}
-		seed := aimodel.DefaultSeedProfile(lane)
-		now := time.Now().Unix()
-		_, err = g.DB().Model(llmLaneConfigTable).Ctx(ctx).Data(g.Map{
-			"lane":          string(lane),
-			"provider":      string(seed.Provider),
-			"model":         seed.Model,
-			"max_in_flight": seed.MaxInFlight,
-			"max_waiters":   seed.MaxWaiters,
-			"updated_at":    now,
-			"updated_by":    "seed",
-		}).Insert()
-		if err != nil {
-			return err
+		var row llmLaneRow
+		if scanErr := g.DB().Model(llmLaneConfigTable).Ctx(ctx).Where("lane", string(lane)).Scan(&row); scanErr != nil {
+			continue
 		}
+		if !aimodel.IsSeedUpdatedBy(row.UpdatedBy) {
+			continue
+		}
+		_, _ = g.DB().Model(llmLaneConfigTable).Ctx(ctx).Where("lane", string(lane)).Data(g.Map{
+			"provider":   string(cold.Provider),
+			"model":      cold.Model,
+			"updated_at": now,
+		}).Update()
 	}
 	return nil
 }
@@ -98,12 +111,18 @@ func loadLLMLaneProfile(ctx context.Context, lane aimodel.Lane) (aimodel.Profile
 	var row llmLaneRow
 	err := g.DB().Model(llmLaneConfigTable).Ctx(ctx).Where("lane", string(lane)).Scan(&row)
 	if err == nil && strings.TrimSpace(row.Lane) != "" {
-		return rowToProfile(lane, row), nil
+		if !aimodel.IsSeedUpdatedBy(row.UpdatedBy) {
+			return rowToProfile(lane, row), nil
+		}
+		yamlP, yamlOK := loadLLMLaneYAMLProfile(ctx, lane)
+		cold := aimodel.MergeColdStartProfile(lane, yamlP, yamlOK)
+		p := rowToProfile(lane, row)
+		p.Provider = cold.Provider
+		p.Model = cold.Model
+		return p, nil
 	}
-	if yamlProfile, ok := loadLLMLaneYAMLProfile(ctx, lane); ok {
-		return yamlProfile, nil
-	}
-	return aimodel.DefaultSeedProfile(lane), nil
+	yamlP, yamlOK := loadLLMLaneYAMLProfile(ctx, lane)
+	return aimodel.MergeColdStartProfile(lane, yamlP, yamlOK), nil
 }
 
 func rowToProfile(lane aimodel.Lane, row llmLaneRow) aimodel.Profile {

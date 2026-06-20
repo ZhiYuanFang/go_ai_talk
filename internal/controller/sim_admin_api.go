@@ -157,7 +157,19 @@ func (c *SimAdminCtrl) RuntimeGet(ctx context.Context, req *v1.SimAdminRuntimeGe
 		},
 		RateLimitRps:   rt.RateLimitRps,
 		RateLimitBurst: rt.RateLimitBurst,
+		LLMLanes:       mapRuntimeLLMLanes(rt.LLMLanes),
 	}}, nil
+}
+
+func mapRuntimeLLMLanes(in map[string]simuser.LLMLaneSnapshotDTO) map[string]v1.SimAdminLLMLaneDTO {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]v1.SimAdminLLMLaneDTO, len(in))
+	for k, v := range in {
+		out[k] = v1.SimAdminLLMLaneDTO{Provider: v.Provider, Model: v.Model}
+	}
+	return out
 }
 
 // TaskRunPost POST /sim/admin/api/tasks/{taskName}/run

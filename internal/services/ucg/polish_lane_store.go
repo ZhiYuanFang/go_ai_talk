@@ -66,27 +66,39 @@ type ucgAIConfigLaneRow struct {
 	UpdatedBy           string `json:"updatedBy"`
 }
 
-// EnsureUcgAIConfigDefaultRow 保证 ucg_ai_config 单行存在（种子 A polish）。
+// EnsureUcgAIConfigDefaultRow 保证 ucg_ai_config 单行存在（冷启动 env > 代码种子）。
 func EnsureUcgAIConfigDefaultRow(ctx context.Context) error {
 	n, err := g.DB().Model("ucg_ai_config").Ctx(ctx).Where("id", aiConfigSingletonID).Count()
 	if err != nil {
 		return err
 	}
-	if n > 0 {
+	cold := aimodel.MergeColdStartProfile(aimodel.LanePolish, aimodel.Profile{}, false)
+	now := time.Now().Unix()
+	if n == 0 {
+		_, err = g.DB().Model("ucg_ai_config").Ctx(ctx).Data(g.Map{
+			"id":                     aiConfigSingletonID,
+			"vision_model":           cold.Model,
+			"max_images_per_request": 9,
+			"provider":               string(cold.Provider),
+			"max_in_flight":          cold.MaxInFlight,
+			"max_waiters":            cold.MaxWaiters,
+			"updated_at":             now,
+			"updated_by":             "seed",
+		}).Insert()
+		return err
+	}
+	var row ucgAIConfigLaneRow
+	if scanErr := g.DB().Model("ucg_ai_config").Ctx(ctx).Where("id", aiConfigSingletonID).Scan(&row); scanErr != nil {
 		return nil
 	}
-	seed := aimodel.DefaultSeedProfile(aimodel.LanePolish)
-	now := time.Now().Unix()
-	_, err = g.DB().Model("ucg_ai_config").Ctx(ctx).Data(g.Map{
-		"id":                     aiConfigSingletonID,
-		"vision_model":           seed.Model,
-		"max_images_per_request": 9,
-		"provider":               string(seed.Provider),
-		"max_in_flight":          seed.MaxInFlight,
-		"max_waiters":            seed.MaxWaiters,
-		"updated_at":             now,
-		"updated_by":             "seed",
-	}).Insert()
+	if !aimodel.IsSeedUpdatedBy(row.UpdatedBy) {
+		return nil
+	}
+	_, err = g.DB().Model("ucg_ai_config").Ctx(ctx).Where("id", aiConfigSingletonID).Data(g.Map{
+		"provider":     string(cold.Provider),
+		"vision_model": cold.Model,
+		"updated_at":   now,
+	}).Update()
 	return err
 }
 
