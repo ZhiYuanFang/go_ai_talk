@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gogf/gf/v2/container/gvar"
-	"github.com/gogf/gf/v2/frame/g"
+	"hello/internal/platform/cachekit"
+
 	"github.com/gogf/gf/v2/os/glog"
 )
 
@@ -17,12 +17,14 @@ const (
 	crossFieldSep    = "\x1f"
 )
 
+var usageCache = cachekit.Default()
+
 // APIListItem API 频率列表项。
 type APIListItem struct {
-	ApiKey   string `json:"apiKey"`
-	Summary  string `json:"summary"`
-	Count    int64  `json:"count"`
-	LastAt   int64  `json:"lastAt"`
+	ApiKey  string `json:"apiKey"`
+	Summary string `json:"summary"`
+	Count   int64  `json:"count"`
+	LastAt  int64  `json:"lastAt"`
 }
 
 // UserListItem 某 API 的 wxId 调用项。
@@ -61,31 +63,32 @@ func RecordAsync(wxId int64, apiKey string, at time.Time) {
 func record(ctx context.Context, wxId int64, apiKey string, at time.Time) error {
 	day := at.Format("20060102")
 	ts := at.Unix()
+	ttl := time.Duration(dayKeyTTLSeconds) * time.Second
 
-	globalKey := dayGlobalKey(day)
-	if _, err := g.Redis().Do(ctx, "HINCRBY", globalKey, apiKey, 1); err != nil {
+	globalKey := cachekit.GatewayUsageDayGlobalKey(day)
+	if _, err := usageCache.HashIncrBy(ctx, globalKey, apiKey, 1); err != nil {
 		return err
 	}
-	_, _ = g.Redis().Do(ctx, "EXPIRE", globalKey, dayKeyTTLSeconds)
+	_ = usageCache.Expire(ctx, globalKey, ttl)
 
-	if _, err := g.Redis().Do(ctx, "HSET", keyLastGlobal(), apiKey, ts); err != nil {
+	if err := usageCache.HashSet(ctx, cachekit.GatewayUsageLastGlobalKey(), apiKey, strconv.FormatInt(ts, 10)); err != nil {
 		return err
 	}
 
 	if wxId > 0 {
-		wxKey := dayWxKey(day, wxId)
-		if _, err := g.Redis().Do(ctx, "HINCRBY", wxKey, apiKey, 1); err != nil {
+		wxKey := cachekit.GatewayUsageDayWxKey(day, wxId)
+		if _, err := usageCache.HashIncrBy(ctx, wxKey, apiKey, 1); err != nil {
 			return err
 		}
-		_, _ = g.Redis().Do(ctx, "EXPIRE", wxKey, dayKeyTTLSeconds)
+		_ = usageCache.Expire(ctx, wxKey, ttl)
 
-		crossKey := dayCrossKey(day)
-		if _, err := g.Redis().Do(ctx, "HINCRBY", crossKey, crossField(apiKey, wxId), 1); err != nil {
+		crossKey := cachekit.GatewayUsageDayCrossKey(day)
+		if _, err := usageCache.HashIncrBy(ctx, crossKey, crossField(apiKey, wxId), 1); err != nil {
 			return err
 		}
-		_, _ = g.Redis().Do(ctx, "EXPIRE", crossKey, dayKeyTTLSeconds)
+		_ = usageCache.Expire(ctx, crossKey, ttl)
 
-		if _, err := g.Redis().Do(ctx, "HSET", keyLastWx(wxId), apiKey, ts); err != nil {
+		if err := usageCache.HashSet(ctx, cachekit.GatewayUsageLastWxKey(wxId), apiKey, strconv.FormatInt(ts, 10)); err != nil {
 			return err
 		}
 	}
@@ -97,21 +100,21 @@ func ListAPIs(ctx context.Context, days int, sortBy string, summaryFn func(apiKe
 	counts := make(map[string]int64)
 	lastAt := make(map[string]int64)
 	for _, day := range dayRange(days) {
-		key := dayGlobalKey(day)
-		all, err := g.Redis().Do(ctx, "HGETALL", key)
+		key := cachekit.GatewayUsageDayGlobalKey(day)
+		all, err := usageCache.HashGetAll(ctx, key)
 		if err != nil {
 			return nil, err
 		}
-		for k, v := range redisHashToMap(all) {
+		for k, v := range all {
 			n, _ := strconv.ParseInt(v, 10, 64)
 			counts[k] += n
 		}
 	}
-	allLast, err := g.Redis().Do(ctx, "HGETALL", keyLastGlobal())
+	allLast, err := usageCache.HashGetAll(ctx, cachekit.GatewayUsageLastGlobalKey())
 	if err != nil {
 		return nil, err
 	}
-	for k, v := range redisHashToMap(allLast) {
+	for k, v := range allLast {
 		n, _ := strconv.ParseInt(v, 10, 64)
 		lastAt[k] = n
 	}
@@ -139,12 +142,12 @@ func ListUsersForAPI(ctx context.Context, days int, apiKey string, sortBy string
 	prefix := apiKey + crossFieldSep
 
 	for _, day := range dayRange(days) {
-		key := dayCrossKey(day)
-		all, err := g.Redis().Do(ctx, "HGETALL", key)
+		key := cachekit.GatewayUsageDayCrossKey(day)
+		all, err := usageCache.HashGetAll(ctx, key)
 		if err != nil {
 			return nil, err
 		}
-		for field, val := range redisHashToMap(all) {
+		for field, val := range all {
 			if !strings.HasPrefix(field, prefix) {
 				continue
 			}
@@ -157,16 +160,13 @@ func ListUsersForAPI(ctx context.Context, days int, apiKey string, sortBy string
 			counts[wxId] += n
 		}
 	}
-	// 最近时间从 per-wx last hash 读取
 	for wxId := range counts {
-		raw, err := g.Redis().Do(ctx, "HGET", keyLastWx(wxId), apiKey)
-		if err != nil {
+		raw, ok, err := usageCache.HashGet(ctx, cachekit.GatewayUsageLastWxKey(wxId), apiKey)
+		if err != nil || !ok {
 			continue
 		}
-		if s := redisString(raw); s != "" {
-			if n, err := strconv.ParseInt(s, 10, 64); err == nil {
-				lastAt[wxId] = n
-			}
+		if n, err := strconv.ParseInt(raw, 10, 64); err == nil {
+			lastAt[wxId] = n
 		}
 	}
 	out := make([]UserListItem, 0, len(counts))
@@ -184,22 +184,22 @@ func ListAPIsForUser(ctx context.Context, days int, wxId int64, sortBy string, s
 	}
 	counts := make(map[string]int64)
 	for _, day := range dayRange(days) {
-		key := dayWxKey(day, wxId)
-		all, err := g.Redis().Do(ctx, "HGETALL", key)
+		key := cachekit.GatewayUsageDayWxKey(day, wxId)
+		all, err := usageCache.HashGetAll(ctx, key)
 		if err != nil {
 			return nil, err
 		}
-		for k, v := range redisHashToMap(all) {
+		for k, v := range all {
 			n, _ := strconv.ParseInt(v, 10, 64)
 			counts[k] += n
 		}
 	}
 	lastMap := make(map[string]int64)
-	allLast, err := g.Redis().Do(ctx, "HGETALL", keyLastWx(wxId))
+	allLast, err := usageCache.HashGetAll(ctx, cachekit.GatewayUsageLastWxKey(wxId))
 	if err != nil {
 		return nil, err
 	}
-	for k, v := range redisHashToMap(allLast) {
+	for k, v := range allLast {
 		n, _ := strconv.ParseInt(v, 10, 64)
 		lastMap[k] = n
 	}
@@ -216,14 +216,6 @@ func ListAPIsForUser(ctx context.Context, days int, wxId int64, sortBy string, s
 	return out, nil
 }
 
-func dayGlobalKey(day string) string  { return "gw:usage:d:" + day + ":g" }
-func dayWxKey(day string, wxId int64) string {
-	return fmt.Sprintf("gw:usage:d:%s:w:%d", day, wxId)
-}
-func dayCrossKey(day string) string { return "gw:usage:d:" + day + ":x" }
-func keyLastGlobal() string         { return "gw:usage:last:g" }
-func keyLastWx(wxId int64) string   { return fmt.Sprintf("gw:usage:last:w:%d", wxId) }
-
 func crossField(apiKey string, wxId int64) string {
 	return apiKey + crossFieldSep + strconv.FormatInt(wxId, 10)
 }
@@ -231,7 +223,6 @@ func crossField(apiKey string, wxId int64) string {
 func dayRange(days int) []string {
 	now := time.Now()
 	if days <= 0 {
-		// 全部：在 TTL 内取 90 天
 		days = 90
 	}
 	out := make([]string, 0, days)
@@ -240,65 +231,6 @@ func dayRange(days int) []string {
 		out = append(out, d.Format("20060102"))
 	}
 	return out
-}
-
-// redisHashToMap 解析 Redis HGETALL 结果。GoFrame adapter 对 HGETALL 的 []interface{}
-// 会转为 flat []string，须优先用 (*gvar.Var).MapStrStr()（见 gf redis_conn.resultToVar）。
-func redisHashToMap(v interface{}) map[string]string {
-	out := make(map[string]string)
-	if v == nil {
-		return out
-	}
-	if vv, ok := v.(*gvar.Var); ok && vv != nil {
-		if m := vv.MapStrStr(); len(m) > 0 {
-			return m
-		}
-		v = vv.Val()
-	}
-	if m, ok := v.(map[string]interface{}); ok {
-		for k, val := range m {
-			out[k] = redisString(val)
-		}
-		return out
-	}
-	if m, ok := v.(map[string]string); ok {
-		return m
-	}
-	if arr, ok := v.([]string); ok {
-		for i := 0; i+1 < len(arr); i += 2 {
-			k := strings.TrimSpace(arr[i])
-			if k != "" {
-				out[k] = arr[i+1]
-			}
-		}
-		return out
-	}
-	arr, ok := v.([]interface{})
-	if !ok || len(arr) == 0 {
-		return out
-	}
-	for i := 0; i+1 < len(arr); i += 2 {
-		k := redisString(arr[i])
-		val := redisString(arr[i+1])
-		if k != "" {
-			out[k] = val
-		}
-	}
-	return out
-}
-
-func redisString(v interface{}) string {
-	if vv, ok := v.(*gvar.Var); ok && vv != nil {
-		return redisString(vv.Val())
-	}
-	switch t := v.(type) {
-	case string:
-		return t
-	case []byte:
-		return string(t)
-	default:
-		return fmt.Sprint(v)
-	}
 }
 
 func sortAPIList(list []APIListItem) {

@@ -54,6 +54,13 @@ func (c *observedCache) SetEX(ctx context.Context, key, value string, ttl time.D
 	return err
 }
 
+func (c *observedCache) Set(ctx context.Context, key, value string) error {
+	begin := time.Now()
+	err := c.base.Set(ctx, key, value)
+	c.observer.OnOperation(ctx, "set", key, time.Since(begin), err)
+	return err
+}
+
 func (c *observedCache) SetNXEX(ctx context.Context, key, value string, ttl time.Duration) (bool, error) {
 	begin := time.Now()
 	ok, err := c.base.SetNXEX(ctx, key, value, ttl)
@@ -82,6 +89,13 @@ func (c *observedCache) Incr(ctx context.Context, key string) (int64, error) {
 	return val, err
 }
 
+func (c *observedCache) Decr(ctx context.Context, key string) (int64, error) {
+	begin := time.Now()
+	val, err := c.base.Decr(ctx, key)
+	c.observer.OnOperation(ctx, "decr", key, time.Since(begin), err)
+	return val, err
+}
+
 func (c *observedCache) IncrBy(ctx context.Context, key string, delta int64) (int64, error) {
 	begin := time.Now()
 	val, err := c.base.IncrBy(ctx, key, delta)
@@ -93,6 +107,118 @@ func (c *observedCache) Expire(ctx context.Context, key string, ttl time.Duratio
 	begin := time.Now()
 	err := c.base.Expire(ctx, key, ttl)
 	c.observer.OnOperation(ctx, "expire", key, time.Since(begin), err)
+	return err
+}
+
+func (c *observedCache) TTL(ctx context.Context, key string) (int, error) {
+	begin := time.Now()
+	val, err := c.base.TTL(ctx, key)
+	c.observer.OnOperation(ctx, "ttl", key, time.Since(begin), err)
+	return val, err
+}
+
+func (c *observedCache) Persist(ctx context.Context, key string) error {
+	begin := time.Now()
+	err := c.base.Persist(ctx, key)
+	c.observer.OnOperation(ctx, "persist", key, time.Since(begin), err)
+	return err
+}
+
+func (c *observedCache) HashIncrBy(ctx context.Context, key, field string, delta int64) (int64, error) {
+	begin := time.Now()
+	val, err := c.base.HashIncrBy(ctx, key, field, delta)
+	c.observer.OnOperation(ctx, "hincrby", key, time.Since(begin), err)
+	return val, err
+}
+
+func (c *observedCache) HashSet(ctx context.Context, key, field, value string) error {
+	begin := time.Now()
+	err := c.base.HashSet(ctx, key, field, value)
+	c.observer.OnOperation(ctx, "hset", key, time.Since(begin), err)
+	return err
+}
+
+func (c *observedCache) HashGet(ctx context.Context, key, field string) (string, bool, error) {
+	begin := time.Now()
+	val, ok, err := c.base.HashGet(ctx, key, field)
+	c.observer.OnOperation(ctx, "hget", key, time.Since(begin), err)
+	return val, ok, err
+}
+
+func (c *observedCache) HashGetAll(ctx context.Context, key string) (map[string]string, error) {
+	begin := time.Now()
+	vals, err := c.base.HashGetAll(ctx, key)
+	c.observer.OnOperation(ctx, "hgetall", key, time.Since(begin), err)
+	return vals, err
+}
+
+func (c *observedCache) ListPush(ctx context.Context, key, value string) error {
+	begin := time.Now()
+	err := c.base.ListPush(ctx, key, value)
+	c.observer.OnOperation(ctx, "rpush", key, time.Since(begin), err)
+	return err
+}
+
+func (c *observedCache) ListLen(ctx context.Context, key string) (int64, error) {
+	begin := time.Now()
+	val, err := c.base.ListLen(ctx, key)
+	c.observer.OnOperation(ctx, "llen", key, time.Since(begin), err)
+	return val, err
+}
+
+func (c *observedCache) ListRange(ctx context.Context, key string, start, end int64) ([]string, error) {
+	begin := time.Now()
+	vals, err := c.base.ListRange(ctx, key, start, end)
+	c.observer.OnOperation(ctx, "lrange", key, time.Since(begin), err)
+	return vals, err
+}
+
+func (c *observedCache) ListIndex(ctx context.Context, key string, index int64) (string, error) {
+	begin := time.Now()
+	val, err := c.base.ListIndex(ctx, key, index)
+	c.observer.OnOperation(ctx, "lindex", key, time.Since(begin), err)
+	return val, err
+}
+
+func (c *observedCache) ListSet(ctx context.Context, key string, index int64, value string) error {
+	begin := time.Now()
+	err := c.base.ListSet(ctx, key, index, value)
+	c.observer.OnOperation(ctx, "lset", key, time.Since(begin), err)
+	return err
+}
+
+func (c *observedCache) SetAdd(ctx context.Context, key string, members ...string) error {
+	begin := time.Now()
+	err := c.base.SetAdd(ctx, key, members...)
+	c.observer.OnOperation(ctx, "sadd", key, time.Since(begin), err)
+	return err
+}
+
+func (c *observedCache) SetIsMember(ctx context.Context, key, member string) (bool, error) {
+	begin := time.Now()
+	ok, err := c.base.SetIsMember(ctx, key, member)
+	c.observer.OnOperation(ctx, "sismember", key, time.Since(begin), err)
+	return ok, err
+}
+
+func (c *observedCache) SetMembers(ctx context.Context, key string) ([]string, error) {
+	begin := time.Now()
+	vals, err := c.base.SetMembers(ctx, key)
+	c.observer.OnOperation(ctx, "smembers", key, time.Since(begin), err)
+	return vals, err
+}
+
+func (c *observedCache) SetRemove(ctx context.Context, key string, members ...string) error {
+	begin := time.Now()
+	err := c.base.SetRemove(ctx, key, members...)
+	c.observer.OnOperation(ctx, "srem", key, time.Since(begin), err)
+	return err
+}
+
+func (c *observedCache) SortedSetAdd(ctx context.Context, key string, score float64, member string) error {
+	begin := time.Now()
+	err := c.base.SortedSetAdd(ctx, key, score, member)
+	c.observer.OnOperation(ctx, "zadd", key, time.Since(begin), err)
 	return err
 }
 

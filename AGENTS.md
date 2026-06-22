@@ -33,6 +33,17 @@
 - RabbitMQ **broker push** consumer（`autoAck=false`）不视为 ticker 扫表，但仍须在变更中声明队列与宿主进程。
 - 细则见 **`openspec/project.md`**「背景循环任务约定」；已批准的 UCG outbox relay / AMQP consumer 保留在 `ucg-service`。
 
+## Redis 访问（OpenSpec / 实现强制）
+- **KV 缓存/状态**：`internal/services/**` 与 `internal/controller/**` MUST 经 `cachekit.Cache` 访问 Redis，且 MUST 使用 `cachekit.WithObserver(..., cachekit.LoggingObserver{})` 或 `cachekit.Default()` 包装；**禁止**直接 `g.Redis()` / `g.Redis().Do(...)`。
+- **Pub/Sub 消息**：PUBLISH / SUBSCRIBE MUST 经 `internal/platform/redismsgkit`，同样 MUST `WithObserver` 或 `DefaultPublisher()` / `StartSubscriber`；**禁止**业务层直连 PUBLISH 或使用 `github.com/redis/go-redis/v9` 创建客户端。
+- **允许直连 `g.Redis()` 的位置**：仅 `internal/platform/cachekit/**`、`internal/platform/redismsgkit/**`、`internal/platform/rediscfg/**`。
+- 评审 grep：`rg 'g\.Redis\(\)' internal/services internal/controller --glob '*.go'` 期望 **0**；`rg 'redis\.New(Client|ClusterClient)' internal/services internal/controller` 期望 **0**。可运行 **`hack/check-redis-bypass.sh`** 自动化检查。
+
+## Redis 键命名（OpenSpec / 实现强制）
+- Redis 键与 Pub/Sub 频道 **禁止**在 `internal/services/**`、`internal/controller/**` 以字面量或 `fmt.Sprintf("domain:...")` 拼写。
+- **必须**使用 `internal/platform/cachekit/keys_*.go` 与 `internal/platform/redismsgkit/channels.go` 中的 builder；新增键 ONLY 在 platform 登记并附中文注释（TTL、失效、跨进程共享语义）。
+- 与「Redis 读缓存约定」关系：命名规范管「怎么用键」；读缓存约定管「要不要加 Redis」。
+
 ## Redis 读缓存（OpenSpec / 实现强制）
 - 新增或改造业务读路径时，**不得默认引入 Redis**；拟引入**新的** Redis 读缓存须先做收益率评估并**向负责人确认**；**负责人已确认要加的，实现阶段不得省略**。
 - 沿用 **`cachekit`** 等同族既有模式时，在 design 说明即可；Redis 持久化格式与 HTTP 边界映射须与现有约定一致。

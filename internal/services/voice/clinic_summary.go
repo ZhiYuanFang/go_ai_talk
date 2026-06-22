@@ -3,14 +3,13 @@ package voice
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"math"
 	"strings"
 	"time"
 
 	"hello/internal/model/entity"
+	"hello/internal/platform/cachekit"
 
-	"github.com/gogf/gf/v2/frame/g"
 )
 
 // clinicEventAgg 单 event 7 天内聚合统计。
@@ -33,10 +32,6 @@ type clinicSummaryCache struct {
 
 func clinicHistoryCutoffUnix() int64 {
 	return time.Now().Add(-7 * 24 * time.Hour).Unix()
-}
-
-func clinicSummaryRedisKey(wxID int64, deviceNo string) string {
-	return fmt.Sprintf("%s%d:%s", clinicSummaryKeyPrefix, wxID, strings.TrimSpace(deviceNo))
 }
 
 // historyWatermarkFromRows 从 history 列表取 max(start/end) 作为懒刷新 watermark。
@@ -113,14 +108,14 @@ func buildClinicHistorySummary(ctx context.Context, deviceNo string) (summaryJSO
 
 // ensureClinicSummary 懒刷新：对比 watermark，过期则重算并写 Redis（TTL 见 aiClinic.summaryTtlSeconds）。
 func (s *ClinicService) ensureClinicSummary(ctx context.Context, wxID int64, deviceNo string) (string, error) {
-	key := clinicSummaryRedisKey(wxID, deviceNo)
-	v, err := g.Redis().Do(ctx, "GET", key)
+	key := cachekit.VoiceClinicSummaryKey(wxID, deviceNo)
+	v, ok, err := clinicCache.Get(ctx, key)
 	if err != nil {
 		return "", err
 	}
 	var cached clinicSummaryCache
-	if !v.IsNil() && !v.IsEmpty() {
-		_ = json.Unmarshal(v.Bytes(), &cached)
+	if ok && v != "" {
+		_ = json.Unmarshal([]byte(v), &cached)
 	}
 	// 拉 list 仅用于 watermark；与 build 内 list 重复但 MVP 可接受（design 允许后续聚合 API）。
 	rows, err := DeviceHistory().ListHistory(ctx, deviceNo)
@@ -153,6 +148,6 @@ func (s *ClinicService) ensureClinicSummary(ctx context.Context, wxID int64, dev
 	if ttl <= 0 {
 		ttl = 86400
 	}
-	_, _ = g.Redis().Do(ctx, "SET", key, string(payload), "EX", ttl)
+	_ = clinicCache.SetEX(ctx, key, string(payload), time.Duration(ttl)*time.Second)
 	return summary, nil
 }

@@ -49,6 +49,7 @@ func StartUcgMQConsumers(ctx context.Context) {
 		}
 	}
 	if ucgRecommendConsumerEnabled() {
+		// 获取推荐队列 prefetch
 		subs = append(subs, eventkit.AMQPQueueSubscription{
 			QueueName:         ucgRecommendScoreQueue,
 			Prefetch:          ucgRecommendPrefetch(),

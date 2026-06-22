@@ -15,7 +15,7 @@ import (
 
 const ucgRecommendScoreQueue = "ucg.recommend.score.q"
 
-var recommendThrottleCache = cachekit.NewRedisCache()
+var recommendThrottleCache = cachekit.Default()
 
 // ucgRecommendAMQPHandler 推荐分 MQ consumer：throttle 限频；unpublished 永远 Ack。
 func ucgRecommendAMQPHandler(ctx context.Context, queueName, routingKey string, body []byte) error {
@@ -36,6 +36,7 @@ func ucgRecommendAMQPHandler(ctx context.Context, queueName, routingKey string, 
 	}
 }
 
+// handleRecommendUnpublished 处理未发布帖子事件。
 func handleRecommendUnpublished(ctx context.Context, body []byte) error {
 	postID, err := parseRecommendPostID(body)
 	if err != nil {
@@ -52,6 +53,7 @@ func handleRecommendUnpublished(ctx context.Context, body []byte) error {
 	return nil
 }
 
+// handleRecommendRecompute 处理帖子互动事件。
 func handleRecommendRecompute(ctx context.Context, body []byte, throttle bool) error {
 	postID, err := parseRecommendPostID(body)
 	if err != nil {
@@ -96,7 +98,7 @@ func parseRecommendPostID(body []byte) (uint64, error) {
 func tryRecommendThrottle(ctx context.Context, postID uint64) bool {
 	cfg := LoadRecommendConfig(ctx)
 	ttl := time.Duration(cfg.LikeThrottleMs) * time.Millisecond
-	key := fmt.Sprintf("ucg:recommend:throttle:%d", postID)
+	key := cachekit.UCGRecommendThrottleKey(postID)
 	ok, err := recommendThrottleCache.SetNXEX(ctx, key, "1", ttl)
 	if err != nil {
 		glog.Warningf(ctx, "[ucg-recommend-mq] throttle redis err postId=%d err=%v", postID, err)

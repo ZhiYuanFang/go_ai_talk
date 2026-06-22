@@ -23,7 +23,7 @@ type deviceCacheRepo struct {
 
 func newDeviceCacheRepo() *deviceCacheRepo {
 	return &deviceCacheRepo{
-		cache: cachekit.WithObserver(cachekit.NewRedisCache(), cachekit.LoggingObserver{}),
+		cache: cachekit.Default(),
 	}
 }
 

@@ -7,8 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gogf/gf/v2/frame/g"
+	"hello/internal/platform/cachekit"
 )
+
+var ucgCache = cachekit.Default()
 
 // ChatMessage 聊天消息（Redis 持久化 JSON）。
 type ChatMessage struct {
@@ -21,18 +23,18 @@ type ChatMessage struct {
 	MediaCdnUrl       string `json:"mediaCdnUrl,omitempty"`
 	MediaThumbnailUrl string `json:"mediaThumbnailUrl,omitempty"`
 	CreatedAt         int64  `json:"createdAt"`
-	Status            string `json:"status"` // delivered（WS 投递态）
-	AuditStatus       string `json:"auditStatus,omitempty"` // pending|approved|rejected，与 MySQL 镜像
+	Status            string `json:"status"`
+	AuditStatus       string `json:"auditStatus,omitempty"`
 	AuditVersion      int    `json:"auditVersion,omitempty"`
 	RejectReason      string `json:"rejectReason,omitempty"`
 }
 
 func appendChatMessage(ctx context.Context, convID uint64, msg ChatMessage) (ChatMessage, error) {
-	seqRaw, err := g.Redis().Do(ctx, "INCR", redisChatMsgSeqKey(convID))
+	seq, err := ucgCache.Incr(ctx, cachekit.UCGChatMsgSeqKey(convID))
 	if err != nil {
 		return msg, err
 	}
-	msg.ID = uint64(seqRaw.Int64())
+	msg.ID = uint64(seq)
 	if msg.CreatedAt == 0 {
 		msg.CreatedAt = time.Now().Unix()
 	}
@@ -40,11 +42,10 @@ func appendChatMessage(ctx context.Context, convID uint64, msg ChatMessage) (Cha
 	if err != nil {
 		return msg, err
 	}
-	if _, err = g.Redis().Do(ctx, "RPUSH", redisChatMsgListKey(convID), string(raw)); err != nil {
+	if err = ucgCache.ListPush(ctx, cachekit.UCGChatMsgListKey(convID), string(raw)); err != nil {
 		return msg, err
 	}
-	// 永久保留：显式 PERSIST（若 key 曾误设 TTL 则清除）
-	_, _ = g.Redis().Do(ctx, "PERSIST", redisChatMsgListKey(convID))
+	_ = ucgCache.Persist(ctx, cachekit.UCGChatMsgListKey(convID))
 	return msg, nil
 }
 
@@ -57,7 +58,6 @@ func listChatMessagesForViewer(ctx context.Context, convID uint64, viewerWxID in
 	return len(filtered), filtered, nil
 }
 
-// filterChatMessagesForViewer 收件人过滤 rejected；发送人保留 rejected+reason。
 func filterChatMessagesForViewer(msgs []ChatMessage, viewerWxID int64) []ChatMessage {
 	out := make([]ChatMessage, 0, len(msgs))
 	for _, msg := range msgs {
@@ -81,11 +81,11 @@ func chatMessageVisibleToViewer(msg ChatMessage, viewerWxID int64) bool {
 
 func listChatMessages(ctx context.Context, convID uint64, page, pageSize int) (total int, list []ChatMessage, err error) {
 	p := NormalizePage(page, pageSize)
-	lenRaw, err := g.Redis().Do(ctx, "LLEN", redisChatMsgListKey(convID))
+	listKey := cachekit.UCGChatMsgListKey(convID)
+	redisLen, err := ucgCache.ListLen(ctx, listKey)
 	if err != nil {
 		return 0, nil, err
 	}
-	redisLen := lenRaw.Int()
 	if redisLen == 0 {
 		mysqlCount, cErr := countChatMessagesMySQL(ctx, convID)
 		if cErr != nil {
@@ -96,11 +96,10 @@ func listChatMessages(ctx context.Context, convID uint64, page, pageSize int) (t
 			if mysqlCount > chatWarmMaxMessages() {
 				return listChatMessagesMySQL(ctx, convID, page, pageSize)
 			}
-			lenRaw, err = g.Redis().Do(ctx, "LLEN", redisChatMsgListKey(convID))
+			redisLen, err = ucgCache.ListLen(ctx, listKey)
 			if err != nil {
 				return 0, nil, err
 			}
-			redisLen = lenRaw.Int()
 			if redisLen == 0 {
 				return listChatMessagesMySQL(ctx, convID, page, pageSize)
 			}
@@ -108,8 +107,7 @@ func listChatMessages(ctx context.Context, convID uint64, page, pageSize int) (t
 			return 0, []ChatMessage{}, nil
 		}
 	}
-	total = redisLen
-	// 分页从最新消息往回取：page=1 为最新一页
+	total = int(redisLen)
 	end := total - (p.Page-1)*p.PageSize - 1
 	start := end - p.PageSize + 1
 	if end < 0 {
@@ -118,14 +116,14 @@ func listChatMessages(ctx context.Context, convID uint64, page, pageSize int) (t
 	if start < 0 {
 		start = 0
 	}
-	rows, err := g.Redis().Do(ctx, "LRANGE", redisChatMsgListKey(convID), start, end)
+	rows, err := ucgCache.ListRange(ctx, listKey, int64(start), int64(end))
 	if err != nil {
 		return 0, nil, err
 	}
-	list = make([]ChatMessage, 0, len(rows.Array()))
-	for _, item := range rows.Array() {
+	list = make([]ChatMessage, 0, len(rows))
+	for _, item := range rows {
 		var msg ChatMessage
-		if uErr := json.Unmarshal([]byte(g.NewVar(item).String()), &msg); uErr != nil {
+		if uErr := json.Unmarshal([]byte(item), &msg); uErr != nil {
 			continue
 		}
 		enrichChatMessageMedia(&msg)
@@ -135,31 +133,28 @@ func listChatMessages(ctx context.Context, convID uint64, page, pageSize int) (t
 }
 
 func incrUnread(ctx context.Context, convID uint64, wxID int64) error {
-	_, err := g.Redis().Do(ctx, "INCR", redisChatUnreadKey(convID, wxID))
+	_, err := ucgCache.Incr(ctx, cachekit.UCGChatUnreadKey(convID, wxID))
 	return err
 }
 
 func resetUnread(ctx context.Context, convID uint64, wxID int64) error {
-	_, err := g.Redis().Do(ctx, "DEL", redisChatUnreadKey(convID, wxID))
-	return err
+	return ucgCache.Del(ctx, cachekit.UCGChatUnreadKey(convID, wxID))
 }
 
 func getUnread(ctx context.Context, convID uint64, wxID int64) (int, error) {
-	raw, err := g.Redis().Do(ctx, "GET", redisChatUnreadKey(convID, wxID))
+	raw, ok, err := ucgCache.Get(ctx, cachekit.UCGChatUnreadKey(convID, wxID))
 	if err != nil {
 		return 0, err
 	}
-	s := strings.TrimSpace(raw.String())
-	if s == "" {
+	if !ok {
 		return 0, nil
 	}
-	n, _ := strconv.Atoi(s)
+	n, _ := strconv.Atoi(strings.TrimSpace(raw))
 	return n, nil
 }
 
 func touchUserConversation(ctx context.Context, wxID int64, convID uint64, score int64) error {
-	_, err := g.Redis().Do(ctx, "ZADD", redisChatUserConvKey(wxID), score, strconv.FormatUint(convID, 10))
-	return err
+	return ucgCache.SortedSetAdd(ctx, cachekit.UCGChatUserConvKey(wxID), float64(score), strconv.FormatUint(convID, 10))
 }
 
 func enrichChatMessageMedia(msg *ChatMessage) {

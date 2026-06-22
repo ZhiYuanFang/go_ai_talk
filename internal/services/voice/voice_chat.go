@@ -161,7 +161,7 @@ func NewVoiceService(cfg VoiceChatConfig) *VoiceService {
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
-		cache:                  cachekit.WithObserver(cachekit.NewRedisCache(), cachekit.LoggingObserver{}),
+		cache:                  cachekit.Default(),
 		sttLimiter:             newLimiter(cfg.STT.MaxConcurrency),
 		deviceModes:            make(map[string]string),
 		pendingQuantity:        make(map[string]pendingQuantityState),
@@ -1169,11 +1169,7 @@ func (s *VoiceService) useRedisSession() bool {
 }
 
 func (s *VoiceService) sessionRedisKey(deviceNo string) string {
-	prefix := strings.TrimSpace(os.Getenv(voiceSessionRedisPrefix))
-	if prefix == "" {
-		prefix = "voice:session:"
-	}
-	return prefix + strings.TrimSpace(deviceNo)
+	return cachekit.VoiceSessionKey(deviceNo)
 }
 
 func (s *VoiceService) getSessionByDevice(ctx context.Context, deviceNo string, now time.Time) (*deviceChatSession, bool) {
@@ -1265,7 +1261,7 @@ func (s *VoiceService) checkTextRateLimit(ctx context.Context, deviceNo string) 
 		return nil
 	}
 	minuteBucket := time.Now().Format("200601021504")
-	key := fmt.Sprintf("voice:guard:rate:%s:%s", deviceNo, minuteBucket)
+	key := cachekit.VoiceGuardRateKey(deviceNo, minuteBucket)
 	// 计数与 TTL 分离：首次命中再设置过期，便于窗口平滑滚动。
 	count, err := s.cache.Incr(ctx, key)
 	if err != nil {
@@ -1294,7 +1290,7 @@ func (s *VoiceService) checkTextIdempotency(ctx context.Context, deviceNo, trans
 	sum := fnv.New32a()
 	_, _ = sum.Write([]byte(strings.TrimSpace(transcript)))
 	// 设备号 + 文本哈希作为幂等键，短窗口内重复请求直接拦截。
-	key := fmt.Sprintf("voice:guard:idem:%s:%d", deviceNo, sum.Sum32())
+	key := cachekit.VoiceGuardIdemKey(deviceNo, sum.Sum32())
 	ok, err := s.cache.SetNXEX(ctx, key, "1", time.Duration(ttl)*time.Second)
 	if err != nil {
 		return StageError{Stage: "idempotent", Detail: fmt.Sprintf("幂等检查依赖异常: %v", err)}

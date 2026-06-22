@@ -9,16 +9,12 @@ import (
 	"time"
 
 	"hello/internal/dao"
+	"hello/internal/platform/cachekit"
 
 	"github.com/gogf/gf/v2/frame/g"
 )
 
-const (
-	redisProfilePendingSetKey = "ucg:green:profile:pending"
-	redisProfilePendingPrefix = "ucg:green:profile:data:"
-	redisProfileRejectPrefix  = "ucg:green:profile:reject:"
-	profilePendingTTL         = 7 * 24 * time.Hour
-)
+const profilePendingTTL = 7 * 24 * time.Hour
 
 // ProfilePendingPatch 待 Green 审核的资料变更（公开 API 不可见直至通过）。
 type ProfilePendingPatch struct {
@@ -45,26 +41,24 @@ func EnqueueProfileAudit(ctx context.Context, wxID int64, nickname, avatarKey, b
 	if err != nil {
 		return err
 	}
-	key := redisProfilePendingPrefix + strconv.FormatInt(wxID, 10)
-	if _, err = g.Redis().Do(ctx, "SET", key, string(raw), "EX", int(profilePendingTTL.Seconds())); err != nil {
+	key := cachekit.UCGProfilePendingDataKey(wxID)
+	if err = ucgCache.SetEX(ctx, key, string(raw), profilePendingTTL); err != nil {
 		return err
 	}
-	_, err = g.Redis().Do(ctx, "SADD", redisProfilePendingSetKey, strconv.FormatInt(wxID, 10))
-	return err
+	return ucgCache.SetAdd(ctx, cachekit.UCGProfilePendingSetKey(), strconv.FormatInt(wxID, 10))
 }
 
 // LoadProfilePending 读取作者待审资料 patch；无则 ok=false。
 func LoadProfilePending(ctx context.Context, wxID int64) (patch ProfilePendingPatch, ok bool, err error) {
-	key := redisProfilePendingPrefix + strconv.FormatInt(wxID, 10)
-	raw, err := g.Redis().Do(ctx, "GET", key)
+	key := cachekit.UCGProfilePendingDataKey(wxID)
+	raw, hit, err := ucgCache.Get(ctx, key)
 	if err != nil {
 		return patch, false, err
 	}
-	s := strings.TrimSpace(raw.String())
-	if s == "" {
+	if !hit || strings.TrimSpace(raw) == "" {
 		return patch, false, nil
 	}
-	if err = json.Unmarshal([]byte(s), &patch); err != nil {
+	if err = json.Unmarshal([]byte(raw), &patch); err != nil {
 		return patch, false, err
 	}
 	return patch, true, nil
@@ -72,29 +66,31 @@ func LoadProfilePending(ctx context.Context, wxID int64) (patch ProfilePendingPa
 
 // LoadProfileRejectReason 读取最近一次资料审核失败原因（仅作者可见）。
 func LoadProfileRejectReason(ctx context.Context, wxID int64) (string, error) {
-	key := redisProfileRejectPrefix + strconv.FormatInt(wxID, 10)
-	raw, err := g.Redis().Do(ctx, "GET", key)
+	key := cachekit.UCGProfileRejectReasonKey(wxID)
+	raw, ok, err := ucgCache.Get(ctx, key)
 	if err != nil {
 		return "", err
 	}
-	return strings.TrimSpace(raw.String()), nil
+	if !ok {
+		return "", nil
+	}
+	return strings.TrimSpace(raw), nil
 }
 
 func listPendingProfileWxIDs(ctx context.Context, limit int) ([]int64, error) {
 	if limit <= 0 {
 		limit = 20
 	}
-	raw, err := g.Redis().Do(ctx, "SMEMBERS", redisProfilePendingSetKey)
+	members, err := ucgCache.SetMembers(ctx, cachekit.UCGProfilePendingSetKey())
 	if err != nil {
 		return nil, err
 	}
-	arr := raw.Array()
-	out := make([]int64, 0, len(arr))
-	for _, item := range arr {
+	out := make([]int64, 0, len(members))
+	for _, item := range members {
 		if len(out) >= limit {
 			break
 		}
-		id, pErr := strconv.ParseInt(strings.TrimSpace(g.NewVar(item).String()), 10, 64)
+		id, pErr := strconv.ParseInt(strings.TrimSpace(item), 10, 64)
 		if pErr != nil || id <= 0 {
 			continue
 		}
@@ -105,17 +101,15 @@ func listPendingProfileWxIDs(ctx context.Context, limit int) ([]int64, error) {
 
 func clearProfilePending(ctx context.Context, wxID int64) error {
 	id := strconv.FormatInt(wxID, 10)
-	if _, err := g.Redis().Do(ctx, "DEL", redisProfilePendingPrefix+id); err != nil {
+	if err := ucgCache.Del(ctx, cachekit.UCGProfilePendingDataKey(wxID)); err != nil {
 		return err
 	}
-	_, err := g.Redis().Do(ctx, "SREM", redisProfilePendingSetKey, id)
-	return err
+	return ucgCache.SetRemove(ctx, cachekit.UCGProfilePendingSetKey(), id)
 }
 
 func setProfileRejectReason(ctx context.Context, wxID int64, reason string) error {
-	key := redisProfileRejectPrefix + strconv.FormatInt(wxID, 10)
-	_, err := g.Redis().Do(ctx, "SET", key, strings.TrimSpace(reason), "EX", int(profilePendingTTL.Seconds()))
-	return err
+	key := cachekit.UCGProfileRejectReasonKey(wxID)
+	return ucgCache.SetEX(ctx, key, strings.TrimSpace(reason), profilePendingTTL)
 }
 
 func applyProfilePending(ctx context.Context, patch ProfilePendingPatch) error {

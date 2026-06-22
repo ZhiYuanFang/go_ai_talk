@@ -2,15 +2,14 @@ package main
 
 import (
 	"fmt"
-	"os"
-	"strings"
-
 	"hello/internal/controller"
 	"hello/internal/platform/dbcfg"
 	"hello/internal/platform/rediscfg"
 	"hello/internal/platform/runtimecheck"
 	ucgsvc "hello/internal/services/ucg"
 	_ "hello/internal/shared/runtime"
+	"os"
+	"strings"
 
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/gctx"
@@ -22,7 +21,7 @@ func main() {
 	ucgsvc.InitUcgPolishProfileStore()
 	ctx := gctx.New()
 	// 与 history/voice 一致：Redis 不可用时 fail-fast；RabbitMQ 探活失败不阻断启动（容灾）。
-	if err := runtimecheck.CheckDependencies(ctx, runtimecheck.DependencyOptions{RequireRabbitMQ: false}); err != nil {
+	if err := runtimecheck.CheckDependencies(ctx, runtimecheck.DependencyOptions{RequireRabbitMQ: true}); err != nil {
 		glog.Fatalf(ctx, "dependency check failed: %v", err)
 		return
 	}
@@ -30,8 +29,8 @@ func main() {
 	applyUcgServiceAddress(s)
 	controller.RegisterUcgServiceHTTP(s)
 	ucgsvc.StartUcgMQConsumers(ctx)
-	ucgsvc.StartAuditPublishRelayWorker(ctx)
-	ucgsvc.StartChatPersistWorker(ctx)
+	ucgsvc.StartAuditPublishRelayWorker(ctx) // 启动审计事件发布中继 worker，将 chat 消息等事件发布到 RabbitMQ，供审计服务消费；依赖 RabbitMQ，放在 CheckDependencies 之后启动。
+	ucgsvc.StartChatPersistWorker(ctx)       // 启动聊天消息持久化 worker，从 RabbitMQ 消息队列消费聊天消息并持久化到数据库；依赖 RabbitMQ，放在 CheckDependencies 之后启动。
 	s.Run()
 }
 

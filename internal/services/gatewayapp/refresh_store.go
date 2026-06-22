@@ -14,15 +14,12 @@ import (
 	"github.com/gogf/gf/v2/frame/g"
 )
 
-const refreshKeyPrefix = "gw:app:rt:"
-
-// refreshPayloadWxZeroPrefix 设备号直连登录（JWT sub=0）时 Redis 载荷前缀，后接 device_no，与纯数字 wxId 字符串区分。
 const refreshPayloadWxZeroPrefix = "0:"
 
 // refreshPayloadWxDeviceSep wx 会话 refresh 载荷中 wxId 与 device_no 的分隔（格式 `wxId:device_no`；旧载荷仅 wxId 仍兼容）。
 const refreshPayloadWxDeviceSep = ":"
 
-var refreshCache = cachekit.WithObserver(cachekit.NewRedisCache(), cachekit.LoggingObserver{})
+var refreshCache = cachekit.Default()
 
 // IssueRefreshToken 生成 refresh 并写入 Redis，返回明文令牌（仅返回一次给客户端）。
 // wxID>0 时载荷为十进制 wxId，若 deviceNoCarry 非空则为 `wxId:device_no`；wxID==0 时（仅设备会话）须传非空 deviceNoCarry，载荷为 "0:"+device_no。
@@ -43,7 +40,7 @@ func IssueRefreshToken(ctx context.Context, wxID int64, deviceNoCarry string) (s
 		return "", err
 	}
 	token := hex.EncodeToString(buf)
-	key := refreshKeyPrefix + token
+	key := cachekit.GatewayRefreshTokenKey(token)
 	val := strconv.FormatInt(wxID, 10)
 	if wxID == 0 {
 		val = refreshPayloadWxZeroPrefix + dn0
@@ -62,7 +59,7 @@ func ConsumeRefreshToken(ctx context.Context, refreshToken string, rotate bool) 
 	if refreshToken == "" {
 		return 0, "", fmt.Errorf("refreshToken 不能为空")
 	}
-	key := refreshKeyPrefix + refreshToken
+	key := cachekit.GatewayRefreshTokenKey(refreshToken)
 	v, ok, err := refreshCache.Get(ctx, key)
 	if err != nil {
 		return 0, "", err

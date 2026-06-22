@@ -29,6 +29,8 @@
 - 当服务需要他域数据时，必须通过跨服务 API 获取，禁止跨库直查。
 - 跨服务数据访问必须走服务契约（HTTP/RPC/事件），禁止在服务内直接访问他域 DAO/数据表。
 - 若迁移期保留 `local|remote|canary` 双路径，必须显式配置 failover 语义并记录命中日志，避免隐式跨库回流。
+- Redis KV 访问 MUST 经 `internal/platform/cachekit` 且 MUST 使用 `cachekit.WithObserver(...)`（或 `cachekit.Default()`）；Redis Pub/Sub MUST 经 `internal/platform/redismsgkit` 且 MUST 使用 `WithObserver` / `DefaultPublisher()`。业务与 controller 层禁止直接 `g.Redis()`。
+- Redis 键/频道 MUST 经 platform builder（`cachekit/keys_*.go`、`redismsgkit/channels.go`）构造，禁止业务层键字面量（策略 A：builder 返回值与线上一致，本变更不重命名键空间）。
 
 ### 数据库连接与部署实例约定（强制）
 - 任意需求变更若**新增、调整或迁移**某进程对 MySQL 的访问，OpenSpec **proposal / design / tasks** 中必须写清：**进程名**、**库与表域**、GoFrame **配置组**（如 `default`、`app`）、以及推荐覆盖方式（yaml 内 `*.link` 或 **`HISTORY_DB_LINK` / `DEVICE_DB_LINK` / `VOICE_DB_LINK` / `APP_DB_LINK` / `UCG_DB_LINK`** 等与 `cmd/*-service/main.go` 一致的环境变量名）。
@@ -62,6 +64,7 @@
 - 评审检查项必须包含“是否存在 `hello/internal/service` 旧导入路径”与“`internal/service` 是否新增实现文件”两项硬性检查。
 - 评审检查项必须包含“运行文档是否同步更新”检查：凡涉及运行/发布/DAO 边界变更，必须同时更新 `docs/runbooks/dao-sync-by-domain.md` 与 `docs/runbooks/release-deploy-and-run.md`；若涉及**新进程或新库连接**，还须核对 **`manifest/docker/.env.example`** 与相关 **`manifest/config/config.*.yaml`** 顶部说明是否已包含对应 **`*_DB_LINK` / `APP_DB_LINK`** 约定（见上文「数据库连接与部署实例约定」）。
 - 评审检查项必须包含“是否引用并遵循 **`openspec/specs/v2.0.5/spec.md`** 基线”检查：涉及行为变更时必须可追溯到对应 Requirement/Scenario。
+- 评审检查项必须包含“**Redis platform 访问**”检查：业务/controller 是否 bypass `cachekit`/`redismsgkit`（见 `AGENTS.md` 与 `hack/check-redis-bypass.sh`）。
 - 评审检查项必须包含“**Redis 读缓存**”检查：涉及新读路径或 Redis 键变更时，是否已在 proposal/design 完成收益率评估、负责人确认结论，且实现与 design 一致（见「Redis 读缓存约定」）。
 - 在没有特别要求的情况下，不用生成关于当前变更需求的md文件。当有要求生成文档时，文档必须在`docs/`文件夹内生成md文件，不要生成到`docs/runbooks/`
 
@@ -91,7 +94,7 @@
   - **失效复杂度**：写操作触发点、整表重建 vs 细粒度 patch、跨服务共用键语义是否一致
   - **替代方案**：索引、批量查询、SQL 优化是否应先做
   - **建议结论**：加 / 不加 / 延后（及理由）
-- **可沿用既有模式、design 说明即可（免重复询问）**：与现有 **`internal/platform/cachekit`** 读模型（如 event/action options、history list + patch + version）、gateway refresh token、voice session、usage 统计、UCG 聊天 LIST 等**同族**的扩展；**但**须在 design 中写明沿用哪一模式，且 **Redis 内持久化格式须与 device/history 约定一致**（如 objectKey vs CDN URL 边界映射，见 event logo 教训）。
+- **可沿用既有模式、design 说明即可（免重复询问）**：与现有 **`internal/platform/cachekit`** 读模型（如 event/action options、history list + patch + version）、gateway refresh token、voice session、usage 统计、UCG 聊天 LIST 等**同族**的扩展；访问 MUST 经 `cachekit.WithObserver` / `redismsgkit`，键 MUST 经 platform builder；**但**须在 design 中写明沿用哪一模式，且 **Redis 内持久化格式须与 device/history 约定一致**（如 objectKey vs CDN URL 边界映射，见 event logo 教训）。
 - **倾向不加 Redis（须强理由 + 负责人确认才可加）**：分页列表（page/filter 组合多）、强个性化（如 `likedByMe`、关注 Feed）、写多读变/审核态频繁、整页 PostDTO 级大 JSON 缓存。
 - **倾向可考虑 Redis（仍须负责人确认或 proposal 已写明）**：小体积全站字典、设备维度热读且失效清晰、短 TTL 限流/幂等、会话与 token、纯统计类数据。
 - **proposal / tasks 检查项**：若变更新增或改造读路径且涉及 Redis，MUST 包含「已与负责人确认 Redis 策略」及结论（不加 / 沿用既有模式 / 加哪一层 + TTL + 失效）；若 design 已确认加 Redis，tasks 须含对应实现项且不得遗漏。

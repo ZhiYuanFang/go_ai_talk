@@ -5,6 +5,7 @@ import (
 
 	"hello/internal/dao"
 	"hello/internal/model/entity"
+	"hello/internal/platform/cachekit"
 
 	"github.com/gogf/gf/v2/frame/g"
 )
@@ -28,7 +29,7 @@ func SimUsernameRegister(ctx context.Context, userName, password string) (int64,
 		return 0, err
 	}
 	_ = invalidateWxCaches(ctx, wxID, "")
-	_, _ = g.Redis().Do(ctx, "SADD", "usage:sim_wx_ids", wxID)
+	_ = cachekit.Default().SetAdd(ctx, cachekit.GatewayUsageSimWxSetKey(), cachekit.GatewayUsageSimWxMember(wxID))
 	return wxID, nil
 }
 

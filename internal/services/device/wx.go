@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"math/big"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -21,14 +20,11 @@ import (
 const (
 	headerInternalWxId       = "X-Internal-Wx-Id"
 	envGatewayInternalSecret = "DEVICE_GATEWAY_INTERNAL_SECRET"
-	cacheKeyWxIDToUnion      = "dev:wx:id2union:"
-	cacheKeyWxUnionToDevice  = "dev:wx:union2dev:"
-	cacheKeyWxIDToDevice     = "dev:wx:id2dev:"
 	cacheTTLWxLookup         = 120 * time.Second
 	maxRandomDeviceAttempts  = 15
 )
 
-var wxLookupCache = cachekit.WithObserver(cachekit.NewRedisCache(), cachekit.LoggingObserver{})
+var wxLookupCache = cachekit.Default()
 
 // WxLoginResult device 侧微信登录业务返回（不含 JWT；不向客户端回传 unionid）。
 type WxLoginResult struct {
@@ -248,7 +244,7 @@ func WxDeviceNoByWxID(ctx context.Context, wxID int64) (string, error) {
 	if wxID <= 0 {
 		return "", errors.New("wxId 无效")
 	}
-	key := cacheKeyWxIDToDevice + strconv.FormatInt(wxID, 10)
+	key := cachekit.WxIDToDeviceKey(wxID)
 	if v, ok, err := wxLookupCache.Get(ctx, key); err == nil && ok && strings.TrimSpace(v) != "" {
 		return strings.TrimSpace(v), nil
 	}
@@ -271,7 +267,7 @@ func WxUnionIDByID(ctx context.Context, id int64) (string, error) {
 	if id <= 0 {
 		return "", errors.New("id 无效")
 	}
-	key := cacheKeyWxIDToUnion + strconv.FormatInt(id, 10)
+	key := cachekit.WxIDToUnionKey(id)
 	if v, ok, err := wxLookupCache.Get(ctx, key); err == nil && ok && v != "" {
 		return v, nil
 	}
@@ -322,9 +318,9 @@ func wxRowByWxID(ctx context.Context, wxID int64) (*entity.Wx, error) {
 }
 
 func invalidateWxCaches(ctx context.Context, id int64, unionID string) error {
-	_ = wxLookupCache.Del(ctx, cacheKeyWxIDToUnion+strconv.FormatInt(id, 10))
-	_ = wxLookupCache.Del(ctx, cacheKeyWxUnionToDevice+strings.TrimSpace(unionID))
-	_ = wxLookupCache.Del(ctx, cacheKeyWxIDToDevice+strconv.FormatInt(id, 10))
+	_ = wxLookupCache.Del(ctx, cachekit.WxIDToUnionKey(id))
+	_ = wxLookupCache.Del(ctx, cachekit.WxUnionToDeviceKey(strings.TrimSpace(unionID)))
+	_ = wxLookupCache.Del(ctx, cachekit.WxIDToDeviceKey(id))
 	return nil
 }
 

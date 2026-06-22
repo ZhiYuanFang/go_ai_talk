@@ -4,10 +4,8 @@ import (
 	"context"
 	"sync"
 
-	"github.com/gogf/gf/v2/frame/g"
+	"hello/internal/platform/cachekit"
 )
-
-const simWxRedisSetKey = "usage:sim_wx_ids"
 
 var (
 	simWxLocalMu sync.RWMutex
@@ -22,7 +20,8 @@ func IsSimulatedWx(ctx context.Context, wxID int64) bool {
 	if hit, ok := simWxLocalLookup(wxID); ok {
 		return hit
 	}
-	if v, err := g.Redis().Do(ctx, "SISMEMBER", simWxRedisSetKey, wxID); err == nil && v.Int() == 1 {
+	member := cachekit.GatewayUsageSimWxMember(wxID)
+	if ok, err := usageCache.SetIsMember(ctx, cachekit.GatewayUsageSimWxSetKey(), member); err == nil && ok {
 		simWxLocalStore(wxID, true)
 		return true
 	}
@@ -31,7 +30,7 @@ func IsSimulatedWx(ctx context.Context, wxID int64) bool {
 		return false
 	}
 	if ok {
-		_, _ = g.Redis().Do(ctx, "SADD", simWxRedisSetKey, wxID)
+		_ = usageCache.SetAdd(ctx, cachekit.GatewayUsageSimWxSetKey(), member)
 	}
 	simWxLocalStore(wxID, ok)
 	return ok
@@ -42,7 +41,7 @@ func MarkSimulatedWxCached(ctx context.Context, wxID int64) {
 	if wxID <= 0 {
 		return
 	}
-	_, _ = g.Redis().Do(ctx, "SADD", simWxRedisSetKey, wxID)
+	_ = usageCache.SetAdd(ctx, cachekit.GatewayUsageSimWxSetKey(), cachekit.GatewayUsageSimWxMember(wxID))
 	simWxLocalStore(wxID, true)
 }
 

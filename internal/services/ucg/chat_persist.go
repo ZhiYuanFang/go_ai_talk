@@ -3,7 +3,6 @@ package ucg
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -11,6 +10,7 @@ import (
 
 	"hello/internal/dao"
 	"hello/internal/model/entity"
+	"hello/internal/platform/cachekit"
 
 	"github.com/gogf/gf/v2/database/gdb"
 	"github.com/gogf/gf/v2/frame/g"
@@ -46,10 +46,6 @@ func chatWarmMaxMessages() int {
 		}
 	}
 	return chatWarmMaxMessagesDef
-}
-
-func redisChatRebuildLockKey(convID uint64) string {
-	return fmt.Sprintf("ucg:chat:conv:%d:rebuild", convID)
 }
 
 // enqueueChatMessageOutbox 同步写入 MySQL outbox，供 persist worker 异步落 ucg_chat_message。
@@ -224,16 +220,16 @@ func alignChatSeqFromMySQL(ctx context.Context, convID uint64, maxID uint64) {
 	if maxID == 0 {
 		return
 	}
-	seqKey := redisChatMsgSeqKey(convID)
-	raw, err := g.Redis().Do(ctx, "GET", seqKey)
+	seqKey := cachekit.UCGChatMsgSeqKey(convID)
+	curRaw, ok, err := ucgCache.Get(ctx, seqKey)
 	cur := uint64(0)
-	if err == nil && raw != nil {
-		cur = uint64(raw.Int64())
+	if err == nil && ok {
+		cur, _ = strconv.ParseUint(strings.TrimSpace(curRaw), 10, 64)
 	}
 	if cur >= maxID {
 		return
 	}
-	if _, err = g.Redis().Do(ctx, "SET", seqKey, maxID); err != nil {
+	if err := ucgCache.Set(ctx, seqKey, strconv.FormatUint(maxID, 10)); err != nil {
 		glog.Warningf(ctx, "[ucg-chat] 对齐 Redis seq 失败 conv=%d maxId=%d err=%v", convID, maxID, err)
 	}
 }
@@ -243,21 +239,21 @@ func warmChatMessagesToRedis(ctx context.Context, convID uint64, msgs []ChatMess
 	if len(msgs) == 0 {
 		return nil
 	}
-	listKey := redisChatMsgListKey(convID)
+	listKey := cachekit.UCGChatMsgListKey(convID)
 	var maxID uint64
 	for _, msg := range msgs {
 		raw, err := json.Marshal(msg)
 		if err != nil {
 			return err
 		}
-		if _, err = g.Redis().Do(ctx, "RPUSH", listKey, string(raw)); err != nil {
+		if err = ucgCache.ListPush(ctx, listKey, string(raw)); err != nil {
 			return err
 		}
 		if msg.ID > maxID {
 			maxID = msg.ID
 		}
 	}
-	_, _ = g.Redis().Do(ctx, "PERSIST", listKey)
+	_ = ucgCache.Persist(ctx, listKey)
 	alignChatSeqFromMySQL(ctx, convID, maxID)
 	return nil
 }
@@ -271,21 +267,21 @@ func tryWarmChatFromMySQL(ctx context.Context, convID uint64) error {
 	if mysqlCount > chatWarmMaxMessages() {
 		return nil
 	}
-	lockKey := redisChatRebuildLockKey(convID)
-	got, err := g.Redis().Do(ctx, "SET", lockKey, "1", "NX", "EX", chatRebuildLockSeconds)
+	lockKey := cachekit.UCGChatRebuildLockKey(convID)
+	got, err := ucgCache.SetNXEX(ctx, lockKey, "1", chatRebuildLockSeconds*time.Second)
 	if err != nil {
 		return err
 	}
-	if got == nil || got.IsEmpty() {
+	if !got {
 		return nil
 	}
-	defer func() { _, _ = g.Redis().Do(ctx, "DEL", lockKey) }()
+	defer func() { _ = ucgCache.Del(ctx, lockKey) }()
 
-	lenRaw, err := g.Redis().Do(ctx, "LLEN", redisChatMsgListKey(convID))
+	redisLen, err := ucgCache.ListLen(ctx, cachekit.UCGChatMsgListKey(convID))
 	if err != nil {
 		return err
 	}
-	if lenRaw.Int() > 0 {
+	if redisLen > 0 {
 		return nil
 	}
 	var rows []entity.UcgChatMessage

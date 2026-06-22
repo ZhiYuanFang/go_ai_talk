@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"hello/internal/dao"
+	"hello/internal/platform/cachekit"
 
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/glog"
@@ -109,19 +110,18 @@ func sendChatMsgHidden(recipientWxID int64, convID, msgID uint64) {
 
 // syncChatAuditToRedis CAS 成功后 LSET 更新 Redis 列表中对应消息的审态 JSON。
 func syncChatAuditToRedis(ctx context.Context, convID, msgID uint64, auditStatus string, auditVersion int, rejectReason string) error {
-	listKey := redisChatMsgListKey(convID)
-	lenRaw, err := g.Redis().Do(ctx, "LLEN", listKey)
+	listKey := cachekit.UCGChatMsgListKey(convID)
+	n, err := ucgCache.ListLen(ctx, listKey)
 	if err != nil {
 		return err
 	}
-	n := lenRaw.Int()
-	for i := 0; i < n; i++ {
-		raw, lErr := g.Redis().Do(ctx, "LINDEX", listKey, i)
+	for i := int64(0); i < n; i++ {
+		raw, lErr := ucgCache.ListIndex(ctx, listKey, i)
 		if lErr != nil {
 			return lErr
 		}
 		var msg ChatMessage
-		if uErr := json.Unmarshal([]byte(raw.String()), &msg); uErr != nil {
+		if uErr := json.Unmarshal([]byte(raw), &msg); uErr != nil {
 			continue
 		}
 		if msg.ID != msgID {
@@ -134,8 +134,7 @@ func syncChatAuditToRedis(ctx context.Context, convID, msgID uint64, auditStatus
 		if mErr != nil {
 			return mErr
 		}
-		_, err = g.Redis().Do(ctx, "LSET", listKey, i, string(updated))
-		return err
+		return ucgCache.ListSet(ctx, listKey, i, string(updated))
 	}
 	return nil
 }

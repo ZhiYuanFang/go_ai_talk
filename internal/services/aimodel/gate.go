@@ -3,69 +3,65 @@ package aimodel
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
-	"github.com/gogf/gf/v2/frame/g"
+	"hello/internal/platform/cachekit"
 )
 
-const (
-	gateWaitingKeyFmt  = "ai:llm:gate:%s:waiting"
-	gateInflightKeyFmt = "ai:llm:gate:%s:inflight"
-	gateWaitingTTL     = 300
-)
+const gateWaitingTTL = 300
+
+var gateCache = cachekit.Default()
 
 // Acquire 在调用上游前获取 model 闸门槽位；队列满返回 ErrQueueFull。
-// release MUST 在 defer 中调用，覆盖整段上游 HTTP/流式生命周期。
 func Acquire(ctx context.Context, profile Profile) (release func(), err error) {
 	normalizeProfile(&profile)
 	model := NormalizeModel(profile.Model)
 	if model == "" {
 		return func() {}, fmt.Errorf("aimodel: model 为空")
 	}
-	waitKey := fmt.Sprintf(gateWaitingKeyFmt, model)
-	inflightKey := fmt.Sprintf(gateInflightKeyFmt, model)
+	waitKey := cachekit.AILLMGateWaitingKey(model)
+	inflightKey := cachekit.AILLMGateInflightKey(model)
 	maxWait := profile.MaxWaiters
 	maxInflight := profile.MaxInFlight
 	if maxWait <= 0 {
-		// maxWaiters=0 表示不允许排队，仅尝试立即抢槽。
 		maxWait = 0
 	}
 
 	joined := false
 	defer func() {
 		if err != nil && joined {
-			_, _ = g.Redis().Do(ctx, "DECR", waitKey)
+			_, _ = gateCache.Decr(ctx, waitKey)
 		}
 	}()
 
 	if maxWait > 0 {
-		n, rErr := g.Redis().Do(ctx, "GET", waitKey)
+		waiting, rErr := gateInt(ctx, waitKey)
 		if rErr != nil {
 			return nil, rErr
 		}
-		if n.Int() >= maxWait {
+		if waiting >= maxWait {
 			return nil, NewQueueFullError()
 		}
-		wn, wErr := g.Redis().Do(ctx, "INCR", waitKey)
+		wn, wErr := gateCache.Incr(ctx, waitKey)
 		if wErr != nil {
 			return nil, wErr
 		}
-		if wn.Int() == 1 {
-			_, _ = g.Redis().Do(ctx, "EXPIRE", waitKey, gateWaitingTTL)
+		if wn == 1 {
+			_ = gateCache.Expire(ctx, waitKey, gateWaitingTTL*time.Second)
 		}
-		if wn.Int() > maxWait {
-			_, _ = g.Redis().Do(ctx, "DECR", waitKey)
+		if int(wn) > maxWait {
+			_, _ = gateCache.Decr(ctx, waitKey)
 			return nil, NewQueueFullError()
 		}
 		joined = true
 	} else {
-		// 无缓冲池：当前 inflight 已满则立即拒绝。
-		in, rErr := g.Redis().Do(ctx, "GET", inflightKey)
+		inflight, rErr := gateInt(ctx, inflightKey)
 		if rErr != nil {
 			return nil, rErr
 		}
-		if in.Int() >= maxInflight {
+		if inflight >= maxInflight {
 			return nil, NewQueueFullError()
 		}
 	}
@@ -74,7 +70,7 @@ func Acquire(ctx context.Context, profile Profile) (release func(), err error) {
 	if ttl <= 0 {
 		ttl = 120
 	}
-	ttl += 30 // 持槽 TTL 兜底，防止进程崩溃泄漏
+	ttl += 30
 
 	for {
 		if err := ctx.Err(); err != nil {
@@ -86,14 +82,14 @@ func Acquire(ctx context.Context, profile Profile) (release func(), err error) {
 		}
 		if got {
 			if joined {
-				_, _ = g.Redis().Do(ctx, "DECR", waitKey)
+				_, _ = gateCache.Decr(ctx, waitKey)
 				joined = false
 			}
 			return func() {
 				releaseCtx := context.Background()
-				v, _ := g.Redis().Do(releaseCtx, "GET", inflightKey)
-				if v.Int() > 0 {
-					_, _ = g.Redis().Do(releaseCtx, "DECR", inflightKey)
+				n, _ := gateInt(releaseCtx, inflightKey)
+				if n > 0 {
+					_, _ = gateCache.Decr(releaseCtx, inflightKey)
 				}
 			}, nil
 		}
@@ -103,6 +99,18 @@ func Acquire(ctx context.Context, profile Profile) (release func(), err error) {
 		case <-time.After(200 * time.Millisecond):
 		}
 	}
+}
+
+func gateInt(ctx context.Context, key string) (int, error) {
+	raw, ok, err := gateCache.Get(ctx, key)
+	if err != nil {
+		return 0, err
+	}
+	if !ok {
+		return 0, nil
+	}
+	n, _ := strconv.Atoi(strings.TrimSpace(raw))
+	return n, nil
 }
 
 func tryAcquireInflight(ctx context.Context, inflightKey string, maxInflight, ttlSec int) (bool, error) {
@@ -115,16 +123,16 @@ redis.call('INCR', KEYS[1])
 redis.call('EXPIRE', KEYS[1], tonumber(ARGV[2]))
 return 1
 `
-	res, err := g.Redis().Do(ctx, "EVAL", script, 1, inflightKey, maxInflight, ttlSec)
+	ret, err := gateCache.Eval(ctx, script, []string{inflightKey}, []string{strconv.Itoa(maxInflight), strconv.Itoa(ttlSec)})
 	if err != nil {
 		return false, err
 	}
-	return res.Int() == 1, nil
+	return strings.TrimSpace(ret) == "1", nil
 }
 
 // GateKeyForModel 返回规范化 model 的 inflight 键（可观测用）。
 func GateKeyForModel(model string) string {
-	return fmt.Sprintf(gateInflightKeyFmt, NormalizeModel(model))
+	return cachekit.AILLMGateInflightKey(NormalizeModel(model))
 }
 
 // ProviderKeyEnv 返回 provider 对应的环境变量名（仅用于错误提示）。

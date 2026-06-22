@@ -2,20 +2,17 @@ package ucg
 
 import (
 	"context"
-	"strconv"
 	"strings"
 	"time"
 
+	"hello/internal/platform/cachekit"
 	"hello/internal/services/gatewayapp"
 
-	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/net/ghttp"
+	"github.com/gogf/gf/v2/os/glog"
 )
 
-const (
-	redisIpLocationThrottlePrefix = "ucg:ip_location:throttle:"
-	ipLocationThrottleTTL         = time.Hour
-)
+const ipLocationThrottleTTL = time.Hour
 
 // ClientIPFromRequest 读取网关注入的真实客户端 IP。
 func ClientIPFromRequest(r *ghttp.Request) string {
@@ -35,16 +32,16 @@ func MaybeUpdateWxIpLocation(ctx context.Context, wxID int64, clientIP string) (
 		display, err := loadWxIpLocation(ctx, wxID)
 		return display, err
 	}
-	throttleKey := redisIpLocationThrottlePrefix + strconv.FormatInt(wxID, 10)
-	throttled, err := g.Redis().Do(ctx, "EXISTS", throttleKey)
-	if err == nil && throttled.Int() > 0 {
+	throttleKey := cachekit.UCGIPLocationThrottleKey(wxID)
+	throttled, err := ucgCache.Exists(ctx, throttleKey)
+	if err == nil && throttled {
 		return loadWxIpLocation(ctx, wxID)
 	}
 	if err := Device().UpdateIpLocation(ctx, wxID, location); err != nil {
-		g.Log().Warningf(ctx, "[ucg-ip-location] 更新 wx IP 属地失败 wxId=%d err=%v", wxID, err)
+		glog.Warningf(ctx, "[ucg-ip-location] 更新 wx IP 属地失败 wxId=%d err=%v", wxID, err)
 		return loadWxIpLocation(ctx, wxID)
 	}
-	_, _ = g.Redis().Do(ctx, "SET", throttleKey, "1", "EX", int(ipLocationThrottleTTL.Seconds()))
+	_ = ucgCache.SetEX(ctx, throttleKey, "1", ipLocationThrottleTTL)
 	return location, nil
 }
 

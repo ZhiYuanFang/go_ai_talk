@@ -27,7 +27,7 @@ type cacheRepo struct {
 
 func newCacheRepo() *cacheRepo {
 	return &cacheRepo{
-		cache: cachekit.WithObserver(cachekit.NewRedisCache(), cachekit.LoggingObserver{}),
+		cache: cachekit.Default(),
 	}
 }
 

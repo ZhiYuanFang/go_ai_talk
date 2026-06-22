@@ -3,9 +3,11 @@ package ucg
 import (
 	"context"
 	"errors"
-	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
+	"hello/internal/platform/cachekit"
 	"hello/internal/services/contracts"
 
 	"github.com/gogf/gf/v2/frame/g"
@@ -13,9 +15,10 @@ import (
 
 const (
 	ucgQuotaDefaultSingletonID = 1
-	ucgQuotaUsageKeyPrefix     = "ai:usage:"
 	ucgQuotaUsageTTLSeconds    = 90 * 24 * 3600
 )
+
+var ucgQuotaCache = cachekit.Default()
 
 var ucgShanghaiLoc *time.Location
 
@@ -33,7 +36,7 @@ func ucgQuotaMonthBucket() string {
 }
 
 func polishUsageRedisKey(wxID int64) string {
-	return fmt.Sprintf("%s%s:%d:%s", ucgQuotaUsageKeyPrefix, contracts.AIQuotaPolish, wxID, ucgQuotaMonthBucket())
+	return cachekit.AIQuotaUsageKey(string(contracts.AIQuotaPolish), wxID, ucgQuotaMonthBucket())
 }
 
 func validateWxIDForPolish(wxID int64) error {
@@ -102,18 +105,19 @@ func effectivePolishLimit(ctx context.Context, wxID int64) (int, error) {
 
 func readPolishUsageCount(ctx context.Context, wxID int64) (int, error) {
 	key := polishUsageRedisKey(wxID)
-	v, err := g.Redis().Do(ctx, "GET", key)
+	v, ok, err := ucgQuotaCache.Get(ctx, key)
 	if err != nil {
 		return 0, err
 	}
-	if v.IsNil() || v.IsEmpty() {
+	if !ok {
 		return 0, nil
 	}
-	return v.Int(), nil
+	n, _ := strconv.Atoi(strings.TrimSpace(v))
+	return n, nil
 }
 
 func touchPolishUsageKeyTTL(ctx context.Context, key string) {
-	_, _ = g.Redis().Do(ctx, "EXPIRE", key, ucgQuotaUsageTTLSeconds)
+	_ = ucgQuotaCache.Expire(ctx, key, ucgQuotaUsageTTLSeconds*time.Second)
 }
 
 // CheckPolishAIQuota 润笔预检，不修改用量。
@@ -146,14 +150,14 @@ func ConsumePolishAIQuota(ctx context.Context, wxID int64) (contracts.AIQuotaSna
 		return contracts.AIQuotaSnapshot{}, err
 	}
 	key := polishUsageRedisKey(wxID)
-	n, err := g.Redis().Do(ctx, "INCR", key)
+	n, err := ucgQuotaCache.Incr(ctx, key)
 	if err != nil {
 		return contracts.AIQuotaSnapshot{}, err
 	}
 	touchPolishUsageKeyTTL(ctx, key)
-	used := n.Int()
+	used := int(n)
 	if used > limit {
-		_, _ = g.Redis().Do(ctx, "DECR", key)
+		_, _ = ucgQuotaCache.Decr(ctx, key)
 		return contracts.AIQuotaSnapshot{Used: limit, Limit: limit, Allowed: false}, contracts.ErrAIQuotaExhausted
 	}
 	return contracts.AIQuotaSnapshot{Used: used, Limit: limit, Allowed: true}, nil

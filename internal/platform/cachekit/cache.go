@@ -14,13 +14,31 @@ type Cache interface {
 	Ping(ctx context.Context) error
 	Get(ctx context.Context, key string) (string, bool, error)
 	MGet(ctx context.Context, keys []string) (map[string]string, error)
+	Set(ctx context.Context, key, value string) error
 	SetEX(ctx context.Context, key, value string, ttl time.Duration) error
 	SetNXEX(ctx context.Context, key, value string, ttl time.Duration) (bool, error)
 	Exists(ctx context.Context, key string) (bool, error)
 	Del(ctx context.Context, key string) error
 	Incr(ctx context.Context, key string) (int64, error)
+	Decr(ctx context.Context, key string) (int64, error)
 	IncrBy(ctx context.Context, key string, delta int64) (int64, error)
 	Expire(ctx context.Context, key string, ttl time.Duration) error
+	TTL(ctx context.Context, key string) (int, error)
+	Persist(ctx context.Context, key string) error
+	HashIncrBy(ctx context.Context, key, field string, delta int64) (int64, error)
+	HashSet(ctx context.Context, key, field, value string) error
+	HashGet(ctx context.Context, key, field string) (string, bool, error)
+	HashGetAll(ctx context.Context, key string) (map[string]string, error)
+	ListPush(ctx context.Context, key, value string) error
+	ListLen(ctx context.Context, key string) (int64, error)
+	ListRange(ctx context.Context, key string, start, end int64) ([]string, error)
+	ListIndex(ctx context.Context, key string, index int64) (string, error)
+	ListSet(ctx context.Context, key string, index int64, value string) error
+	SetAdd(ctx context.Context, key string, members ...string) error
+	SetIsMember(ctx context.Context, key, member string) (bool, error)
+	SetMembers(ctx context.Context, key string) ([]string, error)
+	SetRemove(ctx context.Context, key string, members ...string) error
+	SortedSetAdd(ctx context.Context, key string, score float64, member string) error
 	// Eval 执行 Lua 脚本，用于跨键原子补丁更新。
 	Eval(ctx context.Context, script string, keys []string, args []string) (string, error)
 }

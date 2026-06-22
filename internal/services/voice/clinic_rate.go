@@ -2,29 +2,28 @@ package voice
 
 import (
 	"context"
-	"fmt"
+	"strconv"
+	"time"
 
-	"github.com/gogf/gf/v2/frame/g"
+	"hello/internal/platform/cachekit"
 )
 
-func clinicRateRedisKey(wxID int64) string {
-	return fmt.Sprintf("%s%d", clinicRateKeyPrefix, wxID)
-}
-
 // checkClinicRateLimit 固定窗口限流检查（只读 GET，不 INCR）；超限返回 CodeClinicRateLimited（42901）。
-// 限流计数仅在 answer_done 成功后由 recordClinicRateLimitOnSuccess 递增；cancel/supersede 不计入。
 func checkClinicRateLimit(ctx context.Context, wxID int64, cfg AIClinicConfig) error {
 	window := cfg.RateLimitWindowSeconds
 	maxReq := cfg.RateLimitMaxRequests
 	if window <= 0 || maxReq <= 0 {
 		return nil
 	}
-	key := clinicRateRedisKey(wxID)
-	n, err := g.Redis().Do(ctx, "GET", key)
+	key := cachekit.VoiceClinicRateKey(wxID)
+	raw, ok, err := clinicCache.Get(ctx, key)
 	if err != nil {
 		return err
 	}
-	count := n.Int()
+	count := 0
+	if ok {
+		count, _ = strconv.Atoi(raw)
+	}
 	if count >= maxReq {
 		return &VoiceAIQuotaError{Code: CodeClinicRateLimited, Message: "请求过于频繁，请稍后再试"}
 	}
@@ -38,14 +37,13 @@ func recordClinicRateLimitOnSuccess(ctx context.Context, wxID int64, cfg AIClini
 	if window <= 0 || maxReq <= 0 {
 		return nil
 	}
-	key := clinicRateRedisKey(wxID)
-	n, err := g.Redis().Do(ctx, "INCR", key)
+	key := cachekit.VoiceClinicRateKey(wxID)
+	count, err := clinicCache.Incr(ctx, key)
 	if err != nil {
 		return err
 	}
-	count := n.Int()
 	if count == 1 {
-		_, _ = g.Redis().Do(ctx, "EXPIRE", key, window)
+		_ = clinicCache.Expire(ctx, key, time.Duration(window)*time.Second)
 	}
 	return nil
 }

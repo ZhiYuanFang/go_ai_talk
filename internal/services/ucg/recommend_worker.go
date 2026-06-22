@@ -56,7 +56,7 @@ func LoadRecommendConfig(ctx context.Context) RecommendConfig {
 		cfg.HotWindowHours = cfg.TauHours
 	}
 	if cfg.HotScanPageSize <= 0 {
-		cfg.HotScanPageSize = 200
+		cfg.HotScanPageSize = 20
 	}
 	if v := strings.TrimSpace(os.Getenv(ucgRecommendHotScanIntervalEnv)); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
@@ -123,6 +123,8 @@ func isPostInRecommendHotZone(ctx context.Context, postID uint64) (bool, error) 
 }
 
 // RecomputeRecommendScore 读库重算单帖 score 并 UPSERT；非 published 或帖不存在时静默跳过。
+// 重算推荐分，包括热区互动由 reconciler 批量收敛；冷区保留 MQ 重算以支持翻红。
+// ⚠️ 调用方必须自行保证冷热区语义：
 func RecomputeRecommendScore(ctx context.Context, postID uint64) error {
 	if postID == 0 {
 		return nil
@@ -149,6 +151,9 @@ func RecomputeRecommendScore(ctx context.Context, postID uint64) error {
 		dao.UcgPostRecommend.Columns().Score:      score,
 		dao.UcgPostRecommend.Columns().ComputedAt: now.Unix(),
 	}).Save()
+
+	// todo: 写入redis
+
 	return err
 }
 

@@ -6,29 +6,28 @@ import (
 	"strconv"
 	"strings"
 
+	"hello/internal/platform/cachekit"
+
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/glog"
 )
 
-const (
-	// RedisKeyAppVersionLatestCache 与 gateway 版本检查缓存键一致，写库后须删除以便立即读到新行。
-	RedisKeyAppVersionLatestCache = "gw:app:version:latest"
-)
+var versionCache = cachekit.Default()
 
 // AppVersionLatestCacheKey 按对外基址或 APP 库名区分 prod/test。
 // 注意：test 卷将 /apk/ai_talk_test 挂载到容器内 /apk/ai_talk，不可用 ApkStorageDir 区分环境。
 func AppVersionLatestCacheKey(ctx context.Context) string {
 	if base := strings.TrimSpace(PublicBaseURL(ctx)); base != "" {
-		return RedisKeyAppVersionLatestCache + ":" + base
+		return cachekit.GatewayAppVersionLatestKey(base)
 	}
 	if link := strings.TrimSpace(os.Getenv("APP_DB_LINK")); link != "" {
 		if i := strings.LastIndex(link, "/"); i >= 0 && i < len(link)-1 {
 			if dbName := strings.TrimSpace(link[i+1:]); dbName != "" {
-				return RedisKeyAppVersionLatestCache + ":" + dbName
+				return cachekit.GatewayAppVersionLatestKey(dbName)
 			}
 		}
 	}
-	return RedisKeyAppVersionLatestCache
+	return cachekit.GatewayAppVersionLatestBaseKey()
 }
 
 // PublicBaseURL 对外访问 gateway-app 的基址（用于拼接 APK 绝对下载 URL），须含 scheme，建议不含末尾斜杠。
@@ -76,13 +75,13 @@ func ApkMaxBytes(ctx context.Context) int64 {
 func InvalidateAppVersionLatestCache(ctx context.Context) {
 	keys := []string{
 		AppVersionLatestCacheKey(ctx),
-		RedisKeyAppVersionLatestCache,
+		cachekit.GatewayAppVersionLatestBaseKey(),
 	}
 	if dir := strings.TrimSpace(ApkStorageDir(ctx)); dir != "" {
-		keys = append(keys, RedisKeyAppVersionLatestCache+":"+dir)
+		keys = append(keys, cachekit.GatewayAppVersionLatestKey(dir))
 	}
 	for _, key := range keys {
-		if _, err := g.Redis().Do(ctx, "DEL", key); err != nil {
+		if err := versionCache.Del(ctx, key); err != nil {
 			glog.Warningf(ctx, "[gateway-app-version-admin] 删除版本缓存失败 key=%s err=%v", key, err)
 		}
 	}

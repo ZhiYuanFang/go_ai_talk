@@ -126,8 +126,11 @@ jobs:
           # 根据 build_scope 字符串解析待构建服务 id 列表（写入数组 service_ids）
           parse_build_scope() {
             local scope="$1"
+            # 没有用local声明 service_ids，因为需要在函数外部使用这个数组
             service_ids=()
             if [[ -z "${scope}" ]]; then
+              # build_scope 为空表示全量构建
+              # 直接将 ALL_SERVICES 全量赋值给 service_ids
               service_ids=("${ALL_SERVICES[@]}")
               return 0
             fi
@@ -136,7 +139,9 @@ jobs:
             IFS=',' read -ra parts <<< "${scope}"
             for part in "${parts[@]}"; do
               part="$(echo "${part}" | xargs)"
+              # 跳过空部分（如 ",," 或首尾逗号导致的空项）
               [[ -z "${part}" ]] && continue
+              # 解析服务别名，得到 matrix id（与 ACR 仓库名一致）
               resolved="$(resolve_service_alias "${part}")"
               if [[ "${resolved}" == "__all__" ]]; then
                 service_ids=("${ALL_SERVICES[@]}")
@@ -194,7 +199,10 @@ jobs:
             primary_tag="${tag_raw}"
             build_scope=""
             if [[ "${tag_raw}" == *+* ]]; then
+              # Git tag 中直接带构建范围（不推荐，建议仅 tag base tag，构建范围通过 workflow_dispatch 输入），如 v1.0.0-rc.2+ucg,gateway
+              # primary_tag 取 + 前部分（如 v1.0.0-rc.2）
               primary_tag="${tag_raw%%+*}"
+              # build_scope 取 + 后部分（逗号分隔服务别名，如 ucg,gateway；留空=全量
               build_scope="${tag_raw#*+}"
             fi
             deploy_env="$(resolve_env_from_tag "${primary_tag}")"
@@ -239,7 +247,7 @@ jobs:
           DEPLOY_ENV: ${{ needs.resolve-env.outputs.deploy_env }}
           PRIMARY_TAG: ${{ needs.resolve-env.outputs.primary_tag }}
           BUILD_SCOPE: ${{ needs.resolve-env.outputs.build_scope }}
-          REGISTRY_PULL: ${{ secrets.REGISTRY }}
+          REGISTRY_PULL: ${{ secrets.REGISTRY }} # 服务器 pull 地址（可含 -vpc 域名）；workflow 从这个地址自动推导 CI push 公网地址
           ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
           ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
         run: |

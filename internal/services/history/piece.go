@@ -10,12 +10,14 @@ import (
 
 	"hello/internal/dao"
 	"hello/internal/model/entity"
+	"hello/internal/platform/cachekit"
 
-	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/glog"
 )
 
 const pieceListCacheTTL = 60 * time.Second
+
+var pieceCache = cachekit.Default()
 
 // ListHistoryPiece 按设备、事件与时间区间查询历史记录（startTime/endTime 为 Unix 秒，与库内 BIGINT 一致）。
 func ListHistoryPiece(ctx context.Context, deviceNo string, eventID int64, startTimeUnixSec, endTimeUnixSec int64) ([]entity.History, error) {
@@ -24,14 +26,11 @@ func ListHistoryPiece(ctx context.Context, deviceNo string, eventID int64, start
 		return nil, fmt.Errorf("deviceNo、eventId、startTime、endTime 均不能为空且须为有效 Unix 秒")
 	}
 	ver := pieceCacheEpoch(ctx, deviceNo)
-	cacheKey := pieceCacheKey(deviceNo, eventID, startTimeUnixSec, endTimeUnixSec, ver)
-	if raw, err := g.Redis().Do(ctx, "GET", cacheKey); err == nil && raw != nil {
-		s := strings.TrimSpace(raw.String())
-		if s != "" {
-			var cached []entity.History
-			if err := json.Unmarshal([]byte(s), &cached); err == nil {
-				return cached, nil
-			}
+	cacheKey := cachekit.HistoryPieceDataKey(deviceNo, eventID, startTimeUnixSec, endTimeUnixSec, ver)
+	if raw, ok, err := pieceCache.Get(ctx, cacheKey); err == nil && ok && raw != "" {
+		var cached []entity.History
+		if err := json.Unmarshal([]byte(raw), &cached); err == nil {
+			return cached, nil
 		}
 	}
 	stCol := dao.History.Columns().StartTime
@@ -50,7 +49,7 @@ func ListHistoryPiece(ctx context.Context, deviceNo string, eventID int64, start
 		out = append(out, historyRowToEntity(row))
 	}
 	if blob, err := json.Marshal(out); err == nil {
-		if _, err2 := g.Redis().Do(ctx, "SET", cacheKey, string(blob), "EX", int(pieceListCacheTTL.Seconds())); err2 != nil {
+		if err2 := pieceCache.SetEX(ctx, cacheKey, string(blob), pieceListCacheTTL); err2 != nil {
 			glog.Warningf(ctx, "[history-piece] 写缓存失败 key=%s err=%v", cacheKey, err2)
 		}
 	}
@@ -58,11 +57,11 @@ func ListHistoryPiece(ctx context.Context, deviceNo string, eventID int64, start
 }
 
 func pieceCacheEpoch(ctx context.Context, deviceNo string) int64 {
-	key := redisKeyPieceVerPrefix + deviceNo
-	raw, err := g.Redis().Do(ctx, "GET", key)
-	if err != nil || raw == nil {
+	key := cachekit.HistoryPieceVerKey(deviceNo)
+	raw, ok, err := pieceCache.Get(ctx, key)
+	if err != nil || !ok {
 		return 0
 	}
-	n, _ := strconv.ParseInt(strings.TrimSpace(raw.String()), 10, 64)
+	n, _ := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
 	return n
 }

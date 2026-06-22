@@ -90,7 +90,9 @@ func tickRecommendHotReconciler(ctx context.Context) error {
 	}
 
 	if len(rows) < pageSize {
-		return saveHotScanCursor(ctx, 0, state.RoundHotCutoff)
+		// ✅ 推进热区窗口
+		newCutoff := time.Now().Unix() - int64(cfg.HotWindowHours*3600)
+		return saveHotScanCursor(ctx, 0, newCutoff)
 	}
 	return saveHotScanCursor(ctx, maxID, state.RoundHotCutoff)
 }

@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"time"
 
 	v1 "hello/api/v1"
 	"hello/internal/dao"
 	"hello/internal/model/entity"
+	"hello/internal/platform/cachekit"
 	"hello/internal/services/gatewayapp"
 
 	"github.com/gogf/gf/v2/encoding/gjson"
@@ -264,12 +266,10 @@ func buildVersionRes(current string, row entity.AppVersion) *v1.GatewayAppVersio
 // loadLatestAppVersionRow 读取最新版本行；失败或无可用版本时返回 ok=false，由调用方决定降级语义。
 func loadLatestAppVersionRow(ctx context.Context) (row entity.AppVersion, ok bool) {
 	cacheKey := gatewayapp.AppVersionLatestCacheKey(ctx)
-	if raw, err := g.Redis().Do(ctx, "GET", cacheKey); err == nil && raw != nil {
-		s := strings.TrimSpace(raw.String())
-		if s != "" {
-			if err := json.Unmarshal([]byte(s), &row); err == nil && strings.TrimSpace(row.LatestVersion) != "" {
-				return row, true
-			}
+	cache := cachekit.Default()
+	if raw, hit, err := cache.Get(ctx, cacheKey); err == nil && hit && raw != "" {
+		if err := json.Unmarshal([]byte(raw), &row); err == nil && strings.TrimSpace(row.LatestVersion) != "" {
+			return row, true
 		}
 	}
 	one, err := dao.AppVersion.Ctx(ctx).OrderDesc(dao.AppVersion.Columns().Id).Limit(1).One()
@@ -290,7 +290,7 @@ func loadLatestAppVersionRow(ctx context.Context) (row entity.AppVersion, ok boo
 		return entity.AppVersion{}, false
 	}
 	if blob, err := json.Marshal(row); err == nil {
-		_, _ = g.Redis().Do(ctx, "SET", cacheKey, string(blob), "EX", 60)
+		_ = cache.SetEX(ctx, cacheKey, string(blob), 60*time.Second)
 	}
 	return row, true
 }

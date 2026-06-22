@@ -3,12 +3,11 @@ package runtimecheck
 import (
 	"context"
 	"fmt"
+	"hello/internal/platform/cachekit"
+	"hello/internal/platform/eventkit"
 	"os"
 	"runtime/debug"
 	"strings"
-
-	"hello/internal/platform/cachekit"
-	"hello/internal/platform/eventkit"
 
 	"github.com/gogf/gf/v2/os/glog"
 )
@@ -28,7 +27,7 @@ type DependencyOptions struct {
 // CheckDependencies 在服务启动前执行关键依赖探测。
 // Redis 始终 fail-fast；RabbitMQ 是否阻断启动由 opts.RequireRabbitMQ 决定。
 func CheckDependencies(ctx context.Context, opts DependencyOptions) error {
-	cache := cachekit.WithObserver(cachekit.NewRedisCache(), cachekit.LoggingObserver{})
+	cache := cachekit.Default()
 	if err := pingRedisSafe(ctx, cache); err != nil {
 		return fmt.Errorf("redis dependency check failed: %w", err)
 	}

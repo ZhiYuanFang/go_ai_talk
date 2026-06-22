@@ -2,23 +2,19 @@ package history
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"strings"
 
 	"hello/internal/model/entity"
+	"hello/internal/platform/cachekit"
+	"hello/internal/platform/redismsgkit"
 
-	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/glog"
 )
 
-const (
-	// redisChannelAppHistoryNotify App 网关订阅的 Redis Pub/Sub 频道名。
-	redisChannelAppHistoryNotify = "app:history:notify"
-	redisKeyPieceVerPrefix       = "history:piece:ver:"
-	redisKeyPieceDataPrefix      = "history:piece:data:"
+var (
+	historyRealtimeCache = cachekit.Default()
+	historyMsgPublisher  = redismsgkit.DefaultPublisher()
 )
 
 // bumpPieceCacheEpoch 在 history 变更后递增设备维度版本号，使旧 piece 缓存自然失效。
@@ -27,8 +23,8 @@ func bumpPieceCacheEpoch(ctx context.Context, deviceNo string) {
 	if deviceNo == "" {
 		return
 	}
-	key := redisKeyPieceVerPrefix + deviceNo
-	if _, err := g.Redis().Do(ctx, "INCR", key); err != nil {
+	key := cachekit.HistoryPieceVerKey(deviceNo)
+	if _, err := historyRealtimeCache.Incr(ctx, key); err != nil {
 		glog.Warningf(ctx, "[history-realtime] piece 版本递增失败 deviceNo=%s err=%v", deviceNo, err)
 	}
 }
@@ -49,8 +45,8 @@ func publishHistoryChange(ctx context.Context, deviceNo, action string, payload 
 		glog.Warningf(ctx, "[history-realtime] 序列化通知失败 err=%v", err)
 		return
 	}
-	if _, err := g.Redis().Do(ctx, "PUBLISH", redisChannelAppHistoryNotify, string(raw)); err != nil {
-		glog.Warningf(ctx, "[history-realtime] PUBLISH 失败 channel=%s err=%v", redisChannelAppHistoryNotify, err)
+	if err := historyMsgPublisher.Publish(ctx, redismsgkit.ChannelAppHistoryNotify, string(raw)); err != nil {
+		glog.Warningf(ctx, "[history-realtime] PUBLISH 失败 channel=%s err=%v", redismsgkit.ChannelAppHistoryNotify, err)
 	}
 }
 
@@ -103,9 +99,4 @@ func historyToNotifyPayload(ctx context.Context, h entity.History) map[string]in
 		payload["videoKey"] = h.VideoKey
 	}
 	return payload
-}
-
-func pieceCacheKey(deviceNo string, eventID int64, startTimeUnixSec, endTimeUnixSec, ver int64) string {
-	sum := sha256.Sum256([]byte(fmt.Sprintf("%s|%d|%d|%d|%d", deviceNo, eventID, startTimeUnixSec, endTimeUnixSec, ver)))
-	return redisKeyPieceDataPrefix + hex.EncodeToString(sum[:16])
 }

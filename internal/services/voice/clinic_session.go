@@ -3,12 +3,13 @@ package voice
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 	"time"
 
-	"github.com/gogf/gf/v2/frame/g"
+	"hello/internal/platform/cachekit"
 )
+
+var clinicCache = cachekit.Default()
 
 // clinicTurn 会话内单轮 Q&A（供多轮上下文，不含 thinking 全文）。
 type clinicTurn struct {
@@ -23,21 +24,17 @@ type clinicSession struct {
 	Turns           []clinicTurn `json:"turns"`
 }
 
-func clinicSessionRedisKey(wxID int64) string {
-	return fmt.Sprintf("%s%d", clinicSessionKeyPrefix, wxID)
-}
-
 func loadClinicSession(ctx context.Context, wxID int64) (clinicSession, bool, error) {
-	key := clinicSessionRedisKey(wxID)
-	v, err := g.Redis().Do(ctx, "GET", key)
+	key := cachekit.VoiceClinicSessionKey(wxID)
+	v, ok, err := clinicCache.Get(ctx, key)
 	if err != nil {
 		return clinicSession{}, false, err
 	}
-	if v.IsNil() || v.IsEmpty() {
+	if !ok || v == "" {
 		return clinicSession{}, false, nil
 	}
 	var sess clinicSession
-	if err := json.Unmarshal(v.Bytes(), &sess); err != nil {
+	if err := json.Unmarshal([]byte(v), &sess); err != nil {
 		return clinicSession{}, false, err
 	}
 	return sess, true, nil
@@ -45,24 +42,23 @@ func loadClinicSession(ctx context.Context, wxID int64) (clinicSession, bool, er
 
 // saveClinicSession 写回会话；已有 session 时 MUST NOT 刷新 EXPIRE（固定 TTL 非 sliding）。
 func saveClinicSession(ctx context.Context, wxID int64, sess clinicSession, ttlSeconds int, isNew bool) error {
-	key := clinicSessionRedisKey(wxID)
+	key := cachekit.VoiceClinicSessionKey(wxID)
 	raw, err := json.Marshal(sess)
 	if err != nil {
 		return err
 	}
 	if isNew {
-		_, err = g.Redis().Do(ctx, "SET", key, string(raw), "EX", ttlSeconds)
-		return err
+		return clinicCache.SetEX(ctx, key, string(raw), time.Duration(ttlSeconds)*time.Second)
 	}
 	// 非首问更新：保留原 TTL，不 sliding 续期（12h 固定窗口）。
-	ttlVal, _ := g.Redis().Do(ctx, "TTL", key)
-	remain := ttlVal.Int()
-	if remain > 0 {
-		_, err = g.Redis().Do(ctx, "SET", key, string(raw), "EX", remain)
-	} else {
-		_, err = g.Redis().Do(ctx, "SET", key, string(raw))
+	remain, err := clinicCache.TTL(ctx, key)
+	if err != nil {
+		return err
 	}
-	return err
+	if remain > 0 {
+		return clinicCache.SetEX(ctx, key, string(raw), time.Duration(remain)*time.Second)
+	}
+	return clinicCache.Set(ctx, key, string(raw))
 }
 
 func appendClinicTurn(ctx context.Context, wxID int64, cfg AIClinicConfig, deviceNo, question, answer string) error {
@@ -106,8 +102,6 @@ type SessionSyncTurn struct {
 }
 
 // SessionSyncPayload auth_ok 成功后立即下发的会话同步帧。
-// 时序：auth 校验通过 → auth_ok → session_sync（每次 WS 重连重复）；之后客户端方可 question。
-// expiresAt 为首问时刻 + 12h 固定 TTL（非 sliding 续期）；无 session 时 turns 为空、expiresAt 为 0。
 type SessionSyncPayload struct {
 	Type      string            `json:"type"`
 	Turns     []SessionSyncTurn `json:"turns"`

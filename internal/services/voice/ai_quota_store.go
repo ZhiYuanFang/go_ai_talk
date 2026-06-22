@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
+	"hello/internal/platform/cachekit"
 	"hello/internal/services/contracts"
 
 	"github.com/gogf/gf/v2/frame/g"
@@ -13,9 +16,10 @@ import (
 
 const (
 	aiQuotaDefaultSingletonID = 1
-	aiQuotaUsageKeyPrefix     = "ai:usage:"
 	aiQuotaUsageTTLSeconds    = 90 * 24 * 3600
 )
+
+var voiceQuotaCache = cachekit.Default()
 
 var shanghaiLoc *time.Location
 
@@ -33,7 +37,7 @@ func aiQuotaMonthBucket() string {
 }
 
 func aiQuotaUsageRedisKey(feature contracts.AIQuotaFeature, wxID int64) string {
-	return fmt.Sprintf("%s%s:%d:%s", aiQuotaUsageKeyPrefix, feature, wxID, aiQuotaMonthBucket())
+	return cachekit.AIQuotaUsageKey(string(feature), wxID, aiQuotaMonthBucket())
 }
 
 func validateVoiceQuotaFeature(feature contracts.AIQuotaFeature) error {
@@ -125,18 +129,19 @@ func effectiveVoiceLimitForFeature(ctx context.Context, wxID int64, feature cont
 
 func readVoiceUsageCount(ctx context.Context, feature contracts.AIQuotaFeature, wxID int64) (int, error) {
 	key := aiQuotaUsageRedisKey(feature, wxID)
-	v, err := g.Redis().Do(ctx, "GET", key)
+	v, ok, err := voiceQuotaCache.Get(ctx, key)
 	if err != nil {
 		return 0, err
 	}
-	if v.IsNil() || v.IsEmpty() {
+	if !ok {
 		return 0, nil
 	}
-	return v.Int(), nil
+	n, _ := strconv.Atoi(strings.TrimSpace(v))
+	return n, nil
 }
 
 func touchVoiceUsageKeyTTL(ctx context.Context, key string) {
-	_, _ = g.Redis().Do(ctx, "EXPIRE", key, aiQuotaUsageTTLSeconds)
+	_ = voiceQuotaCache.Expire(ctx, key, aiQuotaUsageTTLSeconds*time.Second)
 }
 
 // CheckVoiceAIQuotaStore 只读预检，不修改用量。
@@ -175,14 +180,14 @@ func ConsumeVoiceAIQuotaStore(ctx context.Context, wxID int64, feature contracts
 		return contracts.AIQuotaSnapshot{}, err
 	}
 	key := aiQuotaUsageRedisKey(feature, wxID)
-	n, err := g.Redis().Do(ctx, "INCR", key)
+	n, err := voiceQuotaCache.Incr(ctx, key)
 	if err != nil {
 		return contracts.AIQuotaSnapshot{}, err
 	}
 	touchVoiceUsageKeyTTL(ctx, key)
-	used := n.Int()
+	used := int(n)
 	if used > limit {
-		_, _ = g.Redis().Do(ctx, "DECR", key)
+		_, _ = voiceQuotaCache.Decr(ctx, key)
 		return contracts.AIQuotaSnapshot{Used: limit, Limit: limit, Allowed: false}, contracts.ErrAIQuotaExhausted
 	}
 	return contracts.AIQuotaSnapshot{Used: used, Limit: limit, Allowed: true}, nil

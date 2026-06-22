@@ -10,6 +10,8 @@ const (
 	DomainDevice  = "device"
 	DomainHistory = "history"
 	DomainGateway = "gateway"
+	DomainUCG     = "ucg"
+	DomainAI      = "ai"
 	DomainSystem  = "platform"
 )
 

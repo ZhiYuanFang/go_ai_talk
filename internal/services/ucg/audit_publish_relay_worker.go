@@ -34,6 +34,7 @@ func StartAuditPublishRelayWorker(ctx context.Context) {
 func relayOneAuditPublishOutbox(ctx context.Context) error {
 	cfg := LoadAuditPublishConfig(ctx)
 	var row auditPublishOutboxRow
+	// 查询 outbox 中 status 为 pending 或 failed 且 attempts 小于 MaxAttempts 的行
 	err := g.DB().Model(auditPublishOutboxTable).Ctx(ctx).
 		WhereIn("status", []string{auditPublishOutboxPending, auditPublishOutboxFailed}).
 		WhereLT("attempts", cfg.MaxAttempts).
