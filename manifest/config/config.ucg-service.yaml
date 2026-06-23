@@ -14,6 +14,9 @@ logger:
   level: "all"
   stdout: true
 
+database:
+  default:
+    link: "mysql:root:password@tcp(127.0.0.1:3306)/ai_voice_ucg_test"
 ucg:
   comments:
     listMax: 500

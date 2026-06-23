@@ -73,6 +73,9 @@ func DeleteOwnedMedia(ctx context.Context, wxID int64, objectKeys []string) (del
 			if delErr := bucket.DeleteObject(key); delErr != nil {
 				return deleted, skipped, gerror.WrapCode(gcode.CodeInternalError, delErr, "OSS 删除失败")
 			}
+			if thumbErr := deletePairedThumbObject(bucket, key); thumbErr != nil {
+				return deleted, skipped, thumbErr
+			}
 			continue
 		}
 
@@ -80,6 +83,9 @@ func DeleteOwnedMedia(ctx context.Context, wxID int64, objectKeys []string) (del
 		if newRefCount <= 0 {
 			if delErr := bucket.DeleteObject(key); delErr != nil {
 				return deleted, skipped, gerror.WrapCode(gcode.CodeInternalError, delErr, "OSS 删除失败")
+			}
+			if thumbErr := deletePairedThumbObject(bucket, key); thumbErr != nil {
+				return deleted, skipped, thumbErr
 			}
 			if delBlobErr := deleteMediaBlobRow(ctx, uint64(blob.Id)); delBlobErr != nil {
 				return deleted, skipped, delBlobErr

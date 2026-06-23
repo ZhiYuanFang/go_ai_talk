@@ -133,6 +133,11 @@ func RegisterMedia(ctx context.Context, wxID int64, req RegisterMediaRequest) (*
 	if err != nil {
 		return nil, err
 	}
+	if req.MediaKind == 1 {
+		if thumbErr := EnsureImageThumb(ctx, resultObjectKey); thumbErr != nil {
+			return nil, thumbErr
+		}
+	}
 	return &RegisterMediaResult{
 		ObjectKey: resultObjectKey,
 		CdnURL:    BuildCdnURL(resultObjectKey),

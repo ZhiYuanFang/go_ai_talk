@@ -61,7 +61,6 @@ func UploadEventLogoObject(ctx context.Context, ext string, body io.Reader, size
 }
 
 func putOSSObject(ctx context.Context, cfg OSSConfig, objectKey string, mediaKind int, ext string, body io.Reader) (string, string, error) {
-	_ = ctx
 	client, err := oss.New(cfg.Endpoint, cfg.AccessKeyID, cfg.AccessKeySecret)
 	if err != nil {
 		return "", "", gerror.WrapCode(gcode.CodeInternalError, err, "OSS 客户端初始化失败")
@@ -73,6 +72,11 @@ func putOSSObject(ctx context.Context, cfg OSSConfig, objectKey string, mediaKin
 	contentType := contentTypeForMedia(mediaKind, ext)
 	if err = bucket.PutObject(objectKey, body, oss.ContentType(contentType)); err != nil {
 		return "", "", gerror.WrapCode(gcode.CodeInternalError, err, "OSS 上传失败")
+	}
+	if mediaKind == 1 {
+		if thumbErr := EnsureImageThumb(ctx, objectKey); thumbErr != nil {
+			return "", "", thumbErr
+		}
 	}
 	cdnURL := cfg.CdnBaseURL + "/" + strings.TrimPrefix(objectKey, "/")
 	return objectKey, cdnURL, nil

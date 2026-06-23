@@ -3,9 +3,9 @@ package ucg
 import (
 	"context"
 	"strings"
-)
 
-const imageThumbProcess = "image/auto-orient,1/resize,m_lfit,w_200/quality,q_90/format,jpg"
+	"hello/internal/shared/mediacdn"
+)
 
 // BuildCdnURL 由 objectKey 拼装全分辨率 CDN URL。
 func BuildCdnURL(objectKey string) string {
@@ -17,13 +17,13 @@ func BuildCdnURL(objectKey string) string {
 	return cfg.CdnBaseURL + "/" + strings.TrimPrefix(key, "/")
 }
 
-// BuildImageThumbnailURL 由 objectKey 拼装服务端 OSS 缩略图 URL（仅图片）。
+// BuildImageThumbnailURL 由原图 objectKey 拼装物理缩略图 CDN URL（path 为 stem_thumb.ext，无 x-oss-process）。
 func BuildImageThumbnailURL(objectKey string) string {
-	cdn := BuildCdnURL(objectKey)
-	if cdn == "" {
+	thumbKey := mediacdn.ThumbObjectKey(objectKey)
+	if thumbKey == "" {
 		return ""
 	}
-	return appendOssProcess(cdn, imageThumbProcess)
+	return BuildCdnURL(thumbKey)
 }
 
 const videoSnapshotProcess = "video/snapshot,t_0"
