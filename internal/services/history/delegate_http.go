@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -53,15 +54,15 @@ func localHTTPDoJSONWithOpts(ctx context.Context, method, baseURL, path string, 
 		}
 		reqURL.RawQuery = q.Encode()
 	}
-	var bodyReader *strings.Reader
+	var reqBody io.Reader = http.NoBody
 	if body != nil {
 		raw, marshalErr := json.Marshal(body)
 		if marshalErr != nil {
 			return marshalErr
 		}
-		bodyReader = strings.NewReader(string(raw))
+		reqBody = strings.NewReader(string(raw))
 	}
-	req, err := http.NewRequestWithContext(ctx, method, reqURL.String(), bodyReader)
+	req, err := http.NewRequestWithContext(ctx, method, reqURL.String(), reqBody)
 	if err != nil {
 		return err
 	}

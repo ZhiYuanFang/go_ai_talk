@@ -172,6 +172,8 @@ services:
       TZ: Asia/Shanghai
       GF_GCFG_FILE: manifest/config/config.voice-service.yaml
       GATEWAY_APP_JWT_SECRET: "${GATEWAY_APP_JWT_SECRET:-}"
+      # internal 路由（ai-quota / text/chat）校验 X-Device-Gateway-Internal-Secret，须与 history/gateway-app 一致。
+      DEVICE_GATEWAY_INTERNAL_SECRET: "${DEVICE_GATEWAY_INTERNAL_SECRET:-gateway-internal-change-me}"
       VOICE_DB_LINK: "${VOICE_DB_LINK:-}"
       MYSQL_TCP_HOST: "${MYSQL_TCP_HOST:-}"
       VOICE_SERVICE_ADDR: ":9802"
