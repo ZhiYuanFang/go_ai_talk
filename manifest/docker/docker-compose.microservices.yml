@@ -142,6 +142,8 @@ services:
       # cmd/history-service 读取 HISTORY_DB_LINK；DSN 含多个「:」，compose 须整段加引号避免 YAML 截断。
       HISTORY_DB_LINK: "${HISTORY_DB_LINK:-}"
       MYSQL_TCP_HOST: "${MYSQL_TCP_HOST:-}"
+      # history 经 HTTP 委派 voice-service 文本对话，须携带与 gateway-app 一致的内部 secret。
+      DEVICE_GATEWAY_INTERNAL_SECRET: "${DEVICE_GATEWAY_INTERNAL_SECRET:-gateway-internal-change-me}"
       # history 容器内不得用 127.0.0.1 访问他域服务，须走 compose 服务名。
       VOICE_SERVICE_URL: "http://voice-service:9802"
       DEVICE_PROFILE_SERVICE_MODE: "remote"

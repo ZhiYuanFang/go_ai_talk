@@ -2,7 +2,6 @@ package controller
 
 import (
 	"context"
-	"errors"
 	"strings"
 
 	v1 "hello/api/v1"
@@ -18,27 +17,9 @@ import (
 	"github.com/gogf/gf/v2/net/ghttp"
 )
 
-// mapVoiceAIQuotaErr 将 voice 额度/登录错误转为 HTTP 业务码，供 history chat 等 HTTP 路径返回 40301/40302。
-func mapVoiceAIQuotaErr(err error) error {
-	if err == nil {
-		return nil
-	}
-	var qErr *voice.VoiceAIQuotaError
-	if errors.As(err, &qErr) && qErr != nil {
-		switch qErr.Code {
-		case contracts.CodeAINotLoggedIn:
-			return gerror.NewCode(contracts.GCodeAINotLoggedIn(), qErr.Message)
-		case contracts.CodeAIQuotaExhausted:
-			return gerror.NewCode(contracts.GCodeAIQuotaExhausted(), qErr.Message)
-		}
-	}
-	return err
-}
-
 // HistoryCtrl 设备历史 / 建议 / 生日 API。
 type HistoryCtrl struct {
-	Svc   contracts.DeviceHistoryContract
-	Voice contracts.VoiceContract
+	Svc contracts.DeviceHistoryContract
 }
 
 // canonicalEventNameForRow 有 eventId 时与事件主档 name 对齐写入 history，避免请求体携带别名/展示名落库。
@@ -63,8 +44,8 @@ func (c *HistoryCtrl) canonicalEventNameForRow(ctx context.Context, eventID int6
 }
 
 // NewHistoryCtrl 构造 HistoryCtrl。
-func NewHistoryCtrl(s contracts.DeviceHistoryContract, voice contracts.VoiceContract) *HistoryCtrl {
-	return &HistoryCtrl{Svc: s, Voice: voice}
+func NewHistoryCtrl(s contracts.DeviceHistoryContract) *HistoryCtrl {
+	return &HistoryCtrl{Svc: s}
 }
 
 // List 设备历史列表。
@@ -169,14 +150,13 @@ func (c *HistoryCtrl) Chat(ctx context.Context, req *v1.DeviceHistoryChatReq) (r
 	if transcript == "" {
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "transcript 不能为空")
 	}
-	chatCtx := ctx
+	wxID := int64(0)
 	if r := ghttp.RequestFromCtx(ctx); r != nil {
-		wxID := voice.ParseHeaderWxID(r.GetHeader(gatewayapp.HeaderInternalWxId))
-		chatCtx = voice.WithVoiceWxID(ctx, wxID)
+		wxID = voice.ParseHeaderWxID(r.GetHeader(gatewayapp.HeaderInternalWxId))
 	}
-	reply, err := c.Voice.TextChat(chatCtx, deviceNo, transcript)
+	reply, err := histsvc.DelegateTextChat(ctx, deviceNo, transcript, wxID)
 	if err != nil {
-		return nil, mapVoiceAIQuotaErr(err)
+		return nil, err
 	}
 	return &v1.DeviceHistoryChatRes{Reply: reply}, nil
 }

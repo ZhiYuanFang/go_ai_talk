@@ -2,7 +2,6 @@ package controller
 
 import (
 	history "hello/internal/services/history"
-	voice "hello/internal/services/voice"
 
 	"github.com/gogf/gf/v2/net/ghttp"
 )
@@ -11,7 +10,7 @@ import (
 func RegisterHistoryServiceHTTP(s *ghttp.Server) {
 	s.Use(ghttp.MiddlewareHandlerResponse)
 	s.Group("/", func(group *ghttp.RouterGroup) {
-		inner := NewHistoryCtrl(history.DeviceHistory(), voice.Voice())
+		inner := NewHistoryCtrl(history.DeviceHistory())
 		group.Bind(inner)
 		group.Bind(NewHistoryAdminCtrl(inner))
 	})

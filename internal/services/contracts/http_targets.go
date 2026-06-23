@@ -104,6 +104,11 @@ func (t HTTPTargets) VoiceSuggestDeletePath() string {
 	return "/voice/internal/api/suggest/delete"
 }
 
+// VoiceInternalTextChatPath 语音域内部文本对话（history-service HTTP 委派）。
+func (t HTTPTargets) VoiceInternalTextChatPath() string {
+	return "/voice/internal/api/text/chat"
+}
+
 // VoiceInternalQaListPath 语音域内部问答库列表（qa 表权威在 voice 库）。
 func (t HTTPTargets) VoiceInternalQaListPath() string {
 	return "/voice/internal/api/qa/list"

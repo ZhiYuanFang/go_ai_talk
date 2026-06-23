@@ -6,12 +6,17 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
+	"strconv"
 	"strings"
 	"time"
 
 	"hello/internal/model/entity"
 	"hello/internal/services/contracts"
+	"hello/internal/services/device"
+	"hello/internal/services/gatewayapp"
 
+	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/os/glog"
 )
 
@@ -22,7 +27,16 @@ type localHTTPEnvelope struct {
 	Data    json.RawMessage `json:"data"`
 }
 
+type delegateHTTPOptions struct {
+	headers map[string]string
+	timeout time.Duration
+}
+
 func localHTTPDoJSON(ctx context.Context, method, baseURL, path string, query map[string]string, body interface{}, out interface{}) error {
+	return localHTTPDoJSONWithOpts(ctx, method, baseURL, path, query, body, out, delegateHTTPOptions{})
+}
+
+func localHTTPDoJSONWithOpts(ctx context.Context, method, baseURL, path string, query map[string]string, body interface{}, out interface{}, opts delegateHTTPOptions) error {
 	if strings.TrimSpace(baseURL) == "" {
 		return fmt.Errorf("local delegate base url is empty for path %s", path)
 	}
@@ -39,22 +53,31 @@ func localHTTPDoJSON(ctx context.Context, method, baseURL, path string, query ma
 		}
 		reqURL.RawQuery = q.Encode()
 	}
-	var bodyReader strings.Reader
+	var bodyReader *strings.Reader
 	if body != nil {
 		raw, marshalErr := json.Marshal(body)
 		if marshalErr != nil {
 			return marshalErr
 		}
-		bodyReader = *strings.NewReader(string(raw))
+		bodyReader = strings.NewReader(string(raw))
 	}
-	req, err := http.NewRequestWithContext(ctx, method, reqURL.String(), &bodyReader)
+	req, err := http.NewRequestWithContext(ctx, method, reqURL.String(), bodyReader)
 	if err != nil {
 		return err
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	client := &http.Client{Timeout: 8 * time.Second}
+	for k, v := range opts.headers {
+		if strings.TrimSpace(k) != "" && strings.TrimSpace(v) != "" {
+			req.Header.Set(k, strings.TrimSpace(v))
+		}
+	}
+	timeout := opts.timeout
+	if timeout <= 0 {
+		timeout = 8 * time.Second
+	}
+	client := &http.Client{Timeout: timeout}
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
@@ -71,12 +94,48 @@ func localHTTPDoJSON(ctx context.Context, method, baseURL, path string, query ma
 		return fmt.Errorf("local delegate failed: %s", strings.TrimSpace(env.Message))
 	}
 	if env.Code != 0 {
-		return fmt.Errorf("local delegate business failed: %s", strings.TrimSpace(env.Message))
+		msg := strings.TrimSpace(env.Message)
+		if env.Code == contracts.CodeAINotLoggedIn {
+			return gerror.NewCode(contracts.GCodeAINotLoggedIn(), msg)
+		}
+		if env.Code == contracts.CodeAIQuotaExhausted {
+			return gerror.NewCode(contracts.GCodeAIQuotaExhausted(), msg)
+		}
+		return fmt.Errorf("local delegate business failed: %s", msg)
 	}
 	if out == nil || len(env.Data) == 0 || string(env.Data) == "null" {
 		return nil
 	}
 	return json.Unmarshal(env.Data, out)
+}
+
+// DelegateTextChat 经 voice-service internal HTTP 执行文本对话，禁止 history 直查 voice 库。
+func DelegateTextChat(ctx context.Context, deviceNo, transcript string, wxID int64) (string, error) {
+	secret := strings.TrimSpace(os.Getenv("DEVICE_GATEWAY_INTERNAL_SECRET"))
+	if secret == "" {
+		return "", fmt.Errorf("DEVICE_GATEWAY_INTERNAL_SECRET 未配置")
+	}
+	headers := map[string]string{
+		device.HeaderDeviceGatewayInternalSecret: secret,
+	}
+	if wxID > 0 {
+		headers[gatewayapp.HeaderInternalWxId] = strconv.FormatInt(wxID, 10)
+	}
+	t := contracts.ResolveHTTPTargets()
+	var resp struct {
+		Reply string `json:"reply"`
+	}
+	err := localHTTPDoJSONWithOpts(ctx, http.MethodPost, t.VoiceBaseURL, t.VoiceInternalTextChatPath(), nil, map[string]interface{}{
+		"deviceNo":   strings.TrimSpace(deviceNo),
+		"transcript": strings.TrimSpace(transcript),
+	}, &resp, delegateHTTPOptions{
+		headers: headers,
+		timeout: 30 * time.Second,
+	})
+	if err != nil {
+		return "", err
+	}
+	return resp.Reply, nil
 }
 
 func delegateListSuggest(ctx context.Context, deviceNo string) ([]entity.Suggest, error) {
