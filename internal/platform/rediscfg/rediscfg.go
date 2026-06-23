@@ -10,11 +10,16 @@ import (
 	"github.com/gogf/gf/v2/os/glog"
 )
 
+// DefaultAddressFromEnv 返回 Compose/.env 注入的 GF_REDIS_DEFAULT_ADDRESS。
+// manifest/config 已移除 redis 段；Publish（g.Redis）与 Subscribe（redismsgkit）须共用此来源。
+func DefaultAddressFromEnv() string {
+	return strings.TrimSpace(os.Getenv("GF_REDIS_DEFAULT_ADDRESS"))
+}
+
 // ApplyDefaultFromEnv 在任意 g.Redis() 之前，用 GF_REDIS_DEFAULT_ADDRESS 写入 gredis default 分组。
-// manifest/config 中不再保留 redis 段；Compose/.env 为唯一来源。
 // 多地址逗号分隔时 go-redis 走 Cluster 客户端；单地址为 standalone。
 func ApplyDefaultFromEnv(service string) {
-	addr := strings.TrimSpace(os.Getenv("GF_REDIS_DEFAULT_ADDRESS"))
+	addr := DefaultAddressFromEnv()
 	if addr == "" {
 		return
 	}

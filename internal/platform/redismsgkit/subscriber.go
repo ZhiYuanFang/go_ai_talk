@@ -5,7 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gogf/gf/v2/frame/g"
+	"hello/internal/platform/rediscfg"
+
 	"github.com/gogf/gf/v2/os/glog"
 	"github.com/redis/go-redis/v9"
 )
@@ -28,10 +29,10 @@ func RunSubscriber(ctx context.Context, channel string, handler MessageHandler, 
 	}
 	obs := &observedSubscriber{observer: observer}
 
-	// 从配置文件读 Redis 地址(cluster地址逗号分隔)eg. 10.0.0.1:6379,10.0.0.2:6379
-	addrStr := strings.TrimSpace(g.Cfg().MustGet(ctx, "redis.default.address").String())
+	// 与 rediscfg.ApplyDefaultFromEnv / g.Redis() 共用 GF_REDIS_DEFAULT_ADDRESS（yaml 已无 redis 段）。
+	addrStr := rediscfg.DefaultAddressFromEnv()
 	if addrStr == "" {
-		glog.Errorf(ctx, "[redismsgkit] redis.default.address 未配置，跳过订阅 channel=%s", channel)
+		glog.Errorf(ctx, "[redismsgkit] GF_REDIS_DEFAULT_ADDRESS 未配置，跳过订阅 channel=%s", channel)
 		return
 	}
 	addrs := strings.Split(addrStr, ",")
