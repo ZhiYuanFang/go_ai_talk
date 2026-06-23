@@ -499,31 +499,8 @@ func (s *VoiceService) handleUnifiedIntentAction(ctx context.Context, deviceNo, 
 		}
 		return fmt.Sprintf("好的，已记录%s开始", targetName), false, true, nil
 	case ActionTargetTypeEnd.String():
-		lastEvent, _ := DeviceHistory().GetLatestHistory(ctx, deviceNo)
-		if lastEvent.EventId == event.Id {
-			_, err = DeviceHistory().EndLatestHistoryIfMatch(ctx, deviceNo, event.Id, nowTime, normalizedTranscript)
-			if err != nil {
-				return "更新结束时间失败,请重试", false, true, err
-			}
-			return fmt.Sprintf("好的，已记录%s结束", targetName), false, true, nil
-		}
-		_, err = DeviceHistory().AddHistory(ctx, entity.History{
-			DeviceNo:  deviceNo,
-			EventId:   event.Id,
-			EventName: historyRowEventName(event, targetName),
-			EventUnit: historyRowEventUnit(event),
-			StartTime: nowTime,
-			EndTime:   nowTime,
-			Remark:    normalizedTranscript,
-		})
-		if err != nil {
-			return "记录事件失败,请重试", false, true, err
-		}
-		if lastEvent.EndTime == 0 && lastEvent.EventId > 0 {
-			_, _ = DeviceHistory().EndLatestHistoryIfMatch(ctx, deviceNo, lastEvent.EventId, nowTime, "")
-			return fmt.Sprintf("好的，已记录%s结束，%s自动结束", targetName, lastEvent.EventName), false, true, nil
-		}
-		return fmt.Sprintf("好的，已记录%s结束", targetName), false, true, nil
+		reply, err := applyVoiceEventEndHistory(ctx, deviceNo, event, targetName, normalizedTranscript, nowTime)
+		return reply, false, true, err
 	case ActionTargetTypeOne.String():
 		quantity := intent.Quantity
 		if quantity <= 0 {
@@ -612,46 +589,9 @@ func (s *VoiceService) handleActionRecord(ctx context.Context, deviceNo string, 
 			return "我听不懂你说的事件,请用具体的名称告诉我", false, false, errors.New("未识别事件")
 		}
 
-		// 判断最近一次事件是否是同一事件
-		lastEvent, _ := DeviceHistory().GetLatestHistory(ctx, deviceNo)
-		if lastEvent.EventId == event.Id {
-			// 是同一事件，则更新结束时间
-			_, err = DeviceHistory().EndLatestHistoryIfMatch(ctx, deviceNo, event.Id, nowTime, normalizedTranscript)
-			if err != nil {
-				return "更新结束时间失败,请重试", false, true, err
-			}
-			finalReply = fmt.Sprintf("好的，已记录%s结束", targetName)
-			finishTalk = true
-			return finalReply, false, finishTalk, nil
-		} else {
-			// 不是同一事件
-
-			// 则插入新的记录
-			_, err = DeviceHistory().AddHistory(ctx, entity.History{
-				DeviceNo:  deviceNo,
-				EventId:   event.Id,
-				EventName: historyRowEventName(event, targetName),
-				EventUnit: historyRowEventUnit(event),
-				StartTime: nowTime,
-				EndTime:   nowTime,
-				Remark:    normalizedTranscript,
-			})
-			if err != nil {
-				return "记录事件失败,请重试", false, true, err
-			}
-			// 上一件事如果没有结束时间,则告知用户上一件事自动结束
-			if lastEvent.EndTime == 0 {
-				_, updateErr := DeviceHistory().EndLatestHistoryIfMatch(ctx, deviceNo, lastEvent.EventId, nowTime, "")
-				if updateErr != nil {
-					return fmt.Sprintf("好的，已记录%s结束，%s结束失败,请手动结束", targetName, lastEvent.EventName), false, true, updateErr
-				}
-				finalReply = fmt.Sprintf("好的，已记录%s结束，%s自动结束", targetName, lastEvent.EventName)
-			} else {
-				finalReply = fmt.Sprintf("好的，已记录%s结束", targetName)
-			}
-			finishTalk = true
-			return finalReply, false, finishTalk, nil
-		}
+		finalReply, err = applyVoiceEventEndHistory(ctx, deviceNo, event, targetName, normalizedTranscript, nowTime)
+		finishTalk = true
+		return finalReply, false, finishTalk, err
 	case "one": //记录一次性动作，记录一次
 		event, targetName, pendingReply, ok, err := s.resolveEventForAction(ctx, deviceNo, normalizedTranscript, events, action.TargetType, nil)
 		if err != nil {

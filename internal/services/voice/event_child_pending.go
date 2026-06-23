@@ -118,31 +118,8 @@ func (s *VoiceService) applyEventActionTarget(ctx context.Context, deviceNo, act
 		}
 		return fmt.Sprintf("好的，已记录%s开始", targetName), false, true, nil
 	case ActionTargetTypeEnd.String(), "end":
-		lastEvent, _ := DeviceHistory().GetLatestHistory(ctx, deviceNo)
-		if lastEvent.EventId == event.Id {
-			_, err = DeviceHistory().EndLatestHistoryIfMatch(ctx, deviceNo, event.Id, nowTime, normalizedTranscript)
-			if err != nil {
-				return "更新结束时间失败,请重试", false, true, err
-			}
-			return fmt.Sprintf("好的，已记录%s结束", targetName), false, true, nil
-		}
-		_, err = DeviceHistory().AddHistory(ctx, entity.History{
-			DeviceNo:  deviceNo,
-			EventId:   event.Id,
-			EventName: targetName,
-			StartTime: nowTime,
-			EndTime:   nowTime,
-			Remark:    normalizedTranscript,
-			EventUnit: historyRowEventUnit(event),
-		})
-		if err != nil {
-			return "记录事件失败,请重试", false, true, err
-		}
-		if lastEvent.EndTime == 0 && lastEvent.EventId > 0 {
-			_, _ = DeviceHistory().EndLatestHistoryIfMatch(ctx, deviceNo, lastEvent.EventId, nowTime, "")
-			return fmt.Sprintf("好的，已记录%s结束，%s自动结束", targetName, lastEvent.EventName), false, true, nil
-		}
-		return fmt.Sprintf("好的，已记录%s结束", targetName), false, true, nil
+		reply, err := applyVoiceEventEndHistory(ctx, deviceNo, event, targetName, normalizedTranscript, nowTime)
+		return reply, false, true, err
 	case ActionTargetTypeOne.String(), "one":
 		eventNumber := int64(1)
 		if quantity > 0 {
