@@ -21,7 +21,7 @@ func main() {
 	dryRun := flag.Bool("dry-run", false, "仅列出将处理的 objectKey，不写 OSS")
 	limit := flag.Int("limit", 0, "最多处理条数，0 表示不限制")
 	concurrency := flag.Int("concurrency", 4, "并发 worker 数")
-	envFile := flag.String("env-file", "manifest/docker/env/.env.test", "启动前加载的 dotenv 文件；空字符串表示不加载")
+	envFile := flag.String("env-file", "manifest/docker/env/.env.prod", "启动前加载的 dotenv 文件；空字符串表示不加载")
 	flag.Parse()
 
 	if strings.TrimSpace(*envFile) != "" {

@@ -25,10 +25,10 @@ type ConversationDTO struct {
 	PeerAvatarUrl          string `json:"peerAvatarUrl,omitempty"`
 	PeerAvatarThumbnailUrl string `json:"peerAvatarThumbnailUrl,omitempty"`
 	Pinned                 int    `json:"pinned"`
-	UnreadCount    int    `json:"unreadCount"`
-	UpdatedAt      int64  `json:"updatedAt"`
-	LastPreview    string `json:"lastPreview,omitempty"`
-	Deleted        bool   `json:"deleted,omitempty"`
+	UnreadCount            int    `json:"unreadCount"`
+	UpdatedAt              int64  `json:"updatedAt"`
+	LastPreview            string `json:"lastPreview,omitempty"`
+	Deleted                bool   `json:"deleted,omitempty"`
 }
 
 // GetOrCreateDirectConversation 获取或创建 1:1 会话。
@@ -53,7 +53,7 @@ func GetOrCreateDirectConversation(ctx context.Context, wxID, targetWxID int64) 
 			return nil, err
 		}
 	}
-	return loadConversationDTO(ctx, convID, wxID)
+	return loadConversationDTO(ctx, convID, wxID, false)
 }
 
 func findDirectConversation(ctx context.Context, a, b int64) (uint64, error) {
@@ -134,7 +134,7 @@ func ListConversations(ctx context.Context, wxID int64, page, pageSize int) (*Pa
 		if m.DeletedAt > 0 {
 			continue
 		}
-		dto, lErr := loadConversationDTO(ctx, m.ConversationId, wxID)
+		dto, lErr := loadConversationDTO(ctx, m.ConversationId, wxID, true)
 		if lErr != nil {
 			return nil, lErr
 		}
@@ -143,7 +143,8 @@ func ListConversations(ctx context.Context, wxID int64, page, pageSize int) (*Pa
 	return &PageResult{List: list, Total: total, Page: p.Page, PageSize: p.PageSize}, nil
 }
 
-func loadConversationDTO(ctx context.Context, convID uint64, wxID int64) (*ConversationDTO, error) {
+// tolerateMissingPeer 是否容忍对方用户不存在（用于列表展示）。
+func loadConversationDTO(ctx context.Context, convID uint64, wxID int64, tolerateMissingPeer bool) (*ConversationDTO, error) {
 	selfRow, err := dao.UcgConversationMember.Ctx(ctx).
 		Where(dao.UcgConversationMember.Columns().ConversationId, convID).
 		Where(dao.UcgConversationMember.Columns().WxId, wxID).One()
@@ -154,9 +155,18 @@ func loadConversationDTO(ctx context.Context, convID uint64, wxID int64) (*Conve
 	if err = selfRow.Struct(&self); err != nil {
 		return nil, err
 	}
-	peerID, err := peerWxID(ctx, convID, wxID)
-	if err != nil {
-		return nil, err
+	var peerID uint64
+	if tolerateMissingPeer {
+		var ok bool
+		peerID, ok = lookupPeerWxIDOptional(ctx, convID, wxID)
+		if !ok {
+			peerID = 0
+		}
+	} else {
+		peerID, err = peerWxID(ctx, convID, wxID)
+		if err != nil {
+			return nil, err
+		}
 	}
 	unread, _ := getUnread(ctx, convID, wxID)
 	if unread == 0 {
@@ -172,13 +182,42 @@ func loadConversationDTO(ctx context.Context, convID uint64, wxID int64) (*Conve
 		LastPreview: preview,
 		Deleted:     self.DeletedAt > 0,
 	}
-	if prof, pErr := GetPublicProfile(ctx, peerID); pErr == nil && prof != nil {
+	fillConversationPeerDisplay(ctx, dto, tolerateMissingPeer)
+	return dto, nil
+}
+
+// lookupPeerWxIDOptional 解析 direct 会话对方 wxId；无对方成员行时返回 ok=false，不报错（供列表降级）。
+func lookupPeerWxIDOptional(ctx context.Context, convID uint64, wxID int64) (peerID uint64, ok bool) {
+	row, err := dao.UcgConversationMember.Ctx(ctx).
+		Where(dao.UcgConversationMember.Columns().ConversationId, convID).
+		WhereNot(dao.UcgConversationMember.Columns().WxId, wxID).One()
+	if err != nil || row.IsEmpty() {
+		return 0, false
+	}
+	var m entity.UcgConversationMember
+	if err = row.Struct(&m); err != nil {
+		return 0, false
+	}
+	return m.WxId, true
+}
+
+// fillConversationPeerDisplay 填充对方展示字段；列表路径须 wx 仍存在才填 profile，避免展示已注销用户资料。
+func fillConversationPeerDisplay(ctx context.Context, dto *ConversationDTO, tolerateMissingPeer bool) {
+	if dto == nil || dto.PeerWxId == 0 {
+		return
+	}
+	if tolerateMissingPeer {
+		exists, _, vErr := Device().ValidateWx(ctx, int64(dto.PeerWxId))
+		if vErr != nil || !exists {
+			return
+		}
+	}
+	if prof, pErr := GetPublicProfile(ctx, dto.PeerWxId); pErr == nil && prof != nil {
 		dto.PeerNickname = prof.Nickname
 		dto.PeerAvatarKey = prof.AvatarKey
 		dto.PeerAvatarUrl = prof.AvatarUrl
 		dto.PeerAvatarThumbnailUrl = prof.AvatarThumbnailUrl
 	}
-	return dto, nil
 }
 
 func peerWxID(ctx context.Context, convID uint64, wxID int64) (uint64, error) {
@@ -281,7 +320,7 @@ func SetConversationPinned(ctx context.Context, wxID int64, convID uint64, pinne
 		Where(dao.UcgConversationMember.Columns().ConversationId, convID).
 		Where(dao.UcgConversationMember.Columns().WxId, wxID).
 		Data(g.Map{
-			dao.UcgConversationMember.Columns().Pinned:     p,
+			dao.UcgConversationMember.Columns().Pinned:    p,
 			dao.UcgConversationMember.Columns().UpdatedAt: time.Now().Unix(),
 		}).Update()
 	return err
