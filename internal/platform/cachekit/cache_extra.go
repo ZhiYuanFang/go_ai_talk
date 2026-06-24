@@ -334,6 +334,19 @@ func (c *RedisCache) SortedSetAdd(ctx context.Context, key string, score float64
 	return nil
 }
 
+// SortedSetCard 返回有序集合成员数量（ZCARD）。
+func (c *RedisCache) SortedSetCard(ctx context.Context, key string) (int64, error) {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return 0, ErrInvalidKey
+	}
+	raw, err := g.Redis().Do(ctx, "ZCARD", key)
+	if err != nil {
+		return 0, fmt.Errorf("%w: %v", ErrUnavailable, err)
+	}
+	return raw.Int64(), nil
+}
+
 // ParseInt64 辅助：从 Get 返回值解析整数，miss 时返回 0。
 func ParseInt64(val string, ok bool) int64 {
 	if !ok {

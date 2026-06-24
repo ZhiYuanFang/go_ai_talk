@@ -87,3 +87,9 @@ func UCGUserLikedPostsKey(wxID int64) string {
 func UCGFeedSessionKey(sessionID string) string {
 	return fmt.Sprintf("ucg:feed:session:%s", strings.TrimSpace(sessionID))
 }
+
+// UCGFeedIndexWarmLockKey 推荐 Feed 索引冷启动 warm 分布式锁；TTL 见 ucg.feed.indexWarmLockSeconds（默认 60s）。
+// 非 session 键；并发 Feed 请求仅一方执行 MySQL→Redis 灌库，其余短退避后读 ZCARD。
+func UCGFeedIndexWarmLockKey() string {
+	return "ucg:feed:index:warm:lock"
+}

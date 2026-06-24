@@ -46,6 +46,7 @@ type Cache interface {
 	SortedSetRemove(ctx context.Context, key string, members ...string) error
 	SortedSetScores(ctx context.Context, key string, members []string) (map[string]float64, error)
 	SortedSetRevRangeWithScores(ctx context.Context, key string, start, stop int64) ([]ZSetMemberScore, error)
+	SortedSetCard(ctx context.Context, key string) (int64, error)
 	SetIsMemberBatch(ctx context.Context, key string, members []string) (map[string]bool, error)
 	SetAddWithExpire(ctx context.Context, key string, ttl time.Duration, members ...string) error
 	// Eval 执行 Lua 脚本，用于跨键原子补丁更新。

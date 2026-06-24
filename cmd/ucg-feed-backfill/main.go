@@ -25,7 +25,7 @@ func main() {
 	limit := flag.Int("limit", 0, "最多处理帖数，0 表示不限制")
 	likesOnly := flag.Bool("likes-only", false, "仅重建 liked SET")
 	postsOnly := flag.Bool("posts-only", false, "仅 backfill 帖 ZSET/GEO/snapshot")
-	envFile := flag.String("env-file", "manifest/docker/env/.env.test", "启动前加载的 dotenv；空字符串跳过")
+	envFile := flag.String("env-file", "manifest/docker/env/.env.prod", "启动前加载的 dotenv；空字符串跳过")
 	flag.Parse()
 
 	if strings.TrimSpace(*envFile) != "" {

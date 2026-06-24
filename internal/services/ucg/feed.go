@@ -55,6 +55,10 @@ func ListRecommendFeed(
 		return nil, err
 	}
 
+	if err = ensureFeedIndexWarm(ctx, cfg); err != nil {
+		return nil, err
+	}
+
 	viewer, hasViewer := cursorViewer(cur)
 	candidates, nextCur, err := collectFeedCandidates(ctx, cfg, cur, seen, viewer, hasViewer, p.PageSize*3)
 	if err != nil {

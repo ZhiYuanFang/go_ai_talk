@@ -60,6 +60,10 @@ ucg:
     candidateBatchSize: 200    # 单轮 GEO/ZSET 候选批量
     sessionTtlMinutes: 30      # Feed session SET TTL
     snapshotTtlDays: 7         # post/profile snapshot TTL
+    indexAutoWarmEnabled: true   # Redis 推荐索引冷启动时读路径按需 warm；2G 小机可 false 并依赖 backfill
+    indexWarmBatchSize: 200      # warm MySQL 分页大小
+    indexWarmMaxPosts: 2000      # 单次 Feed 请求 warm 帖数上限
+    indexWarmLockSeconds: 60     # warm 分布式锁 TTL（秒）
   # AI 润笔（polish lane）：provider/model/maxInFlight/maxWaiters 可由 Admin 热更新；API Key 仅 env。
   # zhipu → GLM_API_KEY；dashscope → UCG_DASHSCOPE_API_KEY。yaml 冷启动兜底见 default_*。
   ai:

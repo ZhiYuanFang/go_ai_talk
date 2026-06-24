@@ -292,6 +292,17 @@ curl -s http://127.0.0.1:9805/api.json   # sim-user-service
      ```
   4. **Redis 验收**：抽样 `ZSCORE ucg:recommend:score <postId>`、`GEOPOS ucg:feed:geo <postId>`（有坐标帖）、`GET ucg:post:snapshot:<postId>`、`SMEMBERS ucg:user:<wxId>:liked-posts`。
   5. **Feed 验收**：无坐标时排序与 baseScore 大致一致；有坐标时 API 返回 `distanceMeters`；cursor 翻页无重复；`POST /ucg/app/api/v2/posts` 2xx 计入 usage 统计。
+- **UCG Feed 索引 lazy warm（ucg-feed-index-lazy-warm）**：当 Redis `ucg:recommend:score` **ZCARD=0** 且 MySQL 仍有 `published` 帖时，**读路径**会在单次 `GET /feed/recommend` 请求内有界 warm（默认 cap 2000 帖），再返回 Feed。**不替代**运维 backfill：首次大规模上线仍建议先跑 backfill，避免首用户等待 5–30s。
+  - **与 backfill 关系**：`cmd/ucg-feed-backfill` 为运维批量灌库（全量/可选 `--posts-only`）；lazy warm 为运行时冷启动兜底（Redis volume 丢失、新环境未 backfill）。
+  - **配置**：`ucg.feed.indexAutoWarmEnabled`（默认 true）；2G 小机可 `UCG_FEED_INDEX_AUTO_WARM_ENABLED=false` 或降低 `UCG_FEED_INDEX_WARM_MAX_POSTS=500`。
+  - **验收**（测试环境）：
+    ```bash
+    # Redis：确认冷启动前 ZCARD=0、MySQL 有 published 帖
+    redis-cli -c ZCARD ucg:recommend:score
+    # 首请求 Feed 后 ZCARD>0；ucg-service 日志含 feed_index_warm_done
+    curl -s "http://127.0.0.1:9801/ucg/app/api/feed/recommend?pageSize=20" -H "Authorization: Bearer ..."
+    ```
+  - **Flutter**：推荐 Feed 读超时 ≥45s（索引 warm 期间）；首屏 loading 不误显「暂无动态」。
 - **UCG 推荐分验收（部署后）**：① 热区帖点赞后 MQ 不写 MySQL recommend；② 冷区点赞后 Redis ZSET score 上升；③ publish 后 ZADD + snapshot 存在；④ `UCG_RECOMMEND_MQ_CONSUMER_ENABLED=false` 重启 ucg 后 reconciler 仍运行。
 - 观测：`SHOW GLOBAL STATUS LIKE 'Threads_running'`；`docker stats` ucg/sim 容器；`GET /sim/admin/api/status`。
 
