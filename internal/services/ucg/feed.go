@@ -113,7 +113,8 @@ func collectFeedCandidates(
 	for len(pool) < need && next.RadiusIdx < len(cfg.RadiusStepsKm) {
 		radiusKm := cfg.RadiusStepsKm[next.RadiusIdx]
 
-		if hasViewer && radiusKm >= 0 {
+		// 有 viewer 坐标时仅正半径走 GEO；radiusKm=0（unlimited）改 ZSET 全量扫（见 ucg-feed-geo-composite-score D3）。
+		if hasViewer && radiusKm > 0 {
 			geoRows, err := ucgCache.GeoSearchByRadiusWithDist(
 				ctx, cachekit.UCGFeedGeoKey(), viewer.Lng, viewer.Lat, radiusKm, cfg.CandidateBatchSize,
 			)
@@ -146,6 +147,7 @@ func collectFeedCandidates(
 				continue
 			}
 		} else if !hasViewer || radiusKm == 0 {
+			// unlimited 步：ZSET 补全无 GEO 帖（及远距 GEO 帖）；pool/seen 去重。无 viewer 时各阶梯均走 ZSET。
 			zrows, err := ucgCache.SortedSetRevRangeWithScores(
 				ctx, cachekit.UCGRecommendScoreKey(), int64(next.ZsetOffset), int64(next.ZsetOffset+cfg.CandidateBatchSize-1),
 			)
@@ -173,7 +175,8 @@ func collectFeedCandidates(
 				if _, ok := seen[id]; ok {
 					continue
 				}
-				if hasViewer {
+				// 非 unlimited 且 viewer 有坐标时跳过已在 GEO 索引的帖（由 GEO 半径步覆盖）；unlimited 不 skip，保证无 lat/lng 帖可见。
+				if hasViewer && radiusKm != 0 {
 					if _, ok := inGeo[z.Member]; ok {
 						continue
 					}

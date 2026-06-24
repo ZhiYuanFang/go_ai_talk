@@ -303,6 +303,16 @@ curl -s http://127.0.0.1:9805/api.json   # sim-user-service
     curl -s "http://127.0.0.1:9801/ucg/app/api/feed/recommend?pageSize=20" -H "Authorization: Bearer ..."
     ```
   - **Flutter**：推荐 Feed 读超时 ≥45s（索引 warm 期间）；首屏 loading 不误显「暂无动态」。
+- **UCG Feed 空列表但 ZCARD>0（ucg-feed-no-geo-zset-fallback）**：lazy warm 只解决 **ZCARD=0** 冷索引；若 Redis 已有 `ucg:recommend:score` 成员但 **Feed 仍空**，常见原因是帖 **无 lat/lng、不在 `ucg:feed:geo`**，而读路径在 viewer 带坐标时误将 `radiusKm=0`（unlimited）走 GEO，候选集为空。
+  - **与 lazy warm 分工**：warm 灌 ZSET + snapshot；本 fix 修正 **collectFeedCandidates** 在 unlimited 步改走 ZSET，无 GEO 帖在带坐标请求下仍可见。
+  - **排查**：
+    ```bash
+    redis-cli -c ZCARD ucg:recommend:score
+    redis-cli -c GEOPOS ucg:feed:geo 19 35   # 抽样 postId；全 (nil) 表示无坐标帖
+    redis-cli -c GET ucg:post:snapshot:19    # 应有 JSON
+    curl -s "http://127.0.0.1:9801/ucg/app/api/feed/recommend?pageSize=20&lat=30.27&lng=120.15" -H "Authorization: Bearer ..."
+    ```
+  - **验收**：部署含 fix 的 `ucg-service` 后，带/不带 lat/lng 的 Feed 均应非空（ZSET 有 published 帖且 snapshot 齐全时）；有坐标帖在 50–500km GEO 步仍按 composite 分排序。
 - **UCG 推荐分验收（部署后）**：① 热区帖点赞后 MQ 不写 MySQL recommend；② 冷区点赞后 Redis ZSET score 上升；③ publish 后 ZADD + snapshot 存在；④ `UCG_RECOMMEND_MQ_CONSUMER_ENABLED=false` 重启 ucg 后 reconciler 仍运行。
 - 观测：`SHOW GLOBAL STATUS LIKE 'Threads_running'`；`docker stats` ucg/sim 容器；`GET /sim/admin/api/status`。
 
