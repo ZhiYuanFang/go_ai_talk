@@ -24,6 +24,8 @@ type UcgPostColumns struct {
 	AuthorWxId        string //
 	Content           string //
 	IpLocation        string // 发帖时 IP属地快照
+	Lat               string // 可选发帖纬度 WGS84
+	Lng               string // 可选发帖经度 WGS84
 	Status            string // 0 draft 1 pending_audit 2 published 3 rejected 4 apply_failed
 	AuditVersion      string // 审核轮次
 	ModerationVerdict string //
@@ -46,6 +48,8 @@ var ucgPostColumns = UcgPostColumns{
 	AuthorWxId:        "author_wx_id",
 	Content:           "content",
 	IpLocation:        "ip_location",
+	Lat:               "lat",
+	Lng:               "lng",
 	Status:            "status",
 	AuditVersion:      "audit_version",
 	ModerationVerdict: "moderation_verdict",

@@ -123,6 +123,8 @@ type UcgPostUpdateReq struct {
 	MediaType int                 `json:"mediaType"`
 	Submit    bool                `json:"submit"`
 	Media     []UcgPostMediaInput `json:"media"`
+	Lat       *float64            `json:"lat"`
+	Lng       *float64            `json:"lng"`
 }
 
 type UcgPostDeleteReq struct {
@@ -134,7 +136,9 @@ type UcgPostDeleteRes struct{}
 
 type UcgPostGetReq struct {
 	g.Meta `path:"/ucg/app/api/posts/{id}" method:"get" tags:"ucg" summary:"获取单帖"`
-	Id     uint64 `json:"id" in:"path" v:"required|min:1"`
+	Id     uint64   `json:"id" in:"path" v:"required|min:1"`
+	Lat    *float64 `json:"lat" in:"query"`
+	Lng    *float64 `json:"lng" in:"query"`
 }
 
 type UcgPostGetRes struct {
@@ -166,14 +170,25 @@ type UcgPostsUserReq struct {
 
 type UcgFeedRecommendReq struct {
 	g.Meta   `path:"/ucg/app/api/feed/recommend" method:"get" tags:"ucg" summary:"推荐 Feed"`
-	Page     int `json:"page" in:"query" d:"1"`
-	PageSize int `json:"pageSize" in:"query" d:"20"`
+	Page     int      `json:"page" in:"query" d:"1"`
+	PageSize int      `json:"pageSize" in:"query" d:"20"`
+	Lat      *float64 `json:"lat" in:"query"`
+	Lng      *float64 `json:"lng" in:"query"`
+	Cursor   string   `json:"cursor" in:"query"`
+}
+
+type UcgFeedRecommendRes struct {
+	List       []UcgPostItem `json:"list"`
+	HasMore    bool          `json:"hasMore"`
+	NextCursor string        `json:"nextCursor,omitempty"`
 }
 
 type UcgFeedFollowingReq struct {
 	g.Meta   `path:"/ucg/app/api/feed/following" method:"get" tags:"ucg" summary:"关注 Feed"`
-	Page     int `json:"page" in:"query" d:"1"`
-	PageSize int `json:"pageSize" in:"query" d:"20"`
+	Page     int      `json:"page" in:"query" d:"1"`
+	PageSize int      `json:"pageSize" in:"query" d:"20"`
+	Lat      *float64 `json:"lat" in:"query"`
+	Lng      *float64 `json:"lng" in:"query"`
 }
 
 type UcgPostMediaInput struct {
@@ -198,6 +213,7 @@ type UcgPostItem struct {
 	UpdatedAt    int64             `json:"updatedAt"`
 	PublishedAt  int64             `json:"publishedAt,omitempty"`
 	IpLocation   string            `json:"ipLocation,omitempty"`
+	DistanceMeters string          `json:"distanceMeters,omitempty"`
 	Media        []UcgPostMediaOut `json:"media,omitempty"`
 	Author       *UcgProfileRes    `json:"author,omitempty"`
 }

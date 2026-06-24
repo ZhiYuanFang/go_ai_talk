@@ -99,9 +99,11 @@ func EnsureLLMLaneDefaultRows(ctx context.Context) error {
 			continue
 		}
 		_, _ = g.DB().Model(llmLaneConfigTable).Ctx(ctx).Where("lane", string(lane)).Data(g.Map{
-			"provider":   string(cold.Provider),
-			"model":      cold.Model,
-			"updated_at": now,
+			"provider":      string(cold.Provider),
+			"model":         cold.Model,
+			"max_in_flight": cold.MaxInFlight,
+			"max_waiters":   cold.MaxWaiters,
+			"updated_at":    now,
 		}).Update()
 	}
 	return nil
@@ -119,6 +121,11 @@ func loadLLMLaneProfile(ctx context.Context, lane aimodel.Lane) (aimodel.Profile
 		p := rowToProfile(lane, row)
 		p.Provider = cold.Provider
 		p.Model = cold.Model
+		if aimodel.IsSeedUpdatedBy(row.UpdatedBy) {
+			p.MaxInFlight = cold.MaxInFlight
+			p.MaxWaiters = cold.MaxWaiters
+			p.TimeoutSec = cold.TimeoutSec
+		}
 		return p, nil
 	}
 	yamlP, yamlOK := loadLLMLaneYAMLProfile(ctx, lane)

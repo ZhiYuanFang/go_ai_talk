@@ -59,8 +59,8 @@ func publishPostCAS(ctx context.Context, postID uint64, auditVersion int) error 
 		glog.Infof(ctx, "[ucg-audit-mq] post publish cas skip id=%d version=%d", postID, auditVersion)
 		return nil // 已被其他 delivery 处理
 	}
-	// 推荐分：新帖由 Feed 未算分置顶 + 热区 reconciler 首次写入，不发 post.published MQ。
-	return nil
+	// 推荐分与 Redis 索引：publish 后 ZADD/GEO/snapshot。
+	return syncPublishedPostRedis(ctx, postID)
 }
 
 // rejectPostCAS Phase2 驳回：pending_audit → rejected。

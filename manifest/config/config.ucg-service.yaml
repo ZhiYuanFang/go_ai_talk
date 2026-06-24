@@ -52,6 +52,14 @@ ucg:
     hotScanPageSize: 200     # 热区 reconciler 每页条数
     hotScanIntervalSeconds: 3600  # 热区 reconciler tick 间隔（秒）；可用 UCG_RECOMMEND_HOT_SCAN_INTERVAL_SECONDS 覆盖
     likeThrottleMs: 500      # like/unlike/comment 单 postId throttle（毫秒）
+  # Feed 复合分与 Redis 读路径（见 openspec ucg-feed-geo-composite-score）
+  feed:
+    wDist: 0.5                 # 距离项权重
+    distDecayKm: 10            # 距离衰减常数（km）
+    radiusStepsKm: [50, 100, 200, 500, 0]  # GEO 半径阶梯，0=不限
+    candidateBatchSize: 200    # 单轮 GEO/ZSET 候选批量
+    sessionTtlMinutes: 30      # Feed session SET TTL
+    snapshotTtlDays: 7         # post/profile snapshot TTL
   # AI 润笔（polish lane）：provider/model/maxInFlight/maxWaiters 可由 Admin 热更新；API Key 仅 env。
   # zhipu → GLM_API_KEY；dashscope → UCG_DASHSCOPE_API_KEY。yaml 冷启动兜底见 default_*。
   ai:

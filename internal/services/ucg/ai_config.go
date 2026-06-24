@@ -151,9 +151,15 @@ func loadAIConfigFresh(ctx context.Context) RuntimeAIConfig {
 		cfg.UpdatedAt = row.UpdatedAt
 		cfg.UpdatedBy = row.UpdatedBy
 		if aimodel.IsSeedUpdatedBy(row.UpdatedBy) {
+			cold := aimodel.MergeColdStartProfile(aimodel.LanePolish, aimodel.Profile{}, false)
 			if p, ok := aimodel.ProfileFromEnv(aimodel.LanePolish); ok {
 				cfg.Provider = string(p.Provider)
 				cfg.VisionModel = p.Model
+			}
+			cfg.MaxInFlight = cold.MaxInFlight
+			cfg.MaxWaiters = cold.MaxWaiters
+			if cold.TimeoutSec > 0 {
+				cfg.TimeoutSeconds = cold.TimeoutSec
 			}
 		}
 	}

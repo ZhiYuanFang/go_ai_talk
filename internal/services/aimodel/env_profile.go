@@ -2,6 +2,7 @@ package aimodel
 
 import (
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -16,34 +17,97 @@ func IsSeedUpdatedBy(updatedBy string) bool {
 type LaneEnvKeys struct {
 	ProviderKey string
 	ModelKey    string
+	// 闸门参数（可选；未设时沿用 yaml/代码种子）
+	MaxInFlightKey string
+	MaxWaitersKey  string
+	TimeoutSecKey  string
+}
+
+func laneEnvPrefix(lane Lane) (prefix string, ok bool) {
+	switch lane {
+	case LaneVoiceUnderstanding:
+		return "VOICE_LLM_VOICE_UNDERSTANDING", true
+	case LaneClinic:
+		return "VOICE_LLM_CLINIC", true
+	case LanePolish:
+		return "UCG_AI", true
+	case LaneSimText:
+		return "SIM_LLM_SIMTEXT", true
+	case LaneSimVision:
+		return "SIM_LLM_SIMVISION", true
+	case LaneSimImageGen:
+		return "SIM_LLM_SIMIMAGEGEN", true
+	case LaneSimVideoGen:
+		return "SIM_LLM_SIMVIDEOGEN", true
+	default:
+		return "", false
+	}
 }
 
 // LaneEnvKeysFor 返回 lane 对应的 env 键；不支持时 ok=false。
 func LaneEnvKeysFor(lane Lane) (LaneEnvKeys, bool) {
-	switch lane {
-	case LaneVoiceUnderstanding:
-		return LaneEnvKeys{
-			ProviderKey: "VOICE_LLM_VOICE_UNDERSTANDING_PROVIDER",
-			ModelKey:    "VOICE_LLM_VOICE_UNDERSTANDING_MODEL",
-		}, true
-	case LaneClinic:
-		return LaneEnvKeys{
-			ProviderKey: "VOICE_LLM_CLINIC_PROVIDER",
-			ModelKey:    "VOICE_LLM_CLINIC_MODEL",
-		}, true
-	case LanePolish:
-		return LaneEnvKeys{"UCG_AI_PROVIDER", "UCG_AI_VISION_MODEL"}, true
-	case LaneSimText:
-		return LaneEnvKeys{"SIM_LLM_SIMTEXT_PROVIDER", "SIM_LLM_SIMTEXT_MODEL"}, true
-	case LaneSimVision:
-		return LaneEnvKeys{"SIM_LLM_SIMVISION_PROVIDER", "SIM_LLM_SIMVISION_MODEL"}, true
-	case LaneSimImageGen:
-		return LaneEnvKeys{"SIM_LLM_SIMIMAGEGEN_PROVIDER", "SIM_LLM_SIMIMAGEGEN_MODEL"}, true
-	case LaneSimVideoGen:
-		return LaneEnvKeys{"SIM_LLM_SIMVIDEOGEN_PROVIDER", "SIM_LLM_SIMVIDEOGEN_MODEL"}, true
-	default:
+	prefix, ok := laneEnvPrefix(lane)
+	if !ok {
 		return LaneEnvKeys{}, false
 	}
+	keys := LaneEnvKeys{
+		MaxInFlightKey: prefix + "_MAX_INFLIGHT",
+		MaxWaitersKey:  prefix + "_MAX_WAITERS",
+		TimeoutSecKey:  prefix + "_TIMEOUT_SEC",
+	}
+	switch lane {
+	case LanePolish:
+		keys.ProviderKey = "UCG_AI_PROVIDER"
+		keys.ModelKey = "UCG_AI_VISION_MODEL"
+	default:
+		keys.ProviderKey = prefix + "_PROVIDER"
+		keys.ModelKey = prefix + "_MODEL"
+	}
+	return keys, true
+}
+
+// ApplyEnvGateOverrides 用 env 覆盖 profile 闸门参数（env > yaml/DB 种子；Admin 非 seed 行由调用方跳过）。
+func ApplyEnvGateOverrides(lane Lane, p *Profile) {
+	if p == nil {
+		return
+	}
+	keys, ok := LaneEnvKeysFor(lane)
+	if !ok {
+		return
+	}
+	if v, ok := envIntPositive(keys.MaxInFlightKey); ok {
+		p.MaxInFlight = v
+	}
+	if v, ok := envIntNonNegative(keys.MaxWaitersKey); ok {
+		p.MaxWaiters = v
+	}
+	if v, ok := envIntPositive(keys.TimeoutSecKey); ok {
+		p.TimeoutSec = v
+	}
+}
+
+func envIntPositive(key string) (int, bool) {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return 0, false
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n <= 0 {
+		return 0, false
+	}
+	return n, true
+}
+
+func envIntNonNegative(key string) (int, bool) {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return 0, false
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < 0 {
+		return 0, false
+	}
+	return n, true
 }
 
 // ProfileFromEnv 从 env 读取 lane provider/model；未配置或非法组合时 ok=false。
@@ -71,29 +135,34 @@ func ProfileFromEnv(lane Lane) (Profile, bool) {
 	p.Lane = lane
 	p.Provider = provider
 	p.Model = model
+	ApplyEnvGateOverrides(lane, &p)
 	return p, true
 }
 
-// MergeColdStartProfile 冷启动合并：env > yaml > 代码种子。
+// MergeColdStartProfile 冷启动合并：env provider/model > yaml > 代码种子；闸门 env > yaml > 代码种子。
 func MergeColdStartProfile(lane Lane, yamlProfile Profile, yamlOK bool) Profile {
 	if p, ok := ProfileFromEnv(lane); ok {
 		return p
 	}
+	var p Profile
 	if yamlOK && strings.TrimSpace(yamlProfile.Model) != "" {
-		yamlProfile.Lane = lane
-		if yamlProfile.Provider == "" {
-			yamlProfile.Provider = DefaultSeedProfile(lane).Provider
+		p = yamlProfile
+		p.Lane = lane
+		if p.Provider == "" {
+			p.Provider = DefaultSeedProfile(lane).Provider
 		}
-		if yamlProfile.MaxInFlight <= 0 {
-			yamlProfile.MaxInFlight = DefaultSeedProfile(lane).MaxInFlight
+		if p.MaxInFlight <= 0 {
+			p.MaxInFlight = DefaultSeedProfile(lane).MaxInFlight
 		}
-		if yamlProfile.MaxWaiters < 0 {
-			yamlProfile.MaxWaiters = DefaultSeedProfile(lane).MaxWaiters
+		if p.MaxWaiters < 0 {
+			p.MaxWaiters = DefaultSeedProfile(lane).MaxWaiters
 		}
-		if yamlProfile.TimeoutSec <= 0 {
-			yamlProfile.TimeoutSec = DefaultSeedProfile(lane).TimeoutSec
+		if p.TimeoutSec <= 0 {
+			p.TimeoutSec = DefaultSeedProfile(lane).TimeoutSec
 		}
-		return yamlProfile
+	} else {
+		p = DefaultSeedProfile(lane)
 	}
-	return DefaultSeedProfile(lane)
+	ApplyEnvGateOverrides(lane, &p)
+	return p
 }

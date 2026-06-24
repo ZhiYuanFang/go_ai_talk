@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	v1 "hello/api/v1"
+	v2 "hello/api/v2"
 
 	"github.com/gogf/gf/v2/os/glog"
 )
@@ -30,9 +31,23 @@ var (
 
 var metaTagRe = regexp.MustCompile("`([^`]+)`")
 
-// Init 加载 api/v1 下所有 g.Meta 定义；进程内幂等。
+// Init 加载 api/v1 与 api/v2 下所有 g.Meta 定义；进程内幂等。
 func Init() {
-	loadOnce.Do(loadFromAPIV1)
+	loadOnce.Do(func() {
+		byExact = make(map[string]Entry)
+		seen := make(map[string]struct{})
+		walkMetaFS(v1.APIMetaFS, seen)
+		walkMetaFS(v2.APIMetaFS, seen)
+		sort.Slice(routes, func(i, j int) bool {
+			if routes[i].Method != routes[j].Method {
+				return routes[i].Method < routes[j].Method
+			}
+			return routes[i].Template < routes[j].Template
+		})
+		if len(routes) == 0 {
+			glog.Warning(nil, "[apiregistry] api embed 未解析到任何 g.Meta 路由，usage 统计 summary 将全部为「未登记」")
+		}
+	})
 }
 
 // RouteCount 返回已加载路由条数（供启动自检）。
@@ -41,32 +56,18 @@ func RouteCount() int {
 	return len(routes)
 }
 
-func loadFromAPIV1() {
-	byExact = make(map[string]Entry)
-	seen := make(map[string]struct{})
-
-	_ = fs.WalkDir(v1.APIMetaFS, ".", func(path string, d fs.DirEntry, err error) error {
+func walkMetaFS(fsys fs.FS, seen map[string]struct{}) {
+	_ = fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") {
 			return nil
 		}
-		content, readErr := fs.ReadFile(v1.APIMetaFS, path)
+		content, readErr := fs.ReadFile(fsys, path)
 		if readErr != nil {
 			return nil
 		}
 		parseMetaContent(string(content), seen)
 		return nil
 	})
-
-	sort.Slice(routes, func(i, j int) bool {
-		if routes[i].Method != routes[j].Method {
-			return routes[i].Method < routes[j].Method
-		}
-		return routes[i].Template < routes[j].Template
-	})
-
-	if len(routes) == 0 {
-		glog.Warning(nil, "[apiregistry] api/v1 embed 未解析到任何 g.Meta 路由，usage 统计 summary 将全部为「未登记」")
-	}
 }
 
 func parseMetaContent(content string, seen map[string]struct{}) {

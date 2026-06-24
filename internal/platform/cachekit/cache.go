@@ -39,6 +39,15 @@ type Cache interface {
 	SetMembers(ctx context.Context, key string) ([]string, error)
 	SetRemove(ctx context.Context, key string, members ...string) error
 	SortedSetAdd(ctx context.Context, key string, score float64, member string) error
+	GeoAdd(ctx context.Context, key, member string, lng, lat float64) error
+	GeoRemove(ctx context.Context, key string, members ...string) error
+	GeoSearchByRadiusWithDist(ctx context.Context, key string, lng, lat, radiusKm float64, count int) ([]GeoMemberDist, error)
+	GeoPosBatch(ctx context.Context, key string, members []string) (map[string]struct{}, error)
+	SortedSetRemove(ctx context.Context, key string, members ...string) error
+	SortedSetScores(ctx context.Context, key string, members []string) (map[string]float64, error)
+	SortedSetRevRangeWithScores(ctx context.Context, key string, start, stop int64) ([]ZSetMemberScore, error)
+	SetIsMemberBatch(ctx context.Context, key string, members []string) (map[string]bool, error)
+	SetAddWithExpire(ctx context.Context, key string, ttl time.Duration, members ...string) error
 	// Eval 执行 Lua 脚本，用于跨键原子补丁更新。
 	Eval(ctx context.Context, script string, keys []string, args []string) (string, error)
 }

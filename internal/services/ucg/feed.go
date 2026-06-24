@@ -2,114 +2,363 @@ package ucg
 
 import (
 	"context"
+	"sort"
+	"strconv"
 
 	"hello/internal/dao"
 	"hello/internal/model/entity"
+	"hello/internal/platform/cachekit"
 
 	"github.com/gogf/gf/v2/errors/gcode"
 	"github.com/gogf/gf/v2/errors/gerror"
 )
 
-// ListRecommendFeed 推荐 Feed：尚无 recommend 行的帖置顶，已算分帖按 score 排序。
-// viewerWxID>0 时填充 likedByMe。
+// FeedRecommendResult 推荐 Feed cursor 分页结果（无 total）。
+type FeedRecommendResult struct {
+	List       []*PostDTO
+	HasMore    bool
+	NextCursor string
+}
+
+type feedCandidate struct {
+	postID     uint64
+	baseScore  float64
+	finalScore float64
+	distKm     float64
+}
+
+// ListRecommendFeed Redis 复合分 Feed：GEO 半径 + ZSET + session 去重 + cursor。
 func ListRecommendFeed(
 	ctx context.Context,
 	viewerWxID int64,
-	page, pageSize int,
-) (*PageResult, error) {
+	viewerLat, viewerLng *float64,
+	cursor string,
+	pageSize int,
+) (*FeedRecommendResult, error) {
+	p := NormalizePage(1, pageSize)
+	cfg := LoadFeedConfig(ctx)
 
-	// 根据入参坐标,从redis中按距离排序的动态id列表(在动态发布/编辑时写入redis id+坐标)
-	// 将上一步得到的id列表,根据redis中缓存的热区动态分值排序（在冷热重算推荐分值写入redis）
-	//  todo 内存分页
-	//  todo 再试图从redis中获取每个动态的详细信息（在动态发布/编辑时写入redis，可能缓存过期）
-	//  todo 如果缓存过期，则从db中获取每个动态的详细信息
-	//  todo 最后返回PageResult
+	var cur feedCursor
+	if decoded, ok := decodeFeedCursor(cursor); ok {
+		cur = decoded
+	} else {
+		cur.SessionID = newFeedSessionID()
+		if vc, ok := ValidViewerCoords(viewerLat, viewerLng); ok {
+			cur.Lat = vc.Lat
+			cur.Lng = vc.Lng
+			cur.HasViewer = true
+		}
+	}
 
-	// ==========================
-	// 1️⃣ 规范化分页参数
-	// 防止 page <= 0 / pageSize 过大
-	// ==========================
-	p := NormalizePage(page, pageSize)
-
-	// ==========================
-	// 2️⃣ 统计总数（只统计主表）
-	// ⚠️ 不 JOIN 推荐表，避免统计放大
-	// ==========================
-	total, err := dao.UcgPost.Ctx(ctx).
-		Where(dao.UcgPost.Columns().Status, PostStatusPublished).
-		Count()
+	seen, err := loadSessionSeen(ctx, cur.SessionID)
 	if err != nil {
 		return nil, err
 	}
 
-	// ==========================
-	// 3️⃣ 构造推荐流查询
-	// 推荐分来自 ucg_post_recommend
-	// 排序由推荐分主导，时间为辅
-	// ==========================
-	model := dao.UcgPost.Ctx(ctx).As("p").
-
-		// ✅ LEFT JOIN 推荐表
-		// 目的：用推荐分参与排序，不是筛选
-		LeftJoin("ucg_post_recommend r", "r.post_id = p.id").
-
-		// ✅ 只查已发布帖子
-		Where("p."+dao.UcgPost.Columns().Status, PostStatusPublished).
-
-		// ✅ 只返回帖子字段，减少 IO
-		Fields("p.*")
-
-	// ==========================
-	// 4️⃣ 排序规则（核心）
-	// 推荐分优先，时间兜底
-	// ==========================
-	model = model.
-		// ① 有推荐的帖子永远在前（NULL 在后）
-		OrderDesc("(r.post_id IS NULL)").
-
-		// ② 推荐分高的在前
-		OrderDesc("r.score").
-
-		// ③ 发布时间新的在前（时间衰减已在推荐分算法中体现）
-		OrderDesc("p." + dao.UcgPost.Columns().PublishedAt).
-
-		// ④ 最终按 ID 兜底，保证排序稳定
-		OrderDesc("p." + dao.UcgPost.Columns().Id)
-
-	// ==========================
-	// 5️⃣ 分页查询
-	// 永远是小结果集
-	// ==========================
-	rows, err := model.
-		Limit(p.PageSize).
-		Offset(pageOffset(p)).
-		All()
+	viewer, hasViewer := cursorViewer(cur)
+	candidates, nextCur, err := collectFeedCandidates(ctx, cfg, cur, seen, viewer, hasViewer, p.PageSize*3)
 	if err != nil {
 		return nil, err
 	}
 
-	// ==========================
-	// 6️⃣ 结果转换
-	// 补充点赞、收藏、作者等附属信息
-	// ==========================
-	list, err := postsFromResult(ctx, rows, viewerWxID)
+	pageIDs := make([]uint64, 0, p.PageSize)
+	for _, c := range candidates {
+		if len(pageIDs) >= p.PageSize {
+			break
+		}
+		pageIDs = append(pageIDs, c.postID)
+		if len(pageIDs) == p.PageSize && len(candidates) > p.PageSize {
+			nextCur.LastFinalScore = c.finalScore
+			nextCur.LastPostID = c.postID
+		}
+	}
+
+	hasMore := len(pageIDs) == p.PageSize && (len(candidates) > p.PageSize || nextCur.hasMoreWork(cfg))
+	list, err := assembleFeedPosts(ctx, viewerWxID, viewer, hasViewer, pageIDs, candidates)
 	if err != nil {
 		return nil, err
 	}
+	_ = markSessionSeen(ctx, cfg, cur.SessionID, pageIDs)
 
-	// ==========================
-	// 7️⃣ 返回分页结果
-	// ==========================
-	return &PageResult{
-		List:     list,
-		Total:    total,
-		Page:     p.Page,
-		PageSize: p.PageSize,
-	}, nil
+	nextCursor := ""
+	if hasMore {
+		nextCursor = encodeFeedCursor(nextCur)
+	}
+	return &FeedRecommendResult{List: list, HasMore: hasMore, NextCursor: nextCursor}, nil
 }
 
-// ListFollowingFeed 关注 Feed：需登录 wxId，仅 followee 的 published 帖。
-func ListFollowingFeed(ctx context.Context, wxID int64, page, pageSize int) (*PageResult, error) {
+func (c feedCursor) hasMoreWork(cfg FeedConfig) bool {
+	if c.RadiusIdx < len(cfg.RadiusStepsKm)-1 {
+		return true
+	}
+	return c.ZsetOffset < 100000
+}
+
+func collectFeedCandidates(
+	ctx context.Context,
+	cfg FeedConfig,
+	cur feedCursor,
+	seen map[uint64]struct{},
+	viewer ViewerCoords,
+	hasViewer bool,
+	need int,
+) ([]feedCandidate, feedCursor, error) {
+	pool := make(map[uint64]feedCandidate)
+	next := cur
+
+	for len(pool) < need && next.RadiusIdx < len(cfg.RadiusStepsKm) {
+		radiusKm := cfg.RadiusStepsKm[next.RadiusIdx]
+
+		if hasViewer && radiusKm >= 0 {
+			geoRows, err := ucgCache.GeoSearchByRadiusWithDist(
+				ctx, cachekit.UCGFeedGeoKey(), viewer.Lng, viewer.Lat, radiusKm, cfg.CandidateBatchSize,
+			)
+			if err != nil {
+				return nil, next, err
+			}
+			if next.GeoOffset > 0 && next.GeoOffset < len(geoRows) {
+				geoRows = geoRows[next.GeoOffset:]
+			}
+			for _, row := range geoRows {
+				id, _ := strconv.ParseUint(row.Member, 10, 64)
+				if id == 0 {
+					continue
+				}
+				if _, ok := seen[id]; ok {
+					continue
+				}
+				if _, ok := pool[id]; ok {
+					continue
+				}
+				pool[id] = feedCandidate{postID: id, distKm: row.DistKm}
+				if len(pool) >= need {
+					next.GeoOffset += len(geoRows)
+					break
+				}
+			}
+			if len(pool) < need {
+				next.GeoOffset = 0
+				next.RadiusIdx++
+				continue
+			}
+		} else if !hasViewer || radiusKm == 0 {
+			zrows, err := ucgCache.SortedSetRevRangeWithScores(
+				ctx, cachekit.UCGRecommendScoreKey(), int64(next.ZsetOffset), int64(next.ZsetOffset+cfg.CandidateBatchSize-1),
+			)
+			if err != nil {
+				return nil, next, err
+			}
+			if len(zrows) == 0 {
+				next.RadiusIdx++
+				continue
+			}
+			members := make([]string, 0, len(zrows))
+			for _, z := range zrows {
+				members = append(members, z.Member)
+			}
+			inGeo, err := ucgCache.GeoPosBatch(ctx, cachekit.UCGFeedGeoKey(), members)
+			if err != nil {
+				return nil, next, err
+			}
+			added := 0
+			for _, z := range zrows {
+				id, _ := strconv.ParseUint(z.Member, 10, 64)
+				if id == 0 {
+					continue
+				}
+				if _, ok := seen[id]; ok {
+					continue
+				}
+				if hasViewer {
+					if _, ok := inGeo[z.Member]; ok {
+						continue
+					}
+				}
+				if _, ok := pool[id]; ok {
+					continue
+				}
+				pool[id] = feedCandidate{postID: id, baseScore: z.Score}
+				added++
+				if len(pool) >= need {
+					break
+				}
+			}
+			next.ZsetOffset += len(zrows)
+			if added == 0 && len(zrows) > 0 {
+				continue
+			}
+			if len(pool) < need {
+				next.RadiusIdx++
+			}
+		} else {
+			next.RadiusIdx++
+		}
+	}
+
+	ids := make([]uint64, 0, len(pool))
+	members := make([]string, 0, len(pool))
+	for id := range pool {
+		ids = append(ids, id)
+		members = append(members, strconv.FormatUint(id, 10))
+	}
+	scores, err := ucgCache.SortedSetScores(ctx, cachekit.UCGRecommendScoreKey(), members)
+	if err != nil {
+		return nil, next, err
+	}
+	snaps, miss, err := loadPostSnapshots(ctx, ids)
+	if err != nil {
+		return nil, next, err
+	}
+	for _, id := range miss {
+		snap, bfErr := backfillPostSnapshot(ctx, id)
+		if bfErr == nil {
+			snaps[id] = snap
+		}
+	}
+
+	out := make([]feedCandidate, 0, len(pool))
+	for id, c := range pool {
+		base := scores[strconv.FormatUint(id, 10)]
+		if base == 0 && c.baseScore > 0 {
+			base = c.baseScore
+		}
+		snap := snaps[id]
+		var postLat, postLng float64
+		if snap.hasCoords() {
+			postLat, postLng = *snap.Lat, *snap.Lng
+		}
+		final := computeFinalScore(cfg, base, viewer, hasViewer, postLat, postLng, c.distKm)
+		if !afterCursor(cur.LastFinalScore, cur.LastPostID, final, id) {
+			continue
+		}
+		c.baseScore = base
+		c.finalScore = final
+		c.postID = id
+		out = append(out, c)
+	}
+
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].finalScore != out[j].finalScore {
+			return out[i].finalScore > out[j].finalScore
+		}
+		return out[i].postID > out[j].postID
+	})
+	return out, next, nil
+}
+
+func assembleFeedPosts(
+	ctx context.Context,
+	viewerWxID int64,
+	viewer ViewerCoords,
+	hasViewer bool,
+	pageIDs []uint64,
+	candidates []feedCandidate,
+) ([]*PostDTO, error) {
+	distByID := make(map[uint64]float64, len(candidates))
+	for _, c := range candidates {
+		distByID[c.postID] = c.distKm
+	}
+
+	snaps, miss, err := loadPostSnapshots(ctx, pageIDs)
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range miss {
+		snap, bfErr := backfillPostSnapshot(ctx, id)
+		if bfErr == nil {
+			snaps[id] = snap
+		}
+	}
+
+	authorIDs := make([]uint64, 0, len(pageIDs))
+	for _, id := range pageIDs {
+		if snap, ok := snaps[id]; ok {
+			authorIDs = append(authorIDs, snap.AuthorWxID)
+		}
+	}
+	profiles, err := loadProfileSnapshots(ctx, authorIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	liked, err := likedPostIDsFromRedis(ctx, viewerWxID, pageIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]*PostDTO, 0, len(pageIDs))
+	for _, id := range pageIDs {
+		snap, ok := snaps[id]
+		if !ok {
+			continue
+		}
+		var prof *ProfileSnapshot
+		if p, ok := profiles[snap.AuthorWxID]; ok {
+			pp := p
+			prof = &pp
+		}
+		distMeters := ""
+		if hasViewer && snap.hasCoords() {
+			distKm := distByID[id]
+			if distKm <= 0 {
+				distKm = haversineKm(viewer.Lat, viewer.Lng, *snap.Lat, *snap.Lng)
+			}
+			distMeters = formatDistanceMeters(distKm)
+		}
+		out = append(out, snapshotToPostDTO(snap, prof, liked[id], distMeters))
+	}
+	return out, nil
+}
+
+// DistanceMetersForPost 单帖详情可选 viewer 坐标距离。
+func DistanceMetersForPost(ctx context.Context, postID uint64, viewerLat, viewerLng *float64) (string, error) {
+	viewer, ok := ValidViewerCoords(viewerLat, viewerLng)
+	if !ok {
+		return "", nil
+	}
+	snaps, miss, err := loadPostSnapshots(ctx, []uint64{postID})
+	if err != nil {
+		return "", err
+	}
+	snap, ok := snaps[postID]
+	if !ok {
+		for _, id := range miss {
+			if id == postID {
+				snap, err = backfillPostSnapshot(ctx, postID)
+				ok = err == nil
+				break
+			}
+		}
+	}
+	if !ok || !snap.hasCoords() {
+		row, rErr := dao.UcgPost.Ctx(ctx).Where(dao.UcgPost.Columns().Id, postID).One()
+		if rErr != nil {
+			return "", rErr
+		}
+		if row.IsEmpty() {
+			return "", nil
+		}
+		var post entity.UcgPost
+		if rErr = row.Struct(&post); rErr != nil {
+			return "", rErr
+		}
+		if !postEntityHasCoords(post) {
+			return "", nil
+		}
+		distKm := haversineKm(viewer.Lat, viewer.Lng, *post.Lat, *post.Lng)
+		return formatDistanceMeters(distKm), nil
+	}
+	distKm := haversineKm(viewer.Lat, viewer.Lng, *snap.Lat, *snap.Lng)
+	return formatDistanceMeters(distKm), nil
+}
+
+// ListFollowingFeed 关注 Feed：MySQL 负责 followee 集合与 published_at 分页；Redis snapshot 组装展示字段。
+func ListFollowingFeed(
+	ctx context.Context,
+	wxID int64,
+	page, pageSize int,
+	viewerLat, viewerLng *float64,
+) (*PageResult, error) {
 	if wxID <= 0 {
 		return nil, gerror.NewCode(gcode.CodeNotAuthorized, "缺少 X-Internal-Wx-Id")
 	}
@@ -132,6 +381,7 @@ func ListFollowingFeed(ctx context.Context, wxID int64, page, pageSize int) (*Pa
 		}
 		ids = append(ids, f.FolloweeWxId)
 	}
+	// MySQL 阶段：仅分页取 postId 与 total；不 JOIN profile/like/媒体表。
 	model := dao.UcgPost.Ctx(ctx).
 		Where(dao.UcgPost.Columns().Status, PostStatusPublished).
 		WhereIn(dao.UcgPost.Columns().AuthorWxId, ids)
@@ -139,11 +389,31 @@ func ListFollowingFeed(ctx context.Context, wxID int64, page, pageSize int) (*Pa
 	if err != nil {
 		return nil, err
 	}
-	rows, err := model.OrderDesc(dao.UcgPost.Columns().PublishedAt).Limit(p.PageSize).Offset(pageOffset(p)).All()
+	rows, err := model.
+		Fields(dao.UcgPost.Columns().Id).
+		OrderDesc(dao.UcgPost.Columns().PublishedAt).
+		Limit(p.PageSize).
+		Offset(pageOffset(p)).
+		All()
 	if err != nil {
 		return nil, err
 	}
-	list, err := postsFromResult(ctx, rows, wxID)
+	pageIDs := make([]uint64, 0, len(rows))
+	for _, row := range rows {
+		var post entity.UcgPost
+		if err = row.Struct(&post); err != nil {
+			return nil, err
+		}
+		pageIDs = append(pageIDs, post.Id)
+	}
+
+	// Redis 组装阶段：snapshot / liked SET / distanceMeters；miss 时 backfillPostSnapshot best-effort 回源。
+	viewer, hasViewer := ValidViewerCoords(viewerLat, viewerLng)
+	candidates := make([]feedCandidate, len(pageIDs))
+	for i, id := range pageIDs {
+		candidates[i] = feedCandidate{postID: id} // 无 GEO 预计算，assembleFeedPosts 内 haversine 重算距离
+	}
+	list, err := assembleFeedPosts(ctx, wxID, viewer, hasViewer, pageIDs, candidates)
 	if err != nil {
 		return nil, err
 	}

@@ -17,6 +17,7 @@ services:
     image: redis:7.2-alpine
     container_name: go-ai-talk-redis-test
     mem_limit: 96m
+    mem_swappiness: 0
     cpus: "0.1"
     command: >
       redis-server

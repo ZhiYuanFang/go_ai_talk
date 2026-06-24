@@ -10,6 +10,7 @@ import (
 
 	"hello/internal/dao"
 	"hello/internal/model/entity"
+	"hello/internal/platform/cachekit"
 
 	"github.com/gogf/gf/v2/frame/g"
 )
@@ -146,22 +147,11 @@ func RecomputeRecommendScore(ctx context.Context, postID uint64) error {
 	cfg := LoadRecommendConfig(ctx)
 	now := time.Now()
 	score := computeRecommendScore(cfg, post, now)
-	_, err = dao.UcgPostRecommend.Ctx(ctx).Data(g.Map{
-		dao.UcgPostRecommend.Columns().PostId:     post.Id,
-		dao.UcgPostRecommend.Columns().Score:      score,
-		dao.UcgPostRecommend.Columns().ComputedAt: now.Unix(),
-	}).Save()
-
-	// todo: 写入redis
-
-	return err
+	member := strconv.FormatUint(post.Id, 10)
+	return ucgCache.SortedSetAdd(ctx, cachekit.UCGRecommendScoreKey(), score, member)
 }
 
-// RemoveRecommendScore 下架/删帖时删除推荐行；0 行 affected 视为成功。
+// RemoveRecommendScore 下架/删帖时清理 Redis 推荐索引；0 行 affected 视为成功。
 func RemoveRecommendScore(ctx context.Context, postID uint64) error {
-	if postID == 0 {
-		return nil
-	}
-	_, err := dao.UcgPostRecommend.Ctx(ctx).Where(dao.UcgPostRecommend.Columns().PostId, postID).Delete()
-	return err
+	return removePostFromRecommendRedis(ctx, postID)
 }

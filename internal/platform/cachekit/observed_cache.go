@@ -222,6 +222,69 @@ func (c *observedCache) SortedSetAdd(ctx context.Context, key string, score floa
 	return err
 }
 
+func (c *observedCache) GeoAdd(ctx context.Context, key, member string, lng, lat float64) error {
+	begin := time.Now()
+	err := c.base.GeoAdd(ctx, key, member, lng, lat)
+	c.observer.OnOperation(ctx, "geoadd", key, time.Since(begin), err)
+	return err
+}
+
+func (c *observedCache) GeoRemove(ctx context.Context, key string, members ...string) error {
+	begin := time.Now()
+	err := c.base.GeoRemove(ctx, key, members...)
+	c.observer.OnOperation(ctx, "georem", key, time.Since(begin), err)
+	return err
+}
+
+func (c *observedCache) GeoSearchByRadiusWithDist(ctx context.Context, key string, lng, lat, radiusKm float64, count int) ([]GeoMemberDist, error) {
+	begin := time.Now()
+	vals, err := c.base.GeoSearchByRadiusWithDist(ctx, key, lng, lat, radiusKm, count)
+	c.observer.OnOperation(ctx, "geosearch", key, time.Since(begin), err)
+	return vals, err
+}
+
+func (c *observedCache) GeoPosBatch(ctx context.Context, key string, members []string) (map[string]struct{}, error) {
+	begin := time.Now()
+	vals, err := c.base.GeoPosBatch(ctx, key, members)
+	c.observer.OnOperation(ctx, "geopos", key, time.Since(begin), err)
+	return vals, err
+}
+
+func (c *observedCache) SortedSetRemove(ctx context.Context, key string, members ...string) error {
+	begin := time.Now()
+	err := c.base.SortedSetRemove(ctx, key, members...)
+	c.observer.OnOperation(ctx, "zrem", key, time.Since(begin), err)
+	return err
+}
+
+func (c *observedCache) SortedSetScores(ctx context.Context, key string, members []string) (map[string]float64, error) {
+	begin := time.Now()
+	vals, err := c.base.SortedSetScores(ctx, key, members)
+	c.observer.OnOperation(ctx, "zscore", key, time.Since(begin), err)
+	return vals, err
+}
+
+func (c *observedCache) SortedSetRevRangeWithScores(ctx context.Context, key string, start, stop int64) ([]ZSetMemberScore, error) {
+	begin := time.Now()
+	vals, err := c.base.SortedSetRevRangeWithScores(ctx, key, start, stop)
+	c.observer.OnOperation(ctx, "zrevrange", key, time.Since(begin), err)
+	return vals, err
+}
+
+func (c *observedCache) SetIsMemberBatch(ctx context.Context, key string, members []string) (map[string]bool, error) {
+	begin := time.Now()
+	vals, err := c.base.SetIsMemberBatch(ctx, key, members)
+	c.observer.OnOperation(ctx, "sismember", key, time.Since(begin), err)
+	return vals, err
+}
+
+func (c *observedCache) SetAddWithExpire(ctx context.Context, key string, ttl time.Duration, members ...string) error {
+	begin := time.Now()
+	err := c.base.SetAddWithExpire(ctx, key, ttl, members...)
+	c.observer.OnOperation(ctx, "sadd", key, time.Since(begin), err)
+	return err
+}
+
 func (c *observedCache) Eval(ctx context.Context, script string, keys []string, args []string) (string, error) {
 	begin := time.Now()
 	marker := "-"

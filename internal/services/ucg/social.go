@@ -127,6 +127,7 @@ func LikePost(ctx context.Context, wxID int64, postID uint64) error {
 	if err != nil {
 		return err
 	}
+	_ = saddUserLikedPost(ctx, wxID, postID)
 	PublishPostLiked(ctx, postID)
 	return nil
 }
@@ -196,6 +197,7 @@ func UnlikePost(ctx context.Context, wxID int64, postID uint64) error {
 		if err != nil {
 			return err
 		}
+		_ = sremUserLikedPost(ctx, wxID, postID)
 		PublishPostUnliked(ctx, postID)
 	}
 	return err

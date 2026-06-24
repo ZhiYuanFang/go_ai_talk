@@ -95,9 +95,11 @@ func EnsureUcgAIConfigDefaultRow(ctx context.Context) error {
 		return nil
 	}
 	_, err = g.DB().Model("ucg_ai_config").Ctx(ctx).Where("id", aiConfigSingletonID).Data(g.Map{
-		"provider":     string(cold.Provider),
-		"vision_model": cold.Model,
-		"updated_at":   now,
+		"provider":        string(cold.Provider),
+		"vision_model":    cold.Model,
+		"max_in_flight":   cold.MaxInFlight,
+		"max_waiters":     cold.MaxWaiters,
+		"updated_at":      now,
 	}).Update()
 	return err
 }

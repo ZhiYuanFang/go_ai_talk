@@ -279,8 +279,20 @@ curl -s http://127.0.0.1:9805/api.json   # sim-user-service
 - 初期关闭 `SIM_TASK_POST_VIDEO_ENABLED`、`SIM_VIDEO_POLL_ENABLED`、`SIM_TASK_CHAT_ENABLED`。
 - 使用温和周期（示例）：`SIM_INTERVAL_COMMENT=12h`、`SIM_INTERVAL_POST_IMAGE=6h`、`SIM_UCG_RATE_LIMIT_RPS=2`。
 - T2 评论已改走 ucg internal `posts/sample`，不再打 `feed/recommend`。
-- **UCG 推荐分（默认）**：热区 reconciler 每 **1h** 批算（`hotScanIntervalSeconds: 3600`）；热区点赞/评论不即时重算；**冷区**互动仍走 MQ 以支持老帖翻红；新帖 Feed 对无 `ucg_post_recommend` 行置顶直至 reconciler 首次算分。可选 env：`UCG_RECOMMEND_HOT_SCAN_INTERVAL_SECONDS`。`UCG_RECOMMEND_MQ_CONSUMER_ENABLED=false` 时 reconciler **仍运行**（仅停订阅 recommend 队列，冷区无法翻红）。
-- **UCG 推荐分验收（部署后）**：① 热区帖点赞后日志无 `[ucg-recommend-mq] recompute` 写库、MQ 无即时 score 更新；② 冷区（`published_at` 早于 72h）点赞后 `ucg_post_recommend.score` 上升且 Feed 可前排；③ 新过审帖在 recommend 行出现前 Feed 置顶；④ `UCG_RECOMMEND_MQ_CONSUMER_ENABLED=false` 重启 ucg 后日志仍有 `[ucg-recommend-hot]` reconciler 启动。
+- **UCG 推荐 Feed Redis（geo composite score）**：`baseScore` 权威存储于 Redis `ucg:recommend:score` ZSET；**停写** MySQL `ucg_post_recommend`（表可保留）。Feed 读路径经 GEO + cursor session；部署顺序见下节 backfill。
+- **UCG 推荐分（默认）**：热区 reconciler 每 **1h** 批算并 **ZADD** Redis ZSET；热区点赞/评论不即时重算；**冷区**互动仍走 MQ 以支持老帖翻红。可选 env：`UCG_RECOMMEND_HOT_SCAN_INTERVAL_SECONDS`。`UCG_RECOMMEND_MQ_CONSUMER_ENABLED=false` 时 reconciler **仍运行**（仅停订阅 recommend 队列，冷区无法翻红）。
+- **UCG Feed Redis backfill（部署 ucg-feed-geo-composite-score 后必做）**：
+  1. **DDL**：在 UCG 库执行 `docs/migrations/ucg_post_lat_lng.sql`（`ucg_post` 增 `lat`/`lng` 可空列）。
+  2. **部署**含新 Feed 读路径与写路径的 `ucg-service`（及 gateway-app / Flutter 客户端，可灰度）。
+  3. **Backfill**（运维窗口，需 `UCG_DB_LINK` + Redis 可达）：
+     ```powershell
+     cd d:\work\go_ai_talk
+     go run ./cmd/ucg-feed-backfill --env-file manifest/docker/env/.env.prod
+     # 仅帖索引：--posts-only；仅 liked SET：--likes-only；演练：--dry-run
+     ```
+  4. **Redis 验收**：抽样 `ZSCORE ucg:recommend:score <postId>`、`GEOPOS ucg:feed:geo <postId>`（有坐标帖）、`GET ucg:post:snapshot:<postId>`、`SMEMBERS ucg:user:<wxId>:liked-posts`。
+  5. **Feed 验收**：无坐标时排序与 baseScore 大致一致；有坐标时 API 返回 `distanceMeters`；cursor 翻页无重复；`POST /ucg/app/api/v2/posts` 2xx 计入 usage 统计。
+- **UCG 推荐分验收（部署后）**：① 热区帖点赞后 MQ 不写 MySQL recommend；② 冷区点赞后 Redis ZSET score 上升；③ publish 后 ZADD + snapshot 存在；④ `UCG_RECOMMEND_MQ_CONSUMER_ENABLED=false` 重启 ucg 后 reconciler 仍运行。
 - 观测：`SHOW GLOBAL STATUS LIKE 'Threads_running'`；`docker stats` ucg/sim 容器；`GET /sim/admin/api/status`。
 
 ```bash
@@ -827,13 +839,16 @@ sudo mkswap /swapfile && sudo swapon /swapfile
 
 | 组件 | memory | cpus |
 |------|--------|------|
-| prod redis ×3 | 96m | 0.1 |
+| prod redis ×3 | 128m（maxmemory 96mb/节点） | 0.1 |
 | test redis-test | 96m | 0.1 |
 | rabbitmq ×2 | 192m | 0.2 |
 | voice-test | 512m | 0.8 |
-| voice-prod | 256m | 0.3 |
+| voice-prod | 384m（GOMEMLIMIT 330MiB） | 0.35 |
 | gateway / gateway-app | 192m | 0.2 |
-| 其它微服务 | 128m | 0.15 |
+| ucg-prod | 192m | 0.2 |
+| 其它微服务 prod | 128m | 0.15 |
+
+单 prod + 本机 MySQL 与用户量档位详见 **`docs/runbooks/memory-sizing-guide.md`**。
 
 **ASR / WebSocket 验收约定**
 

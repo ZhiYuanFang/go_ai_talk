@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	v1 "hello/api/v1"
+	v2 "hello/api/v2"
 	"hello/internal/services/contracts"
 	"hello/internal/services/gatewayapp"
 	ucgsvc "hello/internal/services/ucg"
@@ -206,11 +207,25 @@ func (c *UcgAppCtrl) PostCreate(ctx context.Context, req *v1.UcgPostCreateReq) (
 		return nil, err
 	}
 	clientIP := ucgsvc.ClientIPFromRequest(ghttp.RequestFromCtx(ctx))
-	post, err := ucgsvc.CreatePost(ctx, wxID, req.Content, req.MediaType, req.Submit, toPostMediaInput(req.Media), clientIP)
+	post, err := ucgsvc.CreatePost(ctx, wxID, req.Content, req.MediaType, req.Submit, toPostMediaInput(req.Media), clientIP, nil, nil)
 	if err != nil {
 		return nil, err
 	}
 	return &v1.UcgPostCreateRes{UcgPostItem: postDTOToItem(post)}, nil
+}
+
+func (c *UcgAppCtrl) PostCreateV2(ctx context.Context, req *v2.UcgPostCreateV2Req) (res *v2.UcgPostCreateV2Res, err error) {
+	_ = c
+	wxID, err := wxIDFromUcgHeader(ghttp.RequestFromCtx(ctx))
+	if err != nil {
+		return nil, err
+	}
+	clientIP := ucgsvc.ClientIPFromRequest(ghttp.RequestFromCtx(ctx))
+	post, err := ucgsvc.CreatePost(ctx, wxID, req.Content, req.MediaType, req.Submit, toPostMediaInputV2(req.Media), clientIP, req.Lat, req.Lng)
+	if err != nil {
+		return nil, err
+	}
+	return &v2.UcgPostCreateV2Res{UcgPostItem: postDTOToItem(post)}, nil
 }
 
 func (c *UcgAppCtrl) PostUpdate(ctx context.Context, req *v1.UcgPostUpdateReq) (res *v1.UcgPostUpdateRes, err error) {
@@ -219,7 +234,7 @@ func (c *UcgAppCtrl) PostUpdate(ctx context.Context, req *v1.UcgPostUpdateReq) (
 	if err != nil {
 		return nil, err
 	}
-	post, err := ucgsvc.UpdatePost(ctx, wxID, req.Id, req.Content, req.MediaType, req.Submit, toPostMediaInput(req.Media))
+	post, err := ucgsvc.UpdatePost(ctx, wxID, req.Id, req.Content, req.MediaType, req.Submit, toPostMediaInput(req.Media), req.Lat, req.Lng)
 	if err != nil {
 		return nil, err
 	}
@@ -241,7 +256,7 @@ func (c *UcgAppCtrl) PostDelete(ctx context.Context, req *v1.UcgPostDeleteReq) (
 func (c *UcgAppCtrl) PostGet(ctx context.Context, req *v1.UcgPostGetReq) (res *v1.UcgPostGetRes, err error) {
 	_ = c
 	viewerWxID, _ := wxIDFromUcgHeaderOptional(ghttp.RequestFromCtx(ctx))
-	post, err := ucgsvc.GetPostByID(ctx, req.Id, viewerWxID)
+	post, err := ucgsvc.GetPostByID(ctx, req.Id, viewerWxID, req.Lat, req.Lng)
 	if err != nil {
 		return nil, err
 	}
@@ -271,14 +286,27 @@ func (c *UcgAppCtrl) PostsUser(ctx context.Context, req *v1.UcgPostsUserReq) (re
 	return pageResultToRes(page), nil
 }
 
-func (c *UcgAppCtrl) FeedRecommend(ctx context.Context, req *v1.UcgFeedRecommendReq) (res *v1.UcgPageRes, err error) {
+func (c *UcgAppCtrl) FeedRecommend(ctx context.Context, req *v1.UcgFeedRecommendReq) (res *v1.UcgFeedRecommendRes, err error) {
 	_ = c
 	viewerWxID, _ := wxIDFromUcgHeaderOptional(ghttp.RequestFromCtx(ctx))
-	page, err := ucgsvc.ListRecommendFeed(ctx, viewerWxID, req.Page, req.PageSize)
+	cursor := strings.TrimSpace(req.Cursor)
+	var lat, lng *float64
+	if cursor == "" {
+		lat, lng = req.Lat, req.Lng
+	}
+	page, err := ucgsvc.ListRecommendFeed(ctx, viewerWxID, lat, lng, cursor, req.PageSize)
 	if err != nil {
 		return nil, err
 	}
-	return pageResultToRes(page), nil
+	list := make([]v1.UcgPostItem, 0, len(page.List))
+	for _, p := range page.List {
+		list = append(list, postDTOToItem(p))
+	}
+	return &v1.UcgFeedRecommendRes{
+		List:       list,
+		HasMore:    page.HasMore,
+		NextCursor: page.NextCursor,
+	}, nil
 }
 
 func (c *UcgAppCtrl) FeedFollowing(ctx context.Context, req *v1.UcgFeedFollowingReq) (res *v1.UcgPageRes, err error) {
@@ -287,7 +315,7 @@ func (c *UcgAppCtrl) FeedFollowing(ctx context.Context, req *v1.UcgFeedFollowing
 	if err != nil {
 		return nil, err
 	}
-	page, err := ucgsvc.ListFollowingFeed(ctx, wxID, req.Page, req.PageSize)
+	page, err := ucgsvc.ListFollowingFeed(ctx, wxID, req.Page, req.PageSize, req.Lat, req.Lng)
 	if err != nil {
 		return nil, err
 	}
@@ -710,6 +738,10 @@ func toPostMediaInput(in []v1.UcgPostMediaInput) []ucgsvc.PostMediaInput {
 	return out
 }
 
+func toPostMediaInputV2(in []v1.UcgPostMediaInput) []ucgsvc.PostMediaInput {
+	return toPostMediaInput(in)
+}
+
 func postDTOToItem(p *ucgsvc.PostDTO) v1.UcgPostItem {
 	if p == nil {
 		return v1.UcgPostItem{}
@@ -736,9 +768,10 @@ func postDTOToItem(p *ucgsvc.PostDTO) v1.UcgPostItem {
 		LikedByMe:    p.LikedByMe,
 		CreatedAt:    p.CreatedAt,
 		UpdatedAt:    p.UpdatedAt,
-		PublishedAt:  p.PublishedAt,
-		IpLocation:   p.IpLocation,
-		Media:        media,
+		PublishedAt:    p.PublishedAt,
+		IpLocation:     p.IpLocation,
+		DistanceMeters: p.DistanceMeters,
+		Media:          media,
 	}
 	if p.Author != nil {
 		item.Author = profileDTOToRes(p.Author)

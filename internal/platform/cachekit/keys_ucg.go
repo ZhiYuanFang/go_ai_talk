@@ -3,6 +3,7 @@ package cachekit
 import (
 	"fmt"
 	"strconv"
+	"strings"
 )
 
 // UCGChatMsgListKey 会话消息 LIST（永久 PERSIST）；MVP 不设 TTL。
@@ -53,4 +54,36 @@ func UCGRecommendThrottleKey(postID uint64) string {
 // UCGIPLocationThrottleKey IP 属地更新节流；TTL 1h。
 func UCGIPLocationThrottleKey(wxID int64) string {
 	return "ucg:ip_location:throttle:" + strconv.FormatInt(wxID, 10)
+}
+
+// UCGFeedGeoKey 已发布且有坐标的帖子 GEO 索引；member=postId，coord=(lng,lat)。
+// 无 TTL，下架/删帖时 ZREM；与 MySQL published 状态由写路径同步。
+func UCGFeedGeoKey() string {
+	return "ucg:feed:geo"
+}
+
+// UCGRecommendScoreKey 推荐 baseScore ZSET；member=postId，score=baseScore。
+// 无 TTL，下架 ZREM；MQ/reconciler/publish 写路径维护。
+func UCGRecommendScoreKey() string {
+	return "ucg:recommend:score"
+}
+
+// UCGPostSnapshotKey 帖子 Feed 展示 JSON 快照（含 server-only lat/lng）；TTL 见 ucg.feed.snapshotTtlDays。
+func UCGPostSnapshotKey(postID uint64) string {
+	return fmt.Sprintf("ucg:post:snapshot:%d", postID)
+}
+
+// UCGProfileSnapshotKey 作者公开 profile JSON 快照；TTL 见 ucg.feed.snapshotTtlDays。
+func UCGProfileSnapshotKey(wxID uint64) string {
+	return fmt.Sprintf("ucg:profile:snapshot:%d", wxID)
+}
+
+// UCGUserLikedPostsKey 用户点赞 postId SET；无 TTL，like/unlike 写路径维护。
+func UCGUserLikedPostsKey(wxID int64) string {
+	return fmt.Sprintf("ucg:user:%d:liked-posts", wxID)
+}
+
+// UCGFeedSessionKey Feed 分页 session 已下发 postId SET；TTL 见 ucg.feed.sessionTtlMinutes（默认 30min）。
+func UCGFeedSessionKey(sessionID string) string {
+	return fmt.Sprintf("ucg:feed:session:%s", strings.TrimSpace(sessionID))
 }

@@ -9,8 +9,10 @@ type UcgPost struct {
 	Id                uint64 `json:"id"                ` //
 	AuthorWxId        uint64 `json:"authorWxId"        ` //
 	Content           string `json:"content"           ` //
-	IpLocation        string `json:"ipLocation"        ` // 发帖时 IP属地快照
-	Status            int    `json:"status"            ` // 0 draft 1 pending_audit 2 published 3 rejected 4 apply_failed 5 moderation_failed
+	IpLocation        string   `json:"ipLocation"        ` // 发帖时 IP属地快照
+	Lat               *float64 `json:"lat"               ` // 可选发帖纬度 WGS84
+	Lng               *float64 `json:"lng"               ` // 可选发帖经度 WGS84
+	Status            int      `json:"status"            ` // 0 draft 1 pending_audit 2 published 3 rejected 4 apply_failed 5 moderation_failed
 	AuditVersion      int    `json:"auditVersion"      ` // 审核轮次，仅 submit/再提审时递增
 	ModerationVerdict int    `json:"moderationVerdict" ` // 0=未审 1=pass 2=reject
 	ModerationReason  string `json:"moderationReason"  ` //

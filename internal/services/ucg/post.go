@@ -39,6 +39,7 @@ type PostDTO struct {
 	UpdatedAt    int64          `json:"updatedAt"`
 	PublishedAt  int64          `json:"publishedAt,omitempty"`
 	IpLocation   string         `json:"ipLocation,omitempty"`
+	DistanceMeters string       `json:"distanceMeters,omitempty"`
 	Media        []PostMediaDTO `json:"media,omitempty"`
 	Author       *ProfileDTO    `json:"author,omitempty"`
 }
@@ -53,7 +54,7 @@ type PostMediaDTO struct {
 }
 
 // CreatePost 创建帖子；submit=true 时进入 pending_audit 并事务提交后发 MQ。clientIP 用于服务端快照 ip_location。
-func CreatePost(ctx context.Context, wxID int64, content string, mediaType int, submit bool, media []PostMediaInput, clientIP string) (*PostDTO, error) {
+func CreatePost(ctx context.Context, wxID int64, content string, mediaType int, submit bool, media []PostMediaInput, clientIP string, lat, lng *float64) (*PostDTO, error) {
 	if wxID <= 0 {
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "wxId 无效")
 	}
@@ -82,6 +83,7 @@ func CreatePost(ctx context.Context, wxID int64, content string, mediaType int, 
 		if ipLoc != "" {
 			data[dao.UcgPost.Columns().IpLocation] = ipLoc
 		}
+		applyPostCoords(data, lat, lng)
 		res, insErr := tx.Model(dao.UcgPost.Table()).Ctx(ctx).Data(data).Insert()
 		if insErr != nil {
 			return insErr
@@ -105,11 +107,11 @@ func CreatePost(ctx context.Context, wxID int64, content string, mediaType int, 
 	if submit {
 		scheduleAuditPublishAfterCommit(ctx, outboxID)
 	}
-	return GetPostByID(ctx, postID, wxID)
+	return GetPostByID(ctx, postID, wxID, nil, nil)
 }
 
 // UpdatePost 编辑自己的帖子；再提审递增 audit_version 并发 MQ。
-func UpdatePost(ctx context.Context, wxID int64, postID uint64, content string, mediaType int, submit bool, media []PostMediaInput) (*PostDTO, error) {
+func UpdatePost(ctx context.Context, wxID int64, postID uint64, content string, mediaType int, submit bool, media []PostMediaInput, lat, lng *float64) (*PostDTO, error) {
 	post, err := loadOwnedPost(ctx, wxID, postID)
 	if err != nil {
 		return nil, err
@@ -149,6 +151,9 @@ func UpdatePost(ctx context.Context, wxID int64, postID uint64, content string, 
 			updateData[dao.UcgPost.Columns().ApplyFailedAt] = 0
 			updateData[dao.UcgPost.Columns().RejectReason] = ""
 		}
+		if lat != nil || lng != nil {
+			applyPostCoords(updateData, lat, lng)
+		}
 		_, uErr := tx.Model(dao.UcgPost.Table()).Ctx(ctx).Where(dao.UcgPost.Columns().Id, postID).Data(updateData).Update()
 		if uErr != nil {
 			return uErr
@@ -168,7 +173,15 @@ func UpdatePost(ctx context.Context, wxID int64, postID uint64, content string, 
 	if needPublish && status == PostStatusPendingAudit {
 		scheduleAuditPublishAfterCommit(ctx, outboxID)
 	}
-	return GetPostByID(ctx, postID, wxID)
+	dto, err := GetPostByID(ctx, postID, wxID, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	// 已发布帖坐标变更时同步 GEO/snapshot。
+	if post.Status == PostStatusPublished && (lat != nil || lng != nil) {
+		_ = syncPublishedPostRedis(ctx, postID)
+	}
+	return dto, nil
 }
 
 // DeletePost 删除自己的帖子。
@@ -227,8 +240,8 @@ func ListUserPosts(ctx context.Context, authorWxID, viewerWxID int64, page, page
 	return &PageResult{List: list, Total: total, Page: p.Page, PageSize: p.PageSize}, nil
 }
 
-// GetPostByID 获取单帖；非 published 仅作者可见；enrich likedByMe。
-func GetPostByID(ctx context.Context, postID uint64, viewerWxID int64) (*PostDTO, error) {
+// GetPostByID 获取单帖；非 published 仅作者可见；可选 viewer 坐标返回 distanceMeters。
+func GetPostByID(ctx context.Context, postID uint64, viewerWxID int64, viewerLat, viewerLng *float64) (*PostDTO, error) {
 	row, err := dao.UcgPost.Ctx(ctx).Where(dao.UcgPost.Columns().Id, postID).One()
 	if err != nil {
 		return nil, err
@@ -248,12 +261,28 @@ func GetPostByID(ctx context.Context, postID uint64, viewerWxID int64) (*PostDTO
 		return nil, err
 	}
 	if viewerWxID > 0 {
-		liked, lErr := likedPostIDSet(ctx, viewerWxID, []uint64{postID})
+		liked, lErr := likedPostIDsFromRedis(ctx, viewerWxID, []uint64{postID})
 		if lErr == nil {
-			_, dto.LikedByMe = liked[postID]
+			dto.LikedByMe = liked[postID]
 		}
 	}
+	if dm, dErr := DistanceMetersForPost(ctx, postID, viewerLat, viewerLng); dErr == nil && dm != "" {
+		dto.DistanceMeters = dm
+	}
 	return dto, nil
+}
+
+func applyPostCoords(data g.Map, lat, lng *float64) {
+	if lat == nil && lng == nil {
+		return
+	}
+	if lat != nil && lng != nil && validCoord(*lat, *lng) {
+		data[dao.UcgPost.Columns().Lat] = *lat
+		data[dao.UcgPost.Columns().Lng] = *lng
+		return
+	}
+	data[dao.UcgPost.Columns().Lat] = nil
+	data[dao.UcgPost.Columns().Lng] = nil
 }
 
 func loadOwnedPost(ctx context.Context, wxID int64, postID uint64) (*entity.UcgPost, error) {
@@ -323,36 +352,13 @@ func postsFromResult(ctx context.Context, rows gdb.Result, viewerWxID int64) ([]
 		postIDs = append(postIDs, post.Id)
 	}
 	if viewerWxID > 0 && len(postIDs) > 0 {
-		liked, err := likedPostIDSet(ctx, viewerWxID, postIDs)
+		liked, err := likedPostIDsFromRedis(ctx, viewerWxID, postIDs)
 		if err != nil {
 			return nil, err
 		}
 		for _, dto := range out {
-			_, dto.LikedByMe = liked[dto.Id]
+			dto.LikedByMe = liked[dto.Id]
 		}
-	}
-	return out, nil
-}
-
-func likedPostIDSet(ctx context.Context, viewerWxID int64, postIDs []uint64) (map[uint64]struct{}, error) {
-	out := make(map[uint64]struct{}, len(postIDs))
-	if viewerWxID <= 0 || len(postIDs) == 0 {
-		return out, nil
-	}
-	rows, err := dao.UcgPostLike.Ctx(ctx).
-		Where(dao.UcgPostLike.Columns().WxId, viewerWxID).
-		WhereIn(dao.UcgPostLike.Columns().PostId, postIDs).
-		Fields(dao.UcgPostLike.Columns().PostId).
-		All()
-	if err != nil {
-		return nil, err
-	}
-	for _, row := range rows {
-		var like entity.UcgPostLike
-		if err = row.Struct(&like); err != nil {
-			return nil, err
-		}
-		out[like.PostId] = struct{}{}
 	}
 	return out, nil
 }

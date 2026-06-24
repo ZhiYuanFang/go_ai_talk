@@ -1,0 +1,314 @@
+package ucg
+
+import (
+	"context"
+	"encoding/json"
+	"strconv"
+	"strings"
+	"time"
+
+	"hello/internal/dao"
+	"hello/internal/model/entity"
+	"hello/internal/platform/cachekit"
+
+	"github.com/gogf/gf/v2/errors/gcode"
+	"github.com/gogf/gf/v2/errors/gerror"
+)
+
+// PostSnapshot Redis 帖子快照（lat/lng 仅服务端用于距离计算）。
+type PostSnapshot struct {
+	ID          uint64         `json:"id"`
+	Content     string         `json:"content"`
+	Media       []PostMediaDTO `json:"media"`
+	AuthorWxID  uint64         `json:"authorWxId"`
+	LikeCount   uint           `json:"likeCount"`
+	IpLocation  string         `json:"ipLocation"`
+	PublishedAt int64          `json:"publishedAt"`
+	MediaType   int            `json:"mediaType"`
+	Lat         *float64       `json:"lat,omitempty"`
+	Lng         *float64       `json:"lng,omitempty"`
+}
+
+// ProfileSnapshot Redis 作者公开 profile 快照。
+type ProfileSnapshot struct {
+	WxID               uint64 `json:"wxId"`
+	Nickname           string `json:"nickname"`
+	Bio                string `json:"bio"`
+	AvatarUrl          string `json:"avatarUrl"`
+	AvatarThumbnailUrl string `json:"avatarThumbnailUrl"`
+}
+
+func (s PostSnapshot) hasCoords() bool {
+	if s.Lat == nil || s.Lng == nil {
+		return false
+	}
+	return validCoord(*s.Lat, *s.Lng)
+}
+
+func writePostSnapshot(ctx context.Context, post entity.UcgPost) error {
+	cfg := LoadFeedConfig(ctx)
+	media, err := loadPostMedia(ctx, post.Id)
+	if err != nil {
+		return err
+	}
+	snap := PostSnapshot{
+		ID:          post.Id,
+		Content:     post.Content,
+		Media:       media,
+		AuthorWxID:  post.AuthorWxId,
+		LikeCount:   post.LikeCount,
+		IpLocation:  strings.TrimSpace(post.IpLocation),
+		PublishedAt: post.PublishedAt,
+		MediaType:   post.MediaType,
+		Lat:         post.Lat,
+		Lng:         post.Lng,
+	}
+	raw, err := json.Marshal(snap)
+	if err != nil {
+		return err
+	}
+	return ucgCache.SetEX(ctx, cachekit.UCGPostSnapshotKey(post.Id), string(raw), cfg.snapshotTTL())
+}
+
+func writeProfileSnapshot(ctx context.Context, wxID uint64) error {
+	cfg := LoadFeedConfig(ctx)
+	prof, err := GetPublicProfile(ctx, wxID)
+	if err != nil || prof == nil {
+		return err
+	}
+	snap := ProfileSnapshot{
+		WxID:               prof.WxId,
+		Nickname:           prof.Nickname,
+		Bio:                prof.Bio,
+		AvatarUrl:          prof.AvatarUrl,
+		AvatarThumbnailUrl: prof.AvatarThumbnailUrl,
+	}
+	raw, err := json.Marshal(snap)
+	if err != nil {
+		return err
+	}
+	return ucgCache.SetEX(ctx, cachekit.UCGProfileSnapshotKey(wxID), string(raw), cfg.snapshotTTL())
+}
+
+func deletePostSnapshot(ctx context.Context, postID uint64) error {
+	return ucgCache.Del(ctx, cachekit.UCGPostSnapshotKey(postID))
+}
+
+func loadPostSnapshots(ctx context.Context, postIDs []uint64) (map[uint64]PostSnapshot, []uint64, error) {
+	hits := make(map[uint64]PostSnapshot, len(postIDs))
+	miss := make([]uint64, 0)
+	if len(postIDs) == 0 {
+		return hits, miss, nil
+	}
+	keys := make([]string, 0, len(postIDs))
+	idByKey := make(map[string]uint64, len(postIDs))
+	for _, id := range postIDs {
+		k := cachekit.UCGPostSnapshotKey(id)
+		keys = append(keys, k)
+		idByKey[k] = id
+	}
+	vals, err := ucgCache.MGet(ctx, keys)
+	if err != nil {
+		return nil, nil, err
+	}
+	for k, id := range idByKey {
+		raw, ok := vals[k]
+		if !ok || strings.TrimSpace(raw) == "" {
+			miss = append(miss, id)
+			continue
+		}
+		var snap PostSnapshot
+		if err = json.Unmarshal([]byte(raw), &snap); err != nil {
+			miss = append(miss, id)
+			continue
+		}
+		hits[id] = snap
+	}
+	return hits, miss, nil
+}
+
+func backfillPostSnapshot(ctx context.Context, postID uint64) (PostSnapshot, error) {
+	row, err := dao.UcgPost.Ctx(ctx).Where(dao.UcgPost.Columns().Id, postID).One()
+	if err != nil {
+		return PostSnapshot{}, err
+	}
+	if row.IsEmpty() {
+		return PostSnapshot{}, gerror.NewCode(gcode.CodeNotFound, "帖子不存在")
+	}
+	var post entity.UcgPost
+	if err = row.Struct(&post); err != nil {
+		return PostSnapshot{}, err
+	}
+	if post.Status != PostStatusPublished {
+		return PostSnapshot{}, gerror.NewCode(gcode.CodeNotFound, "帖子不存在")
+	}
+	_ = writePostSnapshot(ctx, post)
+	_ = writeProfileSnapshot(ctx, post.AuthorWxId)
+	media, err := loadPostMedia(ctx, post.Id)
+	if err != nil {
+		return PostSnapshot{}, err
+	}
+	return PostSnapshot{
+		ID:          post.Id,
+		Content:     post.Content,
+		Media:       media,
+		AuthorWxID:  post.AuthorWxId,
+		LikeCount:   post.LikeCount,
+		IpLocation:  strings.TrimSpace(post.IpLocation),
+		PublishedAt: post.PublishedAt,
+		MediaType:   post.MediaType,
+		Lat:         post.Lat,
+		Lng:         post.Lng,
+	}, nil
+}
+
+func loadProfileSnapshots(ctx context.Context, wxIDs []uint64) (map[uint64]ProfileSnapshot, error) {
+	out := make(map[uint64]ProfileSnapshot, len(wxIDs))
+	if len(wxIDs) == 0 {
+		return out, nil
+	}
+	keys := make([]string, 0, len(wxIDs))
+	idByKey := make(map[string]uint64, len(wxIDs))
+	for _, id := range wxIDs {
+		k := cachekit.UCGProfileSnapshotKey(id)
+		keys = append(keys, k)
+		idByKey[k] = id
+	}
+	vals, err := ucgCache.MGet(ctx, keys)
+	if err != nil {
+		return nil, err
+	}
+	for k, id := range idByKey {
+		raw, ok := vals[k]
+		if !ok {
+			continue
+		}
+		var snap ProfileSnapshot
+		if err = json.Unmarshal([]byte(raw), &snap); err != nil {
+			continue
+		}
+		out[id] = snap
+	}
+	for _, id := range wxIDs {
+		if _, ok := out[id]; ok {
+			continue
+		}
+		_ = writeProfileSnapshot(ctx, id)
+		if prof, pErr := GetPublicProfile(ctx, id); pErr == nil && prof != nil {
+			out[id] = ProfileSnapshot{
+				WxID:               prof.WxId,
+				Nickname:           prof.Nickname,
+				Bio:                prof.Bio,
+				AvatarUrl:          prof.AvatarUrl,
+				AvatarThumbnailUrl: prof.AvatarThumbnailUrl,
+			}
+		}
+	}
+	return out, nil
+}
+
+func snapshotToPostDTO(
+	snap PostSnapshot,
+	prof *ProfileSnapshot,
+	likedByMe bool,
+	distanceMeters string,
+) *PostDTO {
+	var author *ProfileDTO
+	if prof != nil {
+		author = &ProfileDTO{
+			WxId:               prof.WxID,
+			Nickname:           prof.Nickname,
+			Bio:                prof.Bio,
+			AvatarUrl:          prof.AvatarUrl,
+			AvatarThumbnailUrl: prof.AvatarThumbnailUrl,
+		}
+		ensureAuthorBio(author)
+	}
+	return &PostDTO{
+		Id:             snap.ID,
+		AuthorWxId:     snap.AuthorWxID,
+		Content:        snap.Content,
+		Status:         PostStatusPublished,
+		MediaType:      snap.MediaType,
+		LikeCount:      snap.LikeCount,
+		LikedByMe:      likedByMe,
+		PublishedAt:    snap.PublishedAt,
+		IpLocation:     snap.IpLocation,
+		Media:          snap.Media,
+		Author:         author,
+		DistanceMeters: distanceMeters,
+		CreatedAt:      snap.PublishedAt,
+		UpdatedAt:      snap.PublishedAt,
+	}
+}
+
+func likedPostIDsFromRedis(ctx context.Context, viewerWxID int64, postIDs []uint64) (map[uint64]bool, error) {
+	out := make(map[uint64]bool, len(postIDs))
+	if viewerWxID <= 0 || len(postIDs) == 0 {
+		return out, nil
+	}
+	members := make([]string, 0, len(postIDs))
+	for _, id := range postIDs {
+		members = append(members, strconv.FormatUint(id, 10))
+	}
+	hits, err := ucgCache.SetIsMemberBatch(ctx, cachekit.UCGUserLikedPostsKey(viewerWxID), members)
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range postIDs {
+		out[id] = hits[strconv.FormatUint(id, 10)]
+	}
+	return out, nil
+}
+
+func saddUserLikedPost(ctx context.Context, wxID int64, postID uint64) error {
+	return ucgCache.SetAdd(ctx, cachekit.UCGUserLikedPostsKey(wxID), strconv.FormatUint(postID, 10))
+}
+
+func sremUserLikedPost(ctx context.Context, wxID int64, postID uint64) error {
+	return ucgCache.SetRemove(ctx, cachekit.UCGUserLikedPostsKey(wxID), strconv.FormatUint(postID, 10))
+}
+
+func syncPublishedPostRedis(ctx context.Context, postID uint64) error {
+	row, err := dao.UcgPost.Ctx(ctx).Where(dao.UcgPost.Columns().Id, postID).One()
+	if err != nil {
+		return err
+	}
+	if row.IsEmpty() {
+		return nil
+	}
+	var post entity.UcgPost
+	if err = row.Struct(&post); err != nil {
+		return err
+	}
+	if post.Status != PostStatusPublished {
+		return nil
+	}
+	cfg := LoadRecommendConfig(ctx)
+	score := computeRecommendScore(cfg, post, time.Now())
+	member := strconv.FormatUint(post.Id, 10)
+	if err = ucgCache.SortedSetAdd(ctx, cachekit.UCGRecommendScoreKey(), score, member); err != nil {
+		return err
+	}
+	if postEntityHasCoords(post) {
+		if err = ucgCache.GeoAdd(ctx, cachekit.UCGFeedGeoKey(), member, *post.Lng, *post.Lat); err != nil {
+			return err
+		}
+	} else {
+		_ = ucgCache.GeoRemove(ctx, cachekit.UCGFeedGeoKey(), member)
+	}
+	if err = writePostSnapshot(ctx, post); err != nil {
+		return err
+	}
+	return writeProfileSnapshot(ctx, post.AuthorWxId)
+}
+
+func removePostFromRecommendRedis(ctx context.Context, postID uint64) error {
+	if postID == 0 {
+		return nil
+	}
+	member := strconv.FormatUint(postID, 10)
+	_ = ucgCache.SortedSetRemove(ctx, cachekit.UCGRecommendScoreKey(), member)
+	_ = ucgCache.GeoRemove(ctx, cachekit.UCGFeedGeoKey(), member)
+	return deletePostSnapshot(ctx, postID)
+}
