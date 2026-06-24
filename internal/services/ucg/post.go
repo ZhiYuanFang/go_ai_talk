@@ -88,9 +88,11 @@ func CreatePost(ctx context.Context, wxID int64, content string, mediaType int, 
 		}
 		id, _ := res.LastInsertId()
 		postID = uint64(id)
+		// 插入媒体
 		if insErr = replacePostMediaTx(ctx, tx, postID, media); insErr != nil {
 			return insErr
 		}
+		// 提交审核
 		if submit {
 			outboxID, insErr = enqueueAuditPublishOutboxTx(ctx, tx, eventkit.RoutingUcgPostCreated.String(),
 				auditPublishPostPayload(postID, auditVersion))

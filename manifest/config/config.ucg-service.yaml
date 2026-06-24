@@ -40,7 +40,7 @@ ucg:
     accessKeyId: ""
     accessKeySecret: ""
   auditPublish:
-    relayIntervalMs: 1000   # Publish relay worker 轮询间隔（毫秒）
+    relayIntervalMs: 30000   # Publish relay worker 轮询间隔（毫秒）
     maxAttempts: 3         # 单条 outbox 最大重试次数
   # 推荐算法参数（score = wNew*exp(-age/tau) + wLike*log(1+likes) + wComment*log(1+comments)，见 design.md）
   recommend:
