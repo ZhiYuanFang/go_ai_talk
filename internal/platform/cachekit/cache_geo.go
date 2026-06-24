@@ -149,6 +149,7 @@ func (c *RedisCache) SortedSetScores(ctx context.Context, key string, members []
 }
 
 // SortedSetRevRangeWithScores ZREVRANGE WITHSCORES，按 score 降序。
+// 响应形态见 parseZRevRangeWithScoresResult（go-redis 9.x 嵌套 [[m,s],...] 与扁平双支持）。
 func (c *RedisCache) SortedSetRevRangeWithScores(
 	ctx context.Context,
 	key string,
@@ -162,17 +163,10 @@ func (c *RedisCache) SortedSetRevRangeWithScores(
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrUnavailable, err)
 	}
-	arr := g.NewVar(ret).Array()
-	out := make([]ZSetMemberScore, 0, len(arr)/2)
-	for i := 0; i+1 < len(arr); i += 2 {
-		member := strings.TrimSpace(g.NewVar(arr[i]).String())
-		score, _ := strconv.ParseFloat(strings.TrimSpace(g.NewVar(arr[i+1]).String()), 64)
-		if member == "" {
-			continue
-		}
-		out = append(out, ZSetMemberScore{Member: member, Score: score})
+	if ret == nil || ret.IsNil() {
+		return nil, nil
 	}
-	return out, nil
+	return parseZRevRangeWithScoresResult(ret.Val()), nil
 }
 
 // SetIsMemberBatch pipeline SISMEMBER，返回 member→是否成员。

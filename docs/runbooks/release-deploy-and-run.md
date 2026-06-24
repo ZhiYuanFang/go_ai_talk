@@ -313,6 +313,16 @@ curl -s http://127.0.0.1:9805/api.json   # sim-user-service
     curl -s "http://127.0.0.1:9801/ucg/app/api/feed/recommend?pageSize=20&lat=30.27&lng=120.15" -H "Authorization: Bearer ..."
     ```
   - **验收**：部署含 fix 的 `ucg-service` 后，带/不带 lat/lng 的 Feed 均应非空（ZSET 有 published 帖且 snapshot 齐全时）；有坐标帖在 50–500km GEO 步仍按 composite 分排序。
+- **UCG Feed 空列表 ZREVRANGE 解析（ucg-feed-zrevrange-parse-fix）**：若 **ZCARD>0、snapshot 齐全、no-geo fix 已部署** 但 Feed 仍空，且 `redis-cli MONITOR` 中 `GEOPOS ucg:feed:geo` 参数形如 **`"[\"1\",1.718...]"`**（整对 member+score JSON）而非纯 postId `"1"`，则为 **`cachekit` ZREVRANGE WITHSCORES 解析 bug**（go-redis 9.x 嵌套 `[[m,s],...]` 响应被误当扁平数组）。
+  - **与 lazy warm / no-geo 分工**：索引与半径语义正常；本 fix 修正 **SortedSetRevRangeWithScores** 使 `z.Member` 为 postId 字符串。
+  - **排查**：
+    ```bash
+    docker exec go-ai-talk-redis-test redis-cli MONITOR &
+    curl -s "http://127.0.0.1:19804/ucg/app/api/feed/recommend?pageSize=20" > /dev/null
+    # 期望 GEOPOS 参数为 "1" "19"；修复前为 "[\"1\",score]" 串
+    docker logs go-ai-talk-ucg-service-test --since 1m 2>&1 | grep mget
+    ```
+  - **验收**：部署含 fix 的 `ucg-service` 后 Feed list 非空；日志含 `mget` / `ucg:post:snapshot:*`。
 - **UCG 推荐分验收（部署后）**：① 热区帖点赞后 MQ 不写 MySQL recommend；② 冷区点赞后 Redis ZSET score 上升；③ publish 后 ZADD + snapshot 存在；④ `UCG_RECOMMEND_MQ_CONSUMER_ENABLED=false` 重启 ucg 后 reconciler 仍运行。
 - 观测：`SHOW GLOBAL STATUS LIKE 'Threads_running'`；`docker stats` ucg/sim 容器；`GET /sim/admin/api/status`。
 
