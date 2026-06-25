@@ -20,6 +20,7 @@ import (
 func main() {
 	prepareSimUserServiceRuntime()
 	ctx := gctx.New()
+	// 检测redis是否正常，
 	if err := runtimecheck.CheckDependencies(ctx, runtimecheck.DependencyOptions{RequireRabbitMQ: false}); err != nil {
 		glog.Fatalf(ctx, "dependency check failed: %v", err)
 		return
@@ -29,8 +30,7 @@ func main() {
 		glog.Fatalf(ctx, "sim schema ensure failed: %v", err)
 		return
 	}
-	flags := simuser.LoadRuntimeFlags(ctx)
-	simuser.StartScheduler(ctx, flags)
+	simuser.InitScheduler(ctx)
 
 	s := g.Server("sim-user-service")
 	applySimUserServiceAddress(s)

@@ -187,7 +187,7 @@ ALTER TABLE ucg_ai_config
   ADD COLUMN max_waiters INT NOT NULL DEFAULT 15 AFTER max_in_flight;
 ```
 
-Admin 热更新：`GET/PUT /voice/admin/api/llm-lanes`（voice-admin.html「LLM 车道」Tab）、扩展后的 `GET/PUT /ucg/admin/api/ai-config`。
+Admin 热更新：**`/device/admin/ai-model-admin.html`**（七 lane 统一 UI，含 voice/ucg/sim 的 provider/model/maxInFlight/maxWaiters）；底层仍为 `GET/PUT /voice/admin/api/llm-lanes` 与 `GET/PUT /ucg/admin/api/ai-config`。`.env` / compose **勿再配置** `*_MAX_INFLIGHT` / `*_MAX_WAITERS` / `*_TIMEOUT_SEC`（并发仅 DB + Admin）。
 
 **验收（ALTER 后 + 新镜像）**：
 
@@ -269,15 +269,15 @@ curl -s http://127.0.0.1:9804/api.json   # ucg-service
 curl -s http://127.0.0.1:9805/api.json   # sim-user-service
 ```
 
-**sim-user-service（可选）**：默认 `SIM_USER_SERVICE_ENABLED=false` 仅健康检查；开启后需配置 `SIM_DB_LINK`、`GATEWAY_APP_URL`、`GLM_API_KEY`、`SIM_ADMIN_PASSWORD`（管理页 `/device/admin/sim-admin.html`）。模拟用户 API 不计入 usage 统计（`wx.is_simulated=1`）。
+**sim-user-service（可选）**：默认 `SIM_USER_SERVICE_ENABLED=false` 仅健康检查；开启后需配置 `SIM_DB_LINK`、`GATEWAY_APP_URL`、`GLM_API_KEY`、`SIM_ADMIN_PASSWORD`。管理页：**`/device/admin/sim-admin.html`**（任务开关/周期，保存后 scheduler 热重启）、**`/device/admin/ai-model-admin.html`**（七条 LLM lane 统一配置）。模拟用户 API 不计入 usage 统计（`wx.is_simulated=1`）。
 
-`SIM_INTERVAL_*`、`SIM_TASK_*`、`SIM_STARTUP_STAGGER_MAX` 等周期/开关变量写在 **`--env-file` 对应 `.env.*`** 中，由 `docker-compose.microservices.yml` 的 `sim-user-service.environment` 透传进容器。修改后须 **`--force-recreate sim-user-service`**，仅 `restart` 不会更新 env。验收：`docker exec go-ai-talk-sim-user-service-test printenv SIM_INTERVAL_REGISTER`。
+首次部署或升级后 `EnsureSchema` 会创建 `sim_config.runtime_json`、`sim_llm_lane_config` 并写入代码默认种子。**任务周期/开关/LLM lane 优先读 DB**，经 Admin 保存即可在线生效（调度类变更会 Stop→Start scheduler，Admin 触发热重启跳过长错峰）。仅 **`SIM_USER_SERVICE_ENABLED`** 仍为 env 硬闸，修改后须 **`--force-recreate sim-user-service`**。仅改 `maxSimUsers` 可不触发 scheduler 全量重启。
 
 **长期开 sim + 共享 MySQL（同机双栈）**：测试与生产共用 MySQL 实例时，sim 任务会经 UCG 审核/推荐链放大 DB 压力。建议：
 
 - 生产栈运行 sim（非测试栈长期开）；`maxSimUsers` 从 20–30 起，经 sim-admin 调高。
-- 初期关闭 `SIM_TASK_POST_VIDEO_ENABLED`、`SIM_VIDEO_POLL_ENABLED`、`SIM_TASK_CHAT_ENABLED`。
-- 使用温和周期（示例）：`SIM_INTERVAL_COMMENT=12h`、`SIM_INTERVAL_POST_IMAGE=6h`、`SIM_UCG_RATE_LIMIT_RPS=2`。
+- 初期在 sim-admin 关闭 postVideo、videoPoll、chat 任务开关。
+- 使用温和周期（示例）：comment=12h、postImage=6h、rateLimitRps=2（经 sim-admin 保存）。
 - T2 评论已改走 ucg internal `posts/sample`，不再打 `feed/recommend`。
 - **UCG 推荐 Feed Redis（geo composite score）**：`baseScore` 权威存储于 Redis `ucg:recommend:score` ZSET；**停写** MySQL `ucg_post_recommend`（表可保留）。Feed 读路径经 GEO + cursor session；部署顺序见下节 backfill。
 - **UCG 推荐分（默认）**：热区 reconciler 每 **1h** 批算并 **ZADD** Redis ZSET；热区点赞/评论不即时重算；**冷区**互动仍走 MQ 以支持老帖翻红。可选 env：`UCG_RECOMMEND_HOT_SCAN_INTERVAL_SECONDS`。`UCG_RECOMMEND_MQ_CONSUMER_ENABLED=false` 时 reconciler **仍运行**（仅停订阅 recommend 队列，冷区无法翻红）。

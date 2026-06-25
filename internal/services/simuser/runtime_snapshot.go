@@ -57,9 +57,10 @@ type RuntimeIntervalsDTO struct {
 	EphemeralChatWindow string
 }
 
-// GetRuntimeSnapshot 组装当前进程生效的运行时配置，供 Admin 只读展示。
+// GetRuntimeSnapshot 组装 DB 生效的运行时配置，供 Admin 展示。
 func GetRuntimeSnapshot(ctx context.Context) (RuntimeSnapshotDTO, error) {
 	flags := LoadRuntimeFlags(ctx)
+	rtDB, _ := LoadRuntimeFromDB(ctx)
 	cfg, err := GetConfig(ctx)
 	if err != nil {
 		return RuntimeSnapshotDTO{}, err
@@ -70,7 +71,10 @@ func GetRuntimeSnapshot(ctx context.Context) (RuntimeSnapshotDTO, error) {
 		dbLink = strings.TrimSpace(os.Getenv("GF_DATABASE_DEFAULT_LINK"))
 	}
 	rl := LoadRateLimitSettings()
-
+	if rtDB.RateLimitRps <= 0 {
+		rtDB.RateLimitRps = rl.RPS
+		rtDB.RateLimitBurst = rl.Burst
+	}
 	out := RuntimeSnapshotDTO{
 		ServiceEnabled: flags.Enabled,
 		DbEnabled:      cfg.Enabled,
@@ -98,8 +102,8 @@ func GetRuntimeSnapshot(ctx context.Context) (RuntimeSnapshotDTO, error) {
 			EphemeralChatLoop:   durationLabel(flags.EphemeralChatLoop),
 			EphemeralChatWindow: durationLabel(flags.EphemeralChatWindow),
 		},
-		RateLimitRps:   rl.RPS,
-		RateLimitBurst: rl.Burst,
+		RateLimitRps:   rtDB.RateLimitRps,
+		RateLimitBurst: rtDB.RateLimitBurst,
 		LLMLanes:       mapLLMSnapshot(LoadAllLaneProfiles()),
 	}
 

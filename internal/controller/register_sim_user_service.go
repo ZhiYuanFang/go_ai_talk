@@ -6,6 +6,6 @@ import "github.com/gogf/gf/v2/net/ghttp"
 func RegisterSimUserServiceHTTP(s *ghttp.Server) {
 	s.Use(ghttp.MiddlewareHandlerResponse)
 	s.Group("/", func(group *ghttp.RouterGroup) {
-		group.Bind(NewSimAdminCtrl())
+		group.Bind(NewSimAdminCtrl(), NewSimAdminLLMLanesCtrl())
 	})
 }

@@ -12,18 +12,49 @@ import (
 )
 
 var (
-	outboundLimiterOnce sync.Once
-	outboundLimiter     *rate.Limiter
+	outboundLimiterMu sync.RWMutex
+	outboundLimiter   *rate.Limiter
+	activeRateLimit   *RateLimitSettings
 )
 
-// RateLimitSettings 出站 HTTP 限速配置（与 outboundRateLimiter 同源 env）。
+// RateLimitSettings 出站 HTTP 限速配置。
 type RateLimitSettings struct {
 	RPS   float64
 	Burst int
 }
 
-// LoadRateLimitSettings 读取 SIM_UCG_RATE_LIMIT_* 生效值。
+// setActiveRateLimit Admin/DB 更新后重置进程内 limiter。
+func setActiveRateLimit(rl RateLimitSettings) {
+	if rl.RPS <= 0 {
+		rl.RPS = 2.0
+	}
+	if rl.Burst <= 0 {
+		rl.Burst = 4
+	}
+	outboundLimiterMu.Lock()
+	activeRateLimit = &RateLimitSettings{RPS: rl.RPS, Burst: rl.Burst}
+	outboundLimiter = rate.NewLimiter(rate.Limit(rl.RPS), rl.Burst)
+	outboundLimiterMu.Unlock()
+}
+
+// LoadRateLimitSettings 读取生效限速：内存 active > DB runtime > env。
 func LoadRateLimitSettings() RateLimitSettings {
+	outboundLimiterMu.RLock()
+	if activeRateLimit != nil {
+		rl := *activeRateLimit
+		outboundLimiterMu.RUnlock()
+		return rl
+	}
+	outboundLimiterMu.RUnlock()
+
+	db, err := LoadRuntimeFromDB(context.Background())
+	if err == nil && db.RateLimitRps > 0 {
+		burst := db.RateLimitBurst
+		if burst <= 0 {
+			burst = 4
+		}
+		return RateLimitSettings{RPS: db.RateLimitRps, Burst: burst}
+	}
 	rps := envFloat("SIM_UCG_RATE_LIMIT_RPS", 2.0)
 	if rps <= 0 {
 		rps = 2.0
@@ -36,11 +67,18 @@ func LoadRateLimitSettings() RateLimitSettings {
 }
 
 func outboundRateLimiter() *rate.Limiter {
-	outboundLimiterOnce.Do(func() {
-		rl := LoadRateLimitSettings()
-		outboundLimiter = rate.NewLimiter(rate.Limit(rl.RPS), rl.Burst)
-	})
-	return outboundLimiter
+	outboundLimiterMu.RLock()
+	lim := outboundLimiter
+	outboundLimiterMu.RUnlock()
+	if lim != nil {
+		return lim
+	}
+	rl := LoadRateLimitSettings()
+	setActiveRateLimit(rl)
+	outboundLimiterMu.RLock()
+	lim = outboundLimiter
+	outboundLimiterMu.RUnlock()
+	return lim
 }
 
 // waitOutboundRate 阻塞至限速许可可用；ctx 取消时返回。

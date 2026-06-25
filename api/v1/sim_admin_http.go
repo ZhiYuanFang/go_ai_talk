@@ -7,10 +7,14 @@ type SimAdminConfigGetReq struct {
 }
 
 type SimAdminConfigDTO struct {
-	Enabled     bool   `json:"enabled"`
-	MaxSimUsers int    `json:"maxSimUsers"`
-	UpdatedAt   int64  `json:"updatedAt"`
-	UpdatedBy   string `json:"updatedBy"`
+	Enabled     bool                           `json:"enabled"`
+	MaxSimUsers int                            `json:"maxSimUsers"`
+	TaskSwitches SimAdminRuntimeTaskSwitchesDTO `json:"taskSwitches,omitempty"`
+	Intervals    SimAdminRuntimeIntervalsDTO    `json:"intervals,omitempty"`
+	RateLimitRps float64                        `json:"rateLimitRps,omitempty"`
+	RateLimitBurst int                          `json:"rateLimitBurst,omitempty"`
+	UpdatedAt   int64                          `json:"updatedAt"`
+	UpdatedBy   string                         `json:"updatedBy"`
 }
 
 type SimAdminConfigGetRes struct {
@@ -18,12 +22,35 @@ type SimAdminConfigGetRes struct {
 }
 
 type SimAdminConfigPutReq struct {
-	g.Meta      `path:"/sim/admin/api/config" method:"put" tags:"sim-admin" summary:"更新模拟用户配置"`
-	Enabled     bool `json:"enabled"`
-	MaxSimUsers int  `json:"maxSimUsers"`
+	g.Meta         `path:"/sim/admin/api/config" method:"put" tags:"sim-admin" summary:"更新模拟用户配置"`
+	Enabled        bool                           `json:"enabled"`
+	MaxSimUsers    int                            `json:"maxSimUsers"`
+	TaskSwitches   SimAdminRuntimeTaskSwitchesDTO `json:"taskSwitches"`
+	Intervals      SimAdminRuntimeIntervalsDTO    `json:"intervals"`
+	RateLimitRps   float64                        `json:"rateLimitRps"`
+	RateLimitBurst int                            `json:"rateLimitBurst"`
 }
 
-type SimAdminConfigPutRes struct{}
+type SimAdminConfigEffectDTO struct {
+	Kind    string `json:"kind"`
+	Task    string `json:"task,omitempty"`
+	Message string `json:"message,omitempty"`
+}
+
+type SimAdminTaskScheduleDTO struct {
+	Name        string `json:"name"`
+	Label       string `json:"label"`
+	Enabled     bool   `json:"enabled"`
+	IntervalSec int64  `json:"intervalSec"`
+	LastRunAt   int64  `json:"lastRunAt,omitempty"`
+	NextRunHint string `json:"nextRunHint"`
+}
+
+type SimAdminConfigPutRes struct {
+	ScheduleReloaded bool                      `json:"scheduleReloaded"`
+	Effects          []SimAdminConfigEffectDTO `json:"effects"`
+	TaskSchedule     []SimAdminTaskScheduleDTO `json:"taskSchedule"`
+}
 
 type SimAdminPromptDTO struct {
 	TaskType           string `json:"taskType"`
@@ -120,7 +147,7 @@ type SimAdminRuntimeDTO struct {
 }
 
 type SimAdminRuntimeGetReq struct {
-	g.Meta `path:"/sim/admin/api/runtime" method:"get" tags:"sim-admin" summary:"读取模拟服务运行时配置（只读）"`
+	g.Meta `path:"/sim/admin/api/runtime" method:"get" tags:"sim-admin" summary:"读取模拟服务运行时配置"`
 }
 
 type SimAdminRuntimeGetRes struct {

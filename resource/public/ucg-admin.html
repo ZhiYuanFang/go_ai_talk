@@ -24,25 +24,14 @@
 		</div>
 
 		<div id="panelAi">
-			<div class="field">
-				<label for="aiProvider">Provider</label>
-				<select id="aiProvider"></select>
-			</div>
-			<div class="field">
-				<label for="visionModel">Vision 模型</label>
-				<select id="visionModel"></select>
-			</div>
+			<p style="font-size:13px;margin:0 0 16px;"><a href="/device/admin/ai-model-admin.html">→ AI 模型与并发</a>（润笔 provider / model / maxInFlight / maxWaiters）</p>
 			<div class="field">
 				<label for="maxImages">单次润笔最大图片数 (1-9)</label>
 				<input id="maxImages" type="number" min="1" max="9" step="1" />
 			</div>
-			<div class="field">
-				<label for="maxInFlight">maxInFlight（并发槽位）</label>
-				<input id="maxInFlight" type="number" min="1" step="1" />
-			</div>
-			<div class="field">
-				<label for="maxWaiters">maxWaiters（等待队列）</label>
-				<input id="maxWaiters" type="number" min="0" step="1" />
+			<div class="row">
+				<button id="saveMaxImagesBtn" type="button" class="secondary">保存图片上限</button>
+				<span id="meta" class="msg" style="color:#64748b;"></span>
 			</div>
 			<hr class="divider" />
 			<h4 style="margin:0 0 12px;font-size:15px;">AI 月度额度（全局默认）</h4>
@@ -68,10 +57,6 @@
 				<button id="saveQuotaUserBtn" type="button" class="secondary">保存单人额度</button>
 			</div>
 			<div id="quotaMsg" class="msg"></div>
-			<div class="row">
-				<button id="saveBtn" type="button">保存 AI 模型配置</button>
-				<span id="meta" class="msg" style="color:#64748b;"></span>
-			</div>
 			<div id="mainMsg" class="msg"></div>
 		</div>
 
@@ -317,6 +302,7 @@ function openMediaPreview(kind, url){
 }
 
 let providerModels = {};
+let cachedUcgAi = {};
 
 function fillProviderOptions(providers, current){
 	const sel = document.getElementById('aiProvider');
@@ -349,12 +335,8 @@ function fillModelOptions(models, current){
 
 async function loadConfig(){
 	const data = await api('/ucg/admin/api/ai-config');
-	providerModels = data.providerModels || {};
-	fillProviderOptions(data.allowedProviders || Object.keys(providerModels), data.provider || 'zhipu');
-	fillModelOptionsForProvider(data.provider || 'zhipu', data.visionModel);
+	cachedUcgAi = data;
 	document.getElementById('maxImages').value = data.maxImagesPerRequest || 9;
-	document.getElementById('maxInFlight').value = data.maxInFlight || 1;
-	document.getElementById('maxWaiters').value = data.maxWaiters != null ? data.maxWaiters : 15;
 	const meta = document.getElementById('meta');
 	if(data.updatedAt){
 		meta.textContent = '上次更新: ' + new Date(data.updatedAt * 1000).toLocaleString() + (data.updatedBy ? (' · ' + data.updatedBy) : '');
@@ -517,20 +499,17 @@ async function enterMain(){
 	await loadConfig();
 }
 
-document.getElementById('saveBtn').addEventListener('click', async () => {
-	const btn = document.getElementById('saveBtn');
+document.getElementById('saveMaxImagesBtn').addEventListener('click', async () => {
+	const btn = document.getElementById('saveMaxImagesBtn');
 	btn.disabled = true;
 	try {
-		const body = {
-			provider: document.getElementById('aiProvider').value,
-			visionModel: document.getElementById('visionModel').value,
+		const body = Object.assign({}, cachedUcgAi || {}, {
 			maxImagesPerRequest: parseInt(document.getElementById('maxImages').value, 10) || 9,
-			maxInFlight: parseInt(document.getElementById('maxInFlight').value, 10) || 1,
-			maxWaiters: parseInt(document.getElementById('maxWaiters').value, 10),
 			updatedBy: 'ucg-admin.html'
-		};
+		});
+		delete body.providerModels; delete body.allowedProviders;
 		await api('/ucg/admin/api/ai-config', {method:'PUT', body: JSON.stringify(body)});
-		showMsg(document.getElementById('mainMsg'), 'AI 模型配置已保存', true);
+		showMsg(document.getElementById('mainMsg'), '图片上限已保存', true);
 		await loadConfig();
 	} catch(e){
 		showMsg(document.getElementById('mainMsg'), e.message || '保存失败', false);

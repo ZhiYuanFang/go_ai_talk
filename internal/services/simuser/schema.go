@@ -2,6 +2,8 @@ package simuser
 
 import (
 	"context"
+	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/gogf/gf/v2/frame/g"
@@ -15,6 +17,17 @@ func EnsureSchema(ctx context.Context) error {
 			id TINYINT PRIMARY KEY,
 			enabled TINYINT NOT NULL DEFAULT 1,
 			max_sim_users INT NOT NULL DEFAULT 100,
+			runtime_json TEXT NOT NULL,
+			updated_at BIGINT NOT NULL DEFAULT 0,
+			updated_by VARCHAR(64) NOT NULL DEFAULT ''
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+		`CREATE TABLE IF NOT EXISTS sim_llm_lane_config (
+			lane VARCHAR(32) PRIMARY KEY,
+			provider VARCHAR(32) NOT NULL DEFAULT '',
+			model VARCHAR(128) NOT NULL DEFAULT '',
+			max_in_flight INT NOT NULL DEFAULT 1,
+			max_waiters INT NOT NULL DEFAULT 0,
+			timeout_sec INT NOT NULL DEFAULT 0,
 			updated_at BIGINT NOT NULL DEFAULT 0,
 			updated_by VARCHAR(64) NOT NULL DEFAULT ''
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
@@ -53,11 +66,34 @@ func EnsureSchema(ctx context.Context) error {
 			return err
 		}
 	}
+	if err := ensureSimConfigRuntimeColumn(ctx); err != nil {
+		return err
+	}
 	if err := seedDefaults(ctx); err != nil {
+		return err
+	}
+	if err := EnsureSimLLMLaneDefaultRows(ctx); err != nil {
 		return err
 	}
 	glog.Infof(ctx, "[simuser] schema ensured")
 	return nil
+}
+
+// ensureSimConfigRuntimeColumn 迁移旧库：补 runtime_json 列。
+func ensureSimConfigRuntimeColumn(ctx context.Context) error {
+	_, err := g.DB().Exec(ctx, `ALTER TABLE sim_config ADD COLUMN runtime_json TEXT NOT NULL DEFAULT '' AFTER max_sim_users`)
+	if err != nil && !isDuplicateColumnErr(err) {
+		return err
+	}
+	return nil
+}
+
+func isDuplicateColumnErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "Duplicate column") || strings.Contains(msg, "duplicate column name")
 }
 
 func seedDefaults(ctx context.Context) error {
@@ -66,12 +102,26 @@ func seedDefaults(ctx context.Context) error {
 		return err
 	}
 	now := time.Now().Unix()
+	runtimeSeed, _ := json.Marshal(DefaultRuntimeConfigDB())
 	if n == 0 {
 		_, err = g.DB().Model("sim_config").Ctx(ctx).Data(g.Map{
-			"id": 1, "enabled": 1, "max_sim_users": 100, "updated_at": now, "updated_by": "seed",
+			"id": 1, "enabled": 1, "max_sim_users": 100,
+			"runtime_json": string(runtimeSeed),
+			"updated_at": now, "updated_by": "seed",
 		}).Insert()
 		if err != nil {
 			return err
+		}
+	} else {
+		var row struct {
+			RuntimeJSON string `json:"runtime_json"`
+		}
+		_ = g.DB().Model("sim_config").Ctx(ctx).Fields("runtime_json").Where("id", 1).Scan(&row)
+		if row.RuntimeJSON == "" || row.RuntimeJSON == "{}" {
+			_, _ = g.DB().Model("sim_config").Ctx(ctx).Where("id", 1).Data(g.Map{
+				"runtime_json": string(runtimeSeed),
+				"updated_at":   now,
+			}).Update()
 		}
 	}
 	n, err = g.DB().Model("sim_account_seq").Ctx(ctx).Where("id", 1).Count()

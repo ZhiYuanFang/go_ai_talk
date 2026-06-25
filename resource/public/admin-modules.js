@@ -13,6 +13,12 @@ window.ADMIN_MODULES = [
 		showInNav: true
 	},
 	{
+		id: 'ai-model-admin',
+		title: 'AI 模型与并发',
+		pagePath: '/device/admin/ai-model-admin.html',
+		showInNav: true
+	},
+	{
 		id: 'voice-admin',
 		title: 'Voice AI 额度',
 		pagePath: '/device/admin/voice-admin.html',

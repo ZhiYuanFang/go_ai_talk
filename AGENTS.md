@@ -20,6 +20,8 @@
 - `voiceChat`（ASR/LLM/TTS/会话）必须维护在 `manifest/config/voice-chat.shared.yaml`，供 `voice-service` 与 `history-service` 共用；禁止在 `config.voice-service.yaml` 与 `config.history-service.yaml` 中重复整段 `voiceChat`（迁移期可仅依赖 `GF_GCFG` 中的 `voiceChat` 作兜底，不作为长期双源）。
 - 代码目录边界与包边界必须一致：业务实现统一位于 `internal/services/**`，禁止新增实现文件到 `internal/service`。
 - 评审时必须检查 import 路径，确保 `cmd`/`controller` 不再依赖 `hello/internal/service` 旧路径。
+- 已有接口版本（v1、v2、v3…）永远不可修改结构；任何新增字段或逻辑变更，必须创建更高版本（v+1）接口，原版本代码保持完全不变，保证历史前端接口请求不受影响。
+- 新增需求必须以最少的db操作来考虑实现方案。
 
 ## 测试文件
 - 当前阶段不新增测试文件（包括 `*_test.go`、`*.spec.*`、`*.test.*`）。

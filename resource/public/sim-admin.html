@@ -14,6 +14,11 @@
 		.badge-off { color: #dc2626; font-weight: 600; }
 		.runtime-hint { font-size: 12px; color: var(--muted); margin: 8px 0 0; line-height: 1.5; }
 		.runtime-err { color: #dc2626; font-size: 12px; }
+		.runtime-form .field-inline { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 8px 0; }
+		.runtime-form label.inline { font-size: 13px; display: flex; align-items: center; gap: 4px; }
+		.runtime-form input[type=text], .runtime-form input[type=number] { width: 88px; }
+		.save-result { margin-top: 12px; padding: 10px; background: rgba(0,0,0,.03); border-radius: 8px; font-size: 13px; }
+		.save-result ul { margin: 6px 0 0; padding-left: 18px; }
 		.btn-run { font-size: 12px; padding: 4px 10px; }
 		.btn-run:disabled { opacity: 0.5; cursor: not-allowed; }
 		.task-run-msg { font-size: 12px; color: var(--muted); margin: 0 0 8px; min-height: 1.2em; }
@@ -29,7 +34,8 @@
 		</div>
 	</header>
 	<div class="card glass hidden" id="mainCard">
-		<h4 style="margin:0 0 12px;font-size:15px;">数据库配置（可编辑）</h4>
+		<p style="font-size:13px;margin:0 0 12px;"><a href="/device/admin/ai-model-admin.html">→ AI 模型与并发</a>（sim 四条 LLM lane）</p>
+		<h4 style="margin:0 0 12px;font-size:15px;">业务与运行配置（可编辑，保存后在线生效）</h4>
 		<div class="field">
 			<label><input id="cfgEnabled" type="checkbox" /> 启用模拟服务（DB sim_config.enabled）</label>
 		</div>
@@ -37,11 +43,27 @@
 			<label for="maxSimUsers">模拟用户上限</label>
 			<input id="maxSimUsers" type="number" min="1" max="1000" step="1" />
 		</div>
+		<p class="runtime-hint">进程总开关 <code>SIM_USER_SERVICE_ENABLED</code>（env）见下方只读区；为 false 时调度器不启动，须改 env 并 recreate 容器。</p>
+		<div class="runtime-form">
+			<p style="font-size:13px;margin:12px 0 6px;font-weight:600;">任务开关</p>
+			<div class="field-inline" id="taskSwitchFields"></div>
+			<p style="font-size:13px;margin:12px 0 6px;font-weight:600;">任务周期（如 6h、3h30m、10m）</p>
+			<div id="intervalFields"></div>
+			<p style="font-size:13px;margin:12px 0 6px;font-weight:600;">出站限速 &amp; E1</p>
+			<div class="field-inline">
+				<label class="inline">RPS <input id="rateRps" type="number" min="0.1" step="0.1" /></label>
+				<label class="inline">Burst <input id="rateBurst" type="number" min="1" step="1" /></label>
+				<label class="inline">E1 循环 <input id="ivEphemeralLoop" type="text" placeholder="5m" /></label>
+				<label class="inline">E1 窗口 <input id="ivEphemeralWindow" type="text" placeholder="15m" /></label>
+				<label class="inline">启动错峰 <input id="ivStagger" type="text" placeholder="30m" /></label>
+			</div>
+		</div>
 		<button id="saveConfigBtn" type="button">保存配置</button>
 		<span id="cfgMsg" class="msg"></span>
+		<div id="saveResultPanel" class="save-result hidden"></div>
 		<hr class="divider" />
-		<h4 style="margin:0 0 8px;font-size:15px;">运行配置（只读）</h4>
-		<p class="runtime-hint">来自容器环境变量，反映<strong>当前进程</strong>生效值。修改 <code>.env</code> 后须 <code>docker compose ... up -d --force-recreate sim-user-service</code>；任务首次执行延迟约为「启动错峰 + 一整轮周期」。</p>
+		<h4 style="margin:0 0 8px;font-size:15px;">当前生效快照</h4>
+		<p class="runtime-hint">只读展示；LLM 模型见 <a href="/device/admin/ai-model-admin.html">AI 模型与并发</a>。</p>
 		<div id="runtimeErr" class="runtime-err hidden"></div>
 		<dl class="runtime-grid" id="runtimePanel">
 			<dt>进程总开关</dt><dd id="rtServiceEnabled">—</dd>
@@ -53,7 +75,6 @@
 			<dt>E1 聊天</dt><dd id="rtEphemeral">—</dd>
 			<dt>任务开关</dt><dd id="rtTaskSwitches">—</dd>
 			<dt>任务周期</dt><dd id="rtIntervals">—</dd>
-			<dt>LLM 模型</dt><dd id="rtLLMLanes">—</dd>
 		</dl>
 		<hr class="divider" />
 		<h4>Prompt 模板</h4>
@@ -101,6 +122,94 @@
 <script src="/resource/public/admin-common.js"></script>
 <script>
 (function(){
+	const taskSwitchDefs = [
+		{ key: 'register', label: 'T1 注册' }, { key: 'comment', label: 'T2 评论' },
+		{ key: 'postImage', label: 'T3 图文' }, { key: 'postVideo', label: 'T4 视频' },
+		{ key: 'chat', label: 'T5 聊天' }, { key: 'follow', label: 'T6 关注' },
+		{ key: 'videoPoll', label: 'P1 轮询' }
+	];
+	const intervalDefs = [
+		{ key: 'register', label: 'T1' }, { key: 'comment', label: 'T2' },
+		{ key: 'postImage', label: 'T3' }, { key: 'postVideo', label: 'T4' },
+		{ key: 'chat', label: 'T5' }, { key: 'follow', label: 'T6' },
+		{ key: 'videoPollIdle', label: 'P1 空闲' }, { key: 'videoPollActive', label: 'P1 活跃' }
+	];
+	function buildRuntimeFormShell() {
+		const sw = document.getElementById('taskSwitchFields');
+		sw.innerHTML = '';
+		taskSwitchDefs.forEach(d => {
+			const lb = document.createElement('label');
+			lb.className = 'inline';
+			lb.innerHTML = '<input type="checkbox" id="sw_'+d.key+'" /> '+d.label;
+			sw.appendChild(lb);
+		});
+		const iv = document.getElementById('intervalFields');
+		iv.innerHTML = '';
+		intervalDefs.forEach(d => {
+			const row = document.createElement('div');
+			row.className = 'field-inline';
+			row.innerHTML = '<label class="inline">'+d.label+' <input id="iv_'+d.key+'" type="text" /></label>';
+			iv.appendChild(row);
+		});
+	}
+	function fillConfigForm(cfg) {
+		const c = cfg.config || cfg;
+		document.getElementById('cfgEnabled').checked = !!c.enabled;
+		document.getElementById('maxSimUsers').value = c.maxSimUsers || 100;
+		const sw = c.taskSwitches || {};
+		taskSwitchDefs.forEach(d => {
+			const el = document.getElementById('sw_'+d.key);
+			if (el) el.checked = !!sw[d.key];
+		});
+		const iv = c.intervals || {};
+		intervalDefs.forEach(d => {
+			const el = document.getElementById('iv_'+d.key);
+			if (el) el.value = iv[d.key] || '';
+		});
+		document.getElementById('ivEphemeralLoop').value = iv.ephemeralChatLoop || '';
+		document.getElementById('ivEphemeralWindow').value = iv.ephemeralChatWindow || '';
+		document.getElementById('ivStagger').value = iv.startupStaggerMax || '';
+		document.getElementById('rateRps').value = c.rateLimitRps || 2;
+		document.getElementById('rateBurst').value = c.rateLimitBurst || 4;
+	}
+	function collectConfigBody() {
+		const taskSwitches = {};
+		taskSwitchDefs.forEach(d => { taskSwitches[d.key] = document.getElementById('sw_'+d.key).checked; });
+		const intervals = {};
+		intervalDefs.forEach(d => { intervals[d.key] = document.getElementById('iv_'+d.key).value.trim(); });
+		intervals.ephemeralChatLoop = document.getElementById('ivEphemeralLoop').value.trim();
+		intervals.ephemeralChatWindow = document.getElementById('ivEphemeralWindow').value.trim();
+		intervals.startupStaggerMax = document.getElementById('ivStagger').value.trim();
+		return {
+			enabled: document.getElementById('cfgEnabled').checked,
+			maxSimUsers: parseInt(document.getElementById('maxSimUsers').value, 10) || 100,
+			taskSwitches, intervals,
+			rateLimitRps: parseFloat(document.getElementById('rateRps').value) || 2,
+			rateLimitBurst: parseInt(document.getElementById('rateBurst').value, 10) || 4
+		};
+	}
+	function renderSaveResult(res) {
+		const panel = document.getElementById('saveResultPanel');
+		if (!res || (!res.effects && !res.taskSchedule)) { panel.classList.add('hidden'); return; }
+		let html = '<strong>保存结果</strong>';
+		if (res.scheduleReloaded) html += ' · 调度器已重启';
+		else html += ' · 未全量重启调度器';
+		if (res.effects && res.effects.length) {
+			html += '<ul>';
+			res.effects.forEach(e => { html += '<li>'+escapeHtml(e.message || e.kind)+'</li>'; });
+			html += '</ul>';
+		}
+		if (res.taskSchedule && res.taskSchedule.length) {
+			html += '<table style="width:100%;font-size:12px;margin-top:8px;"><tr><th>任务</th><th>开关</th><th>下一跑</th></tr>';
+			res.taskSchedule.forEach(t => {
+				html += '<tr><td>'+escapeHtml(t.label||t.name)+'</td><td>'+(t.enabled?'开':'关')+'</td><td>'+escapeHtml(t.nextRunHint||'—')+'</td></tr>';
+			});
+			html += '</table>';
+		}
+		panel.innerHTML = html;
+		panel.classList.remove('hidden');
+	}
+	buildRuntimeFormShell();
 	const types = ['register_nickname','register_avatar','comment','post_image_text','post_video_text','chat_reply'];
 	const runnableTasks = [
 		{ name: 'register', label: 'T1 注册' },
@@ -166,15 +275,6 @@
 		const intervalKeys = ['register','comment','postImage','postVideo','chat','follow','videoPollIdle','videoPollActive'];
 		document.getElementById('rtIntervals').textContent =
 			intervalKeys.map(k => intervalLabel(k, iv[k] || '—')).join(' · ');
-		const llm = rt.llmLanes || {};
-		const llmOrder = ['simText','simVision','simImageGen','simVideoGen'];
-		const llmNames = {simText:'文本',simVision:'视觉',simImageGen:'生图',simVideoGen:'生视频'};
-		document.getElementById('rtLLMLanes').textContent =
-			llmOrder.map(k => {
-				const row = llm[k];
-				if (!row) return (llmNames[k]||k)+' —';
-				return (llmNames[k]||k)+' '+row.provider+'/'+row.model;
-			}).join(' · ');
 	}
 
 	async function loadRuntime() {
@@ -300,8 +400,7 @@
 	async function enterMain(){
 		document.getElementById('mainCard').classList.remove('hidden');
 		const d = await api('/sim/admin/api/config');
-		document.getElementById('cfgEnabled').checked = !!d.config.enabled;
-		document.getElementById('maxSimUsers').value = d.config.maxSimUsers || 100;
+		fillConfigForm(d);
 		await Promise.all([loadPrompt(), loadRuntime(), loadStatus()]);
 	}
 	async function loadPrompt(){
@@ -317,11 +416,9 @@
 	}
 	document.getElementById('saveConfigBtn').onclick = async () => {
 		try {
-			await api('/sim/admin/api/config', { method:'PUT', body: JSON.stringify({
-				enabled: document.getElementById('cfgEnabled').checked,
-				maxSimUsers: parseInt(document.getElementById('maxSimUsers').value,10)||100
-			})});
+			const res = await api('/sim/admin/api/config', { method:'PUT', body: JSON.stringify(collectConfigBody())});
 			document.getElementById('cfgMsg').textContent = '已保存';
+			renderSaveResult(res);
 			await loadRuntime();
 		} catch(e){ document.getElementById('cfgMsg').textContent = e.message; }
 	};

@@ -23,6 +23,8 @@ var adminStaticPages = []adminStaticPage{
 	{path: "/device/admin/feedback-records", file: "resource/public/feedback-records.html", noCache: true},
 	{path: "/device/admin/api-usage-stats", file: "resource/public/api-usage-stats.html", noCache: true},
 	{path: "/device/admin/ucg-admin.html", file: "resource/public/ucg-admin.html", noCache: true},
+	{path: "/device/admin/voice-admin.html", file: "resource/public/voice-admin.html", noCache: true},
+	{path: "/device/admin/ai-model-admin.html", file: "resource/public/ai-model-admin.html", noCache: true},
 	{path: "/device/admin/sim-admin.html", file: "resource/public/sim-admin.html", noCache: true},
 	{path: "/device/admin/history/*deviceNo", file: "resource/public/history.html", noCache: true},
 	{path: "/device/app/version-admin.html", file: "resource/public/gateway-app-version-admin.html", noCache: true},

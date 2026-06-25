@@ -13,109 +13,54 @@
 		<div class="logo">Voice</div>
 		<div>
 			<h1>Voice 运维</h1>
-			<p>AI 额度与 LLM 车道 · 须先在 <a href="/device/admin">运维 Hub</a> 登录</p>
+			<p>AI 月度额度 · 须先在 <a href="/device/admin">运维 Hub</a> 登录</p>
 		</div>
 	</header>
 	<div class="card glass hidden" id="mainCard">
-		<div class="tabs">
-			<button type="button" class="tab active" id="tabQuota">AI 额度</button>
-			<button type="button" class="tab" id="tabLanes">LLM 车道</button>
+		<p style="font-size:13px;margin:0 0 16px;"><a href="/device/admin/ai-model-admin.html">→ AI 模型与并发</a>（voiceUnderstanding / clinic 的 provider、model、maxInFlight、maxWaiters）</p>
+		<h4 style="margin:0 0 12px;font-size:15px;">全局默认</h4>
+		<div class="field">
+			<label for="quotaVoiceDefault">喂养 AI 默认次数/月</label>
+			<input id="quotaVoiceDefault" type="number" min="1" step="1" />
 		</div>
-
-		<div id="panelQuota">
-			<h4 style="margin:0 0 12px;font-size:15px;">全局默认</h4>
-			<div class="field">
-				<label for="quotaVoiceDefault">喂养 AI 默认次数/月</label>
-				<input id="quotaVoiceDefault" type="number" min="1" step="1" />
-			</div>
-			<div class="field">
-				<label for="quotaClinicDefault">胖宝 AI 默认次数/月</label>
-				<input id="quotaClinicDefault" type="number" min="1" step="1" />
-			</div>
-			<div class="row">
-				<button id="saveQuotaDefaultBtn" type="button">保存全局默认</button>
-				<span id="quotaDefaultMeta" class="msg" style="color:#64748b;"></span>
-			</div>
-			<hr class="divider" />
-			<h4 style="margin:0 0 12px;font-size:15px;">单人 override（wxId）</h4>
-			<div class="row">
-				<input id="quotaWxId" type="number" min="1" step="1" placeholder="wxId" style="width:140px;" />
-				<button id="loadQuotaUserBtn" type="button" class="secondary">加载</button>
-			</div>
-			<div class="field">
-				<label for="quotaVoiceUser">喂养 AI override</label>
-				<input id="quotaVoiceUser" type="number" min="1" step="1" />
-				<label style="margin-top:6px;"><input id="quotaClearVoice" type="checkbox" /> 清除喂养 override</label>
-			</div>
-			<div class="field">
-				<label for="quotaClinicUser">胖宝 AI override</label>
-				<input id="quotaClinicUser" type="number" min="1" step="1" />
-				<label style="margin-top:6px;"><input id="quotaClearClinic" type="checkbox" /> 清除胖宝 override</label>
-			</div>
-			<div class="row">
-				<button id="saveQuotaUserBtn" type="button" class="secondary">保存单人额度</button>
-			</div>
+		<div class="field">
+			<label for="quotaClinicDefault">胖宝 AI 默认次数/月</label>
+			<input id="quotaClinicDefault" type="number" min="1" step="1" />
 		</div>
-
-		<div id="panelLanes" class="hidden">
-			<h4 style="margin:0 0 12px;font-size:15px;">voiceUnderstanding（喂养全部 LLM）</h4>
-			<div class="field"><label for="vuProvider">Provider</label><select id="vuProvider"></select></div>
-			<div class="field"><label for="vuModel">Model</label><select id="vuModel"></select></div>
-			<div class="field"><label for="vuInFlight">maxInFlight</label><input id="vuInFlight" type="number" min="1" step="1" /></div>
-			<div class="field"><label for="vuWaiters">maxWaiters</label><input id="vuWaiters" type="number" min="0" step="1" /></div>
-			<hr class="divider" />
-			<h4 style="margin:0 0 12px;font-size:15px;">clinic（胖宝诊疗）</h4>
-			<div class="field"><label for="clProvider">Provider</label><select id="clProvider"></select></div>
-			<div class="field"><label for="clModel">Model</label><select id="clModel"></select></div>
-			<div class="field"><label for="clInFlight">maxInFlight</label><input id="clInFlight" type="number" min="1" step="1" /></div>
-			<div class="field"><label for="clWaiters">maxWaiters</label><input id="clWaiters" type="number" min="0" step="1" /></div>
-			<div class="row">
-				<button id="saveLanesBtn" type="button">保存 LLM 车道</button>
-				<span id="lanesMeta" class="msg" style="color:#64748b;"></span>
-			</div>
+		<div class="row">
+			<button id="saveQuotaDefaultBtn" type="button">保存全局默认</button>
+			<span id="quotaDefaultMeta" class="msg" style="color:#64748b;"></span>
 		</div>
-
+		<hr class="divider" />
+		<h4 style="margin:0 0 12px;font-size:15px;">单人 override（wxId）</h4>
+		<div class="row">
+			<input id="quotaWxId" type="number" min="1" step="1" placeholder="wxId" style="width:140px;" />
+			<button id="loadQuotaUserBtn" type="button" class="secondary">加载</button>
+		</div>
+		<div class="field">
+			<label for="quotaVoiceUser">喂养 AI override</label>
+			<input id="quotaVoiceUser" type="number" min="1" step="1" />
+			<label style="margin-top:6px;"><input id="quotaClearVoice" type="checkbox" /> 清除喂养 override</label>
+		</div>
+		<div class="field">
+			<label for="quotaClinicUser">胖宝 AI override</label>
+			<input id="quotaClinicUser" type="number" min="1" step="1" />
+			<label style="margin-top:6px;"><input id="quotaClearClinic" type="checkbox" /> 清除胖宝 override</label>
+		</div>
+		<div class="row">
+			<button id="saveQuotaUserBtn" type="button" class="secondary">保存单人额度</button>
+		</div>
 		<div id="quotaMsg" class="msg"></div>
 	</div>
 </div>
 <script src="/resource/public/admin-common.js"></script>
 <script>
 function api(path, options={}) { return AdminCommon.adminFetch(path, options); }
-
 function showMsg(el, text, ok) {
 	if (!el) return;
 	el.textContent = text || '';
 	el.style.color = ok ? '#16a34a' : '#dc2626';
 }
-
-let laneAllowlist = {};
-
-function fillProviderSelect(sel, providers) {
-	sel.innerHTML = '';
-	(providers || []).forEach(p => {
-		const opt = document.createElement('option');
-		opt.value = p; opt.textContent = p;
-		sel.appendChild(opt);
-	});
-}
-
-function fillModelSelect(sel, provider, selected) {
-	sel.innerHTML = '';
-	const models = (laneAllowlist && laneAllowlist[provider]) || [];
-	models.forEach(m => {
-		const opt = document.createElement('option');
-		opt.value = m; opt.textContent = m;
-		if (m === selected) opt.selected = true;
-		sel.appendChild(opt);
-	});
-}
-
-function bindLaneProviderModel(prefix) {
-	const pSel = document.getElementById(prefix + 'Provider');
-	const mSel = document.getElementById(prefix + 'Model');
-	pSel.addEventListener('change', () => fillModelSelect(mSel, pSel.value, ''));
-}
-
 async function loadQuotaDefault() {
 	const data = await api('/voice/admin/api/ai-quota/default');
 	document.getElementById('quotaVoiceDefault').value = data.voiceAiMonthlyLimit || 5;
@@ -123,7 +68,6 @@ async function loadQuotaDefault() {
 	const meta = document.getElementById('quotaDefaultMeta');
 	meta.textContent = data.updatedAt ? ('默认更新: ' + new Date(data.updatedAt * 1000).toLocaleString()) : '';
 }
-
 async function loadQuotaUser() {
 	const wxId = parseInt(document.getElementById('quotaWxId').value, 10);
 	if (!wxId) { showMsg(document.getElementById('quotaMsg'), '请输入 wxId', false); return; }
@@ -134,105 +78,30 @@ async function loadQuotaUser() {
 	document.getElementById('quotaClearClinic').checked = false;
 	showMsg(document.getElementById('quotaMsg'), '已加载 wxId=' + wxId, true);
 }
-
-async function loadLanes() {
-	const data = await api('/voice/admin/api/llm-lanes');
-	laneAllowlist = data.allowlist || {};
-	const providers = Object.keys(laneAllowlist);
-	fillProviderSelect(document.getElementById('vuProvider'), providers);
-	fillProviderSelect(document.getElementById('clProvider'), providers);
-	const vu = data.voiceUnderstanding || {};
-	const cl = data.clinic || {};
-	document.getElementById('vuProvider').value = vu.provider || 'zhipu';
-	fillModelSelect(document.getElementById('vuModel'), vu.provider || 'zhipu', vu.model);
-	document.getElementById('vuInFlight').value = vu.maxInFlight || 1;
-	document.getElementById('vuWaiters').value = vu.maxWaiters != null ? vu.maxWaiters : 20;
-	document.getElementById('clProvider').value = cl.provider || 'zhipu';
-	fillModelSelect(document.getElementById('clModel'), cl.provider || 'zhipu', cl.model);
-	document.getElementById('clInFlight').value = cl.maxInFlight || 1;
-	document.getElementById('clWaiters').value = cl.maxWaiters != null ? cl.maxWaiters : 10;
-	const meta = document.getElementById('lanesMeta');
-	meta.textContent = vu.updatedAt ? ('更新: ' + new Date(vu.updatedAt * 1000).toLocaleString()) : '';
-}
-
-document.getElementById('tabQuota').addEventListener('click', function() {
-	document.getElementById('tabQuota').classList.add('active');
-	document.getElementById('tabLanes').classList.remove('active');
-	document.getElementById('panelQuota').classList.remove('hidden');
-	document.getElementById('panelLanes').classList.add('hidden');
-});
-document.getElementById('tabLanes').addEventListener('click', function() {
-	document.getElementById('tabLanes').classList.add('active');
-	document.getElementById('tabQuota').classList.remove('active');
-	document.getElementById('panelLanes').classList.remove('hidden');
-	document.getElementById('panelQuota').classList.add('hidden');
-	loadLanes().catch(e => showMsg(document.getElementById('quotaMsg'), e.message, false));
-});
-
 document.getElementById('saveQuotaDefaultBtn').addEventListener('click', async function() {
 	try {
-		const body = {
+		await api('/voice/admin/api/ai-quota/default', { method: 'PUT', body: JSON.stringify({
 			voiceAiMonthlyLimit: parseInt(document.getElementById('quotaVoiceDefault').value, 10) || 5,
 			clinicAiMonthlyLimit: parseInt(document.getElementById('quotaClinicDefault').value, 10) || 30
-		};
-		await api('/voice/admin/api/ai-quota/default', { method: 'PUT', body: JSON.stringify(body) });
+		})});
 		await loadQuotaDefault();
 		showMsg(document.getElementById('quotaMsg'), '全局默认已保存', true);
-	} catch (e) {
-		showMsg(document.getElementById('quotaMsg'), e.message || String(e), false);
-	}
+	} catch (e) { showMsg(document.getElementById('quotaMsg'), e.message || String(e), false); }
 });
-
-document.getElementById('loadQuotaUserBtn').addEventListener('click', function() { loadQuotaUser().catch(e => showMsg(document.getElementById('quotaMsg'), e.message, false)); });
-
+document.getElementById('loadQuotaUserBtn').addEventListener('click', () => loadQuotaUser().catch(e => showMsg(document.getElementById('quotaMsg'), e.message, false)));
 document.getElementById('saveQuotaUserBtn').addEventListener('click', async function() {
 	try {
 		const wxId = parseInt(document.getElementById('quotaWxId').value, 10);
 		if (!wxId) throw new Error('请输入 wxId');
-		const body = {
-			wxId,
-			clearVoiceAi: document.getElementById('quotaClearVoice').checked,
-			clearClinicAi: document.getElementById('quotaClearClinic').checked
-		};
+		const body = { wxId, clearVoiceAi: document.getElementById('quotaClearVoice').checked, clearClinicAi: document.getElementById('quotaClearClinic').checked };
 		const vVal = document.getElementById('quotaVoiceUser').value.trim();
 		const cVal = document.getElementById('quotaClinicUser').value.trim();
 		if (vVal && !body.clearVoiceAi) body.voiceAiMonthlyLimit = parseInt(vVal, 10);
 		if (cVal && !body.clearClinicAi) body.clinicAiMonthlyLimit = parseInt(cVal, 10);
 		await api('/voice/admin/api/ai-quota/user', { method: 'PUT', body: JSON.stringify(body) });
 		showMsg(document.getElementById('quotaMsg'), '单人额度已保存', true);
-	} catch (e) {
-		showMsg(document.getElementById('quotaMsg'), e.message || String(e), false);
-	}
+	} catch (e) { showMsg(document.getElementById('quotaMsg'), e.message || String(e), false); }
 });
-
-document.getElementById('saveLanesBtn').addEventListener('click', async function() {
-	try {
-		const body = {
-			voiceUnderstanding: {
-				provider: document.getElementById('vuProvider').value,
-				model: document.getElementById('vuModel').value,
-				maxInFlight: parseInt(document.getElementById('vuInFlight').value, 10) || 1,
-				maxWaiters: parseInt(document.getElementById('vuWaiters').value, 10)
-			},
-			clinic: {
-				provider: document.getElementById('clProvider').value,
-				model: document.getElementById('clModel').value,
-				maxInFlight: parseInt(document.getElementById('clInFlight').value, 10) || 1,
-				maxWaiters: parseInt(document.getElementById('clWaiters').value, 10)
-			},
-			updatedBy: 'voice-admin.html'
-		};
-		await api('/voice/admin/api/llm-lanes', { method: 'PUT', body: JSON.stringify(body) });
-		await loadLanes();
-		showMsg(document.getElementById('quotaMsg'), 'LLM 车道已保存', true);
-	} catch (e) {
-		showMsg(document.getElementById('quotaMsg'), e.message || String(e), false);
-	}
-});
-
-bindLaneProviderModel('vu');
-bindLaneProviderModel('cl');
-
 if (AdminCommon.requireAdmin()) {
 	document.getElementById('mainCard').classList.remove('hidden');
 	loadQuotaDefault().catch(e => showMsg(document.getElementById('quotaMsg'), e.message, false));

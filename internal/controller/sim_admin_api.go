@@ -44,13 +44,29 @@ func (c *SimAdminCtrl) ConfigGet(ctx context.Context, req *v1.SimAdminConfigGetR
 	if err = verifySimAdmin(ghttp.RequestFromCtx(ctx)); err != nil {
 		return nil, err
 	}
-	cfg, err := simuser.GetConfig(ctx)
+	cfg, err := simuser.GetFullConfig(ctx)
 	if err != nil {
 		return nil, err
 	}
+	iv := simuser.RuntimeConfigToAPIIntervals(cfg.Runtime)
 	return &v1.SimAdminConfigGetRes{Config: v1.SimAdminConfigDTO{
 		Enabled: cfg.Enabled, MaxSimUsers: cfg.MaxSimUsers,
 		UpdatedAt: cfg.UpdatedAt, UpdatedBy: cfg.UpdatedBy,
+		TaskSwitches: v1.SimAdminRuntimeTaskSwitchesDTO{
+			Register: cfg.Runtime.TaskRegister, Comment: cfg.Runtime.TaskComment,
+			PostImage: cfg.Runtime.TaskPostImage, PostVideo: cfg.Runtime.TaskPostVideo,
+			Chat: cfg.Runtime.TaskChat, Follow: cfg.Runtime.TaskFollow,
+			VideoPoll: cfg.Runtime.VideoPoll,
+		},
+		Intervals: v1.SimAdminRuntimeIntervalsDTO{
+			Register: iv["register"], Comment: iv["comment"],
+			PostImage: iv["postImage"], PostVideo: iv["postVideo"],
+			Chat: iv["chat"], Follow: iv["follow"],
+			VideoPollIdle: iv["videoPollIdle"], VideoPollActive: iv["videoPollActive"],
+			StartupStaggerMax: iv["startupStaggerMax"],
+			EphemeralChatLoop: iv["ephemeralChatLoop"], EphemeralChatWindow: iv["ephemeralChatWindow"],
+		},
+		RateLimitRps: cfg.Runtime.RateLimitRps, RateLimitBurst: cfg.Runtime.RateLimitBurst,
 	}}, nil
 }
 
@@ -60,10 +76,65 @@ func (c *SimAdminCtrl) ConfigPut(ctx context.Context, req *v1.SimAdminConfigPutR
 	if err = verifySimAdmin(ghttp.RequestFromCtx(ctx)); err != nil {
 		return nil, err
 	}
-	if err = simuser.UpdateConfig(ctx, req.Enabled, req.MaxSimUsers, "admin"); err != nil {
+	current, err := simuser.GetFullConfig(ctx)
+	if err != nil {
 		return nil, err
 	}
-	return &v1.SimAdminConfigPutRes{}, nil
+	var rt simuser.RuntimeConfigDB
+	if isMinimalSimConfigPut(req) {
+		rt = current.Runtime
+	} else {
+		rt, err = simuser.BuildRuntimeConfigFromAPI(simuser.RuntimeAPIInput{
+		TaskRegister: req.TaskSwitches.Register, TaskComment: req.TaskSwitches.Comment,
+		TaskPostImage: req.TaskSwitches.PostImage, TaskPostVideo: req.TaskSwitches.PostVideo,
+		TaskChat: req.TaskSwitches.Chat, TaskFollow: req.TaskSwitches.Follow,
+		VideoPoll: req.TaskSwitches.VideoPoll,
+		IntervalRegister: req.Intervals.Register, IntervalComment: req.Intervals.Comment,
+		IntervalPostImage: req.Intervals.PostImage, IntervalPostVideo: req.Intervals.PostVideo,
+		IntervalChat: req.Intervals.Chat, IntervalFollow: req.Intervals.Follow,
+		IntervalVideoPollIdle: req.Intervals.VideoPollIdle, IntervalVideoPollActive: req.Intervals.VideoPollActive,
+		StartupStaggerMax: req.Intervals.StartupStaggerMax,
+		EphemeralChatLoop: req.Intervals.EphemeralChatLoop, EphemeralChatWindow: req.Intervals.EphemeralChatWindow,
+		RateLimitRps: req.RateLimitRps, RateLimitBurst: req.RateLimitBurst,
+		}, current.Runtime)
+		if err != nil {
+			return nil, gerror.NewCode(gcode.CodeInvalidParameter, err.Error())
+		}
+	}
+	putRes, err := simuser.UpdateConfigAdmin(ctx, simuser.ConfigAdminPutDTO{
+		Enabled: req.Enabled, MaxSimUsers: req.MaxSimUsers, Runtime: rt,
+	}, "admin")
+	if err != nil {
+		return nil, err
+	}
+	return mapConfigPutRes(putRes), nil
+}
+
+// isMinimalSimConfigPut 兼容仅提交 enabled/maxSimUsers 的旧客户端。
+func isMinimalSimConfigPut(req *v1.SimAdminConfigPutReq) bool {
+	iv := req.Intervals
+	return iv.Register == "" && iv.Comment == "" && iv.PostImage == "" && iv.PostVideo == "" &&
+		iv.Chat == "" && iv.Follow == "" && iv.VideoPollIdle == "" && iv.VideoPollActive == "" &&
+		iv.StartupStaggerMax == "" && iv.EphemeralChatLoop == "" && iv.EphemeralChatWindow == "" &&
+		req.RateLimitRps == 0 && req.RateLimitBurst == 0
+}
+
+func mapConfigPutRes(in simuser.ConfigPutResult) *v1.SimAdminConfigPutRes {
+	out := &v1.SimAdminConfigPutRes{
+		ScheduleReloaded: in.ScheduleReloaded,
+		Effects:          make([]v1.SimAdminConfigEffectDTO, 0, len(in.Effects)),
+		TaskSchedule:     make([]v1.SimAdminTaskScheduleDTO, 0, len(in.TaskSchedule)),
+	}
+	for _, e := range in.Effects {
+		out.Effects = append(out.Effects, v1.SimAdminConfigEffectDTO{Kind: e.Kind, Task: e.Task, Message: e.Message})
+	}
+	for _, t := range in.TaskSchedule {
+		out.TaskSchedule = append(out.TaskSchedule, v1.SimAdminTaskScheduleDTO{
+			Name: t.Name, Label: t.Label, Enabled: t.Enabled,
+			IntervalSec: t.IntervalSec, LastRunAt: t.LastRunAt, NextRunHint: t.NextRunHint,
+		})
+	}
+	return out
 }
 
 // PromptGet GET /sim/admin/api/prompts/{taskType}

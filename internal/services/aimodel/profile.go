@@ -113,6 +113,8 @@ var ProviderModels = map[Provider][]string{
 		"glm-4.7-flash",
 		"glm-4.1v-thinking-flash",
 		"glm-4.6v-flash",
+		"cogview-3-flash",
+		"cogvideox-flash",
 	},
 	ProviderDeepSeek: {
 		"deepseek-chat",

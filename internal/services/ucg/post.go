@@ -84,8 +84,6 @@ func CreatePost(ctx context.Context, wxID int64, content string, mediaType int, 
 			data[dao.UcgPost.Columns().IpLocation] = ipLoc
 		}
 		applyPostCoords(data, lat, lng)
-		g.Log().Info(ctx, "applyPostCoords", "lat", lat, "lng", lng)
-		g.Log().Info(ctx, "applyPostCoords", "data", data)
 		res, insErr := tx.Model(dao.UcgPost.Table()).Ctx(ctx).Data(data).Insert()
 		if insErr != nil {
 			return insErr

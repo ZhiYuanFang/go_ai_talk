@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>AI 模型与并发</title>
+	<link rel="stylesheet" href="/resource/public/pangbao-theme.css" />
+	<link rel="stylesheet" href="/resource/public/admin-pages.css" />
+	<style>
+		.lane-block { margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid rgba(0,0,0,.06); }
+		.lane-block h4 { margin: 0 0 10px; font-size: 14px; color: var(--muted); }
+		.hint-box { font-size: 12px; color: var(--muted); line-height: 1.5; margin-bottom: 16px; padding: 10px; background: rgba(0,0,0,.03); border-radius: 8px; }
+		.save-errors { margin-top: 10px; font-size: 13px; }
+		.save-errors .err { color: #dc2626; }
+		.save-errors .ok { color: #16a34a; }
+	</style>
+</head>
+<body>
+<div class="page page-narrow">
+	<header class="admin-header glass">
+		<div class="logo">AI</div>
+		<div>
+			<h1>AI 模型与并发</h1>
+			<p>Voice / UCG 润笔 / Sim 七条 LLM lane · 须先在 <a href="/device/admin">运维 Hub</a> 登录</p>
+		</div>
+	</header>
+	<div class="card glass hidden" id="mainCard">
+		<p class="hint-box">同一 <code>provider+model</code> 的多条 lane 共享 Redis 并发闸门池。保存时三域 API 并行提交；某域失败不影响其它域已成功的部分（请查看下方分域结果）。</p>
+		<h3 style="margin:0 0 12px;font-size:16px;">Voice（2）</h3>
+		<div class="lane-block" id="blockVu">
+			<h4>voiceUnderstanding（喂养 LLM）</h4>
+			<div class="field"><label>Provider</label><select id="vuProvider"></select></div>
+			<div class="field"><label>Model</label><select id="vuModel"></select></div>
+			<div class="field"><label>maxInFlight</label><input id="vuInFlight" type="number" min="1" step="1" /></div>
+			<div class="field"><label>maxWaiters</label><input id="vuWaiters" type="number" min="0" step="1" /></div>
+		</div>
+		<div class="lane-block" id="blockCl">
+			<h4>clinic（胖宝诊疗）</h4>
+			<div class="field"><label>Provider</label><select id="clProvider"></select></div>
+			<div class="field"><label>Model</label><select id="clModel"></select></div>
+			<div class="field"><label>maxInFlight</label><input id="clInFlight" type="number" min="1" step="1" /></div>
+			<div class="field"><label>maxWaiters</label><input id="clWaiters" type="number" min="0" step="1" /></div>
+		</div>
+		<h3 style="margin:16px 0 12px;font-size:16px;">UCG 润笔（1）</h3>
+		<div class="lane-block">
+			<h4>polish（visionModel）</h4>
+			<div class="field"><label>Provider</label><select id="ucgProvider"></select></div>
+			<div class="field"><label>Model</label><select id="ucgModel"></select></div>
+			<div class="field"><label>maxInFlight</label><input id="ucgInFlight" type="number" min="1" step="1" /></div>
+			<div class="field"><label>maxWaiters</label><input id="ucgWaiters" type="number" min="0" step="1" /></div>
+		</div>
+		<h3 style="margin:16px 0 12px;font-size:16px;">Sim（4）</h3>
+		<div class="lane-block" id="blockSimText">
+			<h4>simText</h4>
+			<div class="field"><label>Provider</label><select id="stProvider"></select></div>
+			<div class="field"><label>Model</label><select id="stModel"></select></div>
+			<div class="field"><label>maxInFlight</label><input id="stInFlight" type="number" min="1" step="1" /></div>
+			<div class="field"><label>maxWaiters</label><input id="stWaiters" type="number" min="0" step="1" /></div>
+		</div>
+		<div class="lane-block" id="blockSimVision">
+			<h4>simVision</h4>
+			<div class="field"><label>Provider</label><select id="svProvider"></select></div>
+			<div class="field"><label>Model</label><select id="svModel"></select></div>
+			<div class="field"><label>maxInFlight</label><input id="svInFlight" type="number" min="1" step="1" /></div>
+			<div class="field"><label>maxWaiters</label><input id="svWaiters" type="number" min="0" step="1" /></div>
+		</div>
+		<div class="lane-block" id="blockSimImage">
+			<h4>simImageGen</h4>
+			<div class="field"><label>Provider</label><select id="siProvider"></select></div>
+			<div class="field"><label>Model</label><select id="siModel"></select></div>
+			<div class="field"><label>maxInFlight</label><input id="siInFlight" type="number" min="1" step="1" /></div>
+			<div class="field"><label>maxWaiters</label><input id="siWaiters" type="number" min="0" step="1" /></div>
+		</div>
+		<div class="lane-block">
+			<h4>simVideoGen</h4>
+			<div class="field"><label>Provider</label><select id="svgProvider"></select></div>
+			<div class="field"><label>Model</label><select id="svgModel"></select></div>
+			<div class="field"><label>maxInFlight</label><input id="svgInFlight" type="number" min="1" step="1" /></div>
+			<div class="field"><label>maxWaiters</label><input id="svgWaiters" type="number" min="0" step="1" /></div>
+		</div>
+		<div class="row">
+			<button id="saveAllBtn" type="button">保存全部 LLM 配置</button>
+			<button id="reloadBtn" type="button" class="secondary">重新加载</button>
+		</div>
+		<div id="mainMsg" class="msg"></div>
+		<div id="saveResults" class="save-errors"></div>
+	</div>
+</div>
+<script src="/resource/public/admin-common.js"></script>
+<script>
+function api(path, options={}) { return AdminCommon.adminFetch(path, options); }
+let voiceAllowlist = {}, ucgProviderModels = {}, simAllowlist = {};
+let cachedUcgAi = {};
+
+function fillProviderSelect(sel, providers, value) {
+	sel.innerHTML = '';
+	(providers || []).forEach(p => {
+		const opt = document.createElement('option');
+		opt.value = p; opt.textContent = p;
+		if (p === value) opt.selected = true;
+		sel.appendChild(opt);
+	});
+}
+function fillModelSelect(sel, allowlist, provider, selected) {
+	sel.innerHTML = '';
+	((allowlist && allowlist[provider]) || []).forEach(m => {
+		const opt = document.createElement('option');
+		opt.value = m; opt.textContent = m;
+		if (m === selected) opt.selected = true;
+		sel.appendChild(opt);
+	});
+}
+function bindLane(prefix, allowlistRef) {
+	const pSel = document.getElementById(prefix + 'Provider');
+	const mSel = document.getElementById(prefix + 'Model');
+	pSel.addEventListener('change', () => {
+		const al = typeof allowlistRef === 'function' ? allowlistRef() : allowlistRef;
+		fillModelSelect(mSel, al, pSel.value, '');
+	});
+}
+function setLane(prefix, allowlist, lane) {
+	fillProviderSelect(document.getElementById(prefix + 'Provider'), Object.keys(allowlist || {}), lane.provider || 'zhipu');
+	fillModelSelect(document.getElementById(prefix + 'Model'), allowlist, lane.provider || 'zhipu', lane.model);
+	document.getElementById(prefix + 'InFlight').value = lane.maxInFlight || 1;
+	document.getElementById(prefix + 'Waiters').value = lane.maxWaiters != null ? lane.maxWaiters : 0;
+}
+function laneBody(prefix) {
+	return {
+		provider: document.getElementById(prefix + 'Provider').value,
+		model: document.getElementById(prefix + 'Model').value,
+		maxInFlight: parseInt(document.getElementById(prefix + 'InFlight').value, 10) || 1,
+		maxWaiters: parseInt(document.getElementById(prefix + 'Waiters').value, 10)
+	};
+}
+
+async function loadAll() {
+	const [voice, ucg, sim] = await Promise.all([
+		api('/voice/admin/api/llm-lanes'),
+		api('/ucg/admin/api/ai-config'),
+		api('/sim/admin/api/llm-lanes')
+	]);
+	voiceAllowlist = voice.allowlist || {};
+	setLane('vu', voiceAllowlist, voice.voiceUnderstanding || {});
+	setLane('cl', voiceAllowlist, voice.clinic || {});
+	ucgProviderModels = ucg.providerModels || {};
+	cachedUcgAi = ucg;
+	fillProviderSelect(document.getElementById('ucgProvider'), ucg.allowedProviders || Object.keys(ucgProviderModels), ucg.provider || 'zhipu');
+	fillModelSelect(document.getElementById('ucgModel'), ucgProviderModels, ucg.provider || 'zhipu', ucg.visionModel);
+	document.getElementById('ucgInFlight').value = ucg.maxInFlight || 1;
+	document.getElementById('ucgWaiters').value = ucg.maxWaiters != null ? ucg.maxWaiters : 15;
+	simAllowlist = sim.allowlist || {};
+	setLane('st', simAllowlist, sim.simText || {});
+	setLane('sv', simAllowlist, sim.simVision || {});
+	setLane('si', simAllowlist, sim.simImageGen || {});
+	setLane('svg', simAllowlist, sim.simVideoGen || {});
+	document.getElementById('saveResults').innerHTML = '';
+}
+
+async function saveAll() {
+	const btn = document.getElementById('saveAllBtn');
+	btn.disabled = true;
+	const results = document.getElementById('saveResults');
+	results.innerHTML = '';
+	const msgs = [];
+	try {
+		const voiceBody = {
+			voiceUnderstanding: laneBody('vu'),
+			clinic: laneBody('cl'),
+			updatedBy: 'ai-model-admin.html'
+		};
+		const ucgBody = Object.assign({}, cachedUcgAi, {
+			provider: document.getElementById('ucgProvider').value,
+			visionModel: document.getElementById('ucgModel').value,
+			maxInFlight: parseInt(document.getElementById('ucgInFlight').value, 10) || 1,
+			maxWaiters: parseInt(document.getElementById('ucgWaiters').value, 10),
+			updatedBy: 'ai-model-admin.html'
+		});
+		delete ucgBody.providerModels; delete ucgBody.allowedProviders;
+		const simBody = {
+			simText: laneBody('st'), simVision: laneBody('sv'),
+			simImageGen: laneBody('si'), simVideoGen: laneBody('svg'),
+			updatedBy: 'ai-model-admin.html'
+		};
+		const tasks = [
+			{ name: 'Voice', p: api('/voice/admin/api/llm-lanes', { method: 'PUT', body: JSON.stringify(voiceBody) }) },
+			{ name: 'UCG 润笔', p: api('/ucg/admin/api/ai-config', { method: 'PUT', body: JSON.stringify(ucgBody) }) },
+			{ name: 'Sim', p: api('/sim/admin/api/llm-lanes', { method: 'PUT', body: JSON.stringify(simBody) }) }
+		];
+		const settled = await Promise.allSettled(tasks.map(t => t.p));
+		let okCount = 0;
+		settled.forEach((r, i) => {
+			const line = document.createElement('div');
+			if (r.status === 'fulfilled') {
+				line.className = 'ok';
+				line.textContent = tasks[i].name + '：保存成功';
+				okCount++;
+			} else {
+				line.className = 'err';
+				line.textContent = tasks[i].name + '：' + (r.reason && r.reason.message || String(r.reason));
+			}
+			results.appendChild(line);
+		});
+		document.getElementById('mainMsg').textContent = okCount === 3 ? '全部保存成功' : ('部分成功（' + okCount + '/3）');
+		document.getElementById('mainMsg').style.color = okCount === 3 ? '#16a34a' : '#dc2626';
+		if (okCount > 0) await loadAll();
+	} catch (e) {
+		document.getElementById('mainMsg').textContent = e.message || String(e);
+		document.getElementById('mainMsg').style.color = '#dc2626';
+	} finally {
+		btn.disabled = false;
+	}
+}
+
+['vu','cl'].forEach(p => bindLane(p, () => voiceAllowlist));
+['st','sv','si','svg'].forEach(p => bindLane(p, () => simAllowlist));
+bindLane('ucg', () => ucgProviderModels);
+document.getElementById('ucgProvider').addEventListener('change', () => {
+	fillModelSelect(document.getElementById('ucgModel'), ucgProviderModels, document.getElementById('ucgProvider').value, '');
+});
+document.getElementById('saveAllBtn').onclick = saveAll;
+document.getElementById('reloadBtn').onclick = () => loadAll().catch(e => alert(e.message));
+
+if (AdminCommon.requireAdmin()) {
+	document.getElementById('mainCard').classList.remove('hidden');
+	loadAll().catch(e => { document.getElementById('mainMsg').textContent = e.message; });
+}
+</script>
+</body>
+</html>
