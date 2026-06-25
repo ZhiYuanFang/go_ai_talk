@@ -189,6 +189,9 @@ func IsGatewayAdminAPIPath(path string) bool {
 	if strings.HasPrefix(path, "/ucg/admin/api/") {
 		return true
 	}
+	if strings.HasPrefix(path, "/voice/admin/api/") {
+		return true
+	}
 	if strings.HasPrefix(path, "/sim/admin/api/") {
 		return true
 	}

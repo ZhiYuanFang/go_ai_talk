@@ -301,37 +301,7 @@ function openMediaPreview(kind, url){
 	}
 }
 
-let providerModels = {};
 let cachedUcgAi = {};
-
-function fillProviderOptions(providers, current){
-	const sel = document.getElementById('aiProvider');
-	sel.innerHTML = '';
-	(providers || []).forEach(p => {
-		const opt = document.createElement('option');
-		opt.value = p;
-		opt.textContent = p;
-		if(p === current) opt.selected = true;
-		sel.appendChild(opt);
-	});
-}
-
-function fillModelOptionsForProvider(provider, current){
-	const models = providerModels[provider] || [];
-	const sel = document.getElementById('visionModel');
-	sel.innerHTML = '';
-	models.forEach(m => {
-		const opt = document.createElement('option');
-		opt.value = m;
-		opt.textContent = m;
-		if(m === current) opt.selected = true;
-		sel.appendChild(opt);
-	});
-}
-
-function fillModelOptions(models, current){
-	fillModelOptionsForProvider(document.getElementById('aiProvider').value || 'zhipu', current);
-}
 
 async function loadConfig(){
 	const data = await api('/ucg/admin/api/ai-config');
@@ -649,10 +619,6 @@ document.addEventListener('keydown', (ev) => {
 	if(ev.key === 'Escape' && document.getElementById('mediaPreviewModal').classList.contains('show')){
 		closeMediaPreview();
 	}
-});
-
-document.getElementById('aiProvider').addEventListener('change', function() {
-	fillModelOptionsForProvider(this.value, '');
 });
 
 if(AdminCommon.requireAdmin()){
