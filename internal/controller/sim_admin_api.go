@@ -177,6 +177,8 @@ func (c *SimAdminCtrl) StatusGet(ctx context.Context, req *v1.SimAdminStatusGetR
 		return nil, err
 	}
 	out := v1.SimAdminStatusDTO{PendingVideoJobs: st.PendingVideoJobs}
+	laneProfiles := simuser.LoadAllLaneProfiles()
+	out.TaskAiModels = mapTaskAiModels(simuser.BuildTaskAIModelCatalog(laneProfiles))
 	for _, t := range st.Tasks {
 		out.Tasks = append(out.Tasks, v1.SimAdminTaskRunDTO{
 			TaskName: t.TaskName, LastRunAt: t.LastRunAt,
@@ -229,7 +231,26 @@ func (c *SimAdminCtrl) RuntimeGet(ctx context.Context, req *v1.SimAdminRuntimeGe
 		RateLimitRps:   rt.RateLimitRps,
 		RateLimitBurst: rt.RateLimitBurst,
 		LLMLanes:       mapRuntimeLLMLanes(rt.LLMLanes),
+		TaskAiModels:   mapTaskAiModels(rt.TaskAiModels),
 	}}, nil
+}
+
+func mapTaskAiModels(in map[string][]simuser.TaskAIModelItem) map[string][]v1.SimAdminTaskAIModelDTO {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string][]v1.SimAdminTaskAIModelDTO, len(in))
+	for taskName, items := range in {
+		row := make([]v1.SimAdminTaskAIModelDTO, 0, len(items))
+		for _, it := range items {
+			row = append(row, v1.SimAdminTaskAIModelDTO{
+				LaneKey: it.LaneKey, Usage: it.Usage,
+				Provider: it.Provider, Model: it.Model,
+			})
+		}
+		out[taskName] = row
+	}
+	return out
 }
 
 func mapRuntimeLLMLanes(in map[string]simuser.LLMLaneSnapshotDTO) map[string]v1.SimAdminLLMLaneDTO {

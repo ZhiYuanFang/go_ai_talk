@@ -23,6 +23,7 @@ type RuntimeSnapshotDTO struct {
 	RateLimitRps      float64
 	RateLimitBurst    int
 	LLMLanes          map[string]LLMLaneSnapshotDTO
+	TaskAiModels      map[string][]TaskAIModelItem
 }
 
 // LLMLaneSnapshotDTO 单条 aimodel lane 只读快照。
@@ -104,8 +105,10 @@ func GetRuntimeSnapshot(ctx context.Context) (RuntimeSnapshotDTO, error) {
 		},
 		RateLimitRps:   rtDB.RateLimitRps,
 		RateLimitBurst: rtDB.RateLimitBurst,
-		LLMLanes:       mapLLMSnapshot(LoadAllLaneProfiles()),
 	}
+	laneProfiles := LoadAllLaneProfiles()
+	out.LLMLanes = mapLLMSnapshot(laneProfiles)
+	out.TaskAiModels = BuildTaskAIModelCatalog(laneProfiles)
 
 	count, countErr := countSimUsers(ctx)
 	if countErr != nil {

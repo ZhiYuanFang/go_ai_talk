@@ -86,9 +86,18 @@ type SimAdminTaskRunDTO struct {
 	LastError    string `json:"lastError,omitempty"`
 }
 
+// SimAdminTaskAIModelDTO 任务所用 LLM lane 及当前生效模型。
+type SimAdminTaskAIModelDTO struct {
+	LaneKey  string `json:"laneKey"`
+	Usage    string `json:"usage,omitempty"`
+	Provider string `json:"provider"`
+	Model    string `json:"model"`
+}
+
 type SimAdminStatusDTO struct {
-	Tasks            []SimAdminTaskRunDTO `json:"tasks"`
-	PendingVideoJobs int                  `json:"pendingVideoJobs"`
+	Tasks            []SimAdminTaskRunDTO              `json:"tasks"`
+	PendingVideoJobs int                               `json:"pendingVideoJobs"`
+	TaskAiModels     map[string][]SimAdminTaskAIModelDTO `json:"taskAiModels"`
 }
 
 type SimAdminStatusGetReq struct {
@@ -141,9 +150,10 @@ type SimAdminRuntimeDTO struct {
 	MaxSimUsers       int                            `json:"maxSimUsers"`
 	TaskSwitches      SimAdminRuntimeTaskSwitchesDTO `json:"taskSwitches"`
 	Intervals         SimAdminRuntimeIntervalsDTO    `json:"intervals"`
-	LLMLanes          map[string]SimAdminLLMLaneDTO  `json:"llmLanes"`
-	RateLimitRps      float64                        `json:"rateLimitRps"`
-	RateLimitBurst    int                            `json:"rateLimitBurst"`
+	LLMLanes          map[string]SimAdminLLMLaneDTO           `json:"llmLanes"`
+	TaskAiModels      map[string][]SimAdminTaskAIModelDTO     `json:"taskAiModels"`
+	RateLimitRps      float64                                 `json:"rateLimitRps"`
+	RateLimitBurst    int                                     `json:"rateLimitBurst"`
 }
 
 type SimAdminRuntimeGetReq struct {

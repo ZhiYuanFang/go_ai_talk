@@ -22,6 +22,7 @@
 		.btn-run { font-size: 12px; padding: 4px 10px; }
 		.btn-run:disabled { opacity: 0.5; cursor: not-allowed; }
 		.task-run-msg { font-size: 12px; color: var(--muted); margin: 0 0 8px; min-height: 1.2em; }
+		.ai-models-cell { font-size: 12px; line-height: 1.45; min-width: 160px; }
 	</style>
 </head>
 <body>
@@ -94,6 +95,7 @@
 		<span id="promptMsg" class="msg"></span>
 		<hr class="divider" />
 		<h4>任务状态</h4>
+		<p class="runtime-hint" style="margin:0 0 8px;">「AI 模型」列展示各任务当前调用的 sim lane 及生效 provider/model；修改模型请至 <a href="/device/admin/ai-model-admin.html">AI 模型与并发</a>。</p>
 		<p class="runtime-hint" style="margin:0 0 8px;">手动测试：可将 <code>SIM_USER_SERVICE_ENABLED=false</code> 关闭自动调度，在此点击「执行」走与定时器相同的业务逻辑；忽略 env 任务开关与 DB <code>enabled</code>，结果写入下方状态表。</p>
 		<p id="taskRunMsg" class="task-run-msg"></p>
 		<p id="pendingVideo" class="msg" style="margin:0 0 8px;"></p>
@@ -103,6 +105,7 @@
 					<tr>
 						<th>操作</th>
 						<th>任务</th>
+						<th>AI 模型</th>
 						<th>上次运行</th>
 						<th>成功</th>
 						<th>失败</th>
@@ -287,11 +290,21 @@
 		}
 	}
 
+	function fmtAiModels(items) {
+		if (!items || !items.length) return '—';
+		return items.map(it => {
+			const usage = it.usage ? it.usage + ' · ' : '';
+			const model = (it.provider && it.model) ? (it.provider + '/' + it.model) : '（未配置）';
+			return usage + '<code>' + escapeHtml(it.laneKey) + '</code> ' + escapeHtml(model);
+		}).join('<br/>');
+	}
+
 	function renderStatus(st) {
 		const tbody = document.getElementById('statusTbody');
 		tbody.innerHTML = '';
 		const byName = {};
 		((st && st.tasks) || []).forEach(t => { if (t.taskName) byName[t.taskName] = t; });
+		const aiByTask = (st && st.taskAiModels) || {};
 		runnableTasks.forEach(def => {
 			const t = byName[def.name] || {};
 			const tr = document.createElement('tr');
@@ -308,6 +321,10 @@
 			const tdName = document.createElement('td');
 			tdName.innerHTML = escapeHtml(def.label)+' <code>'+escapeHtml(def.name)+'</code>';
 			tr.appendChild(tdName);
+			const tdAi = document.createElement('td');
+			tdAi.className = 'ai-models-cell';
+			tdAi.innerHTML = fmtAiModels(aiByTask[def.name]);
+			tr.appendChild(tdAi);
 			const tdLast = document.createElement('td');
 			tdLast.textContent = fmtTime(t.lastRunAt);
 			tr.appendChild(tdLast);
