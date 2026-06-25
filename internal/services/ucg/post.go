@@ -26,22 +26,22 @@ type PostMediaInput struct {
 
 // PostDTO 帖子视图。
 type PostDTO struct {
-	Id           uint64         `json:"id"`
-	AuthorWxId   uint64         `json:"authorWxId"`
-	Content      string         `json:"content"`
-	Status       int            `json:"status"`
-	RejectReason string         `json:"rejectReason,omitempty"`
-	MediaType    int            `json:"mediaType"`
-	LikeCount    uint           `json:"likeCount"`
-	CommentCount uint           `json:"commentCount"`
-	LikedByMe    bool           `json:"likedByMe"`
-	CreatedAt    int64          `json:"createdAt"`
-	UpdatedAt    int64          `json:"updatedAt"`
-	PublishedAt  int64          `json:"publishedAt,omitempty"`
-	IpLocation   string         `json:"ipLocation,omitempty"`
-	DistanceMeters string       `json:"distanceMeters,omitempty"`
-	Media        []PostMediaDTO `json:"media,omitempty"`
-	Author       *ProfileDTO    `json:"author,omitempty"`
+	Id             uint64         `json:"id"`
+	AuthorWxId     uint64         `json:"authorWxId"`
+	Content        string         `json:"content"`
+	Status         int            `json:"status"`
+	RejectReason   string         `json:"rejectReason,omitempty"`
+	MediaType      int            `json:"mediaType"`
+	LikeCount      uint           `json:"likeCount"`
+	CommentCount   uint           `json:"commentCount"`
+	LikedByMe      bool           `json:"likedByMe"`
+	CreatedAt      int64          `json:"createdAt"`
+	UpdatedAt      int64          `json:"updatedAt"`
+	PublishedAt    int64          `json:"publishedAt,omitempty"`
+	IpLocation     string         `json:"ipLocation,omitempty"`
+	DistanceMeters string         `json:"distanceMeters,omitempty"`
+	Media          []PostMediaDTO `json:"media,omitempty"`
+	Author         *ProfileDTO    `json:"author,omitempty"`
 }
 
 // PostMediaDTO 帖子媒体展示。
@@ -84,6 +84,8 @@ func CreatePost(ctx context.Context, wxID int64, content string, mediaType int, 
 			data[dao.UcgPost.Columns().IpLocation] = ipLoc
 		}
 		applyPostCoords(data, lat, lng)
+		g.Log().Info(ctx, "applyPostCoords", "lat", lat, "lng", lng)
+		g.Log().Info(ctx, "applyPostCoords", "data", data)
 		res, insErr := tx.Model(dao.UcgPost.Table()).Ctx(ctx).Data(data).Insert()
 		if insErr != nil {
 			return insErr
