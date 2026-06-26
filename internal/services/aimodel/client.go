@@ -60,8 +60,8 @@ func invokeHTTP(ctx context.Context, profile Profile, req ChatRequest, stream bo
 	}
 	timeout := requestTimeout(profile, req)
 	// 打印发送给哪个AI模型以及内容
-	glog.Info(ctx, "发送给AI模型: %+v", profile.Model)
-	glog.Info(ctx, "发送内容: %+v", string(body))
+	glog.Debugf(ctx, "发送给AI模型: %+v", profile.Model)
+	glog.Debugf(ctx, "发送内容: %+v", string(body))
 	respBody, status, err := doHTTP(ctx, profile, body, timeout)
 	if err != nil {
 		return ChatResponse{}, err
@@ -74,7 +74,7 @@ func invokeHTTP(ctx context.Context, profile Profile, req ChatRequest, stream bo
 		return ChatResponse{}, err
 	}
 	// 打印resp日志
-	glog.Info(ctx, "AI返回结果: %+v", content)
+	glog.Debugf(ctx, "AI返回结果: %+v", content)
 	return ChatResponse{RawBody: respBody, Content: content}, nil
 }
 
