@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/gogf/gf/v2/os/glog"
 )
 
 // Invoke 非流式 LLM：LoadProfile → Acquire → HTTP → release。
@@ -43,7 +45,7 @@ func InvokeStreamWithHeldProfile(ctx context.Context, profile Profile, req ChatR
 }
 
 func invokeWithProfile(ctx context.Context, profile Profile, req ChatRequest, stream bool) (ChatResponse, error) {
-	release, err := Acquire(ctx, profile)
+	release, err := Acquire(ctx, profile) // 抢槽，获取配额
 	if err != nil {
 		return ChatResponse{}, err
 	}
@@ -57,6 +59,9 @@ func invokeHTTP(ctx context.Context, profile Profile, req ChatRequest, stream bo
 		return ChatResponse{}, err
 	}
 	timeout := requestTimeout(profile, req)
+	// 打印发送给哪个AI模型以及内容
+	glog.Info(ctx, "发送给AI模型: %+v", profile.Model)
+	glog.Info(ctx, "发送内容: %+v", string(body))
 	respBody, status, err := doHTTP(ctx, profile, body, timeout)
 	if err != nil {
 		return ChatResponse{}, err
@@ -68,6 +73,8 @@ func invokeHTTP(ctx context.Context, profile Profile, req ChatRequest, stream bo
 	if err != nil {
 		return ChatResponse{}, err
 	}
+	// 打印resp日志
+	glog.Info(ctx, "AI返回结果: %+v", content)
 	return ChatResponse{RawBody: respBody, Content: content}, nil
 }
 

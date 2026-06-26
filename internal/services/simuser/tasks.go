@@ -263,9 +263,9 @@ func RunChatScanTask(ctx context.Context, password string, flags RuntimeFlags) {
 	_ = account
 	var conv struct {
 		List []struct {
-			Id           uint64 `json:"id"`
-			PeerWxId     uint64 `json:"peerWxId"`
-			UnreadCount  int    `json:"unreadCount"`
+			Id          uint64 `json:"id"`
+			PeerWxId    uint64 `json:"peerWxId"`
+			UnreadCount int    `json:"unreadCount"`
 		} `json:"list"`
 	}
 	if err = appGet(ctx, sess.AccessToken, "/ucg/app/api/conversations?page=1&pageSize=50", &conv); err != nil {
