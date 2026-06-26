@@ -69,12 +69,15 @@ func invokeHTTP(ctx context.Context, profile Profile, req ChatRequest, stream bo
 	if status >= 300 {
 		return ChatResponse{}, fmt.Errorf("LLM HTTP %d: %s", status, truncate(string(respBody), 512))
 	}
+
+	// 打印resp日志
+	glog.Debugf(ctx, "AI返回结果: %+v", string(respBody))
 	content, err := extractChatContent(respBody)
 	if err != nil {
 		return ChatResponse{}, err
 	}
 	// 打印resp日志
-	glog.Debugf(ctx, "AI返回结果: %+v", content)
+	glog.Debugf(ctx, "解析使用AI返回的正文: %+v", content)
 	return ChatResponse{RawBody: respBody, Content: content}, nil
 }
 
