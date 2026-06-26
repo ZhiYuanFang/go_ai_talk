@@ -66,9 +66,6 @@ func EnsureSchema(ctx context.Context) error {
 			return err
 		}
 	}
-	if err := ensureSimConfigRuntimeColumn(ctx); err != nil {
-		return err
-	}
 	if err := seedDefaults(ctx); err != nil {
 		return err
 	}
@@ -76,15 +73,6 @@ func EnsureSchema(ctx context.Context) error {
 		return err
 	}
 	glog.Infof(ctx, "[simuser] schema ensured")
-	return nil
-}
-
-// ensureSimConfigRuntimeColumn 迁移旧库：补 runtime_json 列。
-func ensureSimConfigRuntimeColumn(ctx context.Context) error {
-	_, err := g.DB().Exec(ctx, `ALTER TABLE sim_config ADD COLUMN runtime_json TEXT NOT NULL DEFAULT '' AFTER max_sim_users`)
-	if err != nil && !isDuplicateColumnErr(err) {
-		return err
-	}
 	return nil
 }
 
@@ -107,7 +95,7 @@ func seedDefaults(ctx context.Context) error {
 		_, err = g.DB().Model("sim_config").Ctx(ctx).Data(g.Map{
 			"id": 1, "enabled": 1, "max_sim_users": 100,
 			"runtime_json": string(runtimeSeed),
-			"updated_at": now, "updated_by": "seed",
+			"updated_at":   now, "updated_by": "seed",
 		}).Insert()
 		if err != nil {
 			return err
