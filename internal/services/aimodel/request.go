@@ -10,12 +10,16 @@ type Message struct {
 type ChatRequest struct {
 	Messages        []Message
 	Stream          bool
-	TimeoutSec      int
+	TimeoutSec int
+	// ThinkingEnabled 是否启用上游 thinking/reasoning。零值 false 表示关闭（智谱会显式发送 thinking.type=disabled）。
+	// 仅 clinic 等需要 reasoning 流的场景应设为 true。
 	ThinkingEnabled bool
+	// ReasoningEffort 上游 reasoning 强度（如 DeepSeek high）；仅 ThinkingEnabled 为 true 时生效。
 	ReasoningEffort string
 	// ExtraTopLevel 合并进请求体顶层（如成长建议 child_info/history）。
 	ExtraTopLevel map[string]interface{}
-	MaxTokens     int
+	// MaxTokens 上游 completion token 上限；thinking 开启时 reasoning 与 content 共用该预算，非仅正文长度。
+	MaxTokens int
 }
 
 // ChatResponse 非流式响应。

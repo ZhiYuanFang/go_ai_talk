@@ -6,6 +6,7 @@ import "strings"
 type deepseekAdapter struct{}
 
 func (deepseekAdapter) ApplyThinkingOptions(req ChatRequest, payload map[string]interface{}) {
+	// DeepSeek 非默认强制 thinking；false 时不写入 thinking 相关字段即可。
 	if !req.ThinkingEnabled {
 		return
 	}
