@@ -68,20 +68,27 @@ func deviceInternalPost(ctx context.Context, path string, body interface{}, out 
 	return parseEnvelope(resp.ReadAllString(), out)
 }
 
+// 这里是获取UCG的帖子列表
 func ucgInternalPost(ctx context.Context, path string, body interface{}, out interface{}) error {
+	// 等待UCG的请求速率
 	if err := waitOutboundRate(ctx, "ucg-internal"); err != nil {
 		return err
 	}
+	// 获取UCG的基址
 	base := ucgBase(ctx)
 	if base == "" {
 		return fmt.Errorf("UCG_SERVICE_URL 未配置")
 	}
+	// 创建一个HTTP客户端
+	// 设置内部密钥
 	resp, err := gclient.New().
+		// 设置内容类型为JSON
 		SetHeader("X-Device-Gateway-Internal-Secret", internalSecret(ctx)).
 		ContentJson().Post(ctx, base+path, body)
 	if err != nil {
 		return err
 	}
+	// 读取响应内容
 	raw := resp.ReadAllString()
 	if out != nil {
 		return parseEnvelope(raw, out)

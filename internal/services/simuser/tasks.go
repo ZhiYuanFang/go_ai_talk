@@ -88,7 +88,7 @@ func RunRegisterTask(ctx context.Context, password string) {
 	glog.Infof(ctx, "[simuser] registered account=%s wxId=%d", account, sess.WxID)
 }
 
-// RunCommentTask T2：评论推荐帖。
+// RunCommentTask T2：评论广场帖（ucg internal random 模式全库抽样，略偏新帖）。
 func RunCommentTask(ctx context.Context, password string) {
 	if !taskEnabled(ctx) {
 		return
@@ -104,22 +104,32 @@ func RunCommentTask(ctx context.Context, password string) {
 			Content        string `json:"content"`
 			MediaType      int    `json:"mediaType"`
 			CoverObjectKey string `json:"coverObjectKey"`
+			CoverCdnUrl    string `json:"coverCdnUrl"`
 		} `json:"list"`
 	}
-	if err = ucgInternalPost(ctx, "/ucg/internal/api/posts/sample", g.Map{"limit": 20}, &sample); err != nil || len(sample.List) == 0 {
+	if err = ucgInternalPost(ctx, "/ucg/internal/api/posts/sample", g.Map{"mode": "random"}, &sample); err != nil || len(sample.List) == 0 {
 		RecordTaskRun(ctx, "comment", false, "无已发布帖")
 		return
 	}
-	post := sample.List[rand.Intn(len(sample.List))]
+	post := sample.List[0]
 	_, user, _ := LoadRenderedPrompt(ctx, "comment", map[string]string{"post_content": post.Content})
+	coverCdnURL := strings.TrimSpace(post.CoverCdnUrl)
+	if post.MediaType != 0 && coverCdnURL == "" {
+		glog.Warningf(ctx, "[simuser] comment postId=%d mediaType=%d 无 coverCdnUrl，降级纯文本 simVision", post.PostId, post.MediaType)
+	}
 	resp, err := aimodel.Invoke(ctx, aimodel.LaneSimVision, aimodel.ChatRequest{
-		Messages: []aimodel.Message{{Role: "user", Content: user}}, MaxTokens: 256,
+		Messages: []aimodel.Message{{
+			Role:    "user",
+			Content: commentVisionUserContent(coverCdnURL, user),
+		}},
+		MaxTokens: 256,
 	})
 	if err != nil {
 		RecordTaskRun(ctx, "comment", false, err.Error())
 		return
 	}
 	path := fmt.Sprintf("/ucg/app/api/posts/%d/comments", post.PostId)
+	// 评论帖子
 	if err = appPost(ctx, sess.AccessToken, path, g.Map{"content": strings.TrimSpace(resp.Content)}, nil); err != nil {
 		RecordTaskRun(ctx, "comment", false, err.Error())
 		return

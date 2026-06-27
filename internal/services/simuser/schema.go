@@ -153,7 +153,7 @@ func defaultPrompts() map[string]promptSeed {
 	return map[string]promptSeed{
 		"register_nickname": {user: "我是一位宝妈，帮我想一个昵称，只输出昵称本身，不要解释。"},
 		"register_avatar":   {user: "我是一位宝妈，帮我生成一个头像"},
-		"comment":           {user: "作为宝妈，请结合帖子内容和图片，写一条简短真实的评论。\n帖子：{{post_content}}"},
+		"comment": {user: "作为宝妈，请结合上方配图与下列帖子正文，写一条简短、口语化的评论。\n要求：只输出评论正文，不要解释、不要引号包裹。\n帖子正文：{{post_content}}"},
 		"post_image_text":   {user: "从母婴专家的角度，写一条适合发朋友圈的短文，100字以内。\n主题：{{topic}}"},
 		"post_video_text":   {user: "从母婴专家的角度，写一条适合拍短视频的口播文案，80字以内。\n主题：{{topic}}"},
 		"chat_reply":        {user: "作为宝妈，根据聊天记录用自然口语回复对方。\n历史：\n{{chat_history}}"},

@@ -278,7 +278,7 @@ curl -s http://127.0.0.1:9805/api.json   # sim-user-service
 - 生产栈运行 sim（非测试栈长期开）；`maxSimUsers` 从 20–30 起，经 sim-admin 调高。
 - 初期在 sim-admin 关闭 postVideo、videoPoll、chat 任务开关。
 - 使用温和周期（示例）：comment=12h、postImage=6h、rateLimitRps=2（经 sim-admin 保存）。
-- T2 评论已改走 ucg internal `posts/sample`，不再打 `feed/recommend`。
+- T2 评论已改走 ucg internal `posts/sample`（`mode=random`，全库 ID 探测、略偏新帖），不再打 `feed/recommend`。
 - **UCG 推荐 Feed Redis（geo composite score）**：`baseScore` 权威存储于 Redis `ucg:recommend:score` ZSET；**停写** MySQL `ucg_post_recommend`（表可保留）。Feed 读路径经 GEO + cursor session；部署顺序见下节 backfill。
 - **UCG 推荐分（默认）**：热区 reconciler 每 **1h** 批算并 **ZADD** Redis ZSET；热区点赞/评论不即时重算；**冷区**互动仍走 MQ 以支持老帖翻红。可选 env：`UCG_RECOMMEND_HOT_SCAN_INTERVAL_SECONDS`。`UCG_RECOMMEND_MQ_CONSUMER_ENABLED=false` 时 reconciler **仍运行**（仅停订阅 recommend 队列，冷区无法翻红）。
 - **UCG Feed Redis backfill（部署 ucg-feed-geo-composite-score 后必做）**：
