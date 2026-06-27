@@ -30,10 +30,7 @@ var taskLLMUsage = map[string][]struct {
 	},
 	"post_video_submit": {
 		{aimodel.LaneSimText, "文案"},
-		{aimodel.LaneSimVideoGen, "提交生成"},
-	},
-	"video_poll": {
-		{aimodel.LaneSimVideoGen, "轮询结果"},
+		{aimodel.LaneSimVideoGen, "提交与轮询"},
 	},
 	"chat_scan": {
 		{aimodel.LaneSimText, "E1 回复"},

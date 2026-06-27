@@ -17,24 +17,26 @@ type RuntimeConfigDB struct {
 	TaskPostVideo bool `json:"taskPostVideo"`
 	TaskChat      bool `json:"taskChat"`
 	TaskFollow    bool `json:"taskFollow"`
-	VideoPoll     bool `json:"videoPoll"`
 
-	IntervalRegisterSec         int64 `json:"intervalRegisterSec"`
-	IntervalCommentSec          int64 `json:"intervalCommentSec"`
-	IntervalPostImageSec        int64 `json:"intervalPostImageSec"`
-	IntervalPostVideoSec        int64 `json:"intervalPostVideoSec"`
-	IntervalChatSec             int64 `json:"intervalChatSec"`
-	IntervalFollowSec           int64 `json:"intervalFollowSec"`
-	IntervalVideoPollIdleSec    int64 `json:"intervalVideoPollIdleSec"`
-	IntervalVideoPollActiveSec  int64 `json:"intervalVideoPollActiveSec"`
-	StartupStaggerSec           int64 `json:"startupStaggerSec"`
-	EphemeralChatLoopSec        int64 `json:"ephemeralChatLoopSec"`
-	EphemeralChatWindowSec      int64 `json:"ephemeralChatWindowSec"`
-	RateLimitRps                float64 `json:"rateLimitRps"`
-	RateLimitBurst              int     `json:"rateLimitBurst"`
+	IntervalRegisterSec             int64 `json:"intervalRegisterSec"`
+	IntervalCommentSec              int64 `json:"intervalCommentSec"`
+	IntervalPostImageSec            int64 `json:"intervalPostImageSec"`
+	IntervalPostVideoSec            int64 `json:"intervalPostVideoSec"`
+	IntervalChatSec                 int64 `json:"intervalChatSec"`
+	IntervalFollowSec               int64 `json:"intervalFollowSec"`
+	IntervalPostVideoPollSec        int64 `json:"intervalPostVideoPollSec"`
+	IntervalPostVideoPollMaxWaitSec int64 `json:"intervalPostVideoPollMaxWaitSec"`
+	StartupStaggerSec               int64 `json:"startupStaggerSec"`
+	EphemeralChatLoopSec            int64 `json:"ephemeralChatLoopSec"`
+	EphemeralChatWindowSec          int64 `json:"ephemeralChatWindowSec"`
+	RateLimitRps                    float64 `json:"rateLimitRps"`
+	RateLimitBurst                  int     `json:"rateLimitBurst"`
+
+	// 迁移期：读旧 runtime_json 中的 P1 active 间隔，不再写入新配置。
+	IntervalVideoPollActiveSec int64 `json:"intervalVideoPollActiveSec,omitempty"`
 }
 
-// DefaultRuntimeConfigDB 与变更前 env 默认一致。
+// DefaultRuntimeConfigDB 与 env 默认一致。
 func DefaultRuntimeConfigDB() RuntimeConfigDB {
 	env := defaultRuntimeFromEnv(context.Background())
 	return runtimeConfigFromFlags(env)
@@ -42,25 +44,24 @@ func DefaultRuntimeConfigDB() RuntimeConfigDB {
 
 func defaultRuntimeFromEnv(ctx context.Context) RuntimeFlags {
 	return RuntimeFlags{
-		TaskRegister:            envBool("SIM_TASK_REGISTER_ENABLED", true),
-		TaskComment:             envBool("SIM_TASK_COMMENT_ENABLED", true),
-		TaskPostImage:           envBool("SIM_TASK_POST_IMAGE_ENABLED", true),
-		TaskPostVideo:           envBool("SIM_TASK_POST_VIDEO_ENABLED", true),
-		TaskChat:                envBool("SIM_TASK_CHAT_ENABLED", true),
-		TaskFollow:              envBool("SIM_TASK_FOLLOW_ENABLED", true),
-		VideoPoll:               envBool("SIM_VIDEO_POLL_ENABLED", true),
-		IntervalRegister:        envDuration("SIM_INTERVAL_REGISTER", 24*time.Hour),
-		IntervalComment:         envDuration("SIM_INTERVAL_COMMENT", 6*time.Hour),
-		IntervalPostImage:       envDuration("SIM_INTERVAL_POST_IMAGE", 3*time.Hour+30*time.Minute),
-		IntervalPostVideo:       envDuration("SIM_INTERVAL_POST_VIDEO", 6*time.Hour+30*time.Minute),
-		IntervalChat:            envDuration("SIM_INTERVAL_CHAT", time.Hour),
-		IntervalFollow:          envDuration("SIM_INTERVAL_FOLLOW", 7*time.Hour),
-		IntervalVideoPollIdle:   envDuration("SIM_INTERVAL_VIDEO_POLL_IDLE", 10*time.Minute),
-		IntervalVideoPollActive: envDuration("SIM_INTERVAL_VIDEO_POLL_ACTIVE", 2*time.Minute),
-		EphemeralChatLoop:       envDuration("SIM_EPHEMERAL_CHAT_LOOP", 5*time.Minute),
-		EphemeralChatWindow:     envDuration("SIM_EPHEMERAL_CHAT_WINDOW", 15*time.Minute),
-		StartupStaggerMax:       envDuration("SIM_STARTUP_STAGGER_MAX", 30*time.Minute),
-		DefaultPassword:         strings.TrimSpace(g.Cfg().MustGet(ctx, "simUser.defaultPassword").String()),
+		TaskRegister:          envBool("SIM_TASK_REGISTER_ENABLED", true),
+		TaskComment:           envBool("SIM_TASK_COMMENT_ENABLED", true),
+		TaskPostImage:         envBool("SIM_TASK_POST_IMAGE_ENABLED", true),
+		TaskPostVideo:         envBool("SIM_TASK_POST_VIDEO_ENABLED", true),
+		TaskChat:              envBool("SIM_TASK_CHAT_ENABLED", true),
+		TaskFollow:            envBool("SIM_TASK_FOLLOW_ENABLED", true),
+		IntervalRegister:      envDuration("SIM_INTERVAL_REGISTER", 24*time.Hour),
+		IntervalComment:       envDuration("SIM_INTERVAL_COMMENT", 6*time.Hour),
+		IntervalPostImage:     envDuration("SIM_INTERVAL_POST_IMAGE", 3*time.Hour+30*time.Minute),
+		IntervalPostVideo:     envDuration("SIM_INTERVAL_POST_VIDEO", 6*time.Hour+30*time.Minute),
+		IntervalChat:          envDuration("SIM_INTERVAL_CHAT", time.Hour),
+		IntervalFollow:        envDuration("SIM_INTERVAL_FOLLOW", 7*time.Hour),
+		PostVideoPollInterval: envDuration("SIM_POST_VIDEO_POLL_INTERVAL", 2*time.Minute),
+		PostVideoPollMaxWait:  envDuration("SIM_POST_VIDEO_POLL_MAX_WAIT", 30*time.Minute),
+		EphemeralChatLoop:     envDuration("SIM_EPHEMERAL_CHAT_LOOP", 5*time.Minute),
+		EphemeralChatWindow:   envDuration("SIM_EPHEMERAL_CHAT_WINDOW", 15*time.Minute),
+		StartupStaggerMax:     envDuration("SIM_STARTUP_STAGGER_MAX", 30*time.Minute),
+		DefaultPassword:       strings.TrimSpace(g.Cfg().MustGet(ctx, "simUser.defaultPassword").String()),
 	}
 }
 
@@ -68,40 +69,43 @@ func runtimeConfigFromFlags(f RuntimeFlags) RuntimeConfigDB {
 	return RuntimeConfigDB{
 		TaskRegister: f.TaskRegister, TaskComment: f.TaskComment,
 		TaskPostImage: f.TaskPostImage, TaskPostVideo: f.TaskPostVideo,
-		TaskChat: f.TaskChat, TaskFollow: f.TaskFollow, VideoPoll: f.VideoPoll,
-		IntervalRegisterSec:        int64(f.IntervalRegister / time.Second),
-		IntervalCommentSec:         int64(f.IntervalComment / time.Second),
-		IntervalPostImageSec:       int64(f.IntervalPostImage / time.Second),
-		IntervalPostVideoSec:       int64(f.IntervalPostVideo / time.Second),
-		IntervalChatSec:            int64(f.IntervalChat / time.Second),
-		IntervalFollowSec:          int64(f.IntervalFollow / time.Second),
-		IntervalVideoPollIdleSec:   int64(f.IntervalVideoPollIdle / time.Second),
-		IntervalVideoPollActiveSec: int64(f.IntervalVideoPollActive / time.Second),
-		StartupStaggerSec:          int64(f.StartupStaggerMax / time.Second),
-		EphemeralChatLoopSec:       int64(f.EphemeralChatLoop / time.Second),
-		EphemeralChatWindowSec:     int64(f.EphemeralChatWindow / time.Second),
-		RateLimitRps:               envFloat("SIM_UCG_RATE_LIMIT_RPS", 2.0),
-		RateLimitBurst:             envInt("SIM_UCG_RATE_LIMIT_BURST", 4),
+		TaskChat: f.TaskChat, TaskFollow: f.TaskFollow,
+		IntervalRegisterSec:             int64(f.IntervalRegister / time.Second),
+		IntervalCommentSec:              int64(f.IntervalComment / time.Second),
+		IntervalPostImageSec:            int64(f.IntervalPostImage / time.Second),
+		IntervalPostVideoSec:            int64(f.IntervalPostVideo / time.Second),
+		IntervalChatSec:                 int64(f.IntervalChat / time.Second),
+		IntervalFollowSec:               int64(f.IntervalFollow / time.Second),
+		IntervalPostVideoPollSec:        int64(f.PostVideoPollInterval / time.Second),
+		IntervalPostVideoPollMaxWaitSec: int64(f.PostVideoPollMaxWait / time.Second),
+		StartupStaggerSec:               int64(f.StartupStaggerMax / time.Second),
+		EphemeralChatLoopSec:            int64(f.EphemeralChatLoop / time.Second),
+		EphemeralChatWindowSec:          int64(f.EphemeralChatWindow / time.Second),
+		RateLimitRps:                    envFloat("SIM_UCG_RATE_LIMIT_RPS", 2.0),
+		RateLimitBurst:                  envInt("SIM_UCG_RATE_LIMIT_BURST", 4),
 	}
 }
 
 func (c RuntimeConfigDB) toRuntimeFlags(ctx context.Context) RuntimeFlags {
 	f := RuntimeFlags{
-		TaskRegister: c.TaskRegister, TaskComment: c.TaskComment,
-		TaskPostImage: c.TaskPostImage, TaskPostVideo: c.TaskPostVideo,
-		TaskChat: c.TaskChat, TaskFollow: c.TaskFollow, VideoPoll: c.VideoPoll,
-		IntervalRegister:        secDuration(c.IntervalRegisterSec, 24*time.Hour),
-		IntervalComment:         secDuration(c.IntervalCommentSec, 6*time.Hour),
-		IntervalPostImage:       secDuration(c.IntervalPostImageSec, 3*time.Hour+30*time.Minute),
-		IntervalPostVideo:       secDuration(c.IntervalPostVideoSec, 6*time.Hour+30*time.Minute),
-		IntervalChat:            secDuration(c.IntervalChatSec, time.Hour),
-		IntervalFollow:          secDuration(c.IntervalFollowSec, 7*time.Hour),
-		IntervalVideoPollIdle:   secDuration(c.IntervalVideoPollIdleSec, 10*time.Minute),
-		IntervalVideoPollActive: secDuration(c.IntervalVideoPollActiveSec, 2*time.Minute),
-		StartupStaggerMax:       secDuration(c.StartupStaggerSec, 30*time.Minute),
-		EphemeralChatLoop:       secDuration(c.EphemeralChatLoopSec, 5*time.Minute),
-		EphemeralChatWindow:     secDuration(c.EphemeralChatWindowSec, 15*time.Minute),
-		DefaultPassword:         strings.TrimSpace(g.Cfg().MustGet(ctx, "simUser.defaultPassword").String()),
+		TaskRegister:          c.TaskRegister,
+		TaskComment:           c.TaskComment,
+		TaskPostImage:         c.TaskPostImage,
+		TaskPostVideo:         c.TaskPostVideo,
+		TaskChat:              c.TaskChat,
+		TaskFollow:            c.TaskFollow,
+		IntervalRegister:      secDuration(c.IntervalRegisterSec, 24*time.Hour),
+		IntervalComment:       secDuration(c.IntervalCommentSec, 6*time.Hour),
+		IntervalPostImage:     secDuration(c.IntervalPostImageSec, 3*time.Hour+30*time.Minute),
+		IntervalPostVideo:     secDuration(c.IntervalPostVideoSec, 6*time.Hour+30*time.Minute),
+		IntervalChat:          secDuration(c.IntervalChatSec, time.Hour),
+		IntervalFollow:        secDuration(c.IntervalFollowSec, 7*time.Hour),
+		PostVideoPollInterval: secDuration(c.IntervalPostVideoPollSec, 2*time.Minute),
+		PostVideoPollMaxWait:  secDuration(c.IntervalPostVideoPollMaxWaitSec, 30*time.Minute),
+		StartupStaggerMax:     secDuration(c.StartupStaggerSec, 30*time.Minute),
+		EphemeralChatLoop:     secDuration(c.EphemeralChatLoopSec, 5*time.Minute),
+		EphemeralChatWindow:   secDuration(c.EphemeralChatWindowSec, 15*time.Minute),
+		DefaultPassword:       strings.TrimSpace(g.Cfg().MustGet(ctx, "simUser.defaultPassword").String()),
 	}
 	if c.RateLimitRps > 0 {
 		setActiveRateLimit(RateLimitSettings{RPS: c.RateLimitRps, Burst: c.RateLimitBurst})
@@ -129,7 +133,6 @@ func LoadRuntimeFromDB(ctx context.Context) (RuntimeConfigDB, error) {
 	if err := json.Unmarshal([]byte(raw), &c); err != nil {
 		return DefaultRuntimeConfigDB(), nil
 	}
-	// 合并零值字段为代码默认，避免部分 JSON 缺键
 	def := DefaultRuntimeConfigDB()
 	if c.IntervalRegisterSec <= 0 {
 		c.IntervalRegisterSec = def.IntervalRegisterSec
@@ -149,11 +152,15 @@ func LoadRuntimeFromDB(ctx context.Context) (RuntimeConfigDB, error) {
 	if c.IntervalFollowSec <= 0 {
 		c.IntervalFollowSec = def.IntervalFollowSec
 	}
-	if c.IntervalVideoPollIdleSec <= 0 {
-		c.IntervalVideoPollIdleSec = def.IntervalVideoPollIdleSec
+	if c.IntervalPostVideoPollSec <= 0 {
+		if c.IntervalVideoPollActiveSec > 0 {
+			c.IntervalPostVideoPollSec = c.IntervalVideoPollActiveSec
+		} else {
+			c.IntervalPostVideoPollSec = def.IntervalPostVideoPollSec
+		}
 	}
-	if c.IntervalVideoPollActiveSec <= 0 {
-		c.IntervalVideoPollActiveSec = def.IntervalVideoPollActiveSec
+	if c.IntervalPostVideoPollMaxWaitSec <= 0 {
+		c.IntervalPostVideoPollMaxWaitSec = def.IntervalPostVideoPollMaxWaitSec
 	}
 	if c.StartupStaggerSec <= 0 {
 		c.StartupStaggerSec = def.StartupStaggerSec

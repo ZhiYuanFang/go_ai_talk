@@ -32,7 +32,7 @@ type LLMLaneSnapshotDTO struct {
 	Model    string `json:"model"`
 }
 
-// RuntimeTaskSwitchesDTO 各任务 env 开关。
+// RuntimeTaskSwitchesDTO 各任务开关。
 type RuntimeTaskSwitchesDTO struct {
 	Register  bool
 	Comment   bool
@@ -40,22 +40,21 @@ type RuntimeTaskSwitchesDTO struct {
 	PostVideo bool
 	Chat      bool
 	Follow    bool
-	VideoPoll bool
 }
 
 // RuntimeIntervalsDTO 各任务周期字符串（人类可读）。
 type RuntimeIntervalsDTO struct {
-	Register            string
-	Comment             string
-	PostImage           string
-	PostVideo           string
-	Chat                string
-	Follow              string
-	VideoPollIdle       string
-	VideoPollActive     string
-	StartupStaggerMax   string
-	EphemeralChatLoop   string
-	EphemeralChatWindow string
+	Register              string
+	Comment               string
+	PostImage             string
+	PostVideo             string
+	Chat                  string
+	Follow                string
+	PostVideoPollInterval string
+	PostVideoPollMaxWait  string
+	StartupStaggerMax     string
+	EphemeralChatLoop     string
+	EphemeralChatWindow   string
 }
 
 // GetRuntimeSnapshot 组装 DB 生效的运行时配置，供 Admin 展示。
@@ -88,20 +87,19 @@ func GetRuntimeSnapshot(ctx context.Context) (RuntimeSnapshotDTO, error) {
 			PostVideo: flags.TaskPostVideo,
 			Chat:      flags.TaskChat,
 			Follow:    flags.TaskFollow,
-			VideoPoll: flags.VideoPoll,
 		},
 		Intervals: RuntimeIntervalsDTO{
-			Register:            durationLabel(flags.IntervalRegister),
-			Comment:             durationLabel(flags.IntervalComment),
-			PostImage:           durationLabel(flags.IntervalPostImage),
-			PostVideo:           durationLabel(flags.IntervalPostVideo),
-			Chat:                durationLabel(flags.IntervalChat),
-			Follow:              durationLabel(flags.IntervalFollow),
-			VideoPollIdle:       durationLabel(flags.IntervalVideoPollIdle),
-			VideoPollActive:     durationLabel(flags.IntervalVideoPollActive),
-			StartupStaggerMax:   durationLabel(flags.StartupStaggerMax),
-			EphemeralChatLoop:   durationLabel(flags.EphemeralChatLoop),
-			EphemeralChatWindow: durationLabel(flags.EphemeralChatWindow),
+			Register:              durationLabel(flags.IntervalRegister),
+			Comment:               durationLabel(flags.IntervalComment),
+			PostImage:             durationLabel(flags.IntervalPostImage),
+			PostVideo:             durationLabel(flags.IntervalPostVideo),
+			Chat:                  durationLabel(flags.IntervalChat),
+			Follow:                durationLabel(flags.IntervalFollow),
+			PostVideoPollInterval: durationLabel(flags.PostVideoPollInterval),
+			PostVideoPollMaxWait:  durationLabel(flags.PostVideoPollMaxWait),
+			StartupStaggerMax:     durationLabel(flags.StartupStaggerMax),
+			EphemeralChatLoop:     durationLabel(flags.EphemeralChatLoop),
+			EphemeralChatWindow:   durationLabel(flags.EphemeralChatWindow),
 		},
 		RateLimitRps:   rtDB.RateLimitRps,
 		RateLimitBurst: rtDB.RateLimitBurst,

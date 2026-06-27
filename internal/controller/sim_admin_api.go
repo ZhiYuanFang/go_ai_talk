@@ -56,15 +56,15 @@ func (c *SimAdminCtrl) ConfigGet(ctx context.Context, req *v1.SimAdminConfigGetR
 			Register: cfg.Runtime.TaskRegister, Comment: cfg.Runtime.TaskComment,
 			PostImage: cfg.Runtime.TaskPostImage, PostVideo: cfg.Runtime.TaskPostVideo,
 			Chat: cfg.Runtime.TaskChat, Follow: cfg.Runtime.TaskFollow,
-			VideoPoll: cfg.Runtime.VideoPoll,
 		},
 		Intervals: v1.SimAdminRuntimeIntervalsDTO{
 			Register: iv["register"], Comment: iv["comment"],
 			PostImage: iv["postImage"], PostVideo: iv["postVideo"],
 			Chat: iv["chat"], Follow: iv["follow"],
-			VideoPollIdle: iv["videoPollIdle"], VideoPollActive: iv["videoPollActive"],
-			StartupStaggerMax: iv["startupStaggerMax"],
-			EphemeralChatLoop: iv["ephemeralChatLoop"], EphemeralChatWindow: iv["ephemeralChatWindow"],
+			PostVideoPollInterval: iv["postVideoPollInterval"],
+			PostVideoPollMaxWait:  iv["postVideoPollMaxWait"],
+			StartupStaggerMax:     iv["startupStaggerMax"],
+			EphemeralChatLoop:     iv["ephemeralChatLoop"], EphemeralChatWindow: iv["ephemeralChatWindow"],
 		},
 		RateLimitRps: cfg.Runtime.RateLimitRps, RateLimitBurst: cfg.Runtime.RateLimitBurst,
 	}}, nil
@@ -88,11 +88,11 @@ func (c *SimAdminCtrl) ConfigPut(ctx context.Context, req *v1.SimAdminConfigPutR
 		TaskRegister: req.TaskSwitches.Register, TaskComment: req.TaskSwitches.Comment,
 		TaskPostImage: req.TaskSwitches.PostImage, TaskPostVideo: req.TaskSwitches.PostVideo,
 		TaskChat: req.TaskSwitches.Chat, TaskFollow: req.TaskSwitches.Follow,
-		VideoPoll: req.TaskSwitches.VideoPoll,
 		IntervalRegister: req.Intervals.Register, IntervalComment: req.Intervals.Comment,
 		IntervalPostImage: req.Intervals.PostImage, IntervalPostVideo: req.Intervals.PostVideo,
 		IntervalChat: req.Intervals.Chat, IntervalFollow: req.Intervals.Follow,
-		IntervalVideoPollIdle: req.Intervals.VideoPollIdle, IntervalVideoPollActive: req.Intervals.VideoPollActive,
+		IntervalPostVideoPoll: req.Intervals.PostVideoPollInterval,
+		IntervalPostVideoPollMaxWait: req.Intervals.PostVideoPollMaxWait,
 		StartupStaggerMax: req.Intervals.StartupStaggerMax,
 		EphemeralChatLoop: req.Intervals.EphemeralChatLoop, EphemeralChatWindow: req.Intervals.EphemeralChatWindow,
 		RateLimitRps: req.RateLimitRps, RateLimitBurst: req.RateLimitBurst,
@@ -114,7 +114,8 @@ func (c *SimAdminCtrl) ConfigPut(ctx context.Context, req *v1.SimAdminConfigPutR
 func isMinimalSimConfigPut(req *v1.SimAdminConfigPutReq) bool {
 	iv := req.Intervals
 	return iv.Register == "" && iv.Comment == "" && iv.PostImage == "" && iv.PostVideo == "" &&
-		iv.Chat == "" && iv.Follow == "" && iv.VideoPollIdle == "" && iv.VideoPollActive == "" &&
+		iv.Chat == "" && iv.Follow == "" &&
+		iv.PostVideoPollInterval == "" && iv.PostVideoPollMaxWait == "" &&
 		iv.StartupStaggerMax == "" && iv.EphemeralChatLoop == "" && iv.EphemeralChatWindow == "" &&
 		req.RateLimitRps == 0 && req.RateLimitBurst == 0
 }
@@ -213,20 +214,19 @@ func (c *SimAdminCtrl) RuntimeGet(ctx context.Context, req *v1.SimAdminRuntimeGe
 			PostVideo: rt.TaskSwitches.PostVideo,
 			Chat:      rt.TaskSwitches.Chat,
 			Follow:    rt.TaskSwitches.Follow,
-			VideoPoll: rt.TaskSwitches.VideoPoll,
 		},
 		Intervals: v1.SimAdminRuntimeIntervalsDTO{
-			Register:            rt.Intervals.Register,
-			Comment:             rt.Intervals.Comment,
-			PostImage:           rt.Intervals.PostImage,
-			PostVideo:           rt.Intervals.PostVideo,
-			Chat:                rt.Intervals.Chat,
-			Follow:              rt.Intervals.Follow,
-			VideoPollIdle:       rt.Intervals.VideoPollIdle,
-			VideoPollActive:     rt.Intervals.VideoPollActive,
-			StartupStaggerMax:   rt.Intervals.StartupStaggerMax,
-			EphemeralChatLoop:   rt.Intervals.EphemeralChatLoop,
-			EphemeralChatWindow: rt.Intervals.EphemeralChatWindow,
+			Register:              rt.Intervals.Register,
+			Comment:               rt.Intervals.Comment,
+			PostImage:             rt.Intervals.PostImage,
+			PostVideo:             rt.Intervals.PostVideo,
+			Chat:                  rt.Intervals.Chat,
+			Follow:                rt.Intervals.Follow,
+			PostVideoPollInterval: rt.Intervals.PostVideoPollInterval,
+			PostVideoPollMaxWait:  rt.Intervals.PostVideoPollMaxWait,
+			StartupStaggerMax:     rt.Intervals.StartupStaggerMax,
+			EphemeralChatLoop:     rt.Intervals.EphemeralChatLoop,
+			EphemeralChatWindow:   rt.Intervals.EphemeralChatWindow,
 		},
 		RateLimitRps:   rt.RateLimitRps,
 		RateLimitBurst: rt.RateLimitBurst,
@@ -275,6 +275,9 @@ func (c *SimAdminCtrl) TaskRunPost(ctx context.Context, req *v1.SimAdminTaskRunP
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "未知任务名")
 	}
 	flags := simuser.LoadRuntimeFlags(ctx)
+	if name == "post_video_submit" && simuser.IsVideoPostInFlight() {
+		return nil, gerror.NewCode(gcode.CodeInvalidOperation, "任务正在执行中")
+	}
 	if !simuser.StartManualRunAsync(name, flags) {
 		return nil, gerror.NewCode(gcode.CodeInvalidOperation, "任务正在执行中")
 	}

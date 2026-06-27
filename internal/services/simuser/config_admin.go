@@ -133,11 +133,10 @@ func runtimeScheduleDiff(before FullConfigDTO, after ConfigAdminPutDTO) bool {
 	br, ar := before.Runtime, after.Runtime
 	return br.TaskRegister != ar.TaskRegister || br.TaskComment != ar.TaskComment ||
 		br.TaskPostImage != ar.TaskPostImage || br.TaskPostVideo != ar.TaskPostVideo ||
-		br.TaskChat != ar.TaskChat || br.TaskFollow != ar.TaskFollow || br.VideoPoll != ar.VideoPoll ||
+		br.TaskChat != ar.TaskChat || br.TaskFollow != ar.TaskFollow ||
 		br.IntervalRegisterSec != ar.IntervalRegisterSec || br.IntervalCommentSec != ar.IntervalCommentSec ||
 		br.IntervalPostImageSec != ar.IntervalPostImageSec || br.IntervalPostVideoSec != ar.IntervalPostVideoSec ||
 		br.IntervalChatSec != ar.IntervalChatSec || br.IntervalFollowSec != ar.IntervalFollowSec ||
-		br.IntervalVideoPollIdleSec != ar.IntervalVideoPollIdleSec || br.IntervalVideoPollActiveSec != ar.IntervalVideoPollActiveSec ||
 		br.StartupStaggerSec != ar.StartupStaggerSec ||
 		br.EphemeralChatLoopSec != ar.EphemeralChatLoopSec || br.EphemeralChatWindowSec != ar.EphemeralChatWindowSec ||
 		br.RateLimitRps != ar.RateLimitRps || br.RateLimitBurst != ar.RateLimitBurst
@@ -165,6 +164,12 @@ func buildConfigEffects(before FullConfigDTO, after ConfigAdminPutDTO, reloaded 
 			Kind: "ephemeral_may_continue", Message: "E1 参数已更新，已启动的临时聊天 goroutine 可能仍使用旧窗口",
 		})
 	}
+	if before.Runtime.IntervalPostVideoPollSec != after.Runtime.IntervalPostVideoPollSec ||
+		before.Runtime.IntervalPostVideoPollMaxWaitSec != after.Runtime.IntervalPostVideoPollMaxWaitSec {
+		effects = append(effects, ConfigEffect{
+			Kind: "video_poll_params", Message: "T4 轮询参数已更新，进行中的视频流水线仍使用启动时快照",
+		})
+	}
 	return effects
 }
 
@@ -180,7 +185,6 @@ var taskScheduleDefs = []struct {
 	{"post_video_submit", "T4 视频", func(r RuntimeConfigDB) bool { return r.TaskPostVideo }, func(r RuntimeConfigDB) int64 { return r.IntervalPostVideoSec }},
 	{"chat_scan", "T5 聊天", func(r RuntimeConfigDB) bool { return r.TaskChat }, func(r RuntimeConfigDB) int64 { return r.IntervalChatSec }},
 	{"follow", "T6 关注", func(r RuntimeConfigDB) bool { return r.TaskFollow }, func(r RuntimeConfigDB) int64 { return r.IntervalFollowSec }},
-	{"video_poll", "P1 视频轮询", func(r RuntimeConfigDB) bool { return r.VideoPoll }, func(r RuntimeConfigDB) int64 { return r.IntervalVideoPollIdleSec }},
 }
 
 func buildTaskSchedule(ctx context.Context, rt RuntimeConfigDB) []TaskScheduleItem {

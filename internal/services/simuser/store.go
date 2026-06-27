@@ -178,13 +178,21 @@ func GetStatus(ctx context.Context) (StatusDTO, error) {
 	return StatusDTO{Tasks: runs, PendingVideoJobs: pending}, nil
 }
 
-func InsertVideoJob(ctx context.Context, wxID int64, content, taskID string) error {
+func InsertVideoJob(ctx context.Context, wxID int64, content, taskID string) (int64, error) {
 	now := time.Now().Unix()
-	_, err := g.DB().Model("sim_video_job").Ctx(ctx).Data(g.Map{
+	id, err := g.DB().Model("sim_video_job").Ctx(ctx).Data(g.Map{
 		"wx_id": wxID, "content": content, "task_id": taskID,
 		"status": "pending", "created_at": now, "updated_at": now,
-	}).Insert()
-	return err
+	}).InsertAndGetId()
+	return id, err
+}
+
+// DiscardPendingVideoJobsOnStartup 进程启动时将未完成的视频 job 标为 skipped（模拟场景可接受丢失）。
+func DiscardPendingVideoJobsOnStartup(ctx context.Context) {
+	_, _ = g.DB().Model("sim_video_job").Ctx(ctx).
+		WhereIn("status", []string{"pending", "processing"}).
+		Data(g.Map{"status": "skipped", "updated_at": time.Now().Unix()}).
+		Update()
 }
 
 func HasPendingVideoJob(ctx context.Context, wxID int64) (bool, error) {

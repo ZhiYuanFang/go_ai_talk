@@ -69,6 +69,7 @@ func startSchedulerGoroutines(ctx context.Context, wg *sync.WaitGroup, flags Run
 		glog.Infof(ctx, "[simuser] sim_config.enabled=false，跳过 scheduler")
 		return
 	}
+	DiscardPendingVideoJobsOnStartup(ctx)
 	password := flags.DefaultPassword
 	if password == "" {
 		password = "123456"
@@ -94,7 +95,7 @@ func startSchedulerGoroutines(ctx context.Context, wg *sync.WaitGroup, flags Run
 	}
 	if flags.TaskPostVideo {
 		runPeriodicTracked(ctx, wg, "post_video_submit", flags.IntervalPostVideo, stagger, skipLongStagger, func(c context.Context) {
-			RunPostVideoSubmitTask(c, password)
+			RunPostVideoSubmitTask(c, password, flags)
 		})
 	}
 	if flags.TaskChat {
@@ -107,13 +108,8 @@ func startSchedulerGoroutines(ctx context.Context, wg *sync.WaitGroup, flags Run
 			RunFollowTask(c, password)
 		})
 	}
-	if flags.VideoPoll {
-		runAdaptivePeriodicTracked(ctx, wg, "video_poll", flags.IntervalVideoPollIdle, flags.IntervalVideoPollActive, stagger, skipLongStagger, func(c context.Context) bool {
-			return RunVideoPollTask(c, password)
-		})
-	}
-	glog.Infof(ctx, "[simuser] scheduler started skipLongStagger=%v staggerMax=%s videoPollIdle=%s active=%s ephemeralLoop=%s window=%s",
-		skipLongStagger, stagger, flags.IntervalVideoPollIdle, flags.IntervalVideoPollActive, flags.EphemeralChatLoop, flags.EphemeralChatWindow)
+	glog.Infof(ctx, "[simuser] scheduler started skipLongStagger=%v staggerMax=%s postVideoPoll=%s maxWait=%s ephemeralLoop=%s window=%s",
+		skipLongStagger, stagger, flags.PostVideoPollInterval, flags.PostVideoPollMaxWait, flags.EphemeralChatLoop, flags.EphemeralChatWindow)
 }
 
 func runPeriodicTracked(parent context.Context, wg *sync.WaitGroup, name string, interval, staggerMax time.Duration, skipLongStagger bool, fn func(context.Context)) {
@@ -121,13 +117,5 @@ func runPeriodicTracked(parent context.Context, wg *sync.WaitGroup, name string,
 	go func() {
 		defer wg.Done()
 		runPeriodic(parent, name, interval, staggerMax, skipLongStagger, fn)
-	}()
-}
-
-func runAdaptivePeriodicTracked(parent context.Context, wg *sync.WaitGroup, name string, idle, active, staggerMax time.Duration, skipLongStagger bool, fn func(context.Context) bool) {
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		runAdaptivePeriodic(parent, name, idle, active, staggerMax, skipLongStagger, fn)
 	}()
 }

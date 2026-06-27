@@ -13,21 +13,20 @@ type RuntimeAPIInput struct {
 	TaskPostVideo bool
 	TaskChat      bool
 	TaskFollow    bool
-	VideoPoll     bool
 
-	IntervalRegister        string
-	IntervalComment         string
-	IntervalPostImage       string
-	IntervalPostVideo       string
-	IntervalChat            string
-	IntervalFollow          string
-	IntervalVideoPollIdle   string
-	IntervalVideoPollActive string
-	StartupStaggerMax       string
-	EphemeralChatLoop       string
-	EphemeralChatWindow     string
-	RateLimitRps            float64
-	RateLimitBurst          int
+	IntervalRegister            string
+	IntervalComment             string
+	IntervalPostImage           string
+	IntervalPostVideo           string
+	IntervalChat                string
+	IntervalFollow              string
+	IntervalPostVideoPoll       string
+	IntervalPostVideoPollMaxWait string
+	StartupStaggerMax           string
+	EphemeralChatLoop           string
+	EphemeralChatWindow         string
+	RateLimitRps                float64
+	RateLimitBurst              int
 }
 
 // BuildRuntimeConfigFromAPI 将 Admin 请求转为 DB 结构；空周期字段保留 current 值。
@@ -43,7 +42,6 @@ func BuildRuntimeConfigFromAPI(in RuntimeAPIInput, current RuntimeConfigDB) (Run
 	out.TaskPostVideo = in.TaskPostVideo
 	out.TaskChat = in.TaskChat
 	out.TaskFollow = in.TaskFollow
-	out.VideoPoll = in.VideoPoll
 	if in.RateLimitRps > 0 {
 		out.RateLimitRps = in.RateLimitRps
 	}
@@ -70,11 +68,11 @@ func BuildRuntimeConfigFromAPI(in RuntimeAPIInput, current RuntimeConfigDB) (Run
 	if out.IntervalFollowSec, err = durSec(in.IntervalFollow, out.IntervalFollowSec, def.IntervalFollowSec); err != nil {
 		return RuntimeConfigDB{}, fmt.Errorf("interval follow: %w", err)
 	}
-	if out.IntervalVideoPollIdleSec, err = durSec(in.IntervalVideoPollIdle, out.IntervalVideoPollIdleSec, def.IntervalVideoPollIdleSec); err != nil {
-		return RuntimeConfigDB{}, fmt.Errorf("interval videoPollIdle: %w", err)
+	if out.IntervalPostVideoPollSec, err = durSec(in.IntervalPostVideoPoll, out.IntervalPostVideoPollSec, def.IntervalPostVideoPollSec); err != nil {
+		return RuntimeConfigDB{}, fmt.Errorf("interval postVideoPollInterval: %w", err)
 	}
-	if out.IntervalVideoPollActiveSec, err = durSec(in.IntervalVideoPollActive, out.IntervalVideoPollActiveSec, def.IntervalVideoPollActiveSec); err != nil {
-		return RuntimeConfigDB{}, fmt.Errorf("interval videoPollActive: %w", err)
+	if out.IntervalPostVideoPollMaxWaitSec, err = durSec(in.IntervalPostVideoPollMaxWait, out.IntervalPostVideoPollMaxWaitSec, def.IntervalPostVideoPollMaxWaitSec); err != nil {
+		return RuntimeConfigDB{}, fmt.Errorf("interval postVideoPollMaxWait: %w", err)
 	}
 	if out.StartupStaggerSec, err = durSec(in.StartupStaggerMax, out.StartupStaggerSec, def.StartupStaggerSec); err != nil {
 		return RuntimeConfigDB{}, fmt.Errorf("interval startupStagger: %w", err)
@@ -105,16 +103,16 @@ func durSec(input string, currentSec, defSec int64) (int64, error) {
 // RuntimeConfigToAPIIntervals 将 DB 结构转为 Admin 可读周期字符串。
 func RuntimeConfigToAPIIntervals(rt RuntimeConfigDB) map[string]string {
 	return map[string]string{
-		"register":            durationLabel(time.Duration(rt.IntervalRegisterSec) * time.Second),
-		"comment":             durationLabel(time.Duration(rt.IntervalCommentSec) * time.Second),
-		"postImage":           durationLabel(time.Duration(rt.IntervalPostImageSec) * time.Second),
-		"postVideo":           durationLabel(time.Duration(rt.IntervalPostVideoSec) * time.Second),
-		"chat":                durationLabel(time.Duration(rt.IntervalChatSec) * time.Second),
-		"follow":              durationLabel(time.Duration(rt.IntervalFollowSec) * time.Second),
-		"videoPollIdle":       durationLabel(time.Duration(rt.IntervalVideoPollIdleSec) * time.Second),
-		"videoPollActive":     durationLabel(time.Duration(rt.IntervalVideoPollActiveSec) * time.Second),
-		"startupStaggerMax":   durationLabel(time.Duration(rt.StartupStaggerSec) * time.Second),
-		"ephemeralChatLoop":   durationLabel(time.Duration(rt.EphemeralChatLoopSec) * time.Second),
-		"ephemeralChatWindow": durationLabel(time.Duration(rt.EphemeralChatWindowSec) * time.Second),
+		"register":               durationLabel(time.Duration(rt.IntervalRegisterSec) * time.Second),
+		"comment":                durationLabel(time.Duration(rt.IntervalCommentSec) * time.Second),
+		"postImage":              durationLabel(time.Duration(rt.IntervalPostImageSec) * time.Second),
+		"postVideo":              durationLabel(time.Duration(rt.IntervalPostVideoSec) * time.Second),
+		"chat":                   durationLabel(time.Duration(rt.IntervalChatSec) * time.Second),
+		"follow":                 durationLabel(time.Duration(rt.IntervalFollowSec) * time.Second),
+		"postVideoPollInterval":  durationLabel(time.Duration(rt.IntervalPostVideoPollSec) * time.Second),
+		"postVideoPollMaxWait":   durationLabel(time.Duration(rt.IntervalPostVideoPollMaxWaitSec) * time.Second),
+		"startupStaggerMax":      durationLabel(time.Duration(rt.StartupStaggerSec) * time.Second),
+		"ephemeralChatLoop":      durationLabel(time.Duration(rt.EphemeralChatLoopSec) * time.Second),
+		"ephemeralChatWindow":    durationLabel(time.Duration(rt.EphemeralChatWindowSec) * time.Second),
 	}
 }

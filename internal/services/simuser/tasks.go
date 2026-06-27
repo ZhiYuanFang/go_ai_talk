@@ -21,6 +21,22 @@ const simCommentExcludedMediaTypeVideo = 2
 var ephemeralMu sync.Mutex
 var ephemeralActive = map[string]struct{}{}
 
+var videoPollMu sync.Mutex
+var videoPostInFlight bool
+
+// IsVideoPostInFlight 是否有进行中的 T4 视频流水线（submit + poll + 发帖）。
+func IsVideoPostInFlight() bool {
+	videoPollMu.Lock()
+	defer videoPollMu.Unlock()
+	return videoPostInFlight
+}
+
+func setVideoPostInFlight(v bool) {
+	videoPollMu.Lock()
+	videoPostInFlight = v
+	videoPollMu.Unlock()
+}
+
 // RunRegisterTask T1：注册模拟用户。
 func RunRegisterTask(ctx context.Context, password string) {
 	cfg, err := GetConfig(ctx)
@@ -182,9 +198,13 @@ func RunPostImageTask(ctx context.Context, password string) {
 	RecordTaskRun(ctx, "post_image", true, "")
 }
 
-// RunPostVideoSubmitTask T4：提交视频生成。
-func RunPostVideoSubmitTask(ctx context.Context, password string) {
+// RunPostVideoSubmitTask T4：提交视频生成并内联轮询 async-result 直至发帖或失败。
+func RunPostVideoSubmitTask(ctx context.Context, password string, flags RuntimeFlags) {
 	if !taskEnabled(ctx) {
+		return
+	}
+	if IsVideoPostInFlight() {
+		RecordTaskRun(ctx, "post_video_submit", true, "video poll in progress")
 		return
 	}
 	sess, _, err := randomSimSession(ctx, password)
@@ -209,59 +229,77 @@ func RunPostVideoSubmitTask(ctx context.Context, password string) {
 		RecordTaskRun(ctx, "post_video_submit", false, err.Error())
 		return
 	}
-	if err = InsertVideoJob(ctx, sess.WxID, textResp.Content, taskID); err != nil {
+	jobID, err := InsertVideoJob(ctx, sess.WxID, textResp.Content, taskID)
+	if err != nil {
 		RecordTaskRun(ctx, "post_video_submit", false, err.Error())
 		return
 	}
-	RecordTaskRun(ctx, "post_video_submit", true, "")
+	job := videoJobRow{Id: jobID, WxId: sess.WxID, Content: textResp.Content, TaskId: taskID}
+	setVideoPostInFlight(true)
+	if isManualRun(ctx) {
+		runVideoPollPipeline(ctx, sess, job, flags)
+		return
+	}
+	go runVideoPollPipeline(context.Background(), sess, job, flags)
 }
 
-// RunVideoPollTask P1：轮询视频任务；有 pending job 时返回 true 以缩短下一间隔。
-func RunVideoPollTask(ctx context.Context, password string) bool {
-	jobs, err := ListPendingVideoJobs(ctx)
-	if err != nil || len(jobs) == 0 {
-		return false
+// runVideoPollPipeline 轮询视频生成结果并发帖；结束时写 sim_task_run 并清除全局单飞标志。
+func runVideoPollPipeline(ctx context.Context, sess loginSession, job videoJobRow, flags RuntimeFlags) {
+	interval := flags.PostVideoPollInterval
+	if interval <= 0 {
+		interval = 2 * time.Minute
 	}
-	for _, job := range jobs {
+	maxWait := flags.PostVideoPollMaxWait
+	if maxWait <= 0 {
+		maxWait = 30 * time.Minute
+	}
+	deadline := time.Now().Add(maxWait)
+	var success bool
+	var errMsg string
+	defer func() {
+		setVideoPostInFlight(false)
+		if success {
+			RecordTaskRun(ctx, "post_video_submit", true, "")
+		} else {
+			RecordTaskRun(ctx, "post_video_submit", false, errMsg)
+		}
+	}()
+	for time.Now().Before(deadline) {
 		res, pErr := aimodel.PollVideoGeneration(ctx, job.TaskId)
 		if pErr != nil {
+			time.Sleep(interval)
 			continue
 		}
 		switch res.Status {
 		case aimodel.VideoStatusFailed:
 			_ = UpdateVideoJobStatus(ctx, job.Id, "skipped")
+			errMsg = "video generation failed"
+			return
 		case aimodel.VideoStatusSuccess:
-			account := accountForWx(ctx, job.WxId)
-			if account == "" {
-				_ = UpdateVideoJobStatus(ctx, job.Id, "skipped")
-				continue
-			}
-			if password == "" {
-				password = "123456"
-			}
-			sess, lErr := usernameLogin(ctx, account, password)
-			if lErr != nil {
-				_ = UpdateVideoJobStatus(ctx, job.Id, "skipped")
-				continue
-			}
 			vKey, uErr := uploadVideoFromURL(ctx, sess.AccessToken, res.VideoURL)
 			if uErr != nil {
 				_ = UpdateVideoJobStatus(ctx, job.Id, "skipped")
-				continue
+				errMsg = uErr.Error()
+				return
 			}
-			if err = appPost(ctx, sess.AccessToken, "/ucg/app/api/posts", g.Map{
+			if err := appPost(ctx, sess.AccessToken, "/ucg/app/api/posts", g.Map{
 				"content": job.Content, "mediaType": 2, "submit": true,
 				"media": []g.Map{{"objectKey": vKey, "mediaKind": 2, "sortOrder": 0}},
 			}, nil); err != nil {
 				_ = UpdateVideoJobStatus(ctx, job.Id, "skipped")
-				continue
+				errMsg = err.Error()
+				return
 			}
 			_ = UpdateVideoJobStatus(ctx, job.Id, "done")
+			success = true
+			return
 		default:
 			_ = UpdateVideoJobStatus(ctx, job.Id, "processing")
+			time.Sleep(interval)
 		}
 	}
-	return true
+	_ = UpdateVideoJobStatus(ctx, job.Id, "skipped")
+	errMsg = "poll timeout"
 }
 
 // RunChatScanTask T5：聊天巡检，真人未读触发 E1。
@@ -428,29 +466,4 @@ func isPeerSimulated(ctx context.Context, wxID int64) bool {
 		return false
 	}
 	return data.List[0].IsSimulated
-}
-
-func accountForWx(ctx context.Context, wxID int64) string {
-	base := deviceBase(ctx)
-	resp, err := gclient.New().
-		SetHeader("X-Device-Gateway-Internal-Secret", internalSecret(ctx)).
-		Get(ctx, base+"/device/internal/api/sim/wx/list?page=1&pageSize=200")
-	if err != nil {
-		return ""
-	}
-	var data struct {
-		List []struct {
-			WxId    int64  `json:"wxId"`
-			Account string `json:"account"`
-		} `json:"list"`
-	}
-	if parseEnvelope(resp.ReadAllString(), &data) != nil {
-		return ""
-	}
-	for _, item := range data.List {
-		if item.WxId == wxID {
-			return item.Account
-		}
-	}
-	return ""
 }

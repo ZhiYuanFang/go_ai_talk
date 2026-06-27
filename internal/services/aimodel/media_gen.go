@@ -14,6 +14,7 @@ import (
 const (
 	zhipuImageGenerationsURL = "https://open.bigmodel.cn/api/paas/v4/images/generations"
 	zhipuVideoGenerationsURL = "https://open.bigmodel.cn/api/paas/v4/videos/generations"
+	zhipuVideoAsyncResultURL = "https://open.bigmodel.cn/api/paas/v4/async-result/%s"
 )
 
 // ImageGenerationResult CogView 生图结果。
@@ -110,7 +111,7 @@ func PollVideoGeneration(ctx context.Context, taskID string) (VideoPollResult, e
 	if err != nil {
 		return VideoPollResult{}, err
 	}
-	url := zhipuVideoGenerationsURL + "/" + taskID
+	url := fmt.Sprintf(zhipuVideoAsyncResultURL, taskID)
 	cctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(cctx, http.MethodGet, url, nil)

@@ -108,7 +108,7 @@ type SimAdminStatusGetRes struct {
 	Status SimAdminStatusDTO `json:"status"`
 }
 
-// SimAdminRuntimeTaskSwitchesDTO 各任务 env 开关（只读）。
+// SimAdminRuntimeTaskSwitchesDTO 各任务开关。
 type SimAdminRuntimeTaskSwitchesDTO struct {
 	Register  bool `json:"register"`
 	Comment   bool `json:"comment"`
@@ -116,22 +116,21 @@ type SimAdminRuntimeTaskSwitchesDTO struct {
 	PostVideo bool `json:"postVideo"`
 	Chat      bool `json:"chat"`
 	Follow    bool `json:"follow"`
-	VideoPoll bool `json:"videoPoll"`
 }
 
-// SimAdminRuntimeIntervalsDTO 各任务周期与相关 env 时长（只读）。
+// SimAdminRuntimeIntervalsDTO 各任务周期与相关时长。
 type SimAdminRuntimeIntervalsDTO struct {
-	Register            string `json:"register"`
-	Comment             string `json:"comment"`
-	PostImage           string `json:"postImage"`
-	PostVideo           string `json:"postVideo"`
-	Chat                string `json:"chat"`
-	Follow              string `json:"follow"`
-	VideoPollIdle       string `json:"videoPollIdle"`
-	VideoPollActive     string `json:"videoPollActive"`
-	StartupStaggerMax   string `json:"startupStaggerMax"`
-	EphemeralChatLoop   string `json:"ephemeralChatLoop"`
-	EphemeralChatWindow string `json:"ephemeralChatWindow"`
+	Register              string `json:"register"`
+	Comment               string `json:"comment"`
+	PostImage             string `json:"postImage"`
+	PostVideo             string `json:"postVideo"`
+	Chat                  string `json:"chat"`
+	Follow                string `json:"follow"`
+	PostVideoPollInterval string `json:"postVideoPollInterval"`
+	PostVideoPollMaxWait  string `json:"postVideoPollMaxWait"`
+	StartupStaggerMax     string `json:"startupStaggerMax"`
+	EphemeralChatLoop     string `json:"ephemeralChatLoop"`
+	EphemeralChatWindow   string `json:"ephemeralChatWindow"`
 }
 
 // SimAdminLLMLaneDTO 单条 LLM lane 只读快照。

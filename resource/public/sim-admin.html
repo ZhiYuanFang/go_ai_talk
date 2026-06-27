@@ -128,15 +128,33 @@
 	const taskSwitchDefs = [
 		{ key: 'register', label: 'T1 注册' }, { key: 'comment', label: 'T2 评论' },
 		{ key: 'postImage', label: 'T3 图文' }, { key: 'postVideo', label: 'T4 视频' },
-		{ key: 'chat', label: 'T5 聊天' }, { key: 'follow', label: 'T6 关注' },
-		{ key: 'videoPoll', label: 'P1 轮询' }
+		{ key: 'chat', label: 'T5 聊天' }, { key: 'follow', label: 'T6 关注' }
 	];
 	const intervalDefs = [
 		{ key: 'register', label: 'T1' }, { key: 'comment', label: 'T2' },
-		{ key: 'postImage', label: 'T3' }, { key: 'postVideo', label: 'T4' },
-		{ key: 'chat', label: 'T5' }, { key: 'follow', label: 'T6' },
-		{ key: 'videoPollIdle', label: 'P1 空闲' }, { key: 'videoPollActive', label: 'P1 活跃' }
+		{ key: 'postImage', label: 'T3' }, { key: 'postVideo', label: 'T4 调度' },
+		{ key: 'postVideoPollInterval', label: 'T4 轮询间隔' },
+		{ key: 'postVideoPollMaxWait', label: 'T4 轮询上限' },
+		{ key: 'chat', label: 'T5' }, { key: 'follow', label: 'T6' }
 	];
+	let postVideoPollMaxWaitSec = 1800;
+	function durationToSec(s) {
+		s = String(s || '').trim();
+		if (!s) return 1800;
+		let total = 0;
+		const re = /(\d+(?:\.\d+)?)(h|m|s)/g;
+		let m;
+		while ((m = re.exec(s)) !== null) {
+			const v = parseFloat(m[1]);
+			if (m[2] === 'h') total += v * 3600;
+			else if (m[2] === 'm') total += v * 60;
+			else total += v;
+		}
+		return total > 0 ? Math.ceil(total) : 1800;
+	}
+	function statusPollMaxTicks() {
+		return Math.ceil((postVideoPollMaxWaitSec || 1800) / 5) + 6;
+	}
 	function buildRuntimeFormShell() {
 		const sw = document.getElementById('taskSwitchFields');
 		sw.innerHTML = '';
@@ -174,6 +192,7 @@
 		document.getElementById('ivStagger').value = iv.startupStaggerMax || '';
 		document.getElementById('rateRps').value = c.rateLimitRps || 2;
 		document.getElementById('rateBurst').value = c.rateLimitBurst || 4;
+		postVideoPollMaxWaitSec = durationToSec(iv.postVideoPollMaxWait);
 	}
 	function collectConfigBody() {
 		const taskSwitches = {};
@@ -218,10 +237,9 @@
 		{ name: 'register', label: 'T1 注册' },
 		{ name: 'comment', label: 'T2 评论' },
 		{ name: 'post_image', label: 'T3 图文' },
-		{ name: 'post_video_submit', label: 'T4 视频提交' },
+		{ name: 'post_video_submit', label: 'T4 视频' },
 		{ name: 'chat_scan', label: 'T5 聊天扫描' },
-		{ name: 'follow', label: 'T6 关注' },
-		{ name: 'video_poll', label: 'P1 视频轮询' }
+		{ name: 'follow', label: 'T6 关注' }
 	];
 	const runningTasks = new Set();
 	let statusPollTimer = null;
@@ -243,15 +261,15 @@
 	function taskSwitchLabel(key, on) {
 		const names = {
 			register:'T1注册', comment:'T2评论', postImage:'T3图文', postVideo:'T4视频',
-			chat:'T5聊天', follow:'T6关注', videoPoll:'P1视频轮询'
+			chat:'T5聊天', follow:'T6关注'
 		};
 		return (names[key] || key) + (on ? '✅' : '❌');
 	}
 	function intervalLabel(key, val) {
 		const names = {
-			register:'T1', comment:'T2', postImage:'T3', postVideo:'T4', chat:'T5', follow:'T6',
-			videoPollIdle:'P1空闲', videoPollActive:'P1活跃', startupStaggerMax:'错峰',
-			ephemeralChatLoop:'E1循环', ephemeralChatWindow:'E1窗口'
+			register:'T1', comment:'T2', postImage:'T3', postVideo:'T4调度', chat:'T5', follow:'T6',
+			postVideoPollInterval:'T4轮询间隔', postVideoPollMaxWait:'T4轮询上限',
+			startupStaggerMax:'错峰', ephemeralChatLoop:'E1循环', ephemeralChatWindow:'E1窗口'
 		};
 		return (names[key] || key) + ' ' + val;
 	}
@@ -275,7 +293,7 @@
 		document.getElementById('rtTaskSwitches').textContent =
 			Object.keys(sw).map(k => taskSwitchLabel(k, sw[k])).join(' · ');
 		const iv = rt.intervals || {};
-		const intervalKeys = ['register','comment','postImage','postVideo','chat','follow','videoPollIdle','videoPollActive'];
+		const intervalKeys = ['register','comment','postImage','postVideo','postVideoPollInterval','postVideoPollMaxWait','chat','follow'];
 		document.getElementById('rtIntervals').textContent =
 			intervalKeys.map(k => intervalLabel(k, iv[k] || '—')).join(' · ');
 	}
@@ -395,6 +413,7 @@
 	function startStatusPoll() {
 		if (statusPollTimer) clearInterval(statusPollTimer);
 		let n = 0;
+		const maxTicks = statusPollMaxTicks();
 		statusPollTimer = setInterval(async () => {
 			n++;
 			try {
@@ -402,7 +421,7 @@
 				renderStatus(d.status || d);
 				maybeClearRunningFromStatus(d.status || d);
 			} catch (_) {}
-			if (n >= 24) {
+			if (n >= maxTicks) {
 				Object.keys(pendingRunAt).forEach(clearTaskRunning);
 				try { await loadStatus(); } catch (_) {}
 				clearInterval(statusPollTimer);
