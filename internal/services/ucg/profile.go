@@ -255,6 +255,8 @@ func GetPublicProfile(ctx context.Context, wxID uint64) (*ProfileDTO, error) {
 			dto.IpLocation = loc
 		}
 	}
+	// 与 profile/me 对齐：公开主页也需展示关注/粉丝/发帖统计
+	enrichProfileStats(ctx, wxID, dto)
 	return dto, nil
 }
 
