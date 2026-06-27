@@ -54,6 +54,8 @@ func GenerateImage(ctx context.Context, lane Lane, prompt string) (ImageGenerati
 	body, _ := json.Marshal(map[string]interface{}{
 		"model":  profile.Model,
 		"prompt": prompt,
+		// 智谱 CogView 默认带水印；关闭需账户已签去水印免责声明。
+		"watermark_enabled": false,
 	})
 	respBody, status, err := doZhipuMediaHTTP(ctx, profile, http.MethodPost, zhipuImageGenerationsURL, body)
 	if err != nil {
