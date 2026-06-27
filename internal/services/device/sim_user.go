@@ -2,11 +2,15 @@ package device
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/binary"
+	"math"
 
 	"hello/internal/dao"
 	"hello/internal/model/entity"
 	"hello/internal/platform/cachekit"
 
+	"github.com/gogf/gf/v2/database/gdb"
 	"github.com/gogf/gf/v2/frame/g"
 )
 
@@ -87,4 +91,81 @@ func ListSimulatedWx(ctx context.Context, page, pageSize int) (list []SimWxListI
 		list = append(list, SimWxListItem{WxId: w.Id, Account: w.Account})
 	}
 	return list, total, nil
+}
+
+// PickRandomSimulatedWx 经 ID 探测从全库 is_simulated=1 用户随机取 1 条。
+func PickRandomSimulatedWx(ctx context.Context) (SimWxListItem, bool, error) {
+	bounds, err := simWxSimulatedModel(ctx).
+		Fields(
+			"MIN("+dao.Wx.Columns().Id+") as min_id",
+			"MAX("+dao.Wx.Columns().Id+") as max_id",
+		).
+		One()
+	if err != nil {
+		return SimWxListItem{}, false, err
+	}
+	if bounds.IsEmpty() {
+		return SimWxListItem{}, false, nil
+	}
+	minID := bounds["min_id"].Int64()
+	maxID := bounds["max_id"].Int64()
+	if minID <= 0 || maxID <= 0 {
+		return SimWxListItem{}, false, nil
+	}
+
+	anchor := minID
+	if minID < maxID {
+		u, uErr := simWxRandomUnit()
+		if uErr != nil {
+			return SimWxListItem{}, false, uErr
+		}
+		span := float64(maxID - minID)
+		// 均匀锚点：所有 simulated 用户在 id 轴上等概率，不做新用户偏置。
+		anchor = minID + int64(math.Floor(span*u))
+		if anchor > maxID {
+			anchor = maxID
+		}
+	}
+
+	row, err := simWxSimulatedModel(ctx).
+		Fields(dao.Wx.Columns().Id, dao.Wx.Columns().Account).
+		Where("id >= ?", anchor).
+		OrderAsc(dao.Wx.Columns().Id).
+		Limit(1).
+		One()
+	if err != nil {
+		return SimWxListItem{}, false, err
+	}
+	if row.IsEmpty() {
+		// 锚点落在 id 空洞时回退 minId，保证 eligible 用户存在时必命中一条。
+		row, err = simWxSimulatedModel(ctx).
+			Fields(dao.Wx.Columns().Id, dao.Wx.Columns().Account).
+			Where(dao.Wx.Columns().Id, minID).
+			Limit(1).
+			One()
+		if err != nil {
+			return SimWxListItem{}, false, err
+		}
+	}
+	if row.IsEmpty() {
+		return SimWxListItem{}, false, nil
+	}
+	var w entity.Wx
+	if sErr := row.Struct(&w); sErr != nil {
+		return SimWxListItem{}, false, sErr
+	}
+	return SimWxListItem{WxId: w.Id, Account: w.Account}, true, nil
+}
+
+func simWxSimulatedModel(ctx context.Context) *gdb.Model {
+	return dao.Wx.Ctx(ctx).Where(dao.Wx.Columns().IsSimulated, 1)
+}
+
+// simWxRandomUnit 返回 [0,1) 均匀随机数，供锚点探测使用。
+func simWxRandomUnit() (float64, error) {
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return 0, err
+	}
+	return float64(binary.BigEndian.Uint64(b[:])>>11) / float64(1<<53), nil
 }

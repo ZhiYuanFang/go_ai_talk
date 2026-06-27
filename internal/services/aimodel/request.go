@@ -20,6 +20,8 @@ type ChatRequest struct {
 	ExtraTopLevel map[string]interface{}
 	// MaxTokens 上游 completion token 上限；thinking 开启时 reasoning 与 content 共用该预算，非仅正文长度。
 	MaxTokens int
+	// Temperature 采样温度；nil 时不写入请求体，使用上游 provider 默认。
+	Temperature *float64
 }
 
 // ChatResponse 非流式响应。

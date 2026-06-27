@@ -50,3 +50,16 @@ func (c *DeviceSimInternalCtrl) SimWxList(ctx context.Context, req *v1.DeviceSim
 		PageSize: req.PageSize,
 	}, nil
 }
+
+// SimWxRandom GET /device/internal/api/sim/wx/random
+func (c *DeviceSimInternalCtrl) SimWxRandom(ctx context.Context, req *v1.DeviceSimWxRandomReq) (res *v1.DeviceSimWxRandomRes, err error) {
+	_ = c
+	item, ok, err := device.PickRandomSimulatedWx(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return &v1.DeviceSimWxRandomRes{}, nil
+	}
+	return &v1.DeviceSimWxRandomRes{WxId: item.WxId, Account: item.Account}, nil
+}

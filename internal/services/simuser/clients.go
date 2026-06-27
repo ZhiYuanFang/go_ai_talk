@@ -14,7 +14,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/gogf/gf/v2/encoding/gjson"
 	"github.com/gogf/gf/v2/frame/g"
@@ -161,27 +160,56 @@ func countSimUsers(ctx context.Context) (int, error) {
 	return data.Total, nil
 }
 
-func listSimWxIDs(ctx context.Context) ([]int64, error) {
+// simWxPick device random 接口返回的模拟用户摘要。
+type simWxPick struct {
+	WxId    int64  `json:"wxId"`
+	Account string `json:"account"`
+}
+
+const simFollowRandomMaxTry = 8
+
+func deviceInternalGet(ctx context.Context, path string, out interface{}) error {
 	base := deviceBase(ctx)
+	if base == "" {
+		return fmt.Errorf("DEVICE_SERVICE_URL 未配置")
+	}
 	resp, err := gclient.New().
 		SetHeader("X-Device-Gateway-Internal-Secret", internalSecret(ctx)).
-		Get(ctx, base+"/device/internal/api/sim/wx/list?page=1&pageSize=200")
+		Get(ctx, base+path)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	var data struct {
-		List []struct {
-			WxId int64 `json:"wxId"`
-		} `json:"list"`
+	return parseEnvelope(resp.ReadAllString(), out)
+}
+
+// pickRandomSimWx 经 device internal random 接口全库随机取 1 个模拟用户。
+func pickRandomSimWx(ctx context.Context) (simWxPick, error) {
+	var data simWxPick
+	if err := deviceInternalGet(ctx, "/device/internal/api/sim/wx/random", &data); err != nil {
+		return simWxPick{}, err
 	}
-	if err = parseEnvelope(resp.ReadAllString(), &data); err != nil {
-		return nil, err
+	if data.WxId <= 0 || strings.TrimSpace(data.Account) == "" {
+		return simWxPick{}, fmt.Errorf("无模拟用户")
 	}
-	out := make([]int64, 0, len(data.List))
-	for _, item := range data.List {
-		out = append(out, item.WxId)
+	return data, nil
+}
+
+// pickTwoDistinctSimWx 随机取两个不同 wxId；仅 1 个 sim 用户时失败。
+func pickTwoDistinctSimWx(ctx context.Context) (a, b simWxPick, err error) {
+	a, err = pickRandomSimWx(ctx)
+	if err != nil {
+		return simWxPick{}, simWxPick{}, err
 	}
-	return out, nil
+	for i := 0; i < simFollowRandomMaxTry; i++ {
+		candidate, pErr := pickRandomSimWx(ctx)
+		if pErr != nil {
+			return simWxPick{}, simWxPick{}, pErr
+		}
+		if candidate.WxId != a.WxId {
+			return a, candidate, nil
+		}
+	}
+	return simWxPick{}, simWxPick{}, fmt.Errorf("sim 用户不足")
 }
 
 func usernameLogin(ctx context.Context, account, password string) (loginSession, error) {
@@ -248,32 +276,10 @@ func appPost(ctx context.Context, token, path string, body interface{}, out inte
 }
 
 func randomSimSession(ctx context.Context, password string) (loginSession, string, error) {
-	ids, err := listSimWxIDs(ctx)
-	if err != nil || len(ids) == 0 {
-		return loginSession{}, "", fmt.Errorf("无模拟用户")
-	}
-	idx := time.Now().UnixNano() % int64(len(ids))
-	// 需要 account 登录：从 list 拿 account
-	base := deviceBase(ctx)
-	resp, err := gclient.New().
-		SetHeader("X-Device-Gateway-Internal-Secret", internalSecret(ctx)).
-		Get(ctx, base+"/device/internal/api/sim/wx/list?page=1&pageSize=200")
+	item, err := pickRandomSimWx(ctx)
 	if err != nil {
 		return loginSession{}, "", err
 	}
-	var data struct {
-		List []struct {
-			WxId    int64  `json:"wxId"`
-			Account string `json:"account"`
-		} `json:"list"`
-	}
-	if err = parseEnvelope(resp.ReadAllString(), &data); err != nil {
-		return loginSession{}, "", err
-	}
-	if len(data.List) == 0 {
-		return loginSession{}, "", fmt.Errorf("无模拟用户")
-	}
-	item := data.List[idx%int64(len(data.List))]
 	sess, err := usernameLogin(ctx, item.Account, password)
 	return sess, item.Account, err
 }

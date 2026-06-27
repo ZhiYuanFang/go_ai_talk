@@ -189,6 +189,9 @@ func buildRequestBody(profile Profile, req ChatRequest, stream bool) ([]byte, er
 	if req.MaxTokens > 0 {
 		payload["max_tokens"] = req.MaxTokens
 	}
+	if req.Temperature != nil {
+		payload["temperature"] = *req.Temperature
+	}
 	for k, v := range req.ExtraTopLevel {
 		payload[k] = v
 	}

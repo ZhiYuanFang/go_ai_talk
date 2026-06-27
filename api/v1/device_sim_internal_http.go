@@ -32,3 +32,13 @@ type DeviceSimWxListRes struct {
 	Page     int                   `json:"page"`
 	PageSize int                   `json:"pageSize"`
 }
+
+// DeviceSimWxRandomReq 随机选取一条模拟用户（全库 ID 探测，非分页）。
+type DeviceSimWxRandomReq struct {
+	g.Meta `path:"/device/internal/api/sim/wx/random" method:"get" tags:"device" summary:"内部-随机模拟用户 wx"`
+}
+
+type DeviceSimWxRandomRes struct {
+	WxId    int64  `json:"wxId"`
+	Account string `json:"account"`
+}

@@ -64,7 +64,7 @@ func RunRegisterTask(ctx context.Context, password string) {
 	if sys != "" {
 		msgs = []aimodel.Message{{Role: "system", Content: sys}, {Role: "user", Content: user}}
 	}
-	resp, err := aimodel.Invoke(ctx, aimodel.LaneSimText, aimodel.ChatRequest{Messages: msgs, MaxTokens: 64})
+	resp, err := aimodel.Invoke(ctx, aimodel.LaneSimText, simChatRequest(simTempRegisterNickname, 64, msgs))
 	if err != nil {
 		RecordTaskRun(ctx, "register", false, err.Error())
 		return
@@ -128,13 +128,10 @@ func RunCommentTask(ctx context.Context, password string) {
 	if post.MediaType != 0 && coverCdnURL == "" {
 		glog.Warningf(ctx, "[simuser] comment postId=%d mediaType=%d 无 coverCdnUrl，降级纯文本 simVision", post.PostId, post.MediaType)
 	}
-	resp, err := aimodel.Invoke(ctx, aimodel.LaneSimVision, aimodel.ChatRequest{
-		Messages: []aimodel.Message{{
-			Role:    "user",
-			Content: commentVisionUserContent(coverCdnURL, user),
-		}},
-		MaxTokens: 256,
-	})
+	resp, err := aimodel.Invoke(ctx, aimodel.LaneSimVision, simChatRequest(simTempComment, 256, []aimodel.Message{{
+		Role:    "user",
+		Content: commentVisionUserContent(coverCdnURL, user),
+	}}))
 	if err != nil {
 		RecordTaskRun(ctx, "comment", false, err.Error())
 		return
@@ -160,9 +157,7 @@ func RunPostImageTask(ctx context.Context, password string) {
 	}
 	topic := randomTopic()
 	_, user, _ := LoadRenderedPrompt(ctx, "post_image_text", map[string]string{"topic": topic})
-	textResp, err := aimodel.Invoke(ctx, aimodel.LaneSimText, aimodel.ChatRequest{
-		Messages: []aimodel.Message{{Role: "user", Content: user}}, MaxTokens: 512,
-	})
+	textResp, err := aimodel.Invoke(ctx, aimodel.LaneSimText, simChatRequest(simTempPostImageText, 512, []aimodel.Message{{Role: "user", Content: user}}))
 	if err != nil {
 		RecordTaskRun(ctx, "post_image", false, err.Error())
 		return
@@ -204,9 +199,7 @@ func RunPostVideoSubmitTask(ctx context.Context, password string) {
 	}
 	topic := randomTopic()
 	_, user, _ := LoadRenderedPrompt(ctx, "post_video_text", map[string]string{"topic": topic})
-	textResp, err := aimodel.Invoke(ctx, aimodel.LaneSimText, aimodel.ChatRequest{
-		Messages: []aimodel.Message{{Role: "user", Content: user}}, MaxTokens: 256,
-	})
+	textResp, err := aimodel.Invoke(ctx, aimodel.LaneSimText, simChatRequest(simTempPostVideoText, 256, []aimodel.Message{{Role: "user", Content: user}}))
 	if err != nil {
 		RecordTaskRun(ctx, "post_video_submit", false, err.Error())
 		return
@@ -362,9 +355,7 @@ func spawnEphemeralChat(ctx context.Context, sess loginSession, password string,
 			}
 			history := buildChatHistory(msgs.List)
 			_, user, _ := LoadRenderedPrompt(ctx, "chat_reply", map[string]string{"chat_history": history})
-			resp, err := aimodel.Invoke(ctx, aimodel.LaneSimText, aimodel.ChatRequest{
-				Messages: []aimodel.Message{{Role: "user", Content: user}}, MaxTokens: 512,
-			})
+			resp, err := aimodel.Invoke(ctx, aimodel.LaneSimText, simChatRequest(simTempChatReply, 512, []aimodel.Message{{Role: "user", Content: user}}))
 			if err != nil {
 				continue
 			}
@@ -378,22 +369,17 @@ func RunFollowTask(ctx context.Context, password string) {
 	if !taskEnabled(ctx) {
 		return
 	}
-	ids, err := listSimWxIDs(ctx)
-	if len(ids) < 2 || err != nil {
-		RecordTaskRun(ctx, "follow", false, "sim 用户不足")
-		return
-	}
-	a := ids[rand.Intn(len(ids))]
-	b := ids[rand.Intn(len(ids))]
-	for b == a {
-		b = ids[rand.Intn(len(ids))]
-	}
-	sess, _, err := sessionForWx(ctx, a, password)
+	follower, target, err := pickTwoDistinctSimWx(ctx)
 	if err != nil {
 		RecordTaskRun(ctx, "follow", false, err.Error())
 		return
 	}
-	path := fmt.Sprintf("/ucg/app/api/follow/%d", b)
+	sess, err := usernameLogin(ctx, follower.Account, password)
+	if err != nil {
+		RecordTaskRun(ctx, "follow", false, err.Error())
+		return
+	}
+	path := fmt.Sprintf("/ucg/app/api/follow/%d", target.WxId)
 	if err = appPost(ctx, sess.AccessToken, path, g.Map{}, nil); err != nil {
 		RecordTaskRun(ctx, "follow", false, err.Error())
 		return
@@ -467,13 +453,4 @@ func accountForWx(ctx context.Context, wxID int64) string {
 		}
 	}
 	return ""
-}
-
-func sessionForWx(ctx context.Context, wxID int64, password string) (loginSession, string, error) {
-	acc := accountForWx(ctx, wxID)
-	if acc == "" {
-		return loginSession{}, "", fmt.Errorf("无 account")
-	}
-	s, err := usernameLogin(ctx, acc, password)
-	return s, acc, err
 }
