@@ -16,6 +16,7 @@ const (
 	postSampleLimitDefault       = 20
 	postSampleLimitMax           = 50
 	postSampleRandomRecencyAlpha = 0.65 // 幂次偏置：略偏 high-id（≈新帖），1.0 为均匀
+	postSampleExcludeMediaMax    = 8
 )
 
 // PostSampleItem 内部抽样帖最小视图（无 author/media 富化）。
@@ -29,14 +30,14 @@ type PostSampleItem struct {
 }
 
 // SamplePublishedPosts 按 published_at 取最新已发布帖样本；单条有界 SQL，不调用 device/postsFromResult。
-func SamplePublishedPosts(ctx context.Context, limit int) ([]PostSampleItem, error) {
+func SamplePublishedPosts(ctx context.Context, limit int, excludeMediaTypes []int) ([]PostSampleItem, error) {
 	if limit <= 0 {
 		limit = postSampleLimitDefault
 	}
 	if limit > postSampleLimitMax {
 		limit = postSampleLimitMax
 	}
-	rows, err := postSampleBaseModel(ctx).
+	rows, err := postSamplePublishedModel(ctx, excludeMediaTypes).
 		OrderDesc("p." + dao.UcgPost.Columns().PublishedAt).
 		OrderDesc("p." + dao.UcgPost.Columns().Id).
 		Limit(limit).
@@ -48,13 +49,12 @@ func SamplePublishedPosts(ctx context.Context, limit int) ([]PostSampleItem, err
 }
 
 // SampleRandomPublishedPost 经 ID 探测从全库 published 帖随机取 1 条；锚点幂次偏置 α 略偏新帖。
-func SampleRandomPublishedPost(ctx context.Context) ([]PostSampleItem, error) {
-	bounds, err := dao.UcgPost.Ctx(ctx).
+func SampleRandomPublishedPost(ctx context.Context, excludeMediaTypes []int) ([]PostSampleItem, error) {
+	bounds, err := postSamplePublishedBoundsModel(ctx, excludeMediaTypes).
 		Fields(
 			"MIN("+dao.UcgPost.Columns().Id+") as min_id",
 			"MAX("+dao.UcgPost.Columns().Id+") as max_id",
 		).
-		Where(dao.UcgPost.Columns().Status, PostStatusPublished).
 		One()
 	if err != nil {
 		return nil, err
@@ -81,7 +81,7 @@ func SampleRandomPublishedPost(ctx context.Context) ([]PostSampleItem, error) {
 		}
 	}
 
-	rows, err := postSampleBaseModel(ctx).
+	rows, err := postSamplePublishedModel(ctx, excludeMediaTypes).
 		Where("p."+dao.UcgPost.Columns().Id+" >= ?", anchor).
 		OrderAsc("p." + dao.UcgPost.Columns().Id).
 		Limit(1).
@@ -90,8 +90,8 @@ func SampleRandomPublishedPost(ctx context.Context) ([]PostSampleItem, error) {
 		return nil, err
 	}
 	if len(rows) == 0 {
-		// 锚点落在 id 空洞时回退 minId，保证有 published 帖时必命中一条。
-		rows, err = postSampleBaseModel(ctx).
+		// 锚点落在 id 空洞时回退 minId，保证 eligible 帖存在时必命中一条。
+		rows, err = postSamplePublishedModel(ctx, excludeMediaTypes).
 			Where("p."+dao.UcgPost.Columns().Id, minID).
 			Limit(1).
 			All()
@@ -111,6 +111,53 @@ func postSampleBaseModel(ctx context.Context) *gdb.Model {
 	return dao.UcgPost.Ctx(ctx).As("p").
 		Fields(args...).
 		Where("p."+dao.UcgPost.Columns().Status, PostStatusPublished)
+}
+
+func postSamplePublishedModel(ctx context.Context, excludeMediaTypes []int) *gdb.Model {
+	return postSampleApplyMediaExcludes(postSampleBaseModel(ctx), excludeMediaTypes)
+}
+
+func postSamplePublishedBoundsModel(ctx context.Context, excludeMediaTypes []int) *gdb.Model {
+	m := dao.UcgPost.Ctx(ctx).Where(dao.UcgPost.Columns().Status, PostStatusPublished)
+	return postSampleApplyMediaExcludesOnTable(m, excludeMediaTypes, dao.UcgPost.Columns().MediaType)
+}
+
+func postSampleApplyMediaExcludes(m *gdb.Model, excludeMediaTypes []int) *gdb.Model {
+	return postSampleApplyMediaExcludesOnTable(m, excludeMediaTypes, "p."+dao.UcgPost.Columns().MediaType)
+}
+
+func postSampleApplyMediaExcludesOnTable(m *gdb.Model, excludeMediaTypes []int, mediaTypeCol string) *gdb.Model {
+	exclude := postSampleNormalizeExcludeMediaTypes(excludeMediaTypes)
+	if len(exclude) == 0 {
+		return m
+	}
+	args := make([]interface{}, len(exclude))
+	for i, v := range exclude {
+		args[i] = v
+	}
+	return m.WhereNotIn(mediaTypeCol, args)
+}
+
+func postSampleNormalizeExcludeMediaTypes(exclude []int) []int {
+	if len(exclude) == 0 {
+		return nil
+	}
+	seen := make(map[int]struct{}, len(exclude))
+	out := make([]int, 0, len(exclude))
+	for _, v := range exclude {
+		if v < 0 {
+			continue
+		}
+		if _, ok := seen[v]; ok {
+			continue
+		}
+		seen[v] = struct{}{}
+		out = append(out, v)
+		if len(out) >= postSampleExcludeMediaMax {
+			break
+		}
+	}
+	return out
 }
 
 func postSampleSelectFields() []string {

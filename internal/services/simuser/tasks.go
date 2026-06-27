@@ -15,6 +15,9 @@ import (
 	"github.com/gogf/gf/v2/os/glog"
 )
 
+// simCommentExcludedMediaTypeVideo 与 ucg_post.media_type 视频值一致（ucg MediaTypeVideo=2）。
+const simCommentExcludedMediaTypeVideo = 2
+
 var ephemeralMu sync.Mutex
 var ephemeralActive = map[string]struct{}{}
 
@@ -107,11 +110,19 @@ func RunCommentTask(ctx context.Context, password string) {
 			CoverCdnUrl    string `json:"coverCdnUrl"`
 		} `json:"list"`
 	}
-	if err = ucgInternalPost(ctx, "/ucg/internal/api/posts/sample", g.Map{"mode": "random"}, &sample); err != nil || len(sample.List) == 0 {
+	if err = ucgInternalPost(ctx, "/ucg/internal/api/posts/sample", g.Map{
+		"mode":              "random",
+		"excludeMediaTypes": []int{simCommentExcludedMediaTypeVideo},
+	}, &sample); err != nil || len(sample.List) == 0 {
 		RecordTaskRun(ctx, "comment", false, "无已发布帖")
 		return
 	}
 	post := sample.List[0]
+	if post.MediaType == simCommentExcludedMediaTypeVideo {
+		glog.Warningf(ctx, "[simuser] comment postId=%d 仍为视频帖，跳过", post.PostId)
+		RecordTaskRun(ctx, "comment", false, "跳过视频帖")
+		return
+	}
 	_, user, _ := LoadRenderedPrompt(ctx, "comment", map[string]string{"post_content": post.Content})
 	coverCdnURL := strings.TrimSpace(post.CoverCdnUrl)
 	if post.MediaType != 0 && coverCdnURL == "" {

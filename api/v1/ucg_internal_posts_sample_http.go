@@ -6,8 +6,10 @@ import "github.com/gogf/gf/v2/frame/g"
 type UcgInternalPostsSampleReq struct {
 	g.Meta `path:"/ucg/internal/api/posts/sample" method:"post" tags:"ucg" summary:"内部-已发布帖轻量抽样"`
 	// Mode 抽样模式：缺省或 latest=按 published_at 取最新 N 条；random=全库 ID 探测随机 1 条（略偏新帖）。
-	Mode  string `json:"mode"`
+	Mode string `json:"mode"`
 	Limit int    `json:"limit"`
+	// ExcludeMediaTypes 排除的 ucg_post.media_type 列表（如 sim T2 传 [2] 排除视频）。
+	ExcludeMediaTypes []int `json:"excludeMediaTypes"`
 }
 
 // UcgInternalPostSampleItem 抽样项最小字段。

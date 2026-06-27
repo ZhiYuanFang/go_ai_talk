@@ -14,8 +14,9 @@ import (
 )
 
 type ucgInternalPostsSampleBody struct {
-	Mode  string `json:"mode"`
-	Limit int    `json:"limit"`
+	Mode              string `json:"mode"`
+	Limit             int    `json:"limit"`
+	ExcludeMediaTypes []int  `json:"excludeMediaTypes"`
 }
 
 // ucgInternalPostsSample POST /ucg/internal/api/posts/sample — 轻量已发布帖抽样。
@@ -52,9 +53,9 @@ func ucgInternalPostsSample(r *ghttp.Request) {
 	var list []ucgsvc.PostSampleItem
 	switch mode {
 	case "", "latest":
-		list, err = ucgsvc.SamplePublishedPosts(ctx, body.Limit)
+		list, err = ucgsvc.SamplePublishedPosts(ctx, body.Limit, body.ExcludeMediaTypes)
 	case "random":
-		list, err = ucgsvc.SampleRandomPublishedPost(ctx)
+		list, err = ucgsvc.SampleRandomPublishedPost(ctx, body.ExcludeMediaTypes)
 	default:
 		r.Response.WriteJson(g.Map{"code": 400, "message": "mode 无效，支持 latest 或 random"})
 		return
