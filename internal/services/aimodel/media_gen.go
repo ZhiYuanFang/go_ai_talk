@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/gogf/gf/v2/os/glog"
 )
 
 const (
@@ -114,23 +116,30 @@ func PollVideoGeneration(ctx context.Context, taskID string) (VideoPollResult, e
 	url := fmt.Sprintf(zhipuVideoAsyncResultURL, taskID)
 	cctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
+	// 开始执行视频轮询请求
 	req, err := http.NewRequestWithContext(cctx, http.MethodGet, url, nil)
 	if err != nil {
 		return VideoPollResult{}, err
 	}
 	req.Header.Set("Authorization", "Bearer "+apiKey)
+	// 执行视频轮询请求
+	glog.Debugf(ctx, "aimodel: 执行视频轮询请求: %s", url)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
+		glog.Warningf(ctx, "aimodel: 执行视频轮询请求失败: %s", err)
 		return VideoPollResult{}, err
 	}
 	defer resp.Body.Close()
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
+		glog.Warningf(ctx, "aimodel: 读取视频轮询响应体失败: %s", err)
 		return VideoPollResult{}, err
 	}
 	if resp.StatusCode >= 300 {
+		glog.Warningf(ctx, "aimodel: 视频轮询响应状态码异常: %d", resp.StatusCode)
 		return VideoPollResult{}, fmt.Errorf("视频轮询 HTTP %d: %s", resp.StatusCode, truncate(string(respBody), 512))
 	}
+	glog.Debugf(ctx, "aimodel: 视频轮询响应体: %s", string(respBody))
 	return parseVideoPollBody(respBody)
 }
 
@@ -201,7 +210,11 @@ func parseVideoPollBody(body []byte) (VideoPollResult, error) {
 		TaskStatus string `json:"task_status"`
 		Status     string `json:"status"`
 		VideoURL   string `json:"video_url"`
-		Output     struct {
+		VideoResult []struct {
+			URL           string `json:"url"`
+			CoverImageURL string `json:"cover_image_url"`
+		} `json:"video_result"`
+		Output struct {
 			VideoURL string `json:"video_url"`
 		} `json:"output"`
 	}
@@ -212,19 +225,38 @@ func parseVideoPollBody(body []byte) (VideoPollResult, error) {
 	if st == "" {
 		st = strings.ToLower(strings.TrimSpace(parsed.Status))
 	}
-	videoURL := strings.TrimSpace(parsed.VideoURL)
+	videoURL := firstVideoResultURL(parsed.VideoResult)
+	if videoURL == "" {
+		videoURL = strings.TrimSpace(parsed.VideoURL)
+	}
 	if videoURL == "" {
 		videoURL = strings.TrimSpace(parsed.Output.VideoURL)
 	}
 	switch st {
 	case "succeed", "success", "completed", "done":
+		// SUCCESS 但 URL 尚未写入 video_result 时继续轮询。
 		if videoURL == "" {
 			return VideoPollResult{Status: VideoStatusProcessing}, nil
 		}
 		return VideoPollResult{Status: VideoStatusSuccess, VideoURL: videoURL}, nil
 	case "failed", "fail", "error":
 		return VideoPollResult{Status: VideoStatusFailed}, nil
+	case "processing", "pending", "running":
+		return VideoPollResult{Status: VideoStatusProcessing}, nil
 	default:
 		return VideoPollResult{Status: VideoStatusProcessing}, nil
 	}
+}
+
+// firstVideoResultURL 取智谱 AsyncVideoGenerationResponse.video_result 首条 url。
+func firstVideoResultURL(items []struct {
+	URL           string `json:"url"`
+	CoverImageURL string `json:"cover_image_url"`
+}) string {
+	for _, item := range items {
+		if u := strings.TrimSpace(item.URL); u != "" {
+			return u
+		}
+	}
+	return ""
 }

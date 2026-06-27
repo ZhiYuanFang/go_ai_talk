@@ -10,11 +10,14 @@ type UcgInternalPostsSampleReq struct {
 	Limit int    `json:"limit"`
 	// ExcludeMediaTypes 排除的 ucg_post.media_type 列表（如 sim T2 传 [2] 排除视频）。
 	ExcludeMediaTypes []int `json:"excludeMediaTypes"`
+	// ExcludeAuthorWxIds 排除的作者 wxId（如 sim T6 传全量 sim wxId，仅抽真人 author）。
+	ExcludeAuthorWxIds []int64 `json:"excludeAuthorWxIds"`
 }
 
 // UcgInternalPostSampleItem 抽样项最小字段。
 type UcgInternalPostSampleItem struct {
 	PostId         uint64 `json:"postId"`
+	AuthorWxId     int64  `json:"authorWxId"`
 	Content        string `json:"content"`
 	MediaType      int    `json:"mediaType"`
 	CoverObjectKey string `json:"coverObjectKey,omitempty"`

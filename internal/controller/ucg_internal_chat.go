@@ -66,9 +66,15 @@ func ucgInternalChatSend(r *ghttp.Request) {
 		r.Response.WriteJson(g.Map{"code": 403, "message": "仅模拟用户可调用内部发消息"})
 		return
 	}
-	if err = ucgsvc.ProcessOutboundChatMessage(ctx, body.SenderWxId, body.ConversationId,
+	msg, err := ucgsvc.ProcessOutboundChatMessage(ctx, body.SenderWxId, body.ConversationId,
 		strings.TrimSpace(body.ClientMsgId), strings.TrimSpace(body.Content),
-		strings.TrimSpace(body.ImageKey), strings.TrimSpace(body.VideoKey)); err != nil {
+		strings.TrimSpace(body.ImageKey), strings.TrimSpace(body.VideoKey))
+	if err != nil {
+		r.Response.WriteJson(g.Map{"code": gcode.CodeOperationFailed.Code(), "message": gerror.Current(err).Error()})
+		return
+	}
+	// T5 闭环：sim 回复后清零发送方未读，避免下轮 sample 重复命中同一会话。
+	if err = ucgsvc.MarkConversationRead(ctx, body.SenderWxId, body.ConversationId, msg.ID); err != nil {
 		r.Response.WriteJson(g.Map{"code": gcode.CodeOperationFailed.Code(), "message": gerror.Current(err).Error()})
 		return
 	}

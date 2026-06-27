@@ -17,11 +17,13 @@ const (
 	postSampleLimitMax           = 50
 	postSampleRandomRecencyAlpha = 0.65 // 幂次偏置：略偏 high-id（≈新帖），1.0 为均匀
 	postSampleExcludeMediaMax    = 8
+	postSampleExcludeAuthorMax   = 10000 // 与 device sim/wx/ids 上限对齐，供 T6 排除 sim 作者
 )
 
-// PostSampleItem 内部抽样帖最小视图（无 author/media 富化）。
+// PostSampleItem 内部抽样帖最小视图（无 author profile 富化）。
 type PostSampleItem struct {
 	PostId         uint64 `json:"postId"`
+	AuthorWxId     int64  `json:"authorWxId"`
 	Content        string `json:"content"`
 	MediaType      int    `json:"mediaType"`
 	CoverObjectKey string `json:"coverObjectKey,omitempty"`
@@ -30,14 +32,14 @@ type PostSampleItem struct {
 }
 
 // SamplePublishedPosts 按 published_at 取最新已发布帖样本；单条有界 SQL，不调用 device/postsFromResult。
-func SamplePublishedPosts(ctx context.Context, limit int, excludeMediaTypes []int) ([]PostSampleItem, error) {
+func SamplePublishedPosts(ctx context.Context, limit int, excludeMediaTypes []int, excludeAuthorWxIds []int64) ([]PostSampleItem, error) {
 	if limit <= 0 {
 		limit = postSampleLimitDefault
 	}
 	if limit > postSampleLimitMax {
 		limit = postSampleLimitMax
 	}
-	rows, err := postSamplePublishedModel(ctx, excludeMediaTypes).
+	rows, err := postSamplePublishedModel(ctx, excludeMediaTypes, excludeAuthorWxIds).
 		OrderDesc("p." + dao.UcgPost.Columns().PublishedAt).
 		OrderDesc("p." + dao.UcgPost.Columns().Id).
 		Limit(limit).
@@ -49,8 +51,8 @@ func SamplePublishedPosts(ctx context.Context, limit int, excludeMediaTypes []in
 }
 
 // SampleRandomPublishedPost 经 ID 探测从全库 published 帖随机取 1 条；锚点幂次偏置 α 略偏新帖。
-func SampleRandomPublishedPost(ctx context.Context, excludeMediaTypes []int) ([]PostSampleItem, error) {
-	bounds, err := postSamplePublishedBoundsModel(ctx, excludeMediaTypes).
+func SampleRandomPublishedPost(ctx context.Context, excludeMediaTypes []int, excludeAuthorWxIds []int64) ([]PostSampleItem, error) {
+	bounds, err := postSamplePublishedBoundsModel(ctx, excludeMediaTypes, excludeAuthorWxIds).
 		Fields(
 			"MIN("+dao.UcgPost.Columns().Id+") as min_id",
 			"MAX("+dao.UcgPost.Columns().Id+") as max_id",
@@ -81,7 +83,7 @@ func SampleRandomPublishedPost(ctx context.Context, excludeMediaTypes []int) ([]
 		}
 	}
 
-	rows, err := postSamplePublishedModel(ctx, excludeMediaTypes).
+	rows, err := postSamplePublishedModel(ctx, excludeMediaTypes, excludeAuthorWxIds).
 		Where("p."+dao.UcgPost.Columns().Id+" >= ?", anchor).
 		OrderAsc("p." + dao.UcgPost.Columns().Id).
 		Limit(1).
@@ -91,7 +93,7 @@ func SampleRandomPublishedPost(ctx context.Context, excludeMediaTypes []int) ([]
 	}
 	if len(rows) == 0 {
 		// 锚点落在 id 空洞时回退 minId，保证 eligible 帖存在时必命中一条。
-		rows, err = postSamplePublishedModel(ctx, excludeMediaTypes).
+		rows, err = postSamplePublishedModel(ctx, excludeMediaTypes, excludeAuthorWxIds).
 			Where("p."+dao.UcgPost.Columns().Id, minID).
 			Limit(1).
 			All()
@@ -113,13 +115,15 @@ func postSampleBaseModel(ctx context.Context) *gdb.Model {
 		Where("p."+dao.UcgPost.Columns().Status, PostStatusPublished)
 }
 
-func postSamplePublishedModel(ctx context.Context, excludeMediaTypes []int) *gdb.Model {
-	return postSampleApplyMediaExcludes(postSampleBaseModel(ctx), excludeMediaTypes)
+func postSamplePublishedModel(ctx context.Context, excludeMediaTypes []int, excludeAuthorWxIds []int64) *gdb.Model {
+	m := postSampleApplyMediaExcludes(postSampleBaseModel(ctx), excludeMediaTypes)
+	return postSampleApplyAuthorExcludes(m, excludeAuthorWxIds, "p."+dao.UcgPost.Columns().AuthorWxId)
 }
 
-func postSamplePublishedBoundsModel(ctx context.Context, excludeMediaTypes []int) *gdb.Model {
+func postSamplePublishedBoundsModel(ctx context.Context, excludeMediaTypes []int, excludeAuthorWxIds []int64) *gdb.Model {
 	m := dao.UcgPost.Ctx(ctx).Where(dao.UcgPost.Columns().Status, PostStatusPublished)
-	return postSampleApplyMediaExcludesOnTable(m, excludeMediaTypes, dao.UcgPost.Columns().MediaType)
+	m = postSampleApplyMediaExcludesOnTable(m, excludeMediaTypes, dao.UcgPost.Columns().MediaType)
+	return postSampleApplyAuthorExcludes(m, excludeAuthorWxIds, dao.UcgPost.Columns().AuthorWxId)
 }
 
 func postSampleApplyMediaExcludes(m *gdb.Model, excludeMediaTypes []int) *gdb.Model {
@@ -160,9 +164,44 @@ func postSampleNormalizeExcludeMediaTypes(exclude []int) []int {
 	return out
 }
 
+func postSampleApplyAuthorExcludes(m *gdb.Model, excludeAuthorWxIds []int64, authorCol string) *gdb.Model {
+	exclude := postSampleNormalizeExcludeAuthorWxIds(excludeAuthorWxIds)
+	if len(exclude) == 0 {
+		return m
+	}
+	args := make([]interface{}, len(exclude))
+	for i, id := range exclude {
+		args[i] = id
+	}
+	return m.WhereNotIn(authorCol, args)
+}
+
+func postSampleNormalizeExcludeAuthorWxIds(exclude []int64) []int64 {
+	if len(exclude) == 0 {
+		return nil
+	}
+	seen := make(map[int64]struct{}, len(exclude))
+	out := make([]int64, 0, len(exclude))
+	for _, id := range exclude {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+		if len(out) >= postSampleExcludeAuthorMax {
+			break
+		}
+	}
+	return out
+}
+
 func postSampleSelectFields() []string {
 	return []string{
 		"p." + dao.UcgPost.Columns().Id + " as post_id",
+		"p." + dao.UcgPost.Columns().AuthorWxId + " as author_wx_id",
 		"p." + dao.UcgPost.Columns().Content + " as content",
 		"p." + dao.UcgPost.Columns().MediaType + " as media_type",
 		"(SELECT m." + dao.UcgPostMedia.Columns().ObjectKey +
@@ -185,9 +224,10 @@ func postSampleFromRows(rows gdb.Result) ([]PostSampleItem, error) {
 	out := make([]PostSampleItem, 0, len(rows))
 	for _, row := range rows {
 		item := PostSampleItem{
-			PostId:    row["post_id"].Uint64(),
-			Content:   row["content"].String(),
-			MediaType: row["media_type"].Int(),
+			PostId:     row["post_id"].Uint64(),
+			AuthorWxId: row["author_wx_id"].Int64(),
+			Content:    row["content"].String(),
+			MediaType:  row["media_type"].Int(),
 		}
 		if key := strings.TrimSpace(row["cover_object_key"].String()); key != "" {
 			item.CoverObjectKey = key

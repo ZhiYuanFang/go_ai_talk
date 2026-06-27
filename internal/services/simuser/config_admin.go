@@ -26,14 +26,15 @@ type ConfigEffect struct {
 	Message string `json:"message,omitempty"`
 }
 
-// TaskScheduleItem 各任务下一跑估算。
+// TaskScheduleItem 各任务下一跑估算；Enabled 为自动调度实际是否生效，ConfigEnabled 为 runtime_json 配置开关。
 type TaskScheduleItem struct {
-	Name         string `json:"name"`
-	Label        string `json:"label"`
-	Enabled      bool   `json:"enabled"`
-	IntervalSec  int64  `json:"intervalSec"`
-	LastRunAt    int64  `json:"lastRunAt,omitempty"`
-	NextRunHint  string `json:"nextRunHint"`
+	Name          string `json:"name"`
+	Label         string `json:"label"`
+	ConfigEnabled bool   `json:"configEnabled"`
+	Enabled       bool   `json:"enabled"`
+	IntervalSec   int64  `json:"intervalSec"`
+	LastRunAt     int64  `json:"lastRunAt,omitempty"`
+	NextRunHint   string `json:"nextRunHint"`
 }
 
 // ConfigPutResult PUT config 扩展响应。
@@ -108,20 +109,18 @@ func UpdateConfigAdmin(ctx context.Context, req ConfigAdminPutDTO, updatedBy str
 	}
 
 	scheduleChanged := runtimeScheduleDiff(before, req)
+	serviceEnabled := LoadRuntimeFlags(ctx).Enabled
 	result := ConfigPutResult{
 		ScheduleReloaded: scheduleChanged,
-		Effects:          buildConfigEffects(before, req, scheduleChanged),
+		Effects:          buildConfigEffects(before, req, scheduleChanged, serviceEnabled),
+		TaskSchedule:     buildTaskSchedule(ctx, req.Runtime, req.Enabled, serviceEnabled),
 	}
 
 	if scheduleChanged {
 		setActiveRateLimit(RateLimitSettings{RPS: req.Runtime.RateLimitRps, Burst: req.Runtime.RateLimitBurst})
 		ReloadSchedulerFromAdmin(ctx)
-		result.TaskSchedule = buildTaskSchedule(ctx, req.Runtime)
-	} else {
-		result.TaskSchedule = buildTaskSchedule(ctx, before.Runtime)
-		if req.Runtime.RateLimitRps > 0 && (req.Runtime.RateLimitRps != before.Runtime.RateLimitRps || req.Runtime.RateLimitBurst != before.Runtime.RateLimitBurst) {
-			setActiveRateLimit(RateLimitSettings{RPS: req.Runtime.RateLimitRps, Burst: req.Runtime.RateLimitBurst})
-		}
+	} else if req.Runtime.RateLimitRps > 0 && (req.Runtime.RateLimitRps != before.Runtime.RateLimitRps || req.Runtime.RateLimitBurst != before.Runtime.RateLimitBurst) {
+		setActiveRateLimit(RateLimitSettings{RPS: req.Runtime.RateLimitRps, Burst: req.Runtime.RateLimitBurst})
 	}
 	return result, nil
 }
@@ -138,11 +137,10 @@ func runtimeScheduleDiff(before FullConfigDTO, after ConfigAdminPutDTO) bool {
 		br.IntervalPostImageSec != ar.IntervalPostImageSec || br.IntervalPostVideoSec != ar.IntervalPostVideoSec ||
 		br.IntervalChatSec != ar.IntervalChatSec || br.IntervalFollowSec != ar.IntervalFollowSec ||
 		br.StartupStaggerSec != ar.StartupStaggerSec ||
-		br.EphemeralChatLoopSec != ar.EphemeralChatLoopSec || br.EphemeralChatWindowSec != ar.EphemeralChatWindowSec ||
 		br.RateLimitRps != ar.RateLimitRps || br.RateLimitBurst != ar.RateLimitBurst
 }
 
-func buildConfigEffects(before FullConfigDTO, after ConfigAdminPutDTO, reloaded bool) []ConfigEffect {
+func buildConfigEffects(before FullConfigDTO, after ConfigAdminPutDTO, reloaded bool, serviceEnabled bool) []ConfigEffect {
 	var effects []ConfigEffect
 	if reloaded {
 		effects = append(effects, ConfigEffect{
@@ -153,15 +151,23 @@ func buildConfigEffects(before FullConfigDTO, after ConfigAdminPutDTO, reloaded 
 			Kind: "config_saved", Message: "配置已保存（未触发调度器全量重启）",
 		})
 	}
+	if hasAnyTaskConfigEnabled(after.Runtime) {
+		if !after.Enabled {
+			effects = append(effects, ConfigEffect{
+				Kind:    "scheduler_not_running",
+				Message: "业务总闸已关闭，任务开关仅作配置保留，自动调度未启动；可手动执行任务",
+			})
+		}
+		if !serviceEnabled {
+			effects = append(effects, ConfigEffect{
+				Kind:    "scheduler_not_running",
+				Message: "进程总闸关闭（SIM_USER_SERVICE_ENABLED=false），自动调度未启动；可手动执行任务或修改 env 后 recreate",
+			})
+		}
+	}
 	if before.Runtime.TaskChat && !after.Runtime.TaskChat {
 		effects = append(effects, ConfigEffect{
-			Kind: "task_disabled", Task: "chat_scan", Message: "T5 聊天扫描已关闭，进行中的 E1 会话可能仍会继续至窗口结束",
-		})
-	}
-	if before.Runtime.EphemeralChatLoopSec != after.Runtime.EphemeralChatLoopSec ||
-		before.Runtime.EphemeralChatWindowSec != after.Runtime.EphemeralChatWindowSec {
-		effects = append(effects, ConfigEffect{
-			Kind: "ephemeral_may_continue", Message: "E1 参数已更新，已启动的临时聊天 goroutine 可能仍使用旧窗口",
+			Kind: "task_disabled", Task: "chat_scan", Message: "T5 聊天扫描已关闭",
 		})
 	}
 	if before.Runtime.IntervalPostVideoPollSec != after.Runtime.IntervalPostVideoPollSec ||
@@ -187,7 +193,11 @@ var taskScheduleDefs = []struct {
 	{"follow", "T6 关注", func(r RuntimeConfigDB) bool { return r.TaskFollow }, func(r RuntimeConfigDB) int64 { return r.IntervalFollowSec }},
 }
 
-func buildTaskSchedule(ctx context.Context, rt RuntimeConfigDB) []TaskScheduleItem {
+func hasAnyTaskConfigEnabled(rt RuntimeConfigDB) bool {
+	return rt.TaskRegister || rt.TaskComment || rt.TaskPostImage || rt.TaskPostVideo || rt.TaskChat || rt.TaskFollow
+}
+
+func buildTaskSchedule(ctx context.Context, rt RuntimeConfigDB, dbEnabled, serviceEnabled bool) []TaskScheduleItem {
 	lastRuns := map[string]int64{}
 	var rows []struct {
 		TaskName  string `json:"task_name"`
@@ -199,21 +209,29 @@ func buildTaskSchedule(ctx context.Context, rt RuntimeConfigDB) []TaskScheduleIt
 	}
 	out := make([]TaskScheduleItem, 0, len(taskScheduleDefs))
 	for _, def := range taskScheduleDefs {
-		enabled := def.enabled(rt)
+		configEnabled := def.enabled(rt)
+		effectiveEnabled := configEnabled && dbEnabled && serviceEnabled
 		intervalSec := def.interval(rt)
 		item := TaskScheduleItem{
-			Name: def.name, Label: def.label, Enabled: enabled, IntervalSec: intervalSec,
-			LastRunAt: lastRuns[def.name],
+			Name: def.name, Label: def.label,
+			ConfigEnabled: configEnabled, Enabled: effectiveEnabled,
+			IntervalSec: intervalSec, LastRunAt: lastRuns[def.name],
 		}
-		item.NextRunHint = nextRunHint(enabled, intervalSec, lastRuns[def.name])
+		item.NextRunHint = nextRunHint(configEnabled, dbEnabled, serviceEnabled, intervalSec, lastRuns[def.name])
 		out = append(out, item)
 	}
 	return out
 }
 
-func nextRunHint(enabled bool, intervalSec, lastRunAt int64) string {
-	if !enabled {
+func nextRunHint(configEnabled, dbEnabled, serviceEnabled bool, intervalSec, lastRunAt int64) string {
+	if !configEnabled {
 		return "已关闭"
+	}
+	if !serviceEnabled {
+		return "进程总闸关闭（SIM_USER_SERVICE_ENABLED=false），未调度"
+	}
+	if !dbEnabled {
+		return "业务总闸关闭（sim_config.enabled=false），未调度"
 	}
 	if intervalSec <= 0 {
 		return "周期未配置"

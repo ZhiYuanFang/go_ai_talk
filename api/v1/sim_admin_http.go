@@ -38,12 +38,13 @@ type SimAdminConfigEffectDTO struct {
 }
 
 type SimAdminTaskScheduleDTO struct {
-	Name        string `json:"name"`
-	Label       string `json:"label"`
-	Enabled     bool   `json:"enabled"`
-	IntervalSec int64  `json:"intervalSec"`
-	LastRunAt   int64  `json:"lastRunAt,omitempty"`
-	NextRunHint string `json:"nextRunHint"`
+	Name          string `json:"name"`
+	Label         string `json:"label"`
+	ConfigEnabled bool   `json:"configEnabled"`
+	Enabled       bool   `json:"enabled"`
+	IntervalSec   int64  `json:"intervalSec"`
+	LastRunAt     int64  `json:"lastRunAt,omitempty"`
+	NextRunHint   string `json:"nextRunHint"`
 }
 
 type SimAdminConfigPutRes struct {
@@ -129,8 +130,6 @@ type SimAdminRuntimeIntervalsDTO struct {
 	PostVideoPollInterval string `json:"postVideoPollInterval"`
 	PostVideoPollMaxWait  string `json:"postVideoPollMaxWait"`
 	StartupStaggerMax     string `json:"startupStaggerMax"`
-	EphemeralChatLoop     string `json:"ephemeralChatLoop"`
-	EphemeralChatWindow   string `json:"ephemeralChatWindow"`
 }
 
 // SimAdminLLMLaneDTO 单条 LLM lane 只读快照。

@@ -27,8 +27,6 @@ type RuntimeConfigDB struct {
 	IntervalPostVideoPollSec        int64 `json:"intervalPostVideoPollSec"`
 	IntervalPostVideoPollMaxWaitSec int64 `json:"intervalPostVideoPollMaxWaitSec"`
 	StartupStaggerSec               int64 `json:"startupStaggerSec"`
-	EphemeralChatLoopSec            int64 `json:"ephemeralChatLoopSec"`
-	EphemeralChatWindowSec          int64 `json:"ephemeralChatWindowSec"`
 	RateLimitRps                    float64 `json:"rateLimitRps"`
 	RateLimitBurst                  int     `json:"rateLimitBurst"`
 
@@ -58,8 +56,6 @@ func defaultRuntimeFromEnv(ctx context.Context) RuntimeFlags {
 		IntervalFollow:        envDuration("SIM_INTERVAL_FOLLOW", 7*time.Hour),
 		PostVideoPollInterval: envDuration("SIM_POST_VIDEO_POLL_INTERVAL", 2*time.Minute),
 		PostVideoPollMaxWait:  envDuration("SIM_POST_VIDEO_POLL_MAX_WAIT", 30*time.Minute),
-		EphemeralChatLoop:     envDuration("SIM_EPHEMERAL_CHAT_LOOP", 5*time.Minute),
-		EphemeralChatWindow:   envDuration("SIM_EPHEMERAL_CHAT_WINDOW", 15*time.Minute),
 		StartupStaggerMax:     envDuration("SIM_STARTUP_STAGGER_MAX", 30*time.Minute),
 		DefaultPassword:       strings.TrimSpace(g.Cfg().MustGet(ctx, "simUser.defaultPassword").String()),
 	}
@@ -79,8 +75,6 @@ func runtimeConfigFromFlags(f RuntimeFlags) RuntimeConfigDB {
 		IntervalPostVideoPollSec:        int64(f.PostVideoPollInterval / time.Second),
 		IntervalPostVideoPollMaxWaitSec: int64(f.PostVideoPollMaxWait / time.Second),
 		StartupStaggerSec:               int64(f.StartupStaggerMax / time.Second),
-		EphemeralChatLoopSec:            int64(f.EphemeralChatLoop / time.Second),
-		EphemeralChatWindowSec:          int64(f.EphemeralChatWindow / time.Second),
 		RateLimitRps:                    envFloat("SIM_UCG_RATE_LIMIT_RPS", 2.0),
 		RateLimitBurst:                  envInt("SIM_UCG_RATE_LIMIT_BURST", 4),
 	}
@@ -103,8 +97,6 @@ func (c RuntimeConfigDB) toRuntimeFlags(ctx context.Context) RuntimeFlags {
 		PostVideoPollInterval: secDuration(c.IntervalPostVideoPollSec, 2*time.Minute),
 		PostVideoPollMaxWait:  secDuration(c.IntervalPostVideoPollMaxWaitSec, 30*time.Minute),
 		StartupStaggerMax:     secDuration(c.StartupStaggerSec, 30*time.Minute),
-		EphemeralChatLoop:     secDuration(c.EphemeralChatLoopSec, 5*time.Minute),
-		EphemeralChatWindow:   secDuration(c.EphemeralChatWindowSec, 15*time.Minute),
 		DefaultPassword:       strings.TrimSpace(g.Cfg().MustGet(ctx, "simUser.defaultPassword").String()),
 	}
 	if c.RateLimitRps > 0 {
@@ -164,12 +156,6 @@ func LoadRuntimeFromDB(ctx context.Context) (RuntimeConfigDB, error) {
 	}
 	if c.StartupStaggerSec <= 0 {
 		c.StartupStaggerSec = def.StartupStaggerSec
-	}
-	if c.EphemeralChatLoopSec <= 0 {
-		c.EphemeralChatLoopSec = def.EphemeralChatLoopSec
-	}
-	if c.EphemeralChatWindowSec <= 0 {
-		c.EphemeralChatWindowSec = def.EphemeralChatWindowSec
 	}
 	if c.RateLimitRps <= 0 {
 		c.RateLimitRps = def.RateLimitRps

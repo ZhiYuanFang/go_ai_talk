@@ -11,15 +11,11 @@ import (
 	"hello/internal/services/aimodel"
 
 	"github.com/gogf/gf/v2/frame/g"
-	"github.com/gogf/gf/v2/net/gclient"
 	"github.com/gogf/gf/v2/os/glog"
 )
 
 // simCommentExcludedMediaTypeVideo 与 ucg_post.media_type 视频值一致（ucg MediaTypeVideo=2）。
 const simCommentExcludedMediaTypeVideo = 2
-
-var ephemeralMu sync.Mutex
-var ephemeralActive = map[string]struct{}{}
 
 var videoPollMu sync.Mutex
 var videoPostInFlight bool
@@ -302,114 +298,74 @@ func runVideoPollPipeline(ctx context.Context, sess loginSession, job videoJobRo
 	errMsg = "poll timeout"
 }
 
-// RunChatScanTask T5：聊天巡检，真人未读触发 E1。
+// RunChatScanTask T5：全量 sim ids → ucg 未读抽样 → 单次 LLM 回复。
 func RunChatScanTask(ctx context.Context, password string, flags RuntimeFlags) {
+	_ = password
+	_ = flags
 	if !taskEnabled(ctx) {
 		return
 	}
-	sess, account, err := randomSimSession(ctx, password)
+	simWxIds, err := listAllSimWxIds(ctx)
 	if err != nil {
 		RecordTaskRun(ctx, "chat_scan", false, err.Error())
 		return
 	}
-	_ = account
-	var conv struct {
-		List []struct {
-			Id          uint64 `json:"id"`
-			PeerWxId    uint64 `json:"peerWxId"`
-			UnreadCount int    `json:"unreadCount"`
-		} `json:"list"`
+	if len(simWxIds) == 0 {
+		RecordTaskRun(ctx, "chat_scan", false, "无模拟用户")
+		return
 	}
-	if err = appGet(ctx, sess.AccessToken, "/ucg/app/api/conversations?page=1&pageSize=50", &conv); err != nil {
+	sample, err := sampleSimUnreadChat(ctx, simWxIds)
+	if err != nil {
 		RecordTaskRun(ctx, "chat_scan", false, err.Error())
 		return
 	}
-	for _, c := range conv.List {
-		if c.UnreadCount <= 0 {
-			continue
-		}
-		if isPeerSimulated(ctx, int64(c.PeerWxId)) {
-			continue
-		}
-		spawnEphemeralChat(ctx, sess, password, c.Id, int64(c.PeerWxId), flags)
+	if !sample.Found || sample.ConversationId == 0 || sample.SimWxId <= 0 {
+		RecordTaskRun(ctx, "chat_scan", false, "无未读会话")
+		return
+	}
+	history := buildChatHistoryFromSample(sample.Messages)
+	_, user, _ := LoadRenderedPrompt(ctx, "chat_reply", map[string]string{"chat_history": history})
+	resp, err := aimodel.Invoke(ctx, aimodel.LaneSimText, simChatRequest(simTempChatReply, 512, []aimodel.Message{{Role: "user", Content: user}}))
+	if err != nil {
+		RecordTaskRun(ctx, "chat_scan", false, err.Error())
+		return
+	}
+	if err = sendInternalChat(ctx, sample.SimWxId, sample.ConversationId, strings.TrimSpace(resp.Content)); err != nil {
+		RecordTaskRun(ctx, "chat_scan", false, err.Error())
+		return
 	}
 	RecordTaskRun(ctx, "chat_scan", true, "")
 }
 
-func spawnEphemeralChat(ctx context.Context, sess loginSession, password string, convID uint64, peerWxID int64, flags RuntimeFlags) {
-	key := fmt.Sprintf("%d:%d", sess.WxID, peerWxID)
-	ephemeralMu.Lock()
-	if _, ok := ephemeralActive[key]; ok {
-		ephemeralMu.Unlock()
-		return
-	}
-	ephemeralActive[key] = struct{}{}
-	ephemeralMu.Unlock()
-	loop := flags.EphemeralChatLoop
-	if loop <= 0 {
-		loop = 5 * time.Minute
-	}
-	window := flags.EphemeralChatWindow
-	if window <= 0 {
-		window = 15 * time.Minute
-	}
-	go func() {
-		defer func() {
-			ephemeralMu.Lock()
-			delete(ephemeralActive, key)
-			ephemeralMu.Unlock()
-		}()
-		deadline := time.Now().Add(window)
-		for time.Now().Before(deadline) {
-			time.Sleep(loop)
-			var conv struct {
-				List []struct {
-					Id          uint64 `json:"id"`
-					UnreadCount int    `json:"unreadCount"`
-				} `json:"list"`
-			}
-			if err := appGet(ctx, sess.AccessToken, "/ucg/app/api/conversations?page=1&pageSize=50", &conv); err != nil {
-				continue
-			}
-			unread := 0
-			for _, c := range conv.List {
-				if c.Id == convID {
-					unread = c.UnreadCount
-					break
-				}
-			}
-			if unread <= 0 {
-				continue
-			}
-			var msgs struct {
-				List []struct {
-					Content    string `json:"content"`
-					SenderWxId int64  `json:"senderWxId"`
-				} `json:"list"`
-			}
-			path := fmt.Sprintf("/ucg/app/api/conversations/%d/messages?page=1&pageSize=20", convID)
-			if err := appGet(ctx, sess.AccessToken, path, &msgs); err != nil {
-				continue
-			}
-			history := buildChatHistory(msgs.List)
-			_, user, _ := LoadRenderedPrompt(ctx, "chat_reply", map[string]string{"chat_history": history})
-			resp, err := aimodel.Invoke(ctx, aimodel.LaneSimText, simChatRequest(simTempChatReply, 512, []aimodel.Message{{Role: "user", Content: user}}))
-			if err != nil {
-				continue
-			}
-			_ = sendInternalChat(ctx, sess.WxID, convID, strings.TrimSpace(resp.Content))
-		}
-	}()
-}
-
-// RunFollowTask T6：sim 关注 sim。
+// RunFollowTask T6：sim 关注发过帖的真人 author。
 func RunFollowTask(ctx context.Context, password string) {
 	if !taskEnabled(ctx) {
 		return
 	}
-	follower, target, err := pickTwoDistinctSimWx(ctx)
+	simWxIds, err := listAllSimWxIds(ctx)
 	if err != nil {
 		RecordTaskRun(ctx, "follow", false, err.Error())
+		return
+	}
+	follower, err := pickRandomSimWx(ctx)
+	if err != nil {
+		RecordTaskRun(ctx, "follow", false, err.Error())
+		return
+	}
+	var targetWxId int64
+	for i := 0; i < simFollowRandomMaxTry; i++ {
+		authorWxId, aErr := sampleRandomRealAuthor(ctx, simWxIds)
+		if aErr != nil {
+			RecordTaskRun(ctx, "follow", false, aErr.Error())
+			return
+		}
+		if authorWxId != follower.WxId {
+			targetWxId = authorWxId
+			break
+		}
+	}
+	if targetWxId <= 0 {
+		RecordTaskRun(ctx, "follow", false, "无可用关注目标")
 		return
 	}
 	sess, err := usernameLogin(ctx, follower.Account, password)
@@ -417,7 +373,7 @@ func RunFollowTask(ctx context.Context, password string) {
 		RecordTaskRun(ctx, "follow", false, err.Error())
 		return
 	}
-	path := fmt.Sprintf("/ucg/app/api/follow/%d", target.WxId)
+	path := fmt.Sprintf("/ucg/app/api/follow/%d", targetWxId)
 	if err = appPost(ctx, sess.AccessToken, path, g.Map{}, nil); err != nil {
 		RecordTaskRun(ctx, "follow", false, err.Error())
 		return
@@ -444,26 +400,18 @@ func buildChatHistory(msgs []struct {
 	return b.String()
 }
 
+func buildChatHistoryFromSample(msgs []struct {
+	SenderWxId int64  `json:"senderWxId"`
+	Content    string `json:"content"`
+}) string {
+	var b strings.Builder
+	for _, m := range msgs {
+		b.WriteString(fmt.Sprintf("%d: %s\n", m.SenderWxId, m.Content))
+	}
+	return b.String()
+}
+
 func randomTopic() string {
 	topics := []string{"宝宝辅食", "亲子阅读", "产后恢复", "婴儿睡眠", "早教游戏"}
 	return topics[rand.Intn(len(topics))]
-}
-
-func isPeerSimulated(ctx context.Context, wxID int64) bool {
-	base := deviceBase(ctx)
-	resp, err := gclient.New().
-		SetHeader("X-Device-Gateway-Internal-Secret", internalSecret(ctx)).
-		ContentJson().Post(ctx, base+"/device/internal/api/ucg/wx/batch", g.Map{"wxIds": []int64{wxID}})
-	if err != nil {
-		return false
-	}
-	var data struct {
-		List []struct {
-			IsSimulated bool `json:"isSimulated"`
-		} `json:"list"`
-	}
-	if parseEnvelope(resp.ReadAllString(), &data) != nil || len(data.List) == 0 {
-		return false
-	}
-	return data.List[0].IsSimulated
 }

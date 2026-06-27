@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/binary"
+	"errors"
 	"math"
 
 	"hello/internal/dao"
@@ -19,6 +20,11 @@ type SimWxListItem struct {
 	WxId    int64  `json:"wxId"`
 	Account string `json:"account"`
 }
+
+const simWxIdsListMaxTotal = 10000
+
+// ErrSimWxIdsOverLimit 模拟用户总数超过 internal ids 接口上限。
+var ErrSimWxIdsOverLimit = errors.New("模拟用户数量超过上限")
 
 // SimUsernameRegister 内部注册模拟用户：username 注册 + is_simulated=1。
 func SimUsernameRegister(ctx context.Context, userName, password string) (int64, error) {
@@ -91,6 +97,32 @@ func ListSimulatedWx(ctx context.Context, page, pageSize int) (list []SimWxListI
 		list = append(list, SimWxListItem{WxId: w.Id, Account: w.Account})
 	}
 	return list, total, nil
+}
+
+// ListAllSimulatedWxIds 返回全库 is_simulated=1 的 wxId（单条 SQL，供 T5 未读抽样等 MUST 覆盖全库 sim 的场景）。
+func ListAllSimulatedWxIds(ctx context.Context) (ids []int64, total int, err error) {
+	total, err = CountSimulatedWx(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+	if total > simWxIdsListMaxTotal {
+		return nil, total, ErrSimWxIdsOverLimit
+	}
+	if total == 0 {
+		return []int64{}, 0, nil
+	}
+	rows, err := simWxSimulatedModel(ctx).
+		Fields(dao.Wx.Columns().Id).
+		OrderAsc(dao.Wx.Columns().Id).
+		All()
+	if err != nil {
+		return nil, 0, err
+	}
+	ids = make([]int64, 0, len(rows))
+	for _, row := range rows {
+		ids = append(ids, row[dao.Wx.Columns().Id].Int64())
+	}
+	return ids, total, nil
 }
 
 // PickRandomSimulatedWx 经 ID 探测从全库 is_simulated=1 用户随机取 1 条。

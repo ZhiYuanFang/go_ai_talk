@@ -63,3 +63,19 @@ func (c *DeviceSimInternalCtrl) SimWxRandom(ctx context.Context, req *v1.DeviceS
 	}
 	return &v1.DeviceSimWxRandomRes{WxId: item.WxId, Account: item.Account}, nil
 }
+
+// SimWxIds GET /device/internal/api/sim/wx/ids
+func (c *DeviceSimInternalCtrl) SimWxIds(ctx context.Context, req *v1.DeviceSimWxIdsReq) (res *v1.DeviceSimWxIdsRes, err error) {
+	_ = c
+	ids, total, err := device.ListAllSimulatedWxIds(ctx)
+	if err != nil {
+		if errors.Is(err, device.ErrSimWxIdsOverLimit) {
+			return nil, gerror.NewCode(gcode.CodeBusinessValidationFailed, err.Error())
+		}
+		return nil, err
+	}
+	if ids == nil {
+		ids = []int64{}
+	}
+	return &v1.DeviceSimWxIdsRes{Ids: ids, Total: total}, nil
+}

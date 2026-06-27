@@ -42,3 +42,13 @@ type DeviceSimWxRandomRes struct {
 	WxId    int64  `json:"wxId"`
 	Account string `json:"account"`
 }
+
+// DeviceSimWxIdsReq 全量模拟用户 wxId 列表（无分页截断）。
+type DeviceSimWxIdsReq struct {
+	g.Meta `path:"/device/internal/api/sim/wx/ids" method:"get" tags:"device" summary:"内部-全量模拟用户 wxId"`
+}
+
+type DeviceSimWxIdsRes struct {
+	Ids   []int64 `json:"ids"`
+	Total int     `json:"total"`
+}

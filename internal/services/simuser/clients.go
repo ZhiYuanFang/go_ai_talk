@@ -182,7 +182,6 @@ func deviceInternalGet(ctx context.Context, path string, out interface{}) error 
 	return parseEnvelope(resp.ReadAllString(), out)
 }
 
-// pickRandomSimWx 经 device internal random 接口全库随机取 1 个模拟用户。
 func pickRandomSimWx(ctx context.Context) (simWxPick, error) {
 	var data simWxPick
 	if err := deviceInternalGet(ctx, "/device/internal/api/sim/wx/random", &data); err != nil {
@@ -194,22 +193,62 @@ func pickRandomSimWx(ctx context.Context) (simWxPick, error) {
 	return data, nil
 }
 
-// pickTwoDistinctSimWx 随机取两个不同 wxId；仅 1 个 sim 用户时失败。
-func pickTwoDistinctSimWx(ctx context.Context) (a, b simWxPick, err error) {
-	a, err = pickRandomSimWx(ctx)
-	if err != nil {
-		return simWxPick{}, simWxPick{}, err
+// listAllSimWxIds 经 device internal 拉取全库 is_simulated=1 的 wxId（无分页截断）。
+func listAllSimWxIds(ctx context.Context) ([]int64, error) {
+	var data struct {
+		Ids   []int64 `json:"ids"`
+		Total int     `json:"total"`
 	}
-	for i := 0; i < simFollowRandomMaxTry; i++ {
-		candidate, pErr := pickRandomSimWx(ctx)
-		if pErr != nil {
-			return simWxPick{}, simWxPick{}, pErr
-		}
-		if candidate.WxId != a.WxId {
-			return a, candidate, nil
-		}
+	if err := deviceInternalGet(ctx, "/device/internal/api/sim/wx/ids", &data); err != nil {
+		return nil, err
 	}
-	return simWxPick{}, simWxPick{}, fmt.Errorf("sim 用户不足")
+	if data.Ids == nil {
+		return []int64{}, nil
+	}
+	return data.Ids, nil
+}
+
+// simUnreadChatSample ucg internal 未读会话抽样响应。
+type simUnreadChatSample struct {
+	Found          bool `json:"found"`
+	ConversationId uint64 `json:"conversationId"`
+	SimWxId        int64  `json:"simWxId"`
+	PeerWxId       int64  `json:"peerWxId"`
+	UnreadCount    int    `json:"unreadCount"`
+	Messages       []struct {
+		SenderWxId int64  `json:"senderWxId"`
+		Content    string `json:"content"`
+	} `json:"messages"`
+}
+
+// sampleSimUnreadChat 在完整 simWxIds 上随机抽一条 eligible 未读会话及最近消息。
+func sampleSimUnreadChat(ctx context.Context, simWxIds []int64) (simUnreadChatSample, error) {
+	var out simUnreadChatSample
+	if len(simWxIds) == 0 {
+		return out, nil
+	}
+	err := ucgInternalPost(ctx, "/ucg/internal/api/chat/sim-unread-sample", g.Map{
+		"simWxIds": simWxIds, "messageLimit": 20,
+	}, &out)
+	return out, err
+}
+
+// sampleRandomRealAuthor 经 posts/sample random 抽取发过帖的真人 author（排除 simWxIds）。
+func sampleRandomRealAuthor(ctx context.Context, excludeSimWxIds []int64) (int64, error) {
+	var sample struct {
+		List []struct {
+			AuthorWxId int64 `json:"authorWxId"`
+		} `json:"list"`
+	}
+	if err := ucgInternalPost(ctx, "/ucg/internal/api/posts/sample", g.Map{
+		"mode": "random", "excludeAuthorWxIds": excludeSimWxIds,
+	}, &sample); err != nil {
+		return 0, err
+	}
+	if len(sample.List) == 0 || sample.List[0].AuthorWxId <= 0 {
+		return 0, fmt.Errorf("无真人作者")
+	}
+	return sample.List[0].AuthorWxId, nil
 }
 
 func usernameLogin(ctx context.Context, account, password string) (loginSession, error) {

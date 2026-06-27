@@ -23,8 +23,6 @@ type RuntimeAPIInput struct {
 	IntervalPostVideoPoll       string
 	IntervalPostVideoPollMaxWait string
 	StartupStaggerMax           string
-	EphemeralChatLoop           string
-	EphemeralChatWindow         string
 	RateLimitRps                float64
 	RateLimitBurst              int
 }
@@ -77,12 +75,6 @@ func BuildRuntimeConfigFromAPI(in RuntimeAPIInput, current RuntimeConfigDB) (Run
 	if out.StartupStaggerSec, err = durSec(in.StartupStaggerMax, out.StartupStaggerSec, def.StartupStaggerSec); err != nil {
 		return RuntimeConfigDB{}, fmt.Errorf("interval startupStagger: %w", err)
 	}
-	if out.EphemeralChatLoopSec, err = durSec(in.EphemeralChatLoop, out.EphemeralChatLoopSec, def.EphemeralChatLoopSec); err != nil {
-		return RuntimeConfigDB{}, fmt.Errorf("interval ephemeralLoop: %w", err)
-	}
-	if out.EphemeralChatWindowSec, err = durSec(in.EphemeralChatWindow, out.EphemeralChatWindowSec, def.EphemeralChatWindowSec); err != nil {
-		return RuntimeConfigDB{}, fmt.Errorf("interval ephemeralWindow: %w", err)
-	}
 	return out, nil
 }
 
@@ -112,7 +104,5 @@ func RuntimeConfigToAPIIntervals(rt RuntimeConfigDB) map[string]string {
 		"postVideoPollInterval":  durationLabel(time.Duration(rt.IntervalPostVideoPollSec) * time.Second),
 		"postVideoPollMaxWait":   durationLabel(time.Duration(rt.IntervalPostVideoPollMaxWaitSec) * time.Second),
 		"startupStaggerMax":      durationLabel(time.Duration(rt.StartupStaggerSec) * time.Second),
-		"ephemeralChatLoop":      durationLabel(time.Duration(rt.EphemeralChatLoopSec) * time.Second),
-		"ephemeralChatWindow":    durationLabel(time.Duration(rt.EphemeralChatWindowSec) * time.Second),
 	}
 }

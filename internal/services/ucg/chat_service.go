@@ -417,22 +417,22 @@ func DeliverChatMessage(ctx context.Context, convID uint64, senderWxID, recipien
 }
 
 // ProcessOutboundChatMessage 模式 A：先 ACK，再 Redis 投递 + MQ 异步审核（不在 WS 内同步 Green）。
-func ProcessOutboundChatMessage(ctx context.Context, senderWxID int64, convID uint64, clientMsgID, content, imageKey, videoKey string) error {
+func ProcessOutboundChatMessage(ctx context.Context, senderWxID int64, convID uint64, clientMsgID, content, imageKey, videoKey string) (ChatMessage, error) {
 	content = strings.TrimSpace(content)
 	imageKey = strings.TrimSpace(imageKey)
 	videoKey = strings.TrimSpace(videoKey)
 	if content == "" && imageKey == "" && videoKey == "" {
-		return gerror.NewCode(gcode.CodeInvalidParameter, "content 或媒体 attachment 必填")
+		return ChatMessage{}, gerror.NewCode(gcode.CodeInvalidParameter, "content 或媒体 attachment 必填")
 	}
 	if imageKey != "" && videoKey != "" {
-		return gerror.NewCode(gcode.CodeInvalidParameter, "imageKey 与 videoKey 不可同时存在")
+		return ChatMessage{}, gerror.NewCode(gcode.CodeInvalidParameter, "imageKey 与 videoKey 不可同时存在")
 	}
 	if err := ensureConversationMember(ctx, convID, senderWxID); err != nil {
-		return err
+		return ChatMessage{}, err
 	}
 	recipient, err := peerWxID(ctx, convID, senderWxID)
 	if err != nil {
-		return err
+		return ChatMessage{}, err
 	}
 	ChatWSHub().SendJSON(senderWxID, map[string]interface{}{
 		"type":        "message_ack",
@@ -445,8 +445,8 @@ func ProcessOutboundChatMessage(ctx context.Context, senderWxID int64, convID ui
 	if videoKey != "" {
 		mediaCdnURL = BuildCdnURL(videoKey)
 	}
-	_, err = DeliverChatMessage(ctx, convID, senderWxID, int64(recipient), clientMsgID, content, imageKey, videoKey, mediaCdnURL)
-	return err
+	msg, err := DeliverChatMessage(ctx, convID, senderWxID, int64(recipient), clientMsgID, content, imageKey, videoKey, mediaCdnURL)
+	return msg, err
 }
 
 func sendChatAuditFailed(wxID int64, clientMsgID, reason string) {

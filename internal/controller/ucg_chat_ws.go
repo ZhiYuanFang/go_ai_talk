@@ -84,7 +84,7 @@ func ucgChatWS(r *ghttp.Request) {
 				_ = ws.WriteJSON(map[string]interface{}{"type": "error", "message": "conversationId/content or media required"})
 				continue
 			}
-			if pErr := ucgsvc.ProcessOutboundChatMessage(ctx, wxID, frame.ConversationID, strings.TrimSpace(frame.ClientMsgID), content, imageKey, videoKey); pErr != nil {
+			if _, pErr := ucgsvc.ProcessOutboundChatMessage(ctx, wxID, frame.ConversationID, strings.TrimSpace(frame.ClientMsgID), content, imageKey, videoKey); pErr != nil {
 				glog.Warningf(ctx, "ucg chat message failed wxId=%d conv=%d: %v", wxID, frame.ConversationID, pErr)
 				_ = ws.WriteJSON(map[string]interface{}{"type": "error", "message": pErr.Error()})
 			}

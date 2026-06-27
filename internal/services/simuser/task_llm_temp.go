@@ -8,7 +8,7 @@ const (
 	simTempComment          = 0.85 // T2 评论：口语多样
 	simTempPostImageText    = 0.80 // T3 图文配文：稍稳
 	simTempPostVideoText    = 0.80 // T4 视频文案：稍稳
-	simTempChatReply        = 0.88 // E1 聊天回复：自然变化
+	simTempChatReply        = 0.88 // T5 未读回复：自然变化
 )
 
 // simChatRequest 构造带任务温度的 chat 请求。

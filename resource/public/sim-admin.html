@@ -50,12 +50,10 @@
 			<div class="field-inline" id="taskSwitchFields"></div>
 			<p style="font-size:13px;margin:12px 0 6px;font-weight:600;">任务周期（如 6h、3h30m、10m）</p>
 			<div id="intervalFields"></div>
-			<p style="font-size:13px;margin:12px 0 6px;font-weight:600;">出站限速 &amp; E1</p>
+			<p style="font-size:13px;margin:12px 0 6px;font-weight:600;">出站限速</p>
 			<div class="field-inline">
 				<label class="inline">RPS <input id="rateRps" type="number" min="0.1" step="0.1" /></label>
 				<label class="inline">Burst <input id="rateBurst" type="number" min="1" step="1" /></label>
-				<label class="inline">E1 循环 <input id="ivEphemeralLoop" type="text" placeholder="5m" /></label>
-				<label class="inline">E1 窗口 <input id="ivEphemeralWindow" type="text" placeholder="15m" /></label>
 				<label class="inline">启动错峰 <input id="ivStagger" type="text" placeholder="30m" /></label>
 			</div>
 		</div>
@@ -73,7 +71,6 @@
 			<dt>模拟用户</dt><dd id="rtUserCount">—</dd>
 			<dt>启动错峰</dt><dd id="rtStagger">—</dd>
 			<dt>出站限速</dt><dd id="rtRateLimit">—</dd>
-			<dt>E1 聊天</dt><dd id="rtEphemeral">—</dd>
 			<dt>任务开关</dt><dd id="rtTaskSwitches">—</dd>
 			<dt>任务周期</dt><dd id="rtIntervals">—</dd>
 		</dl>
@@ -187,8 +184,6 @@
 			const el = document.getElementById('iv_'+d.key);
 			if (el) el.value = iv[d.key] || '';
 		});
-		document.getElementById('ivEphemeralLoop').value = iv.ephemeralChatLoop || '';
-		document.getElementById('ivEphemeralWindow').value = iv.ephemeralChatWindow || '';
 		document.getElementById('ivStagger').value = iv.startupStaggerMax || '';
 		document.getElementById('rateRps').value = c.rateLimitRps || 2;
 		document.getElementById('rateBurst').value = c.rateLimitBurst || 4;
@@ -199,8 +194,6 @@
 		taskSwitchDefs.forEach(d => { taskSwitches[d.key] = document.getElementById('sw_'+d.key).checked; });
 		const intervals = {};
 		intervalDefs.forEach(d => { intervals[d.key] = document.getElementById('iv_'+d.key).value.trim(); });
-		intervals.ephemeralChatLoop = document.getElementById('ivEphemeralLoop').value.trim();
-		intervals.ephemeralChatWindow = document.getElementById('ivEphemeralWindow').value.trim();
 		intervals.startupStaggerMax = document.getElementById('ivStagger').value.trim();
 		return {
 			enabled: document.getElementById('cfgEnabled').checked,
@@ -222,9 +215,10 @@
 			html += '</ul>';
 		}
 		if (res.taskSchedule && res.taskSchedule.length) {
-			html += '<table style="width:100%;font-size:12px;margin-top:8px;"><tr><th>任务</th><th>开关</th><th>下一跑</th></tr>';
+			html += '<table style="width:100%;font-size:12px;margin-top:8px;"><tr><th>任务</th><th>配置</th><th>自动调度</th><th>下一跑</th></tr>';
 			res.taskSchedule.forEach(t => {
-				html += '<tr><td>'+escapeHtml(t.label||t.name)+'</td><td>'+(t.enabled?'开':'关')+'</td><td>'+escapeHtml(t.nextRunHint||'—')+'</td></tr>';
+				const cfgOn = t.configEnabled !== false && t.configEnabled !== undefined ? t.configEnabled : t.enabled;
+				html += '<tr><td>'+escapeHtml(t.label||t.name)+'</td><td>'+(cfgOn?'开':'关')+'</td><td>'+(t.enabled?'开':'关')+'</td><td>'+escapeHtml(t.nextRunHint||'—')+'</td></tr>';
 			});
 			html += '</table>';
 		}
@@ -269,7 +263,7 @@
 		const names = {
 			register:'T1', comment:'T2', postImage:'T3', postVideo:'T4调度', chat:'T5', follow:'T6',
 			postVideoPollInterval:'T4轮询间隔', postVideoPollMaxWait:'T4轮询上限',
-			startupStaggerMax:'错峰', ephemeralChatLoop:'E1循环', ephemeralChatWindow:'E1窗口'
+			startupStaggerMax:'错峰'
 		};
 		return (names[key] || key) + ' ' + val;
 	}
@@ -287,8 +281,6 @@
 		document.getElementById('rtStagger').textContent = rt.intervals.startupStaggerMax || '—';
 		document.getElementById('rtRateLimit').textContent =
 			(rt.rateLimitRps || 0) + ' rps，burst ' + (rt.rateLimitBurst || 0);
-		document.getElementById('rtEphemeral').textContent =
-			'循环 ' + (rt.intervals.ephemeralChatLoop || '—') + '，窗口 ' + (rt.intervals.ephemeralChatWindow || '—');
 		const sw = rt.taskSwitches || {};
 		document.getElementById('rtTaskSwitches').textContent =
 			Object.keys(sw).map(k => taskSwitchLabel(k, sw[k])).join(' · ');

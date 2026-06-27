@@ -108,8 +108,8 @@ func startSchedulerGoroutines(ctx context.Context, wg *sync.WaitGroup, flags Run
 			RunFollowTask(c, password)
 		})
 	}
-	glog.Infof(ctx, "[simuser] scheduler started skipLongStagger=%v staggerMax=%s postVideoPoll=%s maxWait=%s ephemeralLoop=%s window=%s",
-		skipLongStagger, stagger, flags.PostVideoPollInterval, flags.PostVideoPollMaxWait, flags.EphemeralChatLoop, flags.EphemeralChatWindow)
+	glog.Infof(ctx, "[simuser] scheduler started skipLongStagger=%v staggerMax=%s postVideoPoll=%s maxWait=%s",
+		skipLongStagger, stagger, flags.PostVideoPollInterval, flags.PostVideoPollMaxWait)
 }
 
 func runPeriodicTracked(parent context.Context, wg *sync.WaitGroup, name string, interval, staggerMax time.Duration, skipLongStagger bool, fn func(context.Context)) {

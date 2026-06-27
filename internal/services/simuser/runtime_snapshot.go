@@ -53,8 +53,6 @@ type RuntimeIntervalsDTO struct {
 	PostVideoPollInterval string
 	PostVideoPollMaxWait  string
 	StartupStaggerMax     string
-	EphemeralChatLoop     string
-	EphemeralChatWindow   string
 }
 
 // GetRuntimeSnapshot 组装 DB 生效的运行时配置，供 Admin 展示。
@@ -98,8 +96,6 @@ func GetRuntimeSnapshot(ctx context.Context) (RuntimeSnapshotDTO, error) {
 			PostVideoPollInterval: durationLabel(flags.PostVideoPollInterval),
 			PostVideoPollMaxWait:  durationLabel(flags.PostVideoPollMaxWait),
 			StartupStaggerMax:     durationLabel(flags.StartupStaggerMax),
-			EphemeralChatLoop:     durationLabel(flags.EphemeralChatLoop),
-			EphemeralChatWindow:   durationLabel(flags.EphemeralChatWindow),
 		},
 		RateLimitRps:   rtDB.RateLimitRps,
 		RateLimitBurst: rtDB.RateLimitBurst,

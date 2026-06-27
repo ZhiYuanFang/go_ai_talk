@@ -64,7 +64,6 @@ func (c *SimAdminCtrl) ConfigGet(ctx context.Context, req *v1.SimAdminConfigGetR
 			PostVideoPollInterval: iv["postVideoPollInterval"],
 			PostVideoPollMaxWait:  iv["postVideoPollMaxWait"],
 			StartupStaggerMax:     iv["startupStaggerMax"],
-			EphemeralChatLoop:     iv["ephemeralChatLoop"], EphemeralChatWindow: iv["ephemeralChatWindow"],
 		},
 		RateLimitRps: cfg.Runtime.RateLimitRps, RateLimitBurst: cfg.Runtime.RateLimitBurst,
 	}}, nil
@@ -94,7 +93,6 @@ func (c *SimAdminCtrl) ConfigPut(ctx context.Context, req *v1.SimAdminConfigPutR
 		IntervalPostVideoPoll: req.Intervals.PostVideoPollInterval,
 		IntervalPostVideoPollMaxWait: req.Intervals.PostVideoPollMaxWait,
 		StartupStaggerMax: req.Intervals.StartupStaggerMax,
-		EphemeralChatLoop: req.Intervals.EphemeralChatLoop, EphemeralChatWindow: req.Intervals.EphemeralChatWindow,
 		RateLimitRps: req.RateLimitRps, RateLimitBurst: req.RateLimitBurst,
 		}, current.Runtime)
 		if err != nil {
@@ -116,7 +114,7 @@ func isMinimalSimConfigPut(req *v1.SimAdminConfigPutReq) bool {
 	return iv.Register == "" && iv.Comment == "" && iv.PostImage == "" && iv.PostVideo == "" &&
 		iv.Chat == "" && iv.Follow == "" &&
 		iv.PostVideoPollInterval == "" && iv.PostVideoPollMaxWait == "" &&
-		iv.StartupStaggerMax == "" && iv.EphemeralChatLoop == "" && iv.EphemeralChatWindow == "" &&
+		iv.StartupStaggerMax == "" &&
 		req.RateLimitRps == 0 && req.RateLimitBurst == 0
 }
 
@@ -131,7 +129,8 @@ func mapConfigPutRes(in simuser.ConfigPutResult) *v1.SimAdminConfigPutRes {
 	}
 	for _, t := range in.TaskSchedule {
 		out.TaskSchedule = append(out.TaskSchedule, v1.SimAdminTaskScheduleDTO{
-			Name: t.Name, Label: t.Label, Enabled: t.Enabled,
+			Name: t.Name, Label: t.Label,
+			ConfigEnabled: t.ConfigEnabled, Enabled: t.Enabled,
 			IntervalSec: t.IntervalSec, LastRunAt: t.LastRunAt, NextRunHint: t.NextRunHint,
 		})
 	}
@@ -225,8 +224,6 @@ func (c *SimAdminCtrl) RuntimeGet(ctx context.Context, req *v1.SimAdminRuntimeGe
 			PostVideoPollInterval: rt.Intervals.PostVideoPollInterval,
 			PostVideoPollMaxWait:  rt.Intervals.PostVideoPollMaxWait,
 			StartupStaggerMax:     rt.Intervals.StartupStaggerMax,
-			EphemeralChatLoop:     rt.Intervals.EphemeralChatLoop,
-			EphemeralChatWindow:   rt.Intervals.EphemeralChatWindow,
 		},
 		RateLimitRps:   rt.RateLimitRps,
 		RateLimitBurst: rt.RateLimitBurst,

@@ -33,7 +33,7 @@ var taskLLMUsage = map[string][]struct {
 		{aimodel.LaneSimVideoGen, "提交与轮询"},
 	},
 	"chat_scan": {
-		{aimodel.LaneSimText, "E1 回复"},
+		{aimodel.LaneSimText, "未读回复"},
 	},
 	// follow 不使用 LLM
 }

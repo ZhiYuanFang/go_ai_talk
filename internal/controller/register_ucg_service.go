@@ -17,6 +17,7 @@ func RegisterUcgServiceHTTP(s *ghttp.Server) {
 		group.POST("/ucg/internal/api/media/upload", ucgInternalMediaUpload) // 给 device 管理端提供的媒体上传接口（内部接口，鉴权更严格）；内部 API 在 controller/ucg_internal.go 注册。
 		group.POST("/ucg/internal/api/chat/send", ucgInternalChatSend)       // 内部 API，在 controller/ucg_internal.go 注册。
 		group.POST("/ucg/internal/api/posts/sample", ucgInternalPostsSample) // 内部 API，在 controller/ucg_internal.go 注册。
+		group.POST("/ucg/internal/api/chat/sim-unread-sample", ucgInternalChatSimUnreadSample)
 	})
 	registerUcgChatWS(s)
 }
