@@ -15,6 +15,7 @@ func RegisterUcgServiceHTTP(s *ghttp.Server) {
 		group.Bind(NewUcgAdminCtrl())                                        // 绑定 Admin API 控制器, 给运维使用。
 		group.POST("/ucg/app/api/media/upload", ucgMediaUpload)              // 给 Web 前端提供的媒体上传接口（同域代理，规避 OSS CORS）；内部 API 在 controller/ucg_internal.go 注册。
 		group.POST("/ucg/internal/api/media/upload", ucgInternalMediaUpload) // 给 device 管理端提供的媒体上传接口（内部接口，鉴权更严格）；内部 API 在 controller/ucg_internal.go 注册。
+		group.POST("/ucg/internal/api/media/upload-video", ucgInternalMediaUploadVideo) // sim T4 等：转码为 v2 canonical 后上传 OSS。
 		group.POST("/ucg/internal/api/chat/send", ucgInternalChatSend)       // 内部 API，在 controller/ucg_internal.go 注册。
 		group.POST("/ucg/internal/api/posts/sample", ucgInternalPostsSample) // 内部 API，在 controller/ucg_internal.go 注册。
 		group.POST("/ucg/internal/api/chat/sim-unread-sample", ucgInternalChatSimUnreadSample)

@@ -9,11 +9,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/gogf/gf/v2/encoding/gjson"
 	"github.com/gogf/gf/v2/frame/g"
@@ -329,8 +331,9 @@ func newClientMsgID() string {
 	return "sim-" + hex.EncodeToString(b[:])
 }
 
-// simMediaTransformVersion 服务端直传无客户端变换管线，与 UCG blob 索引键一致。
+// simMediaTransformVersion 图片等仍用服务端直传标记；视频 MUST 使用 v2。
 const simMediaTransformVersion = "sim-raw"
+const simVideoTransformVersion = "v2"
 
 func uploadImageFromURL(ctx context.Context, token, imageURL string) (objectKey string, err error) {
 	data, contentType, err := downloadURLBytes(ctx, imageURL, 10<<20)
@@ -342,12 +345,87 @@ func uploadImageFromURL(ctx context.Context, token, imageURL string) (objectKey 
 }
 
 func uploadVideoFromURL(ctx context.Context, token, videoURL string) (objectKey string, err error) {
-	data, contentType, err := downloadURLBytes(ctx, videoURL, 100<<20)
+	data, _, err := downloadURLBytes(ctx, videoURL, MaxMediaUploadBytes)
 	if err != nil {
 		return "", err
 	}
-	ext := inferMediaExtension(contentType, videoURL, "mp4")
-	return uploadMediaBytes(ctx, token, 2, ext, data)
+	objectKey, contentHash, err := ucgInternalUploadVideo(ctx, data)
+	if err != nil {
+		return "", err
+	}
+	if err = appPost(ctx, token, "/ucg/app/api/media/register", g.Map{
+		"objectKey":        objectKey,
+		"contentHash":      contentHash,
+		"transformVersion": simVideoTransformVersion,
+		"mediaKind":        2,
+		"dedupHit":         false,
+	}, nil); err != nil {
+		return "", err
+	}
+	return objectKey, nil
+}
+
+// MaxMediaUploadBytes 与 ucg-service 单文件上限对齐。
+const MaxMediaUploadBytes = 25 << 20
+
+// ucgInternalUploadVideo 经 ucg internal 转码上传，返回 objectKey 与 contentHash。
+func ucgInternalUploadVideo(ctx context.Context, body []byte) (objectKey, contentHash string, err error) {
+	if err := waitOutboundRate(ctx, "ucg-internal"); err != nil {
+		return "", "", err
+	}
+	base := ucgBase(ctx)
+	if base == "" {
+		return "", "", fmt.Errorf("UCG_SERVICE_URL 未配置")
+	}
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	part, err := w.CreateFormFile("file", "video.mp4")
+	if err != nil {
+		return "", "", err
+	}
+	if _, err = part.Write(body); err != nil {
+		return "", "", err
+	}
+	if err = w.Close(); err != nil {
+		return "", "", err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/ucg/internal/api/media/upload-video", &buf)
+	if err != nil {
+		return "", "", err
+	}
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	req.Header.Set("X-Device-Gateway-Internal-Secret", internalSecret(ctx))
+	client := &http.Client{Timeout: 3 * time.Minute}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", "", err
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	var envelope struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+		Data    struct {
+			ObjectKey   string `json:"objectKey"`
+			ContentHash string `json:"contentHash"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		return "", "", fmt.Errorf("ucg 响应解析失败: %w", err)
+	}
+	if envelope.Code != 0 {
+		msg := strings.TrimSpace(envelope.Message)
+		if msg == "" {
+			msg = string(raw)
+		}
+		return "", "", fmt.Errorf("ucg 视频转码上传失败: %s", msg)
+	}
+	objectKey = strings.TrimSpace(envelope.Data.ObjectKey)
+	contentHash = strings.TrimSpace(envelope.Data.ContentHash)
+	if objectKey == "" || contentHash == "" {
+		return "", "", fmt.Errorf("ucg 未返回 objectKey 或 contentHash")
+	}
+	return objectKey, contentHash, nil
 }
 
 // downloadURLBytes 下载远程媒体并限制最大字节，返回 body 与 Content-Type。

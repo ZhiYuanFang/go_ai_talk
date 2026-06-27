@@ -161,6 +161,7 @@ systemctl status mysql-local.service
 - **`GF_REDIS_DEFAULT_ADDRESS`**：本机 Redis（Cluster 三主种子或 standalone 单地址）
 - **`GATEWAY_APP_JWT_SECRET`**：App JWT 签名密钥（gateway-app 签发、ucg 校验须同值）
 - **`UCG_OSS_ACCESS_KEY_ID` / `UCG_OSS_ACCESS_KEY_SECRET`**：ucg OSS 直传与 Green 审核（Green 复用 OSS AK）；`config.ucg-service.yaml` 留空，见 `manifest/docker/.env.example`
+- **ucg-service 视频验真/转码（Phase 1 + Phase 2）**：镜像 `Dockerfile.ucg-service` 已含 `ffmpeg`/`ffprobe`；部署 **ucg-service** 须重建镜像。视频 register 仅接受 `transformVersion=v1|v2`。Web `POST /ucg/app/api/media/upload`（`mediaKind=2`）三分支：**A** v1 合规直传 OSS，响应 `transformVersion=v1`、`contentHash` 为原始字节；**B** v1 不合规但 ffprobe 可解码（含视频轨）则服务端 `NormalizeVideo` 转 v2 后 PUT，响应 `transformVersion=v2`、`contentHash` 为转码后字节；**C** 不可解码 4xx、不创建 OSS 对象。Web/Flutter Web register **须**使用响应中的 `transformVersion` 与 `contentHash` 配对。sim T4 经 `POST /ucg/internal/api/media/upload-video` 转码为 v2。建议 **ucg-service 先于或与 sim-user-service、原生 App v2 同期** 上线，避免旧客户端 `sim-raw` 或非合规视频 register 失败。
 - **`UCG_DASHSCOPE_API_KEY`**：ucg AI 润笔（DashScope）；yaml 中 `dashscope_api_key` 留空
 - **`UCG_APNS_*` / `UCG_HMS_*` / `UCG_MIPUSH_*`**：ucg 启动器角标推送（iOS APNs、华为 HMS、小米 MiPush）；yaml `ucg.push` 留空，见 `manifest/docker/.env.example`；Flutter 客户端见 `flutter_ai_talk/app/README.md`「UCG 启动器角标推送」
 - **`GLM_API_KEY`**：智谱 GLM（voice 喂养/clinic 默认种子、ucg 润笔 zhipu provider）；**生产部署前必须配置**

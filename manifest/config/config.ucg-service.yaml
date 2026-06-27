@@ -24,6 +24,10 @@ ucg:
   deviceInternalSecret: ""
   # ip2region IPv4 离线库路径；Docker 内默认 /app/resource/ip2region/ip2region_v4.xdb，可用 IP2REGION_XDB_PATH 覆盖。
   ip2regionXdbPath: "/app/resource/ip2region/ip2region_v4.xdb"
+  # 视频验真/转码（Phase 1）；Docker 镜像须含 ffmpeg/ffprobe。
+  video:
+    maxTranscodeConcurrency: 2
+    transcodeTimeoutSec: 120
   oss:
     bucket: "pang-bao"
     region: "cn-beijing"

@@ -60,18 +60,27 @@ func ucgMediaUpload(r *ghttp.Request) {
 		writeUcgMediaUploadFail(r, gerror.NewCode(gcode.CodeInvalidParameter, "文件超过大小上限"))
 		return
 	}
-	objectKey, cdnURL, err := ucgsvc.UploadMediaObject(ctx, wxID, mediaKind, ext, bytes.NewReader(data), int64(len(data)))
+	result, err := ucgsvc.UploadMediaObject(ctx, wxID, mediaKind, ext, bytes.NewReader(data), int64(len(data)))
 	if err != nil {
 		writeUcgMediaUploadFail(r, err)
 		return
 	}
+	dataMap := g.Map{
+		"objectKey": result.ObjectKey,
+		"cdnUrl":    result.CdnURL,
+	}
+	if mediaKind == 2 {
+		if strings.TrimSpace(result.ContentHash) != "" {
+			dataMap["contentHash"] = result.ContentHash
+		}
+		if strings.TrimSpace(result.TransformVersion) != "" {
+			dataMap["transformVersion"] = result.TransformVersion
+		}
+	}
 	r.Response.WriteJson(g.Map{
 		"code":    0,
 		"message": "ok",
-		"data": g.Map{
-			"objectKey": objectKey,
-			"cdnUrl":    cdnURL,
-		},
+		"data":    dataMap,
 	})
 }
 

@@ -49,6 +49,11 @@ func RegisterMedia(ctx context.Context, wxID int64, req RegisterMediaRequest) (*
 	if req.MediaKind != 1 && req.MediaKind != 2 {
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "mediaKind 须为 1 或 2")
 	}
+	if req.MediaKind == 2 {
+		if !allowedVideoTransformVersion(version) {
+			return nil, gerror.NewCode(gcode.CodeInvalidParameter, "视频 transformVersion 须为 v1 或 v2")
+		}
+	}
 
 	var resultObjectKey string
 	err := dao.UcgMediaBlob.Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
@@ -98,6 +103,12 @@ func RegisterMedia(ctx context.Context, wxID int64, req RegisterMediaRequest) (*
 		}
 		if !exists {
 			return gerror.NewCode(gcode.CodeInvalidParameter, "OSS 对象不存在")
+		}
+
+		if req.MediaKind == 2 {
+			if err := ValidateVideoOnOSS(ctx, version, objectKey); err != nil {
+				return err
+			}
 		}
 
 		now := time.Now()
