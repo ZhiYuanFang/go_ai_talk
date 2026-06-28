@@ -285,7 +285,7 @@ func resolvePostCoverSnapshot(ctx context.Context, postID uint64) (thumbURL stri
 	case 1:
 		return BuildImageThumbnailURL(key), 1
 	case 2:
-		return BuildVideoSnapshotURL(key), 2
+		return BuildVideoThumbnailURL(key), 2
 	default:
 		return "", 0
 	}

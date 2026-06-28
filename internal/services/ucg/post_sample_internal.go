@@ -248,7 +248,7 @@ func postSampleCoverCdnURL(mediaType int, objectKey string) string {
 	case MediaTypeImages:
 		return BuildCdnURL(key)
 	case MediaTypeVideo:
-		return BuildVideoSnapshotURL(key)
+		return BuildVideoThumbnailURL(key)
 	default:
 		return ""
 	}

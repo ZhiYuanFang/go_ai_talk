@@ -16,6 +16,8 @@ import (
 
 const thumbResizeProcessBase = "image/auto-orient,1/resize,m_lfit,w_200/quality,q_90"
 
+const videoSnapshotProcess = "video/snapshot,t_0"
+
 // EnsureImageThumb 确保图片原图 objectKey 在 OSS 上存在对应物理缩略图对象（幂等）。
 // 经 OSS 图片处理拉取字节后 PUT 至 ThumbObjectKey；失败时返回错误供 register 阻断。
 func EnsureImageThumb(ctx context.Context, objectKey string) error {
@@ -75,6 +77,62 @@ func EnsureImageThumb(ctx context.Context, objectKey string) error {
 	return nil
 }
 
+// EnsureVideoThumb 确保视频原片 objectKey 在 OSS 上存在对应物理首帧缩略图（幂等）。
+// 经 OSS video/snapshot 拉取字节后 PUT 至 VideoThumbObjectKey；失败时返回错误供 register 阻断。
+func EnsureVideoThumb(ctx context.Context, videoObjectKey string) error {
+	key := strings.TrimSpace(videoObjectKey)
+	if key == "" {
+		return gerror.NewCode(gcode.CodeInvalidParameter, "objectKey 无效")
+	}
+	if mediacdn.IsThumbObjectKey(key) && objectFileExt(key) == mediacdn.VideoThumbExt {
+		return nil
+	}
+	if !IsVideoObjectKey(key) {
+		return gerror.NewCode(gcode.CodeInvalidParameter, "非视频 objectKey")
+	}
+
+	thumbKey := mediacdn.VideoThumbObjectKey(key)
+	bucket, _, err := openOSSBucket(ctx)
+	if err != nil {
+		return err
+	}
+
+	thumbExists, err := bucket.IsObjectExist(thumbKey)
+	if err != nil {
+		return gerror.WrapCode(gcode.CodeInternalError, err, "OSS HEAD 视频缩略图失败")
+	}
+	if thumbExists {
+		return nil
+	}
+
+	origExists, err := bucket.IsObjectExist(key)
+	if err != nil {
+		return gerror.WrapCode(gcode.CodeInternalError, err, "OSS HEAD 原视频失败")
+	}
+	if !origExists {
+		return gerror.NewCode(gcode.CodeInvalidParameter, "OSS 原视频不存在")
+	}
+
+	body, err := bucket.GetObject(key, oss.Process(videoSnapshotProcess))
+	if err != nil {
+		return gerror.WrapCode(gcode.CodeInternalError, err, "OSS 拉取视频首帧失败")
+	}
+	defer func() { _ = body.Close() }()
+
+	data, err := io.ReadAll(body)
+	if err != nil {
+		return gerror.WrapCode(gcode.CodeInternalError, err, "读取视频首帧字节失败")
+	}
+	if len(data) == 0 {
+		return gerror.NewCode(gcode.CodeInternalError, "视频首帧字节为空")
+	}
+
+	if err = bucket.PutObject(thumbKey, bytes.NewReader(data), oss.ContentType("image/jpeg")); err != nil {
+		return gerror.WrapCode(gcode.CodeInternalError, err, "OSS 上传视频缩略图失败")
+	}
+	return nil
+}
+
 // IsImageObjectKey 判断是否为受支持的图片原图 objectKey（非 thumb、非视频）。
 func IsImageObjectKey(objectKey string) bool {
 	key := strings.TrimSpace(objectKey)
@@ -84,9 +142,37 @@ func IsImageObjectKey(objectKey string) bool {
 	return isImageObjectExt(imageExtFromObjectKey(key))
 }
 
-// deletePairedThumbObject 删除原图对应的缩略图对象；对象不存在时忽略。
-func deletePairedThumbObject(bucket *oss.Bucket, objectKey string) error {
-	thumbKey := mediacdn.ThumbObjectKey(objectKey)
+// IsVideoObjectKey 判断是否为受支持的视频原片 objectKey（非 thumb）。
+func IsVideoObjectKey(objectKey string) bool {
+	key := strings.TrimSpace(objectKey)
+	if key == "" || mediacdn.IsThumbObjectKey(key) {
+		return false
+	}
+	return isVideoObjectExt(objectFileExt(key))
+}
+
+// pairedThumbObjectKey 按媒体类型派生成对缩略图 key；mediaKind 未知时按扩展名推断。
+func pairedThumbObjectKey(objectKey string, mediaKind int) string {
+	switch mediaKind {
+	case 2:
+		return mediacdn.VideoThumbObjectKey(objectKey)
+	case 1:
+		return mediacdn.ThumbObjectKey(objectKey)
+	default:
+		ext := objectFileExt(objectKey)
+		if isVideoObjectExt(ext) {
+			return mediacdn.VideoThumbObjectKey(objectKey)
+		}
+		if isImageObjectExt(ext) {
+			return mediacdn.ThumbObjectKey(objectKey)
+		}
+		return ""
+	}
+}
+
+// deletePairedThumbObject 删除原媒体对应的缩略图对象；对象不存在时忽略。
+func deletePairedThumbObject(bucket *oss.Bucket, objectKey string, mediaKind int) error {
+	thumbKey := pairedThumbObjectKey(objectKey, mediaKind)
 	if thumbKey == "" || thumbKey == objectKey {
 		return nil
 	}
@@ -143,4 +229,17 @@ func isImageObjectExt(ext string) bool {
 	default:
 		return false
 	}
+}
+
+func isVideoObjectExt(ext string) bool {
+	switch ext {
+	case "mp4":
+		return true
+	default:
+		return false
+	}
+}
+
+func objectFileExt(objectKey string) string {
+	return imageExtFromObjectKey(objectKey)
 }

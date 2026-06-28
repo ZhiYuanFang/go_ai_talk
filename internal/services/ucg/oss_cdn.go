@@ -26,21 +26,11 @@ func BuildImageThumbnailURL(objectKey string) string {
 	return BuildCdnURL(thumbKey)
 }
 
-const videoSnapshotProcess = "video/snapshot,t_0"
-
-// BuildVideoSnapshotURL 由视频 objectKey 拼装 OSS 首帧截帧 URL（通知封面快照）。
-func BuildVideoSnapshotURL(objectKey string) string {
-	cdn := BuildCdnURL(objectKey)
-	if cdn == "" {
+// BuildVideoThumbnailURL 由视频 objectKey 拼装物理首帧缩略图 CDN URL（path 为 stem_thumb.jpg，无 x-oss-process）。
+func BuildVideoThumbnailURL(objectKey string) string {
+	thumbKey := mediacdn.VideoThumbObjectKey(objectKey)
+	if thumbKey == "" {
 		return ""
 	}
-	return appendOssProcess(cdn, videoSnapshotProcess)
-}
-
-func appendOssProcess(cdn, process string) string {
-	sep := "?"
-	if strings.Contains(cdn, "?") {
-		sep = "&"
-	}
-	return cdn + sep + "x-oss-process=" + process
+	return BuildCdnURL(thumbKey)
 }

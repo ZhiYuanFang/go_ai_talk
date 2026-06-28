@@ -148,6 +148,10 @@ func RegisterMedia(ctx context.Context, wxID int64, req RegisterMediaRequest) (*
 		if thumbErr := EnsureImageThumb(ctx, resultObjectKey); thumbErr != nil {
 			return nil, thumbErr
 		}
+	} else if req.MediaKind == 2 {
+		if thumbErr := EnsureVideoThumb(ctx, resultObjectKey); thumbErr != nil {
+			return nil, thumbErr
+		}
 	}
 	return &RegisterMediaResult{
 		ObjectKey: resultObjectKey,

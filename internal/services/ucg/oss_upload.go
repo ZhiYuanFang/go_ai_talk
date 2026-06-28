@@ -152,6 +152,10 @@ func putOSSObject(ctx context.Context, cfg OSSConfig, objectKey string, mediaKin
 		if thumbErr := EnsureImageThumb(ctx, objectKey); thumbErr != nil {
 			return "", "", thumbErr
 		}
+	} else if mediaKind == 2 {
+		if thumbErr := EnsureVideoThumb(ctx, objectKey); thumbErr != nil {
+			return "", "", thumbErr
+		}
 	}
 	cdnURL := cfg.CdnBaseURL + "/" + strings.TrimPrefix(objectKey, "/")
 	return objectKey, cdnURL, nil

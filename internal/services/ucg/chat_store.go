@@ -170,7 +170,10 @@ func enrichChatMessageMedia(msg *ChatMessage) {
 		msg.MediaThumbnailUrl = BuildImageThumbnailURL(imageKey)
 		return
 	}
-	if videoKey != "" && strings.TrimSpace(msg.MediaCdnUrl) == "" {
-		msg.MediaCdnUrl = BuildCdnURL(videoKey)
+	if videoKey != "" {
+		if strings.TrimSpace(msg.MediaCdnUrl) == "" {
+			msg.MediaCdnUrl = BuildCdnURL(videoKey)
+		}
+		msg.MediaThumbnailUrl = BuildVideoThumbnailURL(videoKey)
 	}
 }
