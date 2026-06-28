@@ -190,7 +190,7 @@
 					actions.appendChild(btnDel);
 					verBody.appendChild(tr);
 				});
-				showOk(listMsg, '共 ' + (data.total != null ? data.total : items.length) + ' 条');
+				showOk(listMsg, '共 ' + total + ' 条');
 			} catch (e) {
 				verBody.innerHTML = '';
 				showErr(listMsg, formatFetchError(e));
