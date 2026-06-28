@@ -127,6 +127,9 @@ func invokeStreamHTTP(ctx context.Context, profile Profile, req ChatRequest, cb 
 
 	adapter := getProviderAdapter(profile.Provider)
 	var thinkingBuf, answerBuf, contentBuf strings.Builder
+	// thinking 模型常先流式 reasoning、再单独流式 content；ParseStreamDelta 按分片解析，
+	// content 分片无 reasoning 时会进 content 通道。ThinkingEnabled 且已见过 reasoning 时改路由到 answer。
+	sawReasoning := false
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {
@@ -146,6 +149,7 @@ func invokeStreamHTTP(ctx context.Context, profile Profile, req ChatRequest, cb 
 			return StreamResult{}, pErr
 		}
 		if think != "" {
+			sawReasoning = true
 			thinkingBuf.WriteString(think)
 			if cb.OnThinkingDelta != nil {
 				if e := cb.OnThinkingDelta(think); e != nil {
@@ -162,6 +166,15 @@ func invokeStreamHTTP(ctx context.Context, profile Profile, req ChatRequest, cb 
 			}
 		}
 		if content != "" {
+			if req.ThinkingEnabled && sawReasoning {
+				answerBuf.WriteString(content)
+				if cb.OnAnswerDelta != nil {
+					if e := cb.OnAnswerDelta(content); e != nil {
+						return StreamResult{Thinking: thinkingBuf.String(), Answer: answerBuf.String()}, e
+					}
+				}
+				continue
+			}
 			contentBuf.WriteString(content)
 			if cb.OnContentDelta != nil {
 				if e := cb.OnContentDelta(content); e != nil {

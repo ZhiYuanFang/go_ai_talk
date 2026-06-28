@@ -69,7 +69,8 @@ func resolveAPIKey(ctx context.Context, provider Provider) (string, error) {
 	}
 }
 
-// parseOpenAIStreamDelta 解析 OpenAI 兼容 SSE delta（clinic thinking/answer 与 casual content 共用）。
+// parseOpenAIStreamDelta 解析 OpenAI 兼容 SSE 单分片 delta。
+// 注意：reasoning 与 content 常在不同分片到达；thinking 开启场景下 invokeStreamHTTP 在见过 reasoning 后将 content 路由到 answer。
 func parseOpenAIStreamDelta(data string) (thinking, answer, content string, err error) {
 	var obj map[string]interface{}
 	if err = json.Unmarshal([]byte(data), &obj); err != nil {
