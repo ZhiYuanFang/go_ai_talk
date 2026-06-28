@@ -50,10 +50,10 @@
 - 若历史测试文件存在，按当前变更策略逐步清理，不作为新实现的交付前置条件。
 
 ### OpenSpec 基线参考约定（强制）
-- 后续 AI 发起任何新变更前，必须先读取并对照 **`openspec/specs/v2.0.7/spec.md`**（v2.0.7 合并基线规格），再生成 proposal/design/tasks。
-- 若本次需求涉及已有 capability，必须在 proposal 中明确标注“复用/变更了哪些已有 spec 边界（见 v2.0.7 目录章节）”；禁止脱离历史 spec 直接重写同类能力。
-- AI 在实现阶段（apply）必须以 v2.0.7 基线中的 Requirement/Scenario 作为验收约束，若实现与基线冲突，需先更新变更规格再改代码。
-- AI 在评审或总结阶段必须说明“本次改动对应的 spec 依据”，至少列出相关 capability 名称（v2.0.7 目录中的章节名）。
+- 后续 AI 发起任何新变更前，必须先读取并对照 **`openspec/specs/v2.0.9/spec.md`**（v2.0.9 合并基线规格），再生成 proposal/design/tasks。
+- 若本次需求涉及已有 capability，必须在 proposal 中明确标注“复用/变更了哪些已有 spec 边界（见 v2.0.9 目录章节）”；禁止脱离历史 spec 直接重写同类能力。
+- AI 在实现阶段（apply）必须以 v2.0.9 基线中的 Requirement/Scenario 作为验收约束，若实现与基线冲突，需先更新变更规格再改代码。
+- AI 在评审或总结阶段必须说明“本次改动对应的 spec 依据”，至少列出相关 capability 名称（v2.0.9 目录中的章节名）。
 - 新版本发版时可运行 `hack/merge-openspec-specs.py`（或等价流程）合并为 `openspec/specs/vX.Y.Z/spec.md`；若行为发生变更而未同步到 specs，不允许归档为完成状态（除非明确记录 `--skip-specs` 原因并经人工确认）。
 
 ## 重要约束
@@ -63,7 +63,7 @@
 - 评审检查项必须包含“主配置是否回流服务专属字段”与“服务默认配置是否仍指向共享主配置”两项硬性检查。
 - 评审检查项必须包含“是否存在 `hello/internal/service` 旧导入路径”与“`internal/service` 是否新增实现文件”两项硬性检查。
 - 评审检查项必须包含“运行文档是否同步更新”检查：凡涉及运行/发布/DAO 边界变更，必须同时更新 `docs/runbooks/dao-sync-by-domain.md` 与 `docs/runbooks/release-deploy-and-run.md`；若涉及**新进程或新库连接**，还须核对 **`manifest/docker/.env.example`** 与相关 **`manifest/config/config.*.yaml`** 顶部说明是否已包含对应 **`*_DB_LINK` / `APP_DB_LINK`** 约定（见上文「数据库连接与部署实例约定」）。
-- 评审检查项必须包含“是否引用并遵循 **`openspec/specs/v2.0.7/spec.md`** 基线”检查：涉及行为变更时必须可追溯到对应 Requirement/Scenario。
+- 评审检查项必须包含“是否引用并遵循 **`openspec/specs/v2.0.9/spec.md`** 基线”检查：涉及行为变更时必须可追溯到对应 Requirement/Scenario。
 - 评审检查项必须包含“**Redis platform 访问**”检查：业务/controller 是否 bypass `cachekit`/`redismsgkit`（见 `AGENTS.md` 与 `hack/check-redis-bypass.sh`）。
 - 评审检查项必须包含“**Redis 读缓存**”检查：涉及新读路径或 Redis 键变更时，是否已在 proposal/design 完成收益率评估、负责人确认结论，且实现与 design 一致（见「Redis 读缓存约定」）。
 - 在没有特别要求的情况下，不用生成关于当前变更需求的md文件。当有要求生成文档时，文档必须在`docs/`文件夹内生成md文件，不要生成到`docs/runbooks/`
