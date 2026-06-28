@@ -15,7 +15,7 @@ logger:
   stdout: true
 
 gatewayApp:
-  accessTtlSeconds: 60 #秒
+  accessTtlSeconds: 1800 #秒
   refreshTtlSeconds: 604800  # 调用 device 内部 HTTP（如 internal/device-no-by-wx-id）时携带，须与 device 环境 DEVICE_GATEWAY_INTERNAL_SECRET 一致
   deviceInternalSecret: "gateway-internal-change-me"
   # 以下缓存项曾为 id→unionid 热路径保留；当前 Bearer 仅从 JWT 注入 Wx-Id/Device-No，可删除整段或保留作占位兼容
