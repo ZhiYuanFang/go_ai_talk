@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>App 维护通知</title>
+	<link rel="stylesheet" href="/resource/public/pangbao-theme.css" />
+	<link rel="stylesheet" href="/resource/public/admin-pages.css" />
+	<style>
+		.runtime-grid { display: grid; grid-template-columns: 140px 1fr; gap: 6px 12px; font-size: 13px; margin: 12px 0; }
+		.runtime-grid dt { color: var(--muted); margin: 0; }
+		.runtime-grid dd { margin: 0; word-break: break-word; }
+		.preview-box { margin-top: 12px; padding: 14px; border-radius: 10px; background: rgba(0,0,0,.04); }
+		.preview-title { font-size: 18px; font-weight: 600; margin: 0 0 8px; }
+		.preview-msg { font-size: 14px; line-height: 1.5; white-space: pre-wrap; margin: 0; }
+		.hint { font-size: 12px; color: var(--muted); line-height: 1.55; margin: 8px 0 0; }
+		.badge-on { color: #059669; font-weight: 600; }
+		.badge-off { color: #dc2626; font-weight: 600; }
+		.btn-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+		#loginCard .field { margin-bottom: 10px; }
+	</style>
+</head>
+<body>
+<div class="page page-narrow">
+	<header class="admin-header glass">
+		<div class="logo">NT</div>
+		<div>
+			<h1>App 维护通知</h1>
+			<p>独立 status 服务 · 内存配置 · 保存后立即对 App 生效 · gateway 维护期间也可使用本页</p>
+		</div>
+	</header>
+
+	<div class="card glass" id="loginCard">
+		<h4 style="margin:0 0 12px;font-size:15px;">登录</h4>
+		<p class="hint" style="margin-top:0;">账号口令与运维 Hub 相同（<code>GATEWAY_APP_ADMIN_*</code>）。</p>
+		<div class="field">
+			<label for="loginUser">用户名</label>
+			<input id="loginUser" type="text" autocomplete="username" value="admin" />
+		</div>
+		<div class="field">
+			<label for="loginPass">密码</label>
+			<input id="loginPass" type="password" autocomplete="current-password" />
+		</div>
+		<button id="loginBtn" type="button">登录</button>
+		<span id="loginMsg" class="msg"></span>
+	</div>
+
+	<div class="card glass hidden" id="mainCard">
+		<p style="font-size:13px;margin:0 0 12px;">Hub 入口（gateway 正常时）：<a id="hubLink" href="/device/admin">运维 Hub</a></p>
+		<div class="field">
+			<label><input id="active" type="checkbox" /> 启用通知（active）</label>
+		</div>
+		<div class="field">
+			<label for="title">标题</label>
+			<input id="title" type="text" maxlength="120" placeholder="例如：系统维护中" />
+		</div>
+		<div class="field">
+			<label for="message">正文</label>
+			<textarea id="message" rows="5" maxlength="2000" placeholder="告知用户当前状态与预计恢复时间"></textarea>
+		</div>
+		<div class="field">
+			<label for="expectedEnd">预计结束（可选，本地时间）</label>
+			<input id="expectedEnd" type="datetime-local" />
+		</div>
+		<div class="field">
+			<label><input id="dismissible" type="checkbox" /> 可取消（dismissible=true：App 可关 / 不再提示；false：仅「刷新」）</label>
+		</div>
+		<div class="btn-row">
+			<button id="saveBtn" type="button">保存</button>
+			<button id="deactivateBtn" type="button" class="secondary">立即关闭通知</button>
+			<button id="logoutBtn" type="button" class="secondary">退出登录</button>
+		</div>
+		<span id="saveMsg" class="msg"></span>
+
+		<hr class="divider" />
+		<h4 style="margin:0 0 8px;font-size:15px;">App 预览</h4>
+		<div class="preview-box" id="previewBox">
+			<p class="preview-title" id="previewTitle">—</p>
+			<p class="preview-msg" id="previewMessage">—</p>
+		</div>
+
+		<hr class="divider" />
+		<h4 style="margin:0 0 8px;font-size:15px;">当前快照</h4>
+		<dl class="runtime-grid">
+			<dt>状态</dt><dd id="snapActive">—</dd>
+			<dt>updatedAt</dt><dd id="snapUpdated">—</dd>
+			<dt>contentKey</dt><dd id="snapKey"><code>—</code></dd>
+			<dt>dismissible</dt><dd id="snapDismissible">—</dd>
+		</dl>
+		<p class="hint">进程重启后配置清空，默认为无通知。再次打开 active 不会清除客户端「不再提示」；若需用<strong>完全相同文案</strong>再次通知全员，请改标题或正文至少一字，或请用户清除 App 数据。</p>
+	</div>
+</div>
+
+<script>
+(function(){
+	const TOKEN_KEY = 'appStatusAdminToken';
+	const loginCard = document.getElementById('loginCard');
+	const mainCard = document.getElementById('mainCard');
+	const loginMsg = document.getElementById('loginMsg');
+	const saveMsg = document.getElementById('saveMsg');
+
+	function token(){ return sessionStorage.getItem(TOKEN_KEY) || ''; }
+	function setToken(t){ if(t) sessionStorage.setItem(TOKEN_KEY,t); else sessionStorage.removeItem(TOKEN_KEY); }
+
+	function authHeaders(extra){
+		const h = Object.assign({'Content-Type':'application/json'}, extra||{});
+		if(token()) h.Authorization = 'Bearer '+token();
+		return h;
+	}
+
+	async function api(path, options){
+		options = options || {};
+		const res = await fetch(path, Object.assign({}, options, {headers: authHeaders(options.headers)}));
+		const data = await res.json().catch(function(){ return {}; });
+		if(!res.ok || data.code !== 0){
+			throw new Error(data.message || ('HTTP '+res.status));
+		}
+		return data.data !== undefined ? data.data : data;
+	}
+
+	function showMain(loggedIn){
+		loginCard.classList.toggle('hidden', loggedIn);
+		mainCard.classList.toggle('hidden', !loggedIn);
+	}
+
+	function unixToLocalInput(sec){
+		if(!sec) return '';
+		const d = new Date(sec * 1000);
+		const pad = function(n){ return String(n).padStart(2,'0'); };
+		return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+'T'+pad(d.getHours())+':'+pad(d.getMinutes());
+	}
+
+	function localInputToUnix(v){
+		if(!v) return null;
+		const ms = Date.parse(v);
+		if(isNaN(ms)) return null;
+		return Math.floor(ms / 1000);
+	}
+
+	function renderSnapshot(data){
+		document.getElementById('active').checked = !!data.active;
+		document.getElementById('title').value = data.title || '';
+		document.getElementById('message').value = data.message || '';
+		document.getElementById('expectedEnd').value = unixToLocalInput(data.expectedEndAt);
+		document.getElementById('dismissible').checked = !!data.dismissible;
+		document.getElementById('snapActive').innerHTML = data.active ? '<span class="badge-on">active</span>' : '<span class="badge-off">inactive</span>';
+		document.getElementById('snapUpdated').textContent = data.updatedAt ? new Date(data.updatedAt*1000).toLocaleString() : '—';
+		document.getElementById('snapKey').innerHTML = '<code>'+(data.contentKey || '—')+'</code>';
+		document.getElementById('snapDismissible').textContent = data.dismissible ? 'true（可取消）' : 'false（仅刷新）';
+		updatePreview();
+	}
+
+	function updatePreview(){
+		const active = document.getElementById('active').checked;
+		const title = document.getElementById('title').value.trim() || '（无标题）';
+		const msg = document.getElementById('message').value.trim() || '（无正文）';
+		document.getElementById('previewTitle').textContent = active ? title : '（未启用）';
+		document.getElementById('previewMessage').textContent = active ? msg : '保存并勾选「启用通知」后 App 才会弹窗。';
+	}
+
+	['active','title','message','dismissible'].forEach(function(id){
+		document.getElementById(id).addEventListener('input', updatePreview);
+		document.getElementById(id).addEventListener('change', updatePreview);
+	});
+
+	async function loadBanner(){
+		const data = await api('/admin/api/banner');
+		renderSnapshot(data);
+	}
+
+	async function saveBanner(activeOverride){
+		const body = {
+			active: activeOverride !== undefined ? activeOverride : document.getElementById('active').checked,
+			title: document.getElementById('title').value,
+			message: document.getElementById('message').value,
+			expectedEndAt: localInputToUnix(document.getElementById('expectedEnd').value),
+			dismissible: document.getElementById('dismissible').checked
+		};
+		const data = await api('/admin/api/banner', {method:'PUT', body: JSON.stringify(body)});
+		renderSnapshot(data);
+	}
+
+	document.getElementById('loginBtn').addEventListener('click', async function(){
+		loginMsg.textContent = '';
+		try {
+			const res = await fetch('/admin/api/login', {
+				method:'POST',
+				headers:{'Content-Type':'application/json'},
+				body: JSON.stringify({
+					username: document.getElementById('loginUser').value,
+					password: document.getElementById('loginPass').value
+				})
+			});
+			const data = await res.json().catch(function(){ return {}; });
+			if(!res.ok || data.code !== 0) throw new Error(data.message || ('HTTP '+res.status));
+			setToken(data.data && data.data.accessToken);
+			showMain(true);
+			await loadBanner();
+		} catch(e) {
+			loginMsg.textContent = e.message || String(e);
+		}
+	});
+
+	document.getElementById('saveBtn').addEventListener('click', async function(){
+		saveMsg.textContent = '保存中…';
+		try {
+			await saveBanner();
+			saveMsg.textContent = '已保存，App 下次拉取即生效。';
+		} catch(e) {
+			saveMsg.textContent = e.message || String(e);
+		}
+	});
+
+	document.getElementById('deactivateBtn').addEventListener('click', async function(){
+		saveMsg.textContent = '关闭中…';
+		try {
+			await saveBanner(false);
+			saveMsg.textContent = '已关闭通知（active=false）。';
+		} catch(e) {
+			saveMsg.textContent = e.message || String(e);
+		}
+	});
+
+	document.getElementById('logoutBtn').addEventListener('click', function(){
+		setToken('');
+		showMain(false);
+		saveMsg.textContent = '';
+	});
+
+	if(token()){
+		showMain(true);
+		loadBanner().catch(function(e){
+			setToken('');
+			showMain(false);
+			loginMsg.textContent = e.message || String(e);
+		});
+	} else {
+		showMain(false);
+	}
+})();
+</script>
+</body>
+</html>

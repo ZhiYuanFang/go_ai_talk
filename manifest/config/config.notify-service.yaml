@@ -1,0 +1,16 @@
+# notify-service：独立 App 维护/公告通知（进程内内存态，无 MySQL/Redis）。
+# 部署须配置 GATEWAY_APP_JWT_SECRET 与 GATEWAY_APP_ADMIN_*（与 Hub 一致，便于 token 互通）。
+# 对外域名示例：https://status.pangbao.cuplay.top（Nginx 反代至 :9806）。
+
+server:
+  address: ":9806"
+  openapiPath: "/api.json"
+  swaggerPath: "/swagger"
+
+logger:
+  level: "all"
+  stdout: true
+
+gatewayApp:
+  admin:
+    sessionTtlSeconds: 28800

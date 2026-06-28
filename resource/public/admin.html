@@ -500,11 +500,12 @@ async function submitEventRowUpdate(row, opts){
 	const devNav = document.getElementById('deviceRecordNavLinks');
 	if(!window.ADMIN_MODULES) return;
 	window.ADMIN_MODULES.forEach(function(m){
-		if(!m.pagePath) return;
+		const href = m.externalUrl || m.pagePath;
+		if(!href) return;
 		const a = document.createElement('a');
 		a.className = 'link-btn';
-		a.href = m.pagePath;
-		// a.target = '_blank';
+		a.href = href;
+		if(m.openInNewTab) a.target = '_blank';
 		a.rel = 'noopener';
 		a.textContent = m.title;
 		if(m.showInNav && nav) nav.appendChild(a);

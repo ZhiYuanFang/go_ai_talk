@@ -49,7 +49,7 @@ func buildClinicLLMMessages(cfg AIClinicConfig, baby clinicBabyProfile, summaryJ
 		system = "你是「胖宝」AI 育儿助手。"
 	}
 	system += "\n\n" + baby.promptLine()
-	system += "\n\n近7天喂养事件聚合摘要（JSON）：\n" + summaryJSON
+	system += "\n\n近7天喂养摘要（JSON，含 by_event 聚合与有备注记录）：\n" + summaryJSON
 
 	messages := make([]aimodel.Message, 0, 2+len(prior)+1)
 	messages = append(messages, aimodel.Message{Role: "system", Content: system})

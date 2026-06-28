@@ -56,3 +56,6 @@ services:
     mem_limit: 96m
     cpus: "0.1"
     <<: *go-gomemlimit-sim
+  notify-service:
+    mem_limit: 64m
+    cpus: "0.05"

@@ -287,6 +287,32 @@ services:
       retries: 6
     logging: *docker-logging
 
+  notify-service:
+    build:
+      context: ../..
+      dockerfile: manifest/docker/Dockerfile.notify-service
+    image: go-ai-talk/notify-service:local
+    container_name: go-ai-talk-notify-service
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      TZ: Asia/Shanghai
+      GF_GCFG_FILE: manifest/config/config.notify-service.yaml
+      NOTIFY_SERVICE_ADDR: ":9806"
+      GATEWAY_APP_JWT_SECRET: "${GATEWAY_APP_JWT_SECRET:-change-me-random-64chars}"
+      GATEWAY_APP_ADMIN_USERNAME: "${GATEWAY_APP_ADMIN_USERNAME:-admin}"
+      GATEWAY_APP_ADMIN_PASSWORD: "${GATEWAY_APP_ADMIN_PASSWORD:-}"
+    volumes:
+      - ../../resource/public/app-status-admin.html:/app/resource/public/app-status-admin.html:ro
+      - ../../resource/public/pangbao-theme.css:/app/resource/public/pangbao-theme.css:ro
+      - ../../resource/public/admin-pages.css:/app/resource/public/admin-pages.css:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:9806/api.json > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+    logging: *docker-logging
+
   sim-user-service:
     build:
       context: ../..

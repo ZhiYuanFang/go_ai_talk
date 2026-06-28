@@ -68,6 +68,13 @@ services:
       - "19805:9805"
     networks: [go-ai-talk-test-net]
 
+  notify-service:
+    image: ${REGISTRY}/notify-service:${IMAGE_TAG}
+    container_name: go-ai-talk-notify-service-test
+    ports:
+      - "19806:9806"
+    networks: [go-ai-talk-test-net]
+
 networks:
   go-ai-talk-test-net:
     external: true

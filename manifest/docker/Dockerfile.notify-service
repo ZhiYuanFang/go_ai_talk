@@ -1,0 +1,25 @@
+FROM m.daocloud.io/docker.io/library/golang:1.23-alpine AS builder
+
+ENV GOPROXY=https://goproxy.cn,https://goproxy.io,direct
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/notify-service ./cmd/notify-service
+
+FROM m.daocloud.io/docker.io/library/alpine:3.19
+
+ENV WORKDIR=/app
+ENV GF_GCFG_FILE=manifest/config/config.notify-service.yaml
+WORKDIR ${WORKDIR}
+
+COPY --from=builder /out/notify-service ${WORKDIR}/notify-service
+COPY manifest/config/config.notify-service.yaml ${WORKDIR}/manifest/config/config.notify-service.yaml
+COPY resource/public/pangbao-theme.css ${WORKDIR}/resource/public/pangbao-theme.css
+COPY resource/public/admin-pages.css ${WORKDIR}/resource/public/admin-pages.css
+COPY resource/public/app-status-admin.html ${WORKDIR}/resource/public/app-status-admin.html
+
+EXPOSE 9806
+HEALTHCHECK --interval=10s --timeout=3s --retries=6 CMD wget -q -O - http://127.0.0.1:9806/api.json > /dev/null || exit 1
+CMD ["./notify-service"]

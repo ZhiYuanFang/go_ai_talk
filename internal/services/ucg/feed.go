@@ -82,6 +82,8 @@ func ListRecommendFeed(
 	if err != nil {
 		return nil, err
 	}
+	// 推荐 Feed 响应：本人帖 omit distanceMeters；composite 排序 distanceTerm 不变。
+	omitRecommendOwnPostDistance(viewerWxID, list)
 	_ = markSessionSeen(ctx, cfg, cur.SessionID, pageIDs)
 
 	nextCursor := ""
@@ -251,6 +253,19 @@ func collectFeedCandidates(
 		return out[i].postID > out[j].postID
 	})
 	return out, next, nil
+}
+
+// omitRecommendOwnPostDistance 推荐 Feed 专用：viewer 为作者时不返回 distanceMeters。
+func omitRecommendOwnPostDistance(viewerWxID int64, list []*PostDTO) {
+	if viewerWxID <= 0 {
+		return
+	}
+	viewer := uint64(viewerWxID)
+	for _, item := range list {
+		if item != nil && item.AuthorWxId == viewer {
+			item.DistanceMeters = ""
+		}
+	}
 }
 
 func assembleFeedPosts(

@@ -24,3 +24,6 @@ services:
   sim-user-service:
     mem_limit: 128m
     cpus: "0.15"
+  notify-service:
+    mem_limit: 64m
+    cpus: "0.1"

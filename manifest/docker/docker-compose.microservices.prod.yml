@@ -51,6 +51,12 @@ services:
       - "9805:9805"
     networks: [go-ai-talk-net]
 
+  notify-service:
+    image: ${REGISTRY}/notify-service:${IMAGE_TAG}
+    ports:
+      - "9806:9806"
+    networks: [go-ai-talk-net]
+
 networks:
   go-ai-talk-net:
     external: true
