@@ -133,10 +133,12 @@ func CheckPolishAIQuota(ctx context.Context, wxID int64) (contracts.AIQuotaSnaps
 	if err != nil {
 		return contracts.AIQuotaSnapshot{}, err
 	}
+	allowed := used < limit
 	return contracts.AIQuotaSnapshot{
-		Used:    used,
-		Limit:   limit,
-		Allowed: used < limit,
+		Used:     used,
+		Limit:    limit,
+		Allowed:  allowed,
+		Degraded: !allowed, // 润笔用尽时走降速 profile，不再 40302
 	}, nil
 }
 

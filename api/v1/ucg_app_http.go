@@ -61,7 +61,8 @@ type UcgPostsPolishReq struct {
 }
 
 type UcgPostsPolishRes struct {
-	PolishedText string `json:"polishedText"`
+	PolishedText  string `json:"polishedText"`
+	QuotaDegraded bool   `json:"quotaDegraded"`
 }
 
 // UcgHealthReq 进程健康探测（供 compose/k8s 与联调）。

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"hello/internal/services/aimodel"
+	"hello/internal/services/contracts"
 
 	gctx "github.com/gogf/gf/v2/os/gctx"
 )
@@ -68,12 +69,21 @@ func (s *ClinicService) HandleQuestion(turnCtx context.Context, wxID int64, devi
 	if err := checkClinicRateLimit(turnCtx, wxID, s.cfg); err != nil {
 		return clinicWriteQuotaErr(writeJSON, err)
 	}
-	if err := CheckClinicAIQuota(turnCtx, wxID); err != nil {
+	quotaSnap, err := CheckClinicAIQuotaSnapshot(turnCtx, wxID)
+	if err != nil {
 		return clinicWriteQuotaErr(writeJSON, err)
 	}
-	profile, err := aimodel.LoadProfile(turnCtx, aimodel.LaneClinic)
-	if err != nil {
-		return writeJSON(map[string]interface{}{"type": "error", "code": 500, "message": err.Error()})
+	clinicDegraded := quotaSnap.Degraded && !quotaSnap.Allowed
+	var profile aimodel.Profile
+	if quotaSnap.Allowed {
+		profile, err = aimodel.LoadProfile(turnCtx, aimodel.LaneClinic)
+		if err != nil {
+			return writeJSON(map[string]interface{}{"type": "error", "code": 500, "message": err.Error()})
+		}
+	} else if clinicDegraded {
+		profile = aimodel.DegradedClinicProfile()
+	} else {
+		return clinicWriteQuotaErr(writeJSON, &VoiceAIQuotaError{Code: contracts.CodeAIQuotaExhausted, Message: contracts.ErrAIQuotaExhausted.Error()})
 	}
 	release, err := aimodel.Acquire(turnCtx, profile)
 	if err != nil {
@@ -114,9 +124,11 @@ func (s *ClinicService) HandleQuestion(turnCtx context.Context, wxID int64, devi
 	if err := turnCtx.Err(); err != nil {
 		return nil
 	}
-	// 仅 answer_done 成功路径扣 clinic_ai 额度、递增限流、写入 session。
-	if err := ConsumeClinicAIQuota(turnCtx, wxID); err != nil {
-		return clinicWriteQuotaErr(writeJSON, err)
+	// 仅正常额度路径扣 clinic_ai；降速 fallback 不 consume。
+	if quotaSnap.Allowed {
+		if err := ConsumeClinicAIQuota(turnCtx, wxID); err != nil {
+			return clinicWriteQuotaErr(writeJSON, err)
+		}
 	}
 	_ = recordClinicRateLimitOnSuccess(turnCtx, wxID, s.cfg)
 	if err := appendClinicTurn(turnCtx, wxID, s.cfg, deviceNo, question, answer); err != nil {

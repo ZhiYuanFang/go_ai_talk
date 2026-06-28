@@ -17,8 +17,9 @@ const polishUserPrompt = "作为宝宝家长，你正在发朋友圈，选择了
 
 const polishMaxTokens = 1024
 
-// PolishPostText 经 LanePolish 调用多模态 LLM 润笔正文。
-func PolishPostText(ctx context.Context, imageKeys []string, draftText string) (string, error) {
+// PolishPostText 经 LanePolish（或降速 profile）调用多模态 LLM 润笔正文。
+// degraded=true 时使用固定降速模型，不计入月度额度。
+func PolishPostText(ctx context.Context, imageKeys []string, draftText string, degraded bool) (string, error) {
 	cfg := LoadAIConfig(ctx)
 	if len(imageKeys) == 0 {
 		return "", gerror.NewCode(gcode.CodeInvalidParameter, "imageKeys 不能为空")
@@ -61,12 +62,32 @@ func PolishPostText(ctx context.Context, imageKeys []string, draftText string) (
 		"text": prompt,
 	})
 
-	resp, err := aimodel.Invoke(ctx, aimodel.LanePolish, aimodel.ChatRequest{
+	var profile aimodel.Profile
+	if degraded {
+		profile = aimodel.DegradedPolishProfile()
+	} else {
+		p, err := aimodel.LoadProfile(ctx, aimodel.LanePolish)
+		if err != nil {
+			return "", mapPolishLLMError(err)
+		}
+		profile = p
+	}
+	release, err := aimodel.Acquire(ctx, profile)
+	if err != nil {
+		return "", mapPolishLLMError(err)
+	}
+	defer release()
+
+	timeoutSec := cfg.TimeoutSeconds
+	if profile.TimeoutSec > 0 {
+		timeoutSec = profile.TimeoutSec
+	}
+	resp, err := aimodel.InvokeWithHeldProfile(ctx, profile, aimodel.ChatRequest{
 		Messages: []aimodel.Message{
 			{Role: "user", Content: contentParts},
 		},
 		MaxTokens:  polishMaxTokens,
-		TimeoutSec: cfg.TimeoutSeconds,
+		TimeoutSec: timeoutSec,
 	})
 	if err != nil {
 		return "", mapPolishLLMError(err)

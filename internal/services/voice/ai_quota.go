@@ -63,12 +63,28 @@ func CheckVoiceAIQuota(ctx context.Context, wxID int64) error {
 	return checkAIQuotaFeature(ctx, wxID, contracts.AIQuotaVoiceAI)
 }
 
-// CheckClinicAIQuota 胖宝 AI 预检；wxId≤0 返回 40301，禁止 deviceNo 反查替代登录。
+// CheckClinicAIQuota 胖宝 AI 预检；wxId≤0 返回 40301，用尽返回 40302（供非 clinic 路径）。
 func CheckClinicAIQuota(ctx context.Context, wxID int64) error {
-	if wxID <= 0 {
-		return &VoiceAIQuotaError{Code: contracts.CodeAINotLoggedIn, Message: contracts.ErrAINotLoggedIn.Error()}
+	snap, err := CheckClinicAIQuotaSnapshot(ctx, wxID)
+	if err != nil {
+		return err
 	}
-	return checkAIQuotaFeature(ctx, wxID, contracts.AIQuotaClinicAI)
+	if !snap.Allowed && !snap.Degraded {
+		return &VoiceAIQuotaError{Code: contracts.CodeAIQuotaExhausted, Message: contracts.ErrAIQuotaExhausted.Error()}
+	}
+	return nil
+}
+
+// CheckClinicAIQuotaSnapshot 胖宝诊疗额度快照；用尽时 Degraded=true 而非错误。
+func CheckClinicAIQuotaSnapshot(ctx context.Context, wxID int64) (contracts.AIQuotaSnapshot, error) {
+	if wxID <= 0 {
+		return contracts.AIQuotaSnapshot{}, &VoiceAIQuotaError{Code: contracts.CodeAINotLoggedIn, Message: contracts.ErrAINotLoggedIn.Error()}
+	}
+	snap, err := CheckVoiceAIQuotaStore(ctx, wxID, contracts.AIQuotaClinicAI)
+	if err != nil {
+		return contracts.AIQuotaSnapshot{}, mapQuotaStoreErr(err)
+	}
+	return snap, nil
 }
 
 // ConsumeClinicAIQuota 胖宝 AI 流式成功完成后扣减 clinic_ai 额度。

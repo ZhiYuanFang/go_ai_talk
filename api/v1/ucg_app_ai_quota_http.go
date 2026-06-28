@@ -9,8 +9,9 @@ type UcgAppAIQuotaGetReq struct {
 
 // UcgAppAIQuotaFeatureStatus 单 feature 用量。
 type UcgAppAIQuotaFeatureStatus struct {
-	Used  int `json:"used"`
-	Limit int `json:"limit"`
+	Used     int  `json:"used"`
+	Limit    int  `json:"limit"`
+	Degraded bool `json:"degraded"`
 }
 
 // UcgAppAIQuotaGetRes App 额度响应（polish only）。

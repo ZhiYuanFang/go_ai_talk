@@ -36,8 +36,9 @@ type VoiceAppAIQuotaGetReq struct {
 
 // VoiceAppAIQuotaFeatureStatus 单 feature 用量。
 type VoiceAppAIQuotaFeatureStatus struct {
-	Used  int `json:"used"`
-	Limit int `json:"limit"`
+	Used     int  `json:"used"`
+	Limit    int  `json:"limit"`
+	Degraded bool `json:"degraded"`
 }
 
 // VoiceAppAIQuotaGetRes App 额度响应（voiceAi + clinicAi）。

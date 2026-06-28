@@ -160,10 +160,14 @@ func CheckVoiceAIQuotaStore(ctx context.Context, wxID int64, feature contracts.A
 	if err != nil {
 		return contracts.AIQuotaSnapshot{}, err
 	}
+	allowed := used < limit
+	// clinic_ai 用尽时降速 fallback；voice_ai 仍硬阻断 40302，不设 Degraded。
+	degraded := !allowed && feature == contracts.AIQuotaClinicAI
 	return contracts.AIQuotaSnapshot{
-		Used:    used,
-		Limit:   limit,
-		Allowed: used < limit,
+		Used:     used,
+		Limit:    limit,
+		Allowed:  allowed,
+		Degraded: degraded,
 	}, nil
 }
 

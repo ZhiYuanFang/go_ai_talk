@@ -30,8 +30,16 @@ func (c *VoiceAppAIQuotaCtrl) Get(ctx context.Context, req *v1.VoiceAppAIQuotaGe
 		return nil, mapAIQuotaErr(err)
 	}
 	return &v1.VoiceAppAIQuotaGetRes{
-		VoiceAi:  v1.VoiceAppAIQuotaFeatureStatus{Used: status.VoiceAi.Used, Limit: status.VoiceAi.Limit},
-		ClinicAi: v1.VoiceAppAIQuotaFeatureStatus{Used: status.ClinicAi.Used, Limit: status.ClinicAi.Limit},
+		VoiceAi: v1.VoiceAppAIQuotaFeatureStatus{
+			Used:     status.VoiceAi.Used,
+			Limit:    status.VoiceAi.Limit,
+			Degraded: status.VoiceAi.Degraded,
+		},
+		ClinicAi: v1.VoiceAppAIQuotaFeatureStatus{
+			Used:     status.ClinicAi.Used,
+			Limit:    status.ClinicAi.Limit,
+			Degraded: status.ClinicAi.Degraded,
+		},
 	}, nil
 }
 
