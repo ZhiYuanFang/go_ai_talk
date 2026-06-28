@@ -84,10 +84,28 @@ func (c *RedisCache) Get(ctx context.Context, key string) (string, bool, error) 
 }
 
 func (c *RedisCache) MGet(ctx context.Context, keys []string) (map[string]string, error) {
-	if len(keys) == 0 {
+	normalized, err := normalizeMGetKeys(keys)
+	if err != nil {
+		return nil, err
+	}
+	if len(normalized) == 0 {
 		return map[string]string{}, nil
 	}
-	args := make([]interface{}, 0, len(keys))
+	if !mgetKeysSpanMultipleSlots(normalized) {
+		return c.mgetOnce(ctx, normalized)
+	}
+	// 跨 slot：单机可一次 MGET；Cluster 会 CROSSSLOT，再按 slot 分组。
+	out, err := c.mgetOnce(ctx, normalized)
+	if err == nil {
+		return out, nil
+	}
+	if !isCrossSlotErr(err) {
+		return nil, err
+	}
+	return c.mgetByClusterSlot(ctx, normalized)
+}
+
+func normalizeMGetKeys(keys []string) ([]string, error) {
 	normalized := make([]string, 0, len(keys))
 	for _, key := range keys {
 		key = strings.TrimSpace(key)
@@ -95,25 +113,79 @@ func (c *RedisCache) MGet(ctx context.Context, keys []string) (map[string]string
 			return nil, ErrInvalidKey
 		}
 		normalized = append(normalized, key)
+	}
+	return normalized, nil
+}
+
+func isCrossSlotErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(strings.ToUpper(err.Error()), "CROSSSLOT")
+}
+
+// mgetKeysSpanMultipleSlots 客户端预判 MGET 是否跨 Cluster slot（含 hash tag 规则）。
+func mgetKeysSpanMultipleSlots(keys []string) bool {
+	if len(keys) <= 1 {
+		return false
+	}
+	slot := redisClusterSlot(keys[0])
+	for _, key := range keys[1:] {
+		if redisClusterSlot(key) != slot {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *RedisCache) mgetOnce(ctx context.Context, keys []string) (map[string]string, error) {
+	args := make([]interface{}, 0, len(keys))
+	for _, key := range keys {
 		args = append(args, key)
 	}
 	ret, err := g.Redis().Do(ctx, "MGET", args...)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrUnavailable, err)
 	}
-	vals := ret.Array()
-	out := make(map[string]string, len(normalized))
+	return parseMGetResult(keys, ret.Array()), nil
+}
+
+func (c *RedisCache) mgetByClusterSlot(ctx context.Context, keys []string) (map[string]string, error) {
+	groups := make(map[int][]string)
+	order := make([]int, 0)
+	for _, key := range keys {
+		slot := redisClusterSlot(key)
+		if _, ok := groups[slot]; !ok {
+			order = append(order, slot)
+		}
+		groups[slot] = append(groups[slot], key)
+	}
+	out := make(map[string]string, len(keys))
+	for _, slot := range order {
+		batch, err := c.mgetOnce(ctx, groups[slot])
+		if err != nil {
+			return nil, err
+		}
+		for k, v := range batch {
+			out[k] = v
+		}
+	}
+	return out, nil
+}
+
+func parseMGetResult(keys []string, vals []interface{}) map[string]string {
+	out := make(map[string]string, len(keys))
 	for idx, raw := range vals {
-		if idx >= len(normalized) || raw == nil {
+		if idx >= len(keys) || raw == nil {
 			continue
 		}
 		v := strings.TrimSpace(g.NewVar(raw).String())
 		if v == "" {
 			continue
 		}
-		out[normalized[idx]] = v
+		out[keys[idx]] = v
 	}
-	return out, nil
+	return out
 }
 
 func (c *RedisCache) SetEX(ctx context.Context, key, value string, ttl time.Duration) error {
