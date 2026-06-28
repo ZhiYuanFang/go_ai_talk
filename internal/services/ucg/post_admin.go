@@ -12,13 +12,21 @@ import (
 )
 
 const (
-	adminMaxPageSize    = 100
-	adminMaxBatchReject = 100
+	adminMaxPageSize     = 100
+	adminMaxBatchReject  = 100
+	adminMaxBatchApprove = 100
 )
 
 // AdminBatchRejectResult 管理端批量驳回结果（部分成功）。
 type AdminBatchRejectResult struct {
 	Rejected []uint64 `json:"rejected"`
+	Skipped  []uint64 `json:"skipped"`
+	Failed   []uint64 `json:"failed"`
+}
+
+// AdminBatchApproveResult 管理端批量通过结果（部分成功）。
+type AdminBatchApproveResult struct {
+	Approved []uint64 `json:"approved"`
 	Skipped  []uint64 `json:"skipped"`
 	Failed   []uint64 `json:"failed"`
 }
@@ -73,6 +81,9 @@ func AdminBatchRejectPosts(ctx context.Context, postIDs []uint64, reason string)
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "单次最多驳回 100 条")
 	}
 	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "驳回须填写 reason")
+	}
 	out := &AdminBatchRejectResult{
 		Rejected: make([]uint64, 0, len(postIDs)),
 		Skipped:  make([]uint64, 0),
@@ -111,6 +122,62 @@ func AdminBatchRejectPosts(ctx context.Context, postIDs []uint64, reason string)
 			continue
 		}
 		out.Rejected = append(out.Rejected, id)
+	}
+	return out, nil
+}
+
+// AdminBatchApprovePosts 批量人工通过；不通知作者。已是 published 的 id 计入 skipped。
+func AdminBatchApprovePosts(ctx context.Context, postIDs []uint64) (*AdminBatchApproveResult, error) {
+	if len(postIDs) == 0 {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "postIds 不能为空")
+	}
+	if len(postIDs) > adminMaxBatchApprove {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "单次最多通过 100 条")
+	}
+	out := &AdminBatchApproveResult{
+		Approved: make([]uint64, 0, len(postIDs)),
+		Skipped:  make([]uint64, 0),
+		Failed:   make([]uint64, 0),
+	}
+	seen := make(map[uint64]struct{}, len(postIDs))
+	for _, id := range postIDs {
+		if id == 0 {
+			continue
+		}
+		if _, dup := seen[id]; dup {
+			continue
+		}
+		seen[id] = struct{}{}
+
+		row, err := dao.UcgPost.Ctx(ctx).Where(dao.UcgPost.Columns().Id, id).One()
+		if err != nil {
+			out.Failed = append(out.Failed, id)
+			continue
+		}
+		if row.IsEmpty() {
+			out.Failed = append(out.Failed, id)
+			continue
+		}
+		var post entity.UcgPost
+		if err = row.Struct(&post); err != nil {
+			out.Failed = append(out.Failed, id)
+			continue
+		}
+		if post.Status == PostStatusPublished {
+			out.Skipped = append(out.Skipped, id)
+			continue
+		}
+		if post.Status != PostStatusPendingAudit &&
+			post.Status != PostStatusApplyFailed &&
+			post.Status != PostStatusModerationFailed {
+			out.Failed = append(out.Failed, id)
+			continue
+		}
+		if err = approvePostByIDAdmin(ctx, post); err != nil {
+			out.Failed = append(out.Failed, id)
+			continue
+		}
+		out.Approved = append(out.Approved, id)
 	}
 	return out, nil
 }

@@ -126,6 +126,22 @@ func (c *UcgAdminCtrl) PostsReject(ctx context.Context, req *v1.UcgAdminPostsRej
 	}, nil
 }
 
+// PostsApprove POST /ucg/admin/api/posts/approve
+func (c *UcgAdminCtrl) PostsApprove(ctx context.Context, req *v1.UcgAdminPostsApproveReq) (res *v1.UcgAdminPostsApproveRes, err error) {
+	if err = c.requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	result, err := ucgsvc.AdminBatchApprovePosts(ctx, req.PostIds)
+	if err != nil {
+		return nil, err
+	}
+	return &v1.UcgAdminPostsApproveRes{
+		Approved: result.Approved,
+		Skipped:  result.Skipped,
+		Failed:   result.Failed,
+	}, nil
+}
+
 // AIQuotaDefaultGet GET /ucg/admin/api/ai-quota/default
 func (c *UcgAdminCtrl) AIQuotaDefaultGet(ctx context.Context, req *v1.UcgAdminAIQuotaDefaultGetReq) (res *v1.UcgAdminAIQuotaDefaultGetRes, err error) {
 	_ = req

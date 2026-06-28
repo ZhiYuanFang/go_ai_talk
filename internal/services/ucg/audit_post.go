@@ -7,6 +7,8 @@ import (
 	"hello/internal/dao"
 	"hello/internal/model/entity"
 
+	"github.com/gogf/gf/v2/errors/gcode"
+	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/glog"
 )
@@ -90,11 +92,8 @@ func rejectPostCAS(ctx context.Context, postID uint64, auditVersion int, reason 
 	return nil
 }
 
-// rejectPostByIDAdmin 管理端驳回：允许 pending 或 published，仍带 audit_version CAS（不经 MQ Green）。
+// rejectPostByIDAdmin 管理端驳回：允许 draft/pending/published/apply_failed/moderation_failed，仍带 audit_version CAS。
 func rejectPostByIDAdmin(ctx context.Context, post entity.UcgPost, reason string) error {
-	if reason == "" {
-		reason = rejectReasonDefault
-	}
 	ver := post.AuditVersion
 	if ver <= 0 {
 		ver = 1
@@ -102,7 +101,13 @@ func rejectPostByIDAdmin(ctx context.Context, post entity.UcgPost, reason string
 	now := time.Now().Unix()
 	wasPublished := post.Status == PostStatusPublished
 	affected, err := CasAuditTransitionInStatuses(ctx, dao.UcgPost.Table(), post.Id,
-		[]int{PostStatusPendingAudit, PostStatusPublished}, ver, PostStatusRejected, g.Map{
+		[]int{
+			PostStatusDraft,
+			PostStatusPendingAudit,
+			PostStatusPublished,
+			PostStatusApplyFailed,
+			PostStatusModerationFailed,
+		}, ver, PostStatusRejected, g.Map{
 			dao.UcgPost.Columns().RejectReason: reason,
 			dao.UcgPost.Columns().UpdatedAt:    now,
 		})
@@ -110,11 +115,77 @@ func rejectPostByIDAdmin(ctx context.Context, post entity.UcgPost, reason string
 		return err
 	}
 	if affected == 0 {
-		glog.Infof(ctx, "[ucg-audit-mq] admin reject cas skip id=%d version=%d", post.Id, ver)
+		glog.Infof(ctx, "[ucg-admin] post reject cas skip id=%d version=%d", post.Id, ver)
 		return nil
 	}
 	if wasPublished {
 		_ = RemoveRecommendScore(ctx, post.Id)
 	}
 	return nil
+}
+
+// approvePostByIDAdmin 管理端人工通过：pending/apply_failed/moderation_failed → published，不调 Green。
+func approvePostByIDAdmin(ctx context.Context, post entity.UcgPost) error {
+	ver := post.AuditVersion
+	if ver <= 0 {
+		ver = 1
+	}
+	now := time.Now().Unix()
+	cols := dao.UcgPost.Columns()
+
+	var fromStatus int
+	var extra g.Map
+	switch post.Status {
+	case PostStatusPendingAudit:
+		fromStatus = PostStatusPendingAudit
+		extra = g.Map{
+			cols.PublishedAt:  now,
+			cols.UpdatedAt:    now,
+			cols.RejectReason: "",
+		}
+		// 人工放行时若尚无机审 verdict，补写 pass 便于审计一致。
+		if post.ModerationVerdict == ModerationVerdictNone {
+			extra[cols.ModerationVerdict] = ModerationVerdictPass
+			extra[cols.ModerationAt] = now
+		}
+	case PostStatusApplyFailed:
+		fromStatus = PostStatusApplyFailed
+		extra = g.Map{
+			cols.PublishedAt:   now,
+			cols.UpdatedAt:     now,
+			cols.RejectReason:  "",
+			cols.ApplyFailedAt: 0,
+		}
+	case PostStatusModerationFailed:
+		fromStatus = PostStatusModerationFailed
+		extra = g.Map{
+			cols.PublishedAt:       now,
+			cols.UpdatedAt:         now,
+			cols.RejectReason:      "",
+			cols.ModerationVerdict: ModerationVerdictPass,
+			cols.ModerationAt:      now,
+		}
+	default:
+		glog.Infof(ctx, "[ucg-admin] post approve unsupported status id=%d status=%d", post.Id, post.Status)
+		return gerror.NewCodef(gcode.CodeInvalidParameter, "status=%d 不可人工通过", post.Status)
+	}
+
+	affected, err := CasAuditTransition(ctx, CasAuditInput{
+		Table:       dao.UcgPost.Table(),
+		ID:          post.Id,
+		Kind:        AuditCasKindStatus,
+		FromStatus:  fromStatus,
+		ToStatus:    PostStatusPublished,
+		FromVersion: ver,
+		Extra:       extra,
+	})
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		glog.Infof(ctx, "[ucg-admin] post approve cas skip id=%d version=%d status=%d", post.Id, ver, post.Status)
+		return nil
+	}
+	glog.Infof(ctx, "[ucg-admin] post approve ok id=%d version=%d", post.Id, ver)
+	return syncPublishedPostRedis(ctx, post.Id)
 }

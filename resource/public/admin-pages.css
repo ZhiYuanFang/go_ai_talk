@@ -354,6 +354,11 @@ tr.row-selected td {
 	background: rgba(255, 140, 66, 0.12);
 }
 
+/* UCG 动态审查：工具栏纵向居中 + 九宫格缩略图 */
+#panelPosts .posts-toolbar {
+	align-items: center;
+}
+
 /* UCG 动态审查：九宫格缩略图 + 行间分割线 + 预览 modal */
 /* border-collapse 表格须在 td 上画线；全局 td 白边在玻璃背景上几乎不可见 */
 #panelPosts #postsTbody td {

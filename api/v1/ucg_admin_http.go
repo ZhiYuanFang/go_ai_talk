@@ -44,7 +44,7 @@ type UcgAdminPostsListReq struct {
 	g.Meta   `path:"/ucg/admin/api/posts/list" method:"get" tags:"ucg-admin" summary:"UCG 动态分页列表"`
 	Page     int  `json:"page" p:"page" dc:"页码，从 1 开始"`
 	PageSize int  `json:"pageSize" p:"pageSize" dc:"每页条数，默认 20，最大 100"`
-	Status   *int `json:"status" p:"status" dc:"可选：0 draft 1 pending 2 published 3 rejected"`
+	Status   *int `json:"status" p:"status" dc:"可选：0 draft 1 pending 2 published 3 rejected 4 apply_failed 5 moderation_failed"`
 }
 
 // UcgAdminPostAuthor 管理端列表作者摘要。
@@ -86,12 +86,25 @@ type UcgAdminPostsListRes struct {
 type UcgAdminPostsRejectReq struct {
 	g.Meta  `path:"/ucg/admin/api/posts/reject" method:"post" tags:"ucg-admin" summary:"UCG 动态批量驳回"`
 	PostIds []uint64 `json:"postIds" v:"required"`
-	Reason  string   `json:"reason" dc:"可选，空则用默认文案"`
+	Reason  string   `json:"reason" v:"required" dc:"必填，面向作者展示的驳回原因"`
 }
 
 // UcgAdminPostsRejectRes 批量驳回结果。
 type UcgAdminPostsRejectRes struct {
 	Rejected []uint64 `json:"rejected"`
+	Skipped  []uint64 `json:"skipped"`
+	Failed   []uint64 `json:"failed"`
+}
+
+// UcgAdminPostsApproveReq 管理端批量通过。
+type UcgAdminPostsApproveReq struct {
+	g.Meta  `path:"/ucg/admin/api/posts/approve" method:"post" tags:"ucg-admin" summary:"UCG 动态批量通过"`
+	PostIds []uint64 `json:"postIds" v:"required"`
+}
+
+// UcgAdminPostsApproveRes 批量通过结果。
+type UcgAdminPostsApproveRes struct {
+	Approved []uint64 `json:"approved"`
 	Skipped  []uint64 `json:"skipped"`
 	Failed   []uint64 `json:"failed"`
 }

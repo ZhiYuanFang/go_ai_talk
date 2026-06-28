@@ -61,7 +61,7 @@
 		</div>
 
 		<div id="panelPosts" class="hidden">
-			<div class="row">
+			<div class="row posts-toolbar">
 				<label style="margin:0;">状态</label>
 				<select id="postStatusFilter">
 					<option value="">全部</option>
@@ -69,8 +69,11 @@
 					<option value="1">待审</option>
 					<option value="2">已发布</option>
 					<option value="3">已驳回</option>
+					<option value="4">发布失败</option>
+					<option value="5">机审失败</option>
 				</select>
 				<button type="button" class="secondary" id="postsRefreshBtn">刷新</button>
+				<button type="button" class="secondary" id="postsApproveBtn" disabled>批量通过</button>
 				<button type="button" class="danger" id="postsRejectBtn" disabled>批量驳回</button>
 				<span id="postsSelectedHint" class="msg" style="color:#64748b;margin:0;"></span>
 			</div>
@@ -84,6 +87,7 @@
 						<th>作者</th>
 						<th>内容</th>
 						<th>状态</th>
+						<th>驳回原因</th>
 						<th>更新时间</th>
 						<th>媒体</th>
 					</tr>
@@ -172,7 +176,9 @@ function postStatusLabel(status){
 		case 1: return {text:'待审', cls:'status-pending'};
 		case 2: return {text:'已发布', cls:'status-published'};
 		case 3: return {text:'已驳回', cls:'status-rejected'};
-		default: return {text:'未过审', cls:''};
+		case 4: return {text:'发布失败', cls:'status-pending'};
+		case 5: return {text:'机审失败', cls:'status-pending'};
+		default: return {text:'未知('+status+')', cls:''};
 	}
 }
 
@@ -346,6 +352,7 @@ function switchTab(which){
 function updatePostsSelectionUI(){
 	const n = selectedPostIds.size;
 	document.getElementById('postsRejectBtn').disabled = n === 0;
+	document.getElementById('postsApproveBtn').disabled = n === 0;
 	document.getElementById('postsSelectedHint').textContent = n ? ('已选 ' + n + ' 条') : '';
 	const rejectable = postsRows.filter(r => Number(r.status) !== 3);
 	const allSelected = rejectable.length > 0 && rejectable.every(r => selectedPostIds.has(r.id));
@@ -368,6 +375,7 @@ function renderPostsTable(){
 			'<td>'+escapeHtml(author)+'</td>' +
 			'<td class="content-cell">'+escapeHtml(truncate(row.content, 120))+'</td>' +
 			'<td class="'+st.cls+'">'+st.text+'</td>' +
+			'<td class="content-cell">'+escapeHtml(truncate(row.rejectReason, 80))+'</td>' +
 			'<td>'+formatUnix(row.updatedAt)+'</td>' +
 			'<td class="media-cell"></td>';
 		tr.querySelector('.media-cell').appendChild(renderMediaCell(row.media || []));
@@ -561,16 +569,44 @@ document.getElementById('postsSelectPage').addEventListener('change', (ev) => {
 	renderPostsTable();
 });
 
+document.getElementById('postsApproveBtn').addEventListener('click', async () => {
+	const ids = Array.from(selectedPostIds);
+	if(!ids.length) return;
+	if(!confirm('确认批量通过 '+ids.length+' 条动态？')) return;
+	const btn = document.getElementById('postsApproveBtn');
+	btn.disabled = true;
+	try {
+		const data = await api('/ucg/admin/api/posts/approve', {
+			method:'POST',
+			body: JSON.stringify({postIds: ids})
+		});
+		const msg = '通过 '+((data.approved||[]).length)+' 条，跳过 '+((data.skipped||[]).length)+' 条，失败 '+((data.failed||[]).length)+' 条';
+		showMsg(document.getElementById('postsMsg'), msg, true);
+		selectedPostIds.clear();
+		await loadPostsList();
+	} catch(e){
+		showMsg(document.getElementById('postsMsg'), e.message || '通过失败', false);
+	} finally {
+		updatePostsSelectionUI();
+	}
+});
+
 document.getElementById('postsRejectBtn').addEventListener('click', async () => {
 	const ids = Array.from(selectedPostIds);
 	if(!ids.length) return;
+	const reason = prompt('请输入驳回原因：');
+	if(reason === null) return;
+	if(!String(reason).trim()){
+		showMsg(document.getElementById('postsMsg'), '须填写驳回原因', false);
+		return;
+	}
 	if(!confirm('确认批量驳回 '+ids.length+' 条动态？')) return;
 	const btn = document.getElementById('postsRejectBtn');
 	btn.disabled = true;
 	try {
 		const data = await api('/ucg/admin/api/posts/reject', {
 			method:'POST',
-			body: JSON.stringify({postIds: ids})
+			body: JSON.stringify({postIds: ids, reason: String(reason).trim()})
 		});
 		const msg = '驳回 '+((data.rejected||[]).length)+' 条，跳过 '+((data.skipped||[]).length)+' 条，失败 '+((data.failed||[]).length)+' 条';
 		showMsg(document.getElementById('postsMsg'), msg, true);
