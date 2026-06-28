@@ -19,7 +19,7 @@ services:
     mem_limit: 128m
     cpus: "0.15"
   ucg-service:
-    mem_limit: 128m
+    mem_limit: 512m
     cpus: "0.15"
   sim-user-service:
     mem_limit: 128m
