@@ -33,7 +33,7 @@ window.ADMIN_MODULES = [
 	{
 		id: 'app-status-admin',
 		title: 'App 维护通知',
-		externalUrl: 'https://status.pangbao.cuplay.top/admin',
+		externalUrl: 'https://test.notify.cuplay.top/admin',
 		openInNewTab: true,
 		showInNav: true
 	},
