@@ -316,8 +316,12 @@ func appPost(ctx context.Context, token, path string, body interface{}, out inte
 	return nil
 }
 
-func randomSimSession(ctx context.Context, password string) (loginSession, string, error) {
+func randomSimSession(ctx context.Context, fallbackPassword string) (loginSession, string, error) {
 	item, err := pickRandomSimWx(ctx)
+	if err != nil {
+		return loginSession{}, "", err
+	}
+	password, err := ResolveSimLoginPassword(ctx, item.WxId, fallbackPassword)
 	if err != nil {
 		return loginSession{}, "", err
 	}

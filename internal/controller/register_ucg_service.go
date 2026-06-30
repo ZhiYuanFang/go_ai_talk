@@ -19,6 +19,7 @@ func RegisterUcgServiceHTTP(s *ghttp.Server) {
 		group.POST("/ucg/internal/api/chat/send", ucgInternalChatSend)       // 内部 API，在 controller/ucg_internal.go 注册。
 		group.POST("/ucg/internal/api/posts/sample", ucgInternalPostsSample) // 内部 API，在 controller/ucg_internal.go 注册。
 		group.POST("/ucg/internal/api/chat/sim-unread-sample", ucgInternalChatSimUnreadSample)
+		group.POST("/ucg/internal/api/profiles/batch", ucgInternalProfilesBatch)
 	})
 	registerUcgChatWS(s)
 }

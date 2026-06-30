@@ -26,6 +26,9 @@ const simWxIdsListMaxTotal = 10000
 // ErrSimWxIdsOverLimit 模拟用户总数超过 internal ids 接口上限。
 var ErrSimWxIdsOverLimit = errors.New("模拟用户数量超过上限")
 
+// ErrSimWxDeactivateNotSimulated 注销目标非模拟用户。
+var ErrSimWxDeactivateNotSimulated = errors.New("非模拟用户，禁止注销")
+
 // SimUsernameRegister 内部注册模拟用户：username 注册 + is_simulated=1。
 func SimUsernameRegister(ctx context.Context, userName, password string) (int64, error) {
 	wxID, err := WxUsernameRegister(ctx, userName, password)
@@ -200,4 +203,26 @@ func simWxRandomUnit() (float64, error) {
 		return 0, err
 	}
 	return float64(binary.BigEndian.Uint64(b[:])>>11) / float64(1<<53), nil
+}
+
+// SimWxDeactivateByID 注销模拟用户：须 is_simulated=1，删除 wx 行并清理 usage sim SET。
+func SimWxDeactivateByID(ctx context.Context, wxID int64) error {
+	if wxID <= 0 {
+		return ErrWxDeactivateWxIDInvalid
+	}
+	row, err := wxRowByWxID(ctx, wxID)
+	if err != nil {
+		return err
+	}
+	if row == nil || row.Id == 0 {
+		return ErrWxDeactivateNotFound
+	}
+	if row.IsSimulated != 1 {
+		return ErrSimWxDeactivateNotSimulated
+	}
+	if err = WxDeactivateByID(ctx, wxID); err != nil {
+		return err
+	}
+	_ = cachekit.Default().SetRemove(ctx, cachekit.GatewayUsageSimWxSetKey(), cachekit.GatewayUsageSimWxMember(wxID))
+	return nil
 }

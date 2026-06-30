@@ -23,6 +23,10 @@
 		.btn-run:disabled { opacity: 0.5; cursor: not-allowed; }
 		.task-run-msg { font-size: 12px; color: var(--muted); margin: 0 0 8px; min-height: 1.2em; }
 		.ai-models-cell { font-size: 12px; line-height: 1.45; min-width: 160px; }
+		.sim-user-avatar { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; background: rgba(0,0,0,.06); }
+		.sim-user-pager { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0 0; font-size: 13px; }
+		.sim-user-pager button { font-size: 12px; padding: 4px 10px; }
+		.pwd-legacy { font-size: 11px; color: var(--muted); margin-left: 4px; }
 	</style>
 </head>
 <body>
@@ -74,6 +78,32 @@
 			<dt>任务开关</dt><dd id="rtTaskSwitches">—</dd>
 			<dt>任务周期</dt><dd id="rtIntervals">—</dd>
 		</dl>
+		<hr class="divider" />
+		<h4 style="margin:0 0 8px;font-size:15px;">模拟用户</h4>
+		<p class="runtime-hint" style="margin:0 0 8px;">展示 UCG 昵称/头像与登录凭据；注销仅删除 wx 账号（与 App 一致），UCG 内容可能残留。</p>
+		<div class="table-wrap">
+			<table>
+				<thead>
+					<tr>
+						<th>头像</th>
+						<th>昵称</th>
+						<th>账号</th>
+						<th>wxId</th>
+						<th>注册时间</th>
+						<th>密码</th>
+						<th>操作</th>
+					</tr>
+				</thead>
+				<tbody id="simUsersTbody"></tbody>
+			</table>
+		</div>
+		<div class="sim-user-pager">
+			<button id="simUsersPrevBtn" type="button" class="secondary">上一页</button>
+			<span id="simUsersPageInfo">—</span>
+			<button id="simUsersNextBtn" type="button" class="secondary">下一页</button>
+			<button id="simUsersRefreshBtn" type="button" class="secondary">刷新列表</button>
+		</div>
+		<p id="simUsersMsg" class="msg" style="margin:8px 0 0;"></p>
 		<hr class="divider" />
 		<h4>Prompt 模板</h4>
 		<div class="field">
@@ -238,6 +268,9 @@
 	const runningTasks = new Set();
 	let statusPollTimer = null;
 	let pendingRunAt = {};
+	let simUsersPage = 1;
+	let simUsersPageSize = 20;
+	let simUsersTotal = 0;
 	const sel = document.getElementById('promptType');
 	types.forEach(t => { const o = document.createElement('option'); o.value = t; o.textContent = t; sel.appendChild(o); });
 	function api(path, options={}) { return AdminCommon.adminFetch(path, options); }
@@ -251,6 +284,95 @@
 		if (!ts) return '—';
 		const d = new Date(ts * 1000);
 		return isNaN(d.getTime()) ? '—' : d.toLocaleString('zh-CN');
+	}
+	function avatarCell(row) {
+		const url = (row.avatarThumbnailUrl || row.avatarUrl || '').trim();
+		if (!url) return '<span class="sim-user-avatar" style="display:inline-block;"></span>';
+		return '<img class="sim-user-avatar" src="'+escapeHtml(url)+'" alt="" loading="lazy" />';
+	}
+	function passwordCell(row) {
+		const pwd = escapeHtml(row.passwordPlain || '—');
+		if (row.passwordPlainLegacy) {
+			return '<code>'+pwd+'</code><span class="pwd-legacy">默认密码（历史）</span>';
+		}
+		return '<code>'+pwd+'</code>';
+	}
+	function renderSimUsers(data) {
+		const tbody = document.getElementById('simUsersTbody');
+		tbody.innerHTML = '';
+		const list = (data && data.list) || [];
+		simUsersTotal = (data && data.total) || 0;
+		simUsersPage = (data && data.page) || simUsersPage;
+		simUsersPageSize = (data && data.pageSize) || simUsersPageSize;
+		const maxPage = Math.max(1, Math.ceil(simUsersTotal / simUsersPageSize) || 1);
+		document.getElementById('simUsersPageInfo').textContent =
+			'第 '+simUsersPage+' / '+maxPage+' 页，共 '+simUsersTotal+' 人';
+		document.getElementById('simUsersPrevBtn').disabled = simUsersPage <= 1;
+		document.getElementById('simUsersNextBtn').disabled = simUsersPage >= maxPage;
+		if (!list.length) {
+			const tr = document.createElement('tr');
+			const td = document.createElement('td');
+			td.colSpan = 7;
+			td.textContent = '暂无模拟用户';
+			tr.appendChild(td);
+			tbody.appendChild(tr);
+			return;
+		}
+		list.forEach(row => {
+			const tr = document.createElement('tr');
+			const tdAv = document.createElement('td');
+			tdAv.innerHTML = avatarCell(row);
+			tr.appendChild(tdAv);
+			const tdNick = document.createElement('td');
+			tdNick.textContent = row.nickname || '—';
+			tr.appendChild(tdNick);
+			const tdAcc = document.createElement('td');
+			tdAcc.innerHTML = '<code>'+escapeHtml(row.account || '—')+'</code>';
+			tr.appendChild(tdAcc);
+			const tdWx = document.createElement('td');
+			tdWx.textContent = String(row.wxId || '—');
+			tr.appendChild(tdWx);
+			const tdTime = document.createElement('td');
+			tdTime.textContent = fmtTime(row.createdAt);
+			tr.appendChild(tdTime);
+			const tdPwd = document.createElement('td');
+			tdPwd.innerHTML = passwordCell(row);
+			tr.appendChild(tdPwd);
+			const tdAct = document.createElement('td');
+			const btn = document.createElement('button');
+			btn.type = 'button';
+			btn.className = 'btn-run secondary';
+			btn.textContent = '注销';
+			btn.onclick = () => deactivateSimUser(row, btn);
+			tdAct.appendChild(btn);
+			tr.appendChild(tdAct);
+			tbody.appendChild(tr);
+		});
+	}
+	async function loadSimUsers() {
+		const msg = document.getElementById('simUsersMsg');
+		msg.textContent = '';
+		try {
+			const d = await api('/sim/admin/api/users?page='+simUsersPage+'&pageSize='+simUsersPageSize);
+			renderSimUsers(d);
+		} catch (e) {
+			msg.textContent = '列表加载失败：' + e.message;
+		}
+	}
+	async function deactivateSimUser(row, btn) {
+		const msg = document.getElementById('simUsersMsg');
+		const label = (row.nickname || row.account || row.wxId);
+		if (!confirm('确认注销模拟用户「'+label+'」(wxId='+row.wxId+')？\n仅删除 wx 账号，UCG 内容不会自动清理。')) return;
+		btn.disabled = true;
+		msg.textContent = '';
+		try {
+			await api('/sim/admin/api/users/'+encodeURIComponent(row.wxId)+'/deactivate', { method: 'POST', body: '{}' });
+			msg.textContent = '已注销 wxId='+row.wxId;
+			await Promise.all([loadSimUsers(), loadRuntime()]);
+		} catch (e) {
+			msg.textContent = '注销失败：' + e.message;
+			btn.disabled = false;
+		}
 	}
 	function taskSwitchLabel(key, on) {
 		const names = {
@@ -429,7 +551,7 @@
 		document.getElementById('mainCard').classList.remove('hidden');
 		const d = await api('/sim/admin/api/config');
 		fillConfigForm(d);
-		await Promise.all([loadPrompt(), loadRuntime(), loadStatus()]);
+		await Promise.all([loadPrompt(), loadRuntime(), loadStatus(), loadSimUsers()]);
 	}
 	async function loadPrompt(){
 		const d = await api('/sim/admin/api/prompts/'+encodeURIComponent(sel.value));
@@ -465,6 +587,14 @@
 			await Promise.all([loadRuntime(), loadStatus()]);
 		} catch(e) { alert(e.message); }
 	};
+	document.getElementById('simUsersPrevBtn').onclick = () => {
+		if (simUsersPage > 1) { simUsersPage--; loadSimUsers().catch(e => alert(e.message)); }
+	};
+	document.getElementById('simUsersNextBtn').onclick = () => {
+		const maxPage = Math.max(1, Math.ceil(simUsersTotal / simUsersPageSize) || 1);
+		if (simUsersPage < maxPage) { simUsersPage++; loadSimUsers().catch(e => alert(e.message)); }
+	};
+	document.getElementById('simUsersRefreshBtn').onclick = () => loadSimUsers().catch(e => alert(e.message));
 	if(AdminCommon.requireAdmin()) enterMain().catch(e => alert(e.message));
 })();
 </script>

@@ -48,20 +48,29 @@ func RunRegisterTask(ctx context.Context, password string) {
 		RecordTaskRun(ctx, "register", true, "已达上限")
 		return
 	}
-	account, err := NextAccountName(ctx)
-	if err != nil {
+	_ = password
+	var account, regPassword string
+	var wxID int64
+	for attempt := 0; attempt < 8; attempt++ {
+		account, regPassword, err = GenerateRandomSimCredentials()
+		if err != nil {
+			RecordTaskRun(ctx, "register", false, err.Error())
+			return
+		}
+		wxID, err = simRegister(ctx, account, regPassword)
+		if err == nil {
+			break
+		}
+		if attempt == 7 {
+			RecordTaskRun(ctx, "register", false, err.Error())
+			return
+		}
+	}
+	if err = InsertWxCredential(ctx, wxID, account, regPassword); err != nil {
 		RecordTaskRun(ctx, "register", false, err.Error())
 		return
 	}
-	if password == "" {
-		password = "123456"
-	}
-	wxID, err := simRegister(ctx, account, password)
-	if err != nil {
-		RecordTaskRun(ctx, "register", false, err.Error())
-		return
-	}
-	sess, err := usernameLogin(ctx, account, password)
+	sess, err := usernameLogin(ctx, account, regPassword)
 	if err != nil {
 		RecordTaskRun(ctx, "register", false, err.Error())
 		return

@@ -270,7 +270,7 @@ curl -s http://127.0.0.1:9804/api.json   # ucg-service
 curl -s http://127.0.0.1:9805/api.json   # sim-user-service
 ```
 
-**sim-user-service（可选）**：默认 `SIM_USER_SERVICE_ENABLED=false` 仅健康检查；开启后需配置 `SIM_DB_LINK`、`GATEWAY_APP_URL`、`GLM_API_KEY`、`SIM_ADMIN_PASSWORD`。管理页：**`/device/admin/sim-admin.html`**（任务开关/周期，保存后 scheduler 热重启）、**`/device/admin/ai-model-admin.html`**（七条 LLM lane 统一配置）。模拟用户 API 不计入 usage 统计（`wx.is_simulated=1`）。
+**sim-user-service（可选）**：默认 `SIM_USER_SERVICE_ENABLED=false` 仅健康检查；开启后需配置 `SIM_DB_LINK`、`GATEWAY_APP_URL`、`GLM_API_KEY`、`SIM_ADMIN_PASSWORD`。管理页：**`/device/admin/sim-admin.html`**（任务开关/周期、**模拟用户列表与注销**、保存后 scheduler 热重启）、**`/device/admin/ai-model-admin.html`**（七条 LLM lane 统一配置）。Admin API 含 `GET /sim/admin/api/users`、`POST /sim/admin/api/users/{wxId}/deactivate`；模拟用户 API 不计入 usage 统计（`wx.is_simulated=1`）。
 
 首次部署或升级后 `EnsureSchema` 会创建 `sim_config.runtime_json`、`sim_llm_lane_config` 并写入代码默认种子。**任务周期/开关/LLM lane 优先读 DB**，经 Admin 保存即可在线生效（调度类变更会 Stop→Start scheduler，Admin 触发热重启跳过长错峰）。仅 **`SIM_USER_SERVICE_ENABLED`** 仍为 env 硬闸，修改后须 **`--force-recreate sim-user-service`**。仅改 `maxSimUsers` 可不触发 scheduler 全量重启。
 

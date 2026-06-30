@@ -52,3 +52,11 @@ type DeviceSimWxIdsRes struct {
 	Ids   []int64 `json:"ids"`
 	Total int     `json:"total"`
 }
+
+// DeviceSimWxDeactivateReq internal 注销模拟用户（仅 is_simulated=1）。
+type DeviceSimWxDeactivateReq struct {
+	g.Meta `path:"/device/internal/api/sim/wx/{wxId}/deactivate" method:"post" tags:"device" summary:"内部-注销模拟用户 wx"`
+	WxId   int64 `json:"wxId" in:"path" p:"wxId" v:"required|min:1"`
+}
+
+type DeviceSimWxDeactivateRes struct{}

@@ -60,6 +60,12 @@ func EnsureSchema(ctx context.Context) error {
 			fail_count BIGINT NOT NULL DEFAULT 0,
 			last_error VARCHAR(512) NOT NULL DEFAULT ''
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+		`CREATE TABLE IF NOT EXISTS sim_wx_credential (
+			wx_id BIGINT PRIMARY KEY,
+			account VARCHAR(64) NOT NULL,
+			password_plain VARCHAR(64) NOT NULL,
+			created_at BIGINT NOT NULL
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 	}
 	for _, sql := range stmts {
 		if _, err := g.DB().Exec(ctx, sql); err != nil {

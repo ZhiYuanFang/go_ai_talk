@@ -284,3 +284,50 @@ func (c *SimAdminCtrl) TaskRunPost(ctx context.Context, req *v1.SimAdminTaskRunP
 		Message:  "已提交后台执行，请稍后刷新状态查看结果",
 	}, nil
 }
+
+// UsersGet GET /sim/admin/api/users
+func (c *SimAdminCtrl) UsersGet(ctx context.Context, req *v1.SimAdminUsersGetReq) (res *v1.SimAdminUsersGetRes, err error) {
+	_ = c
+	if err = verifySimAdmin(ghttp.RequestFromCtx(ctx)); err != nil {
+		return nil, err
+	}
+	result, err := simuser.ListSimUsersForAdmin(ctx, req.Page, req.PageSize)
+	if err != nil {
+		return nil, err
+	}
+	out := &v1.SimAdminUsersGetRes{
+		Total: result.Total, Page: result.Page, PageSize: result.PageSize,
+		List: make([]v1.SimAdminUserListItem, 0, len(result.List)),
+	}
+	for _, row := range result.List {
+		out.List = append(out.List, v1.SimAdminUserListItem{
+			WxId: row.WxId, Account: row.Account, Nickname: row.Nickname,
+			AvatarUrl: row.AvatarUrl, AvatarThumbnailUrl: row.AvatarThumbnailUrl,
+			CreatedAt: row.CreatedAt, PasswordPlain: row.PasswordPlain,
+			PasswordPlainLegacy: row.PasswordPlainLegacy,
+		})
+	}
+	return out, nil
+}
+
+// UserDeactivatePost POST /sim/admin/api/users/{wxId}/deactivate
+func (c *SimAdminCtrl) UserDeactivatePost(ctx context.Context, req *v1.SimAdminUserDeactivatePostReq) (res *v1.SimAdminUserDeactivatePostRes, err error) {
+	_ = c
+	if err = verifySimAdmin(ghttp.RequestFromCtx(ctx)); err != nil {
+		return nil, err
+	}
+	if err = simuser.DeactivateSimUserForAdmin(ctx, req.WxId); err != nil {
+		msg := err.Error()
+		if strings.Contains(msg, "不存在") || strings.Contains(msg, "已注销") {
+			return nil, gerror.NewCode(gcode.CodeNotFound, msg)
+		}
+		if strings.Contains(msg, "非模拟用户") {
+			return nil, gerror.NewCode(gcode.CodeBusinessValidationFailed, msg)
+		}
+		if strings.Contains(msg, "无效") {
+			return nil, gerror.NewCode(gcode.CodeInvalidParameter, msg)
+		}
+		return nil, err
+	}
+	return &v1.SimAdminUserDeactivatePostRes{}, nil
+}

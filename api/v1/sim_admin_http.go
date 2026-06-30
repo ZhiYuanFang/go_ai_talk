@@ -174,3 +174,35 @@ type SimAdminTaskRunPostRes struct {
 	TaskName string `json:"taskName"`
 	Message  string `json:"message"`
 }
+
+// SimAdminUserListItem 模拟用户列表项。
+type SimAdminUserListItem struct {
+	WxId                int64  `json:"wxId"`
+	Account             string `json:"account"`
+	Nickname            string `json:"nickname"`
+	AvatarUrl           string `json:"avatarUrl,omitempty"`
+	AvatarThumbnailUrl  string `json:"avatarThumbnailUrl,omitempty"`
+	CreatedAt           int64  `json:"createdAt"`
+	PasswordPlain       string `json:"passwordPlain"`
+	PasswordPlainLegacy bool   `json:"passwordPlainLegacy,omitempty"`
+}
+
+type SimAdminUsersGetReq struct {
+	g.Meta   `path:"/sim/admin/api/users" method:"get" tags:"sim-admin" summary:"分页列出模拟用户"`
+	Page     int `json:"page" in:"query" d:"1"`
+	PageSize int `json:"pageSize" in:"query" d:"20"`
+}
+
+type SimAdminUsersGetRes struct {
+	List     []SimAdminUserListItem `json:"list"`
+	Total    int                    `json:"total"`
+	Page     int                    `json:"page"`
+	PageSize int                    `json:"pageSize"`
+}
+
+type SimAdminUserDeactivatePostReq struct {
+	g.Meta `path:"/sim/admin/api/users/{wxId}/deactivate" method:"post" tags:"sim-admin" summary:"注销单个模拟用户"`
+	WxId   int64 `json:"wxId" in:"path" p:"wxId" v:"required|min:1"`
+}
+
+type SimAdminUserDeactivatePostRes struct{}

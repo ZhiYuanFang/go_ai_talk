@@ -79,3 +79,21 @@ func (c *DeviceSimInternalCtrl) SimWxIds(ctx context.Context, req *v1.DeviceSimW
 	}
 	return &v1.DeviceSimWxIdsRes{Ids: ids, Total: total}, nil
 }
+
+// SimWxDeactivate POST /device/internal/api/sim/wx/{wxId}/deactivate
+func (c *DeviceSimInternalCtrl) SimWxDeactivate(ctx context.Context, req *v1.DeviceSimWxDeactivateReq) (res *v1.DeviceSimWxDeactivateRes, err error) {
+	_ = c
+	if err = device.SimWxDeactivateByID(ctx, req.WxId); err != nil {
+		if errors.Is(err, device.ErrWxDeactivateWxIDInvalid) {
+			return nil, gerror.NewCode(gcode.CodeInvalidParameter, err.Error())
+		}
+		if errors.Is(err, device.ErrWxDeactivateNotFound) {
+			return nil, gerror.NewCode(gcode.CodeNotFound, err.Error())
+		}
+		if errors.Is(err, device.ErrSimWxDeactivateNotSimulated) {
+			return nil, gerror.NewCode(gcode.CodeBusinessValidationFailed, err.Error())
+		}
+		return nil, err
+	}
+	return &v1.DeviceSimWxDeactivateRes{}, nil
+}
