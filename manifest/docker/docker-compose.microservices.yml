@@ -21,6 +21,10 @@ x-docker-logging: &docker-logging
     max-size: "10m"
     max-file: "3"
 
+# 非空时覆盖 config yaml 的 logger.level（生产 .env.prod 建议 prod，抑制 cachekit 等 debug 日志）。
+x-logger-env: &logger-env
+  GF_LOGGER_LEVEL: "${GF_LOGGER_LEVEL:-}"
+
 services:
   gateway:
     build:
@@ -29,6 +33,7 @@ services:
     image: go-ai-talk/gateway:local
     container_name: go-ai-talk-gateway
     environment:
+      <<: *logger-env
       TZ: Asia/Shanghai
       GF_GCFG_FILE: manifest/config/config.yaml
       HISTORY_API_ROUTE_MODE: proxy
@@ -71,6 +76,7 @@ services:
     image: go-ai-talk/gateway-app:local
     container_name: go-ai-talk-gateway-app
     environment:
+      <<: *logger-env
       TZ: Asia/Shanghai
       GF_GCFG_FILE: manifest/config/config.gateway-app-server.yaml
       # 非空时覆盖 ai_voice_app 连接（对应 GF_DATABASE_APP_LINK），与 HISTORY_DB_LINK 同理便于 compose 注入
@@ -137,6 +143,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
+      <<: *logger-env
       TZ: Asia/Shanghai
       GF_GCFG_FILE: manifest/config/config.history-service.yaml
       # cmd/history-service 读取 HISTORY_DB_LINK；DSN 含多个「:」，compose 须整段加引号避免 YAML 截断。
@@ -169,6 +176,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
+      <<: *logger-env
       TZ: Asia/Shanghai
       GF_GCFG_FILE: manifest/config/config.voice-service.yaml
       GATEWAY_APP_JWT_SECRET: "${GATEWAY_APP_JWT_SECRET:-}"
@@ -213,6 +221,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
+      <<: *logger-env
       TZ: Asia/Shanghai
       GF_GCFG_FILE: manifest/config/config.device-service.yaml
       DEVICE_DB_LINK: "${DEVICE_DB_LINK:-}"
@@ -245,6 +254,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
+      <<: *logger-env
       TZ: Asia/Shanghai
       GF_GCFG_FILE: manifest/config/config.ucg-service.yaml
       UCG_DB_LINK: "${UCG_DB_LINK:-}"
@@ -296,6 +306,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
+      <<: *logger-env
       TZ: Asia/Shanghai
       GF_GCFG_FILE: manifest/config/config.notify-service.yaml
       NOTIFY_SERVICE_ADDR: ":9806"
@@ -322,6 +333,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
+      <<: *logger-env
       TZ: Asia/Shanghai
       GF_GCFG_FILE: manifest/config/config.sim-user-service.yaml
       SIM_DB_LINK: "${SIM_DB_LINK:-${APP_DB_LINK:-}}"

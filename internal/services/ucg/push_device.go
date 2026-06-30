@@ -51,29 +51,17 @@ func RegisterPushDevice(ctx context.Context, wxID int64, channel, token, deviceK
 	}
 	now := time.Now().Unix()
 	cols := dao.UcgPushDevice.Columns()
-	model := dao.UcgPushDevice.Ctx(ctx).
-		Where(cols.WxId, wxID).
-		Where(cols.DeviceKey, deviceKey).
-		Where(cols.Channel, channel)
-	cnt, err := model.Count()
-	if err != nil {
-		return err
-	}
-	data := g.Map{
+	// 单语句 upsert，避免 COUNT 后复用 model 导致 MySQL「commands out of sync」。
+	_, err := dao.UcgPushDevice.Ctx(ctx).Data(g.Map{
 		cols.WxId:      wxID,
 		cols.Channel:   channel,
 		cols.Token:     token,
 		cols.DeviceKey: deviceKey,
 		cols.UpdatedAt: now,
-	}
-	if cnt > 0 {
-		_, err = model.Data(g.Map{
-			cols.Token:     token,
-			cols.UpdatedAt: now,
-		}).Update()
-		return err
-	}
-	_, err = dao.UcgPushDevice.Ctx(ctx).Data(data).Insert()
+	}).OnDuplicate(g.Map{
+		cols.Token:     token,
+		cols.UpdatedAt: now,
+	}).Insert()
 	return err
 }
 
