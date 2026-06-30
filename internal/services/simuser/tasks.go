@@ -51,10 +51,19 @@ func RunRegisterTask(ctx context.Context, password string) {
 	_ = password
 	var account, regPassword string
 	var wxID int64
+	committed := false
+	defer func() {
+		if !committed && wxID > 0 {
+			rollbackSimRegistration(ctx, wxID)
+		}
+	}()
+	failRegister := func(msg string) {
+		RecordTaskRun(ctx, "register", false, msg)
+	}
 	for attempt := 0; attempt < 8; attempt++ {
 		account, regPassword, err = GenerateRandomSimCredentials()
 		if err != nil {
-			RecordTaskRun(ctx, "register", false, err.Error())
+			failRegister(err.Error())
 			return
 		}
 		wxID, err = simRegister(ctx, account, regPassword)
@@ -62,23 +71,18 @@ func RunRegisterTask(ctx context.Context, password string) {
 			break
 		}
 		if attempt == 7 {
-			RecordTaskRun(ctx, "register", false, err.Error())
+			failRegister(err.Error())
 			return
 		}
 	}
-	if err = InsertWxCredential(ctx, wxID, account, regPassword); err != nil {
-		RecordTaskRun(ctx, "register", false, err.Error())
-		return
-	}
 	sess, err := usernameLogin(ctx, account, regPassword)
 	if err != nil {
-		RecordTaskRun(ctx, "register", false, err.Error())
+		failRegister(err.Error())
 		return
 	}
-	_ = wxID
 	sys, user, err := LoadRenderedPrompt(ctx, "register_nickname", nil)
 	if err != nil {
-		RecordTaskRun(ctx, "register", false, err.Error())
+		failRegister(err.Error())
 		return
 	}
 	msgs := []aimodel.Message{{Role: "user", Content: user}}
@@ -87,29 +91,46 @@ func RunRegisterTask(ctx context.Context, password string) {
 	}
 	resp, err := aimodel.Invoke(ctx, aimodel.LaneSimText, simChatRequest(simTempRegisterNickname, 64, msgs))
 	if err != nil {
-		RecordTaskRun(ctx, "register", false, err.Error())
+		failRegister(err.Error())
 		return
 	}
 	nickname := strings.TrimSpace(resp.Content)
+	if nickname == "" {
+		failRegister("昵称为空")
+		return
+	}
 	_, userAv, _ := LoadRenderedPrompt(ctx, "register_avatar", nil)
 	imgRes, err := aimodel.GenerateImage(ctx, aimodel.LaneSimImageGen, userAv)
 	if err != nil {
-		RecordTaskRun(ctx, "register", false, err.Error())
+		failRegister(err.Error())
+		return
+	}
+	if strings.TrimSpace(imgRes.URL) == "" {
+		failRegister("头像 URL 为空")
 		return
 	}
 	avatarKey, err := uploadImageFromURL(ctx, sess.AccessToken, imgRes.URL)
 	if err != nil {
-		RecordTaskRun(ctx, "register", false, err.Error())
+		failRegister(err.Error())
+		return
+	}
+	if strings.TrimSpace(avatarKey) == "" {
+		failRegister("avatarKey 为空")
 		return
 	}
 	if err = appPut(ctx, sess.AccessToken, "/ucg/app/api/profile/me", g.Map{
 		"nickname": nickname, "avatarKey": avatarKey,
 	}, nil); err != nil {
-		RecordTaskRun(ctx, "register", false, err.Error())
+		failRegister(err.Error())
 		return
 	}
+	if err = InsertWxCredential(ctx, wxID, account, regPassword); err != nil {
+		failRegister(err.Error())
+		return
+	}
+	committed = true
 	RecordTaskRun(ctx, "register", true, "")
-	glog.Infof(ctx, "[simuser] registered account=%s wxId=%d", account, sess.WxID)
+	glog.Infof(ctx, "[simuser] registered account=%s wxId=%d", account, wxID)
 }
 
 // RunCommentTask T2：评论广场帖（ucg internal random 模式全库抽样，略偏新帖）。
