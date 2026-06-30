@@ -28,6 +28,7 @@ func InitScheduler(parent context.Context) {
 
 // ReloadSchedulerFromAdmin Admin 保存调度类配置后热重启 scheduler。
 func ReloadSchedulerFromAdmin(parent context.Context) {
+	glog.Infof(parent, "[simuser] scheduler reload begin trigger=admin_config_save")
 	flags := LoadRuntimeFlags(parent)
 	globalScheduler.Reload(parent, flags)
 }
@@ -36,6 +37,7 @@ func (m *SchedulerManager) Start(parent context.Context, flags RuntimeFlags, ski
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.cancel != nil {
+		glog.Infof(parent, "[simuser] scheduler stop previous goroutines")
 		m.cancel()
 		m.wg.Wait()
 	}
@@ -60,13 +62,19 @@ func (m *SchedulerManager) Stop() {
 }
 
 func startSchedulerGoroutines(ctx context.Context, wg *sync.WaitGroup, flags RuntimeFlags, skipLongStagger bool) {
+	trigger := "process_start"
+	if skipLongStagger {
+		trigger = "admin_reload"
+	}
 	if !flags.Enabled {
-		glog.Infof(ctx, "[simuser] SIM_USER_SERVICE_ENABLED=false，跳过 scheduler")
+		glog.Infof(ctx, "[simuser] scheduler skip trigger=%s reason=SIM_USER_SERVICE_ENABLED=false", trigger)
 		return
 	}
 	cfg, err := GetConfig(ctx)
-	if err == nil && !cfg.Enabled {
-		glog.Infof(ctx, "[simuser] sim_config.enabled=false，跳过 scheduler")
+	if err != nil {
+		glog.Warningf(ctx, "[simuser] scheduler get sim_config failed err=%v trigger=%s 仍尝试启动 goroutine", err, trigger)
+	} else if !cfg.Enabled {
+		glog.Infof(ctx, "[simuser] scheduler skip trigger=%s reason=sim_config.enabled=false", trigger)
 		return
 	}
 	DiscardPendingVideoJobsOnStartup(ctx)
@@ -78,38 +86,36 @@ func startSchedulerGoroutines(ctx context.Context, wg *sync.WaitGroup, flags Run
 	if skipLongStagger {
 		stagger = adminReloadStaggerMax
 	}
-	if flags.TaskRegister {
-		runPeriodicTracked(ctx, wg, "register", flags.IntervalRegister, stagger, skipLongStagger, func(c context.Context) {
-			RunRegisterTask(c, password)
-		})
+	type taskSpec struct {
+		name     string
+		enabled  bool
+		interval time.Duration
+		run      func(context.Context)
 	}
-	if flags.TaskComment {
-		runPeriodicTracked(ctx, wg, "comment", flags.IntervalComment, stagger, skipLongStagger, func(c context.Context) {
-			RunCommentTask(c, password)
-		})
+	specs := []taskSpec{
+		{"register", flags.TaskRegister, flags.IntervalRegister, func(c context.Context) { RunRegisterTask(c, password) }},
+		{"comment", flags.TaskComment, flags.IntervalComment, func(c context.Context) { RunCommentTask(c, password) }},
+		{"post_image", flags.TaskPostImage, flags.IntervalPostImage, func(c context.Context) { RunPostImageTask(c, password) }},
+		{"post_video_submit", flags.TaskPostVideo, flags.IntervalPostVideo, func(c context.Context) { RunPostVideoSubmitTask(c, password, flags) }},
+		{"chat_scan", flags.TaskChat, flags.IntervalChat, func(c context.Context) { RunChatScanTask(c, password, flags) }},
+		{"follow", flags.TaskFollow, flags.IntervalFollow, func(c context.Context) { RunFollowTask(c, password) }},
 	}
-	if flags.TaskPostImage {
-		runPeriodicTracked(ctx, wg, "post_image", flags.IntervalPostImage, stagger, skipLongStagger, func(c context.Context) {
-			RunPostImageTask(c, password)
-		})
+	started := 0
+	for _, spec := range specs {
+		if !spec.enabled {
+			glog.Infof(ctx, "[simuser] scheduler skip task=%s reason=task_switch_disabled", spec.name)
+			continue
+		}
+		glog.Infof(ctx, "[simuser] scheduler start task=%s interval=%s staggerMax=%s trigger=%s",
+			spec.name, spec.interval, stagger, trigger)
+		runPeriodicTracked(ctx, wg, spec.name, spec.interval, stagger, skipLongStagger, spec.run)
+		started++
 	}
-	if flags.TaskPostVideo {
-		runPeriodicTracked(ctx, wg, "post_video_submit", flags.IntervalPostVideo, stagger, skipLongStagger, func(c context.Context) {
-			RunPostVideoSubmitTask(c, password, flags)
-		})
+	if started == 0 {
+		glog.Warningf(ctx, "[simuser] scheduler started with 0 goroutines trigger=%s reason=all_task_switches_disabled", trigger)
 	}
-	if flags.TaskChat {
-		runPeriodicTracked(ctx, wg, "chat_scan", flags.IntervalChat, stagger, skipLongStagger, func(c context.Context) {
-			RunChatScanTask(c, password, flags)
-		})
-	}
-	if flags.TaskFollow {
-		runPeriodicTracked(ctx, wg, "follow", flags.IntervalFollow, stagger, skipLongStagger, func(c context.Context) {
-			RunFollowTask(c, password)
-		})
-	}
-	glog.Infof(ctx, "[simuser] scheduler started skipLongStagger=%v staggerMax=%s postVideoPoll=%s maxWait=%s",
-		skipLongStagger, stagger, flags.PostVideoPollInterval, flags.PostVideoPollMaxWait)
+	glog.Infof(ctx, "[simuser] scheduler started trigger=%s goroutines=%d skipLongStagger=%v staggerMax=%s postVideoPoll=%s maxWait=%s",
+		trigger, started, skipLongStagger, stagger, flags.PostVideoPollInterval, flags.PostVideoPollMaxWait)
 }
 
 func runPeriodicTracked(parent context.Context, wg *sync.WaitGroup, name string, interval, staggerMax time.Duration, skipLongStagger bool, fn func(context.Context)) {

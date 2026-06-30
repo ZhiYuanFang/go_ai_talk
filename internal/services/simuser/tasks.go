@@ -37,6 +37,13 @@ func setVideoPostInFlight(v bool) {
 func RunRegisterTask(ctx context.Context, password string) {
 	cfg, err := GetConfig(ctx)
 	if err != nil || (!cfg.Enabled && !isManualRun(ctx)) {
+		if !isManualRun(ctx) {
+			if err != nil {
+				glog.Warningf(ctx, "[simuser] task=register skip reason=get_config_failed err=%v", err)
+			} else {
+				glog.Infof(ctx, "[simuser] task=register skip reason=sim_config.enabled=false")
+			}
+		}
 		return
 	}
 	total, err := countSimUsers(ctx)
@@ -135,7 +142,7 @@ func RunRegisterTask(ctx context.Context, password string) {
 
 // RunCommentTask T2：评论广场帖（ucg internal random 模式全库抽样，略偏新帖）。
 func RunCommentTask(ctx context.Context, password string) {
-	if !taskEnabled(ctx) {
+	if !taskEnabled(ctx, "comment") {
 		return
 	}
 	sess, _, err := randomSimSession(ctx, password)
@@ -189,7 +196,7 @@ func RunCommentTask(ctx context.Context, password string) {
 
 // RunPostImageTask T3：图文动态。
 func RunPostImageTask(ctx context.Context, password string) {
-	if !taskEnabled(ctx) {
+	if !taskEnabled(ctx, "post_image") {
 		return
 	}
 	sess, _, err := randomSimSession(ctx, password)
@@ -226,7 +233,7 @@ func RunPostImageTask(ctx context.Context, password string) {
 
 // RunPostVideoSubmitTask T4：提交视频生成并内联轮询 async-result 直至发帖或失败。
 func RunPostVideoSubmitTask(ctx context.Context, password string, flags RuntimeFlags) {
-	if !taskEnabled(ctx) {
+	if !taskEnabled(ctx, "post_video_submit") {
 		return
 	}
 	if IsVideoPostInFlight() {
@@ -332,7 +339,7 @@ func runVideoPollPipeline(ctx context.Context, sess loginSession, job videoJobRo
 func RunChatScanTask(ctx context.Context, password string, flags RuntimeFlags) {
 	_ = password
 	_ = flags
-	if !taskEnabled(ctx) {
+	if !taskEnabled(ctx, "chat_scan") {
 		return
 	}
 	simWxIds, err := listAllSimWxIds(ctx)
@@ -369,7 +376,7 @@ func RunChatScanTask(ctx context.Context, password string, flags RuntimeFlags) {
 
 // RunFollowTask T6：sim 关注发过帖的真人 author。
 func RunFollowTask(ctx context.Context, password string) {
-	if !taskEnabled(ctx) {
+	if !taskEnabled(ctx, "follow") {
 		return
 	}
 	simWxIds, err := listAllSimWxIds(ctx)
@@ -411,12 +418,20 @@ func RunFollowTask(ctx context.Context, password string) {
 	RecordTaskRun(ctx, "follow", true, "")
 }
 
-func taskEnabled(ctx context.Context) bool {
+func taskEnabled(ctx context.Context, taskName string) bool {
 	if isManualRun(ctx) {
 		return true
 	}
 	cfg, err := GetConfig(ctx)
-	return err == nil && cfg.Enabled
+	if err != nil {
+		glog.Warningf(ctx, "[simuser] task=%s skip reason=get_config_failed err=%v", taskName, err)
+		return false
+	}
+	if !cfg.Enabled {
+		glog.Infof(ctx, "[simuser] task=%s skip reason=sim_config.enabled=false", taskName)
+		return false
+	}
+	return true
 }
 
 func buildChatHistory(msgs []struct {

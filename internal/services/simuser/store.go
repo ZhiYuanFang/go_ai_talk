@@ -7,6 +7,7 @@ import (
 
 	"github.com/gogf/gf/v2/database/gdb"
 	"github.com/gogf/gf/v2/frame/g"
+	"github.com/gogf/gf/v2/os/glog"
 )
 
 // ConfigDTO 模拟服务全局配置。
@@ -158,6 +159,7 @@ func RecordTaskRun(ctx context.Context, name string, success bool, errMsg string
 			data["fail_count"] = 1
 		}
 		_, _ = g.DB().Model("sim_task_run").Ctx(ctx).Data(data).Insert()
+		logTaskRunResult(ctx, name, success, errMsg)
 		return
 	}
 	col := "success_count"
@@ -168,6 +170,24 @@ func RecordTaskRun(ctx context.Context, name string, success bool, errMsg string
 		"last_run_at": now, "last_error": truncateErr(errMsg),
 	}).Update()
 	_, _ = g.DB().Model("sim_task_run").Ctx(ctx).Where("task_name", name).Increment(col, 1)
+	logTaskRunResult(ctx, name, success, errMsg)
+}
+
+// logTaskRunResult 统一输出任务执行结果，便于与 tick begin/end 日志对照。
+func logTaskRunResult(ctx context.Context, name string, success bool, errMsg string) {
+	errMsg = strings.TrimSpace(errMsg)
+	if success && errMsg == "" {
+		glog.Infof(ctx, "[simuser] task=%s result=ok", name)
+		return
+	}
+	if success {
+		glog.Infof(ctx, "[simuser] task=%s result=ok note=%s", name, errMsg)
+		return
+	}
+	if errMsg == "" {
+		errMsg = "unknown"
+	}
+	glog.Warningf(ctx, "[simuser] task=%s result=fail err=%s", name, errMsg)
 }
 
 func GetStatus(ctx context.Context) (StatusDTO, error) {

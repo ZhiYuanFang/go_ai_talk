@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gogf/gf/v2/frame/g"
+	"github.com/gogf/gf/v2/os/glog"
 )
 
 // FullConfigDTO 含 DB 业务开关、上限与运行时 JSON。
@@ -122,7 +123,27 @@ func UpdateConfigAdmin(ctx context.Context, req ConfigAdminPutDTO, updatedBy str
 	} else if req.Runtime.RateLimitRps > 0 && (req.Runtime.RateLimitRps != before.Runtime.RateLimitRps || req.Runtime.RateLimitBurst != before.Runtime.RateLimitBurst) {
 		setActiveRateLimit(RateLimitSettings{RPS: req.Runtime.RateLimitRps, Burst: req.Runtime.RateLimitBurst})
 	}
+	logTaskScheduleAfterConfigSave(ctx, result, operator, scheduleChanged)
 	return result, nil
+}
+
+// logTaskScheduleAfterConfigSave 保存配置后输出各任务开关与下一跑估算，便于排查自动调度未生效原因。
+func logTaskScheduleAfterConfigSave(ctx context.Context, result ConfigPutResult, updatedBy string, scheduleReloaded bool) {
+	serviceEnabled := LoadRuntimeFlags(ctx).Enabled
+	glog.Infof(ctx, "[simuser] config saved by=%s scheduleReloaded=%v serviceEnabled=%v",
+		updatedBy, scheduleReloaded, serviceEnabled)
+	for _, t := range result.TaskSchedule {
+		glog.Infof(ctx, "[simuser] config task=%s configEnabled=%v effective=%v intervalSec=%d lastRunAt=%d nextRunHint=%q",
+			t.Name, t.ConfigEnabled, t.Enabled, t.IntervalSec, t.LastRunAt, t.NextRunHint)
+	}
+	if !scheduleReloaded {
+		glog.Infof(ctx, "[simuser] config saved scheduler not reloaded (未触发调度 diff，运行中 goroutine 仍用旧周期/开关)")
+	}
+	for _, e := range result.Effects {
+		if e.Kind == "scheduler_not_running" {
+			glog.Warningf(ctx, "[simuser] config saved auto schedule blocked: %s", e.Message)
+		}
+	}
 }
 
 func runtimeScheduleDiff(before FullConfigDTO, after ConfigAdminPutDTO) bool {
