@@ -27,10 +27,11 @@ func InitScheduler(parent context.Context) {
 }
 
 // ReloadSchedulerFromAdmin Admin 保存调度类配置后热重启 scheduler。
-func ReloadSchedulerFromAdmin(parent context.Context) {
-	glog.Infof(parent, "[simuser] scheduler reload begin trigger=admin_config_save")
-	flags := LoadRuntimeFlags(parent)
-	globalScheduler.Reload(parent, flags)
+// logCtx 仅用于日志与读配置；goroutine 生命周期 MUST 绑定进程级 root，不得用 HTTP 请求 context。
+func ReloadSchedulerFromAdmin(logCtx context.Context) {
+	glog.Infof(logCtx, "[simuser] scheduler reload begin trigger=admin_config_save")
+	flags := LoadRuntimeFlags(logCtx)
+	globalScheduler.Reload(flags)
 }
 
 func (m *SchedulerManager) Start(parent context.Context, flags RuntimeFlags, skipLongStagger bool) {
@@ -41,14 +42,34 @@ func (m *SchedulerManager) Start(parent context.Context, flags RuntimeFlags, ski
 		m.cancel()
 		m.wg.Wait()
 	}
-	schedCtx, cancel := context.WithCancel(parent)
-	m.root = parent
+	if !skipLongStagger {
+		m.root = parent
+	}
+	schedParent := parent
+	if skipLongStagger {
+		schedParent = m.root
+		if schedParent == nil {
+			schedParent = context.Background()
+			glog.Warningf(parent, "[simuser] scheduler admin reload: process root missing, fallback Background")
+		}
+	}
+	schedCtx, cancel := context.WithCancel(schedParent)
 	m.cancel = cancel
 	startSchedulerGoroutines(schedCtx, &m.wg, flags, skipLongStagger)
 }
 
-func (m *SchedulerManager) Reload(parent context.Context, flags RuntimeFlags) {
-	m.Start(parent, flags, true)
+func (m *SchedulerManager) Reload(flags RuntimeFlags) {
+	m.Start(m.schedulerParentForReload(), flags, true)
+}
+
+// schedulerParentForReload 返回进程级 context，避免 Admin HTTP 请求结束后 cancel 调度 goroutine。
+func (m *SchedulerManager) schedulerParentForReload() context.Context {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.root != nil {
+		return m.root
+	}
+	return context.Background()
 }
 
 func (m *SchedulerManager) Stop() {
