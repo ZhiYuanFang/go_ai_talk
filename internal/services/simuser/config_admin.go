@@ -78,7 +78,7 @@ func GetFullConfig(ctx context.Context) (FullConfigDTO, error) {
 	}, nil
 }
 
-// UpdateConfigAdmin 持久化配置并按 diff 决定是否 reload scheduler。
+// UpdateConfigAdmin 持久化配置；有效调度开启时每次保存 sync reload scheduler（仅 maxSimUsers / videoPoll 除外）。
 func UpdateConfigAdmin(ctx context.Context, req ConfigAdminPutDTO, updatedBy string) (ConfigPutResult, error) {
 	before, err := GetFullConfig(ctx)
 	if err != nil {
@@ -109,35 +109,72 @@ func UpdateConfigAdmin(ctx context.Context, req ConfigAdminPutDTO, updatedBy str
 		return ConfigPutResult{}, err
 	}
 
-	scheduleChanged := runtimeScheduleDiff(before, req)
+	scheduleDiff := runtimeScheduleDiff(before, req)
 	serviceEnabled := LoadRuntimeFlags(ctx).Enabled
+	shouldReload, reloadReason := shouldReloadScheduler(before, req, serviceEnabled)
 	result := ConfigPutResult{
-		ScheduleReloaded: scheduleChanged,
-		Effects:          buildConfigEffects(before, req, scheduleChanged, serviceEnabled),
+		ScheduleReloaded: shouldReload,
+		Effects:          buildConfigEffects(before, req, shouldReload, reloadReason, serviceEnabled),
 		TaskSchedule:     buildTaskSchedule(ctx, req.Runtime, req.Enabled, serviceEnabled),
 	}
 
-	if scheduleChanged {
+	if shouldReload {
 		setActiveRateLimit(RateLimitSettings{RPS: req.Runtime.RateLimitRps, Burst: req.Runtime.RateLimitBurst})
 		ReloadSchedulerFromAdmin(ctx)
 	} else if req.Runtime.RateLimitRps > 0 && (req.Runtime.RateLimitRps != before.Runtime.RateLimitRps || req.Runtime.RateLimitBurst != before.Runtime.RateLimitBurst) {
 		setActiveRateLimit(RateLimitSettings{RPS: req.Runtime.RateLimitRps, Burst: req.Runtime.RateLimitBurst})
 	}
-	logTaskScheduleAfterConfigSave(ctx, result, operator, scheduleChanged)
+	logTaskScheduleAfterConfigSave(ctx, result, operator, shouldReload, reloadReason, scheduleDiff)
 	return result, nil
 }
 
+// shouldReloadScheduler 决定是否 Stop→Start scheduler；有效调度开启时重复保存也会 sync reload。
+func shouldReloadScheduler(before FullConfigDTO, after ConfigAdminPutDTO, serviceEnabled bool) (reload bool, reason string) {
+	if onlyVideoPollParamsDiff(before, after) {
+		return false, "video_poll_only"
+	}
+	if runtimeScheduleDiff(before, after) {
+		return true, "schedule_diff"
+	}
+	if maxSimUsersOnlyDiff(before, after) {
+		return false, "max_sim_users_only"
+	}
+	if serviceEnabled && after.Enabled && hasAnyTaskConfigEnabled(after.Runtime) {
+		return true, "sync_on_save"
+	}
+	return false, "inactive"
+}
+
+func maxSimUsersOnlyDiff(before FullConfigDTO, after ConfigAdminPutDTO) bool {
+	return before.MaxSimUsers != after.MaxSimUsers &&
+		before.Enabled == after.Enabled &&
+		!runtimeScheduleDiff(before, after) &&
+		!videoPollParamsDiff(before.Runtime, after.Runtime)
+}
+
+func onlyVideoPollParamsDiff(before FullConfigDTO, after ConfigAdminPutDTO) bool {
+	return videoPollParamsDiff(before.Runtime, after.Runtime) &&
+		before.Enabled == after.Enabled &&
+		before.MaxSimUsers == after.MaxSimUsers &&
+		!runtimeScheduleDiff(before, after)
+}
+
+func videoPollParamsDiff(br, ar RuntimeConfigDB) bool {
+	return br.IntervalPostVideoPollSec != ar.IntervalPostVideoPollSec ||
+		br.IntervalPostVideoPollMaxWaitSec != ar.IntervalPostVideoPollMaxWaitSec
+}
+
 // logTaskScheduleAfterConfigSave 保存配置后输出各任务开关与下一跑估算，便于排查自动调度未生效原因。
-func logTaskScheduleAfterConfigSave(ctx context.Context, result ConfigPutResult, updatedBy string, scheduleReloaded bool) {
+func logTaskScheduleAfterConfigSave(ctx context.Context, result ConfigPutResult, updatedBy string, scheduleReloaded bool, reloadReason string, scheduleDiff bool) {
 	serviceEnabled := LoadRuntimeFlags(ctx).Enabled
-	glog.Infof(ctx, "[simuser] config saved by=%s scheduleReloaded=%v serviceEnabled=%v",
-		updatedBy, scheduleReloaded, serviceEnabled)
+	glog.Infof(ctx, "[simuser] config saved by=%s scheduleReloaded=%v reloadReason=%s scheduleDiff=%v serviceEnabled=%v",
+		updatedBy, scheduleReloaded, reloadReason, scheduleDiff, serviceEnabled)
 	for _, t := range result.TaskSchedule {
 		glog.Infof(ctx, "[simuser] config task=%s configEnabled=%v effective=%v intervalSec=%d lastRunAt=%d nextRunHint=%q",
 			t.Name, t.ConfigEnabled, t.Enabled, t.IntervalSec, t.LastRunAt, t.NextRunHint)
 	}
 	if !scheduleReloaded {
-		glog.Infof(ctx, "[simuser] config saved scheduler not reloaded (未触发调度 diff，运行中 goroutine 仍用旧周期/开关)")
+		glog.Infof(ctx, "[simuser] config saved scheduler not reloaded reason=%s", reloadReason)
 	}
 	for _, e := range result.Effects {
 		if e.Kind == "scheduler_not_running" {
@@ -161,15 +198,28 @@ func runtimeScheduleDiff(before FullConfigDTO, after ConfigAdminPutDTO) bool {
 		br.RateLimitRps != ar.RateLimitRps || br.RateLimitBurst != ar.RateLimitBurst
 }
 
-func buildConfigEffects(before FullConfigDTO, after ConfigAdminPutDTO, reloaded bool, serviceEnabled bool) []ConfigEffect {
+func buildConfigEffects(before FullConfigDTO, after ConfigAdminPutDTO, reloaded bool, reloadReason string, serviceEnabled bool) []ConfigEffect {
 	var effects []ConfigEffect
 	if reloaded {
+		msg := "调度器已重启，新周期将在短延迟后生效"
+		if reloadReason == "sync_on_save" {
+			msg = "调度器已按当前配置重启（约 30s 错峰后进入新周期）"
+		}
 		effects = append(effects, ConfigEffect{
-			Kind: "scheduler_reloaded", Message: "调度器已重启，新周期将在短延迟后生效",
+			Kind: "scheduler_reloaded", Message: msg,
 		})
 	} else {
+		msg := "配置已保存（未重启调度器）"
+		switch reloadReason {
+		case "max_sim_users_only":
+			msg = "配置已保存（未重启调度器：仅 maxSimUsers 变更）"
+		case "video_poll_only":
+			msg = "配置已保存（未重启调度器：仅视频轮询参数变更）"
+		case "inactive":
+			msg = "配置已保存（自动调度未开启，未重启调度器）"
+		}
 		effects = append(effects, ConfigEffect{
-			Kind: "config_saved", Message: "配置已保存（未触发调度器全量重启）",
+			Kind: "config_saved", Message: msg,
 		})
 	}
 	if hasAnyTaskConfigEnabled(after.Runtime) {

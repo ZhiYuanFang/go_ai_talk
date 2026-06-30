@@ -10,7 +10,8 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/ucg-service ./cmd/ucg
 
 FROM m.daocloud.io/docker.io/library/alpine:3.19
 
-RUN apk add --no-cache ffmpeg ca-certificates wget
+RUN apk add --no-cache ffmpeg ca-certificates wget tzdata
+ENV TZ=Asia/Shanghai
 
 ENV WORKDIR=/app
 ENV GF_GCFG_FILE=manifest/config/config.ucg-service.yaml
