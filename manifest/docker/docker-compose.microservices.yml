@@ -43,7 +43,7 @@ services:
       VOICE_API_PROXY_CANARY_PERCENT: "0"
       VOICE_WS_ROUTE_MODE: proxy
       VOICE_WS_PROXY_URL: http://voice-service:9802
-      UCG_SERVICE_URL: "http://ucg-service:9804"
+      UCG_SERVICE_BASE_URL: "http://ucg-service:9804"
       DEVICE_API_ROUTE_MODE: proxy
       DEVICE_API_PROXY_URL: http://device-service:9803
       DEVICE_API_PROXY_CANARY_PERCENT: "0"
