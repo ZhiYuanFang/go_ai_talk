@@ -3,8 +3,8 @@
 <head>
 	<meta charset="UTF-8" />
 	<meta name="viewport" content="width=device-width, initial-scale=1" />
-	<title>胖宝 - 专注母婴喂养服务</title>
-	<meta name="description" content="胖宝专注母婴喂养服务，让照顾孩子更便捷、更轻松。" />
+	<title>胖宝 - 0-18月新手妈妈的喂养记录与AI陪伴</title>
+	<meta name="description" content="胖宝面向0-18月新手妈妈：语音喂养记录、同月龄妈妈轻社交、AI智能问答。吃奶睡觉换尿布，语音一说就记好。" />
 	<style>
 		:root{
 			--bg-1:#fdf2f8;
@@ -99,11 +99,20 @@
 		.inline-actions{display:flex;gap:12px;flex-wrap:wrap}
 		.status-card{display:none;color:#b91c1c;background:rgba(255,255,255,.5)}
 		.status-card.show{display:block}
+		.capability-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+		.capability-card{padding:22px;border-radius:24px;background:rgba(255,255,255,.4);border:1px solid rgba(255,255,255,.55);display:flex;flex-direction:column;gap:12px}
+		.capability-icon{font-size:28px;line-height:1}
+		.capability-card h3{margin:0;font-size:20px}
+		.capability-card ul{margin:0;padding-left:18px;color:var(--muted);line-height:1.75;font-size:14px}
+		.ai-disclaimer{margin:16px 0 0;font-size:12px;color:var(--muted);line-height:1.6}
 		.foot{display:flex;justify-content:space-between;gap:16px;align-items:center;padding:18px 22px;border-radius:24px;margin-top:22px}
+		.foot-links{margin-top:8px;font-size:13px}
+		.foot-links a{text-decoration:underline;text-underline-offset:3px}
 		.loading{opacity:.7}
 		@media (max-width:960px){
 			.hero{grid-template-columns:1fr}
 			.hero-metrics{grid-template-columns:1fr}
+			.capability-grid{grid-template-columns:1fr}
 			.section-head,.foot{flex-direction:column;align-items:flex-start}
 		}
 		@media (max-width:600px){
@@ -120,11 +129,12 @@
 				<div class="logo">胖宝</div>
 				<div>
 					<strong>胖宝</strong>
-					<span>专注母婴喂养服务商</span>
+					<span>0–18 月新手妈妈的数字陪伴</span>
 				</div>
 			</div>
 			<div class="nav-actions">
-				<a class="nav-link" href="#events">事件能力</a>
+				<a class="nav-link" href="#capabilities">产品能力</a>
+				<a class="nav-link" href="#events">喂养事件</a>
 				<a class="nav-link" href="#download">应用下载</a>
 				<a class="btn btn-primary" href="#download">立即下载</a>
 			</div>
@@ -132,36 +142,36 @@
 
 		<section class="hero">
 			<div class="hero-card glass">
-				<div class="kicker">母婴喂养 · 更便捷 · 更轻松</div>
-				<h1 id="heroTitle">让母婴喂养记录与陪伴更轻松</h1>
-				<p id="heroSubtitle">胖宝专注母婴喂养服务，围绕喂奶、睡眠、换尿布等关键喂养场景，帮助家庭更便捷、更轻松地照顾孩子。</p>
+				<div class="kicker">0–18 月新手妈 · 记录 · 连接 · 问答</div>
+				<h1 id="heroTitle">每一口奶、每一次觉，都有人帮你记着</h1>
+				<p id="heroSubtitle">宝宝还在小月龄，手在忙、心在慌。胖宝用语音帮你记喂奶和睡眠，连接同阶段妈妈，AI 结合喂养记录按月龄回答你的疑问。</p>
 				<div class="hero-actions">
 					<a class="btn btn-primary" href="#download">下载胖宝 App</a>
-					<a class="btn" href="#events">查看事件能力</a>
+					<a class="btn" href="#capabilities">了解产品能力</a>
 				</div>
 				<div class="hero-metrics">
 					<div class="metric">
-						<strong>喂养更清晰</strong>
-						<span>事件统一呈现，帮助家庭快速掌握照护重点</span>
+						<strong>腾不出手也能记</strong>
+						<span>喂奶时按住说话，奶量与次数自动记进时间线</span>
 					</div>
 					<div class="metric">
-						<strong>记录更轻松</strong>
-						<span>围绕高频照护事件，让日常记录更自然顺手</span>
+						<strong>同月龄妈妈懂你</strong>
+						<span>不是育儿大群，是和宝宝差不多大的家长，轻轻聊</span>
 					</div>
 					<div class="metric">
-						<strong>下载更直接</strong>
-						<span>Android 扫码下载，iOS 直接前往 App Store 搜索</span>
+						<strong>问 AI，它看过你的记录</strong>
+						<span>结合近 7 天喂养和宝宝月龄，给更贴地的建议</span>
 					</div>
 				</div>
 			</div>
 			<div class="hero-side glass">
 				<div class="bubble">
 					<h3>品牌定位</h3>
-					<p id="serviceSummary">专注母婴喂养服务，通过更清晰的事件记录与下载体验，让日常照护更省心。</p>
+					<p id="serviceSummary">胖宝面向 0–18 月新手妈妈：智能喂养记录、同月龄轻社交、AI 随时在。</p>
 				</div>
 				<div class="bubble">
 					<h3>为什么选择胖宝</h3>
-					<p>将喂奶、睡眠、换尿布等照护事件集中展示，帮助家人协同记录，减少来回沟通成本，陪伴照顾孩子的每个瞬间。</p>
+					<p>语音记喂奶与睡眠，家人协同看趋势；同阶段妈妈轻轻聊；智能喂养问答结合你的记录，按月龄给建议。</p>
 				</div>
 				<div class="bubble">
 					<h3>下载指引</h3>
@@ -173,11 +183,51 @@
 		<section class="sections">
 			<div class="status-card glass" id="statusCard"></div>
 
+			<div class="section-card glass" id="capabilities">
+				<div class="section-head">
+					<div>
+						<h2>产品能力</h2>
+						<p>喂养记录、同月龄轻社交、AI 智能陪伴 — 陪伴 0–18 月宝宝的每一天。</p>
+					</div>
+					<div class="event-tag">记录 · 连接 · 问答</div>
+				</div>
+				<div class="capability-grid">
+					<div class="capability-card">
+						<div class="capability-icon">🍼</div>
+						<h3>智能喂养记录</h3>
+						<ul>
+							<li>语音或文本记事件，腾不出手也能记</li>
+							<li>吃奶、睡觉、换尿布等小月龄高频场景</li>
+							<li>家人协同记录，喂养趋势一目了然</li>
+						</ul>
+					</div>
+					<div class="capability-card">
+						<div class="capability-icon">💬</div>
+						<h3>同月龄轻社交</h3>
+						<ul>
+							<li>发帖分享宝宝成长瞬间</li>
+							<li>关注同路人，看看别的妈妈怎么带娃</li>
+							<li>私信交流；AI 帮写朋友圈文案</li>
+						</ul>
+					</div>
+					<div class="capability-card">
+						<div class="capability-icon">🤖</div>
+						<h3>AI 智能陪伴</h3>
+						<ul>
+							<li>语音喂养助手，记事件的同时能聊</li>
+							<li>智能喂养问答：近 7 天摘要 + 宝宝月龄</li>
+							<li>每日成长建议，喂养侧个性化参考</li>
+						</ul>
+					</div>
+				</div>
+				<p class="ai-disclaimer">AI 回答仅供参考，不能替代医生诊断；如有健康疑虑请及时就医。</p>
+			</div>
+
 			<div class="section-card glass" id="events">
 				<div class="section-head">
 					<div>
 						<h2>喂养事件能力</h2>
-						<p>从数据库权威链路读取事件信息，展示胖宝在母婴喂养场景中的核心能力。</p>
+						<p>小月龄最高频的照护事件 — 吃奶、睡觉、换尿布，语音一说就记好。</p>
 					</div>
 					<div class="event-tag">同源展示 · 实时聚合</div>
 				</div>
@@ -229,8 +279,15 @@
 		</section>
 
 		<footer class="foot glass">
-			<p>胖宝 · 专注母婴喂养服务，让照顾孩子更便捷、更轻松。</p>
-			<p>官网由 gateway-app 同源提供，事件 logo 与 Android 下载链路均来自系统权威数据。</p>
+			<div>
+				<p>胖宝 · 专注母婴喂养服务，让照顾孩子更便捷、更轻松。</p>
+				<p class="foot-links">
+					<a href="/privacy-policy.html">隐私政策</a>
+					<span> · </span>
+					<a href="/user-agreement.html">用户协议</a>
+				</p>
+			</div>
+			<p class="download-note">官网事件 logo 与 Android 下载链路均来自系统权威数据。</p>
 		</footer>
 	</div>
 
@@ -352,12 +409,12 @@ var QRCode=function(t){"use strict";var r,e=function(){return"function"==typeof 
 				});
 			})
 			.then(function(data){
-				document.title = (data.brandName || '胖宝') + ' - 专注母婴喂养服务';
+				document.title = (data.brandName || '胖宝') + ' - 0-18月新手妈妈的喂养记录与AI陪伴';
 				heroTitle.textContent = data.heroTitle || heroTitle.textContent;
 				heroSubtitle.textContent = data.heroSubtitle || heroSubtitle.textContent;
 				serviceSummary.textContent = data.serviceSummary || serviceSummary.textContent;
 				renderEvents(data.events || []);
-				renderAndroid(data.android || {}, data.publicBaseUrl || '', data.appDatabase || '');
+				renderAndroid(data.android || {});
 				if(data.ios && data.ios.instruction){
 					iosInstruction.textContent = data.ios.instruction;
 				}
