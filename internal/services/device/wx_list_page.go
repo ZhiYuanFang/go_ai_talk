@@ -23,11 +23,11 @@ func (s *service) ListWxPage(ctx context.Context, page, pageSize int, q string) 
 	if pageSize > wxListMaxPageSize {
 		pageSize = wxListMaxPageSize
 	}
-	m := dao.Wx.Ctx(ctx)
+	cols := dao.Wx.Columns()
+	m := dao.Wx.Ctx(ctx).Where(cols.IsSimulated, 0)
 	q = strings.TrimSpace(q)
 	if q != "" {
 		like := "%" + q + "%"
-		cols := dao.Wx.Columns()
 		if id, err := strconv.ParseInt(q, 10, 64); err == nil {
 			m = m.Where(
 				cols.Id+" = ? OR "+cols.DeviceNo+" LIKE ? OR "+cols.Unionid+" LIKE ? OR "+cols.Account+" LIKE ?",
@@ -47,9 +47,8 @@ func (s *service) ListWxPage(ctx context.Context, page, pageSize int, q string) 
 	if total == 0 {
 		return contracts.WxPageResult{List: []contracts.AdminWxListItem{}, Total: 0, Page: page, PageSize: pageSize}, nil
 	}
-	cols := dao.Wx.Columns()
 	rows := make([]contracts.AdminWxListItem, 0)
-	err = m.Fields(cols.Id, cols.DeviceNo, cols.Unionid, cols.Platform, cols.Account).
+	err = m.Fields(cols.Id, cols.DeviceNo, cols.Unionid, cols.Platform, cols.Account, cols.CreatedAt).
 		OrderDesc(cols.Id).
 		Page(page, pageSize).
 		Scan(&rows)

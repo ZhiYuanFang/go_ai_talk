@@ -104,8 +104,9 @@ func WxLogin(ctx context.Context, jsCode, platform string) (*WxLoginResult, erro
 	}
 	if one.IsEmpty() {
 		res, insErr := dao.Wx.Ctx(ctx).Data(g.Map{
-			dao.Wx.Columns().Unionid:  unionID,
+			dao.Wx.Columns().Unionid:   unionID,
 			dao.Wx.Columns().Platform: platform,
+			dao.Wx.Columns().CreatedAt: time.Now().Unix(),
 		}).Insert()
 		if insErr != nil {
 			return nil, insErr

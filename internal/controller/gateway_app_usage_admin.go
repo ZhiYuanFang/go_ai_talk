@@ -72,12 +72,18 @@ func (c *GatewayAppUsageAdminCtrl) UsageDetail(ctx context.Context, req *v1.Devi
 	if err != nil {
 		return nil, err
 	}
+	wxIDs := make([]int64, 0, len(items))
+	for _, it := range items {
+		wxIDs = append(wxIDs, it.WxId)
+	}
+	nickMap := usagestats.FetchProfileNicknames(ctx, wxIDs)
 	list := make([]v1.DeviceAdminUsageDetailItem, 0, len(items))
 	for _, it := range items {
 		list = append(list, v1.DeviceAdminUsageDetailItem{
-			WxId:   it.WxId,
-			Count:  it.Count,
-			LastAt: it.LastAt,
+			WxId:     it.WxId,
+			Nickname: nickMap[it.WxId],
+			Count:    it.Count,
+			LastAt:   it.LastAt,
 		})
 	}
 	return &v1.DeviceAdminUsageDetailRes{
@@ -86,6 +92,48 @@ func (c *GatewayAppUsageAdminCtrl) UsageDetail(ctx context.Context, req *v1.Devi
 		List:    list,
 		Days:    queryDays,
 		SortBy:  sortBy,
+	}, nil
+}
+
+// UsageWxList GET /device/admin/api/usage/wx-list
+func (c *GatewayAppUsageAdminCtrl) UsageWxList(ctx context.Context, req *v1.DeviceAdminUsageWxListReq) (res *v1.DeviceAdminUsageWxListRes, err error) {
+	if err := c.requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	page := req.Page
+	pageSize := req.PageSize
+	if page <= 0 {
+		page = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 20
+	}
+	rows, total, outPage, outPageSize, err := usagestats.DeviceWxListPage(ctx, page, pageSize, req.Q)
+	if err != nil {
+		return nil, err
+	}
+	wxIDs := make([]int64, 0, len(rows))
+	for _, row := range rows {
+		wxIDs = append(wxIDs, row.Id)
+	}
+	nickMap := usagestats.FetchProfileNicknames(ctx, wxIDs)
+	list := make([]v1.DeviceAdminUsageWxListItem, 0, len(rows))
+	for _, row := range rows {
+		list = append(list, v1.DeviceAdminUsageWxListItem{
+			Id:        row.Id,
+			DeviceNo:  row.DeviceNo,
+			Unionid:   row.Unionid,
+			Platform:  row.Platform,
+			Account:   row.Account,
+			CreatedAt: row.CreatedAt,
+			Nickname:  nickMap[row.Id],
+		})
+	}
+	return &v1.DeviceAdminUsageWxListRes{
+		List:     list,
+		Total:    total,
+		Page:     outPage,
+		PageSize: outPageSize,
 	}, nil
 }
 

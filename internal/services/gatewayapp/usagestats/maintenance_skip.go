@@ -10,11 +10,17 @@ import (
 // 流程约束：新增 App HTTP 接口 MUST 先向负责人确认是否统计，见 openspec/project.md「App API 使用统计约定」。
 
 var maintenanceExactAPI = map[string]struct{}{
-	"POST /device/app/api/token/refresh": {},
-	"GET /device/app/api/version/check":  {},
-	"GET /device/app/api/site/home":      {},
-	"GET /voice/app/api/ai-quota":        {},
-	"GET /ucg/app/api/ai-quota":          {},
+	"POST /device/app/api/token/refresh":    {},
+	"GET /device/app/api/version/check":     {},
+	"GET /device/app/api/site/home":         {},
+	"GET /voice/app/api/ai-quota":           {},
+	"GET /ucg/app/api/ai-quota":             {},
+	"POST /ucg/app/api/push/register":       {},
+	"POST /ucg/app/api/push/unregister":     {},
+	"GET /device/history/api/event/options": {},
+	"GET /ucg/app/api/conversations":        {},
+	"GET /device/app/api/user/get":          {},
+	"GET /device/history/api/list":          {},
 }
 
 var maintenancePathPrefixes = []string{

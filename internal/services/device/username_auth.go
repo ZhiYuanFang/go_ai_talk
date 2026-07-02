@@ -5,6 +5,7 @@ import (
 	"errors"
 	"regexp"
 	"strings"
+	"time"
 
 	"hello/internal/dao"
 	"hello/internal/model/entity"
@@ -108,8 +109,9 @@ func WxUsernameRegister(ctx context.Context, userName, password string) (int64, 
 		return 0, err
 	}
 	res, err := dao.Wx.Ctx(ctx).Data(g.Map{
-		dao.Wx.Columns().Account:  normalized,
+		dao.Wx.Columns().Account:   normalized,
 		dao.Wx.Columns().Password: hash,
+		dao.Wx.Columns().CreatedAt: time.Now().Unix(),
 	}).Insert()
 	if err != nil {
 		if row, e2 := wxRowByUserName(ctx, normalized); e2 == nil && row != nil {

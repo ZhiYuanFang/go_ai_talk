@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	"hello/internal/dao"
 	"hello/internal/model/entity"
@@ -35,8 +36,9 @@ func WxAppleLogin(ctx context.Context, identityToken, platform string) (*WxLogin
 	}
 	if one.IsEmpty() {
 		res, insErr := dao.Wx.Ctx(ctx).Data(g.Map{
-			dao.Wx.Columns().AppleSub: sub,
-			dao.Wx.Columns().Platform: platform,
+			dao.Wx.Columns().AppleSub:  sub,
+			dao.Wx.Columns().Platform:  platform,
+			dao.Wx.Columns().CreatedAt: time.Now().Unix(),
 		}).Insert()
 		if insErr != nil {
 			return nil, insErr

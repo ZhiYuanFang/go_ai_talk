@@ -272,6 +272,12 @@ curl -s http://127.0.0.1:9805/api.json   # sim-user-service
 
 **sim-user-service（可选）**：默认 `SIM_USER_SERVICE_ENABLED=false` 仅健康检查；开启后需配置 `SIM_DB_LINK`、`GATEWAY_APP_URL`、`GLM_API_KEY`、`SIM_ADMIN_PASSWORD`。管理页：**`/device/admin/sim-admin.html`**（任务开关/周期、**模拟用户列表与注销**、保存后 scheduler 热重启）、**`/device/admin/ai-model-admin.html`**（七条 LLM lane 统一配置）。Admin API 含 `GET /sim/admin/api/users`、`POST /sim/admin/api/users/{wxId}/deactivate`；模拟用户 API 不计入 usage 统计（`wx.is_simulated=1`）。
 
+**App API 使用统计 — wx 注册时间与昵称展示（enhance-usage-stats-user-display）**：
+
+1. **DDL**（device 库 `ai_voice_device`）：执行 `hack/ddl_wx_created_at.sql`（`wx` 表增 `created_at BIGINT NOT NULL DEFAULT 0`）。
+2. **部署顺序**：`device-service` → `ucg-service` → `gateway-app-server`（gateway 编排 `usage/wx-list` 需 `DEVICE_SERVICE_URL`、`UCG_SERVICE_URL` 与 `DEVICE_GATEWAY_INTERNAL_SECRET` 可达）。
+3. **验收**：打开 `/device/admin/api-usage-stats` →「按用户」列表不含模拟用户、展示 UCG 昵称与注册时间；API 下钻用户表含昵称；新注册 wx 的 `createdAt>0`，历史行 `createdAt=0` 显示「—」。
+
 首次部署或升级后 `EnsureSchema` 会创建 `sim_config.runtime_json`、`sim_llm_lane_config` 并写入代码默认种子。**任务周期/开关/LLM lane 优先读 DB**，经 Admin 保存即可在线生效（调度类变更会 Stop→Start scheduler，Admin 触发热重启跳过长错峰）。仅 **`SIM_USER_SERVICE_ENABLED`** 仍为 env 硬闸，修改后须 **`--force-recreate sim-user-service`**。仅改 `maxSimUsers` 可不触发 scheduler 全量重启。
 
 **长期开 sim + 共享 MySQL（同机双栈）**：测试与生产共用 MySQL 实例时，sim 任务会经 UCG 审核/推荐链放大 DB 压力。建议：

@@ -123,11 +123,12 @@ type UserPageResult struct {
 
 // AdminWxListItem 管理端 wx 列表项（不含 password）。
 type AdminWxListItem struct {
-	Id       int64  `json:"id"`
-	DeviceNo string `json:"deviceNo"`
-	Unionid  string `json:"unionid"`
-	Platform string `json:"platform"`
-	Account  string `json:"account"`
+	Id        int64  `json:"id"`
+	DeviceNo  string `json:"deviceNo"`
+	Unionid   string `json:"unionid"`
+	Platform  string `json:"platform"`
+	Account   string `json:"account"`
+	CreatedAt int64  `json:"createdAt"`
 }
 
 // WxPageResult 管理端 wx 账号分页列表。

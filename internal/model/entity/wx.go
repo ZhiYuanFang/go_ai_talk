@@ -15,4 +15,5 @@ type Wx struct {
 	Account      string `json:"account"      ` // 账户
 	Password     string `json:"password"     ` // 密码哈希（bcrypt，不可逆）
 	IsSimulated  int    `json:"isSimulated"  ` // 1=模拟用户（UCG 广场自动化）
+	CreatedAt    int64  `json:"createdAt"    ` // wx 账号创建 Unix 秒；0 表示未知（历史行）
 }

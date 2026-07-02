@@ -29,6 +29,7 @@ type WxColumns struct {
 	Account     string // 账户
 	Password    string // 密码哈希（bcrypt，不可逆）
 	IsSimulated string // 1=模拟用户
+	CreatedAt   string // wx 账号创建 Unix 秒
 }
 
 // wxColumns holds the columns for table wx.
@@ -42,6 +43,7 @@ var wxColumns = WxColumns{
 	Account:     "account",
 	Password:    "password",
 	IsSimulated: "is_simulated",
+	CreatedAt:   "created_at",
 }
 
 // NewWxDao creates and returns a new DAO object for table data access.

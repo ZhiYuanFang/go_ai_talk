@@ -36,9 +36,10 @@ type DeviceAdminUsageDetailReq struct {
 
 // DeviceAdminUsageDetailItem wxId 调用项。
 type DeviceAdminUsageDetailItem struct {
-	WxId   int64 `json:"wxId"`
-	Count  int64 `json:"count"`
-	LastAt int64 `json:"lastAt"`
+	WxId     int64  `json:"wxId"`
+	Nickname string `json:"nickname"`
+	Count    int64  `json:"count"`
+	LastAt   int64  `json:"lastAt"`
 }
 
 // DeviceAdminUsageDetailRes 下钻响应。
@@ -72,4 +73,31 @@ type DeviceAdminUsageUserRes struct {
 	List   []DeviceAdminUsageUserItem `json:"list"`
 	Days   int                        `json:"days"`
 	SortBy string                     `json:"sortBy"`
+}
+
+// DeviceAdminUsageWxListReq 使用统计页 wx 列表（含昵称 enrich）。
+type DeviceAdminUsageWxListReq struct {
+	g.Meta   `path:"/device/admin/api/usage/wx-list" method:"get" tags:"admin" summary:"App API 使用统计-wx 列表（含昵称）"`
+	Page     int    `json:"page" p:"page" dc:"页码，从 1 开始"`
+	PageSize int    `json:"pageSize" p:"pageSize" dc:"每页条数，默认 20，最大 100"`
+	Q        string `json:"q" p:"q" dc:"id/deviceNo/unionid/account 模糊搜索"`
+}
+
+// DeviceAdminUsageWxListItem 使用统计 wx 列表项。
+type DeviceAdminUsageWxListItem struct {
+	Id        int64  `json:"id"`
+	DeviceNo  string `json:"deviceNo"`
+	Unionid   string `json:"unionid"`
+	Platform  string `json:"platform"`
+	Account   string `json:"account"`
+	CreatedAt int64  `json:"createdAt"`
+	Nickname  string `json:"nickname"`
+}
+
+// DeviceAdminUsageWxListRes wx 列表响应。
+type DeviceAdminUsageWxListRes struct {
+	List     []DeviceAdminUsageWxListItem `json:"list"`
+	Total    int                        `json:"total"`
+	Page     int                        `json:"page"`
+	PageSize int                        `json:"pageSize"`
 }
