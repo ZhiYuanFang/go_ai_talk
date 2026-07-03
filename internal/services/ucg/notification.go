@@ -17,8 +17,9 @@ import (
 )
 
 const (
-	NotificationTypeCommentOnPost   = "comment_on_post"
+	NotificationTypeCommentOnPost    = "comment_on_post"
 	NotificationTypeMentionInComment = "mention_in_comment"
+	NotificationTypeDebateVote       = "debate_vote"
 )
 
 // @nickname、@nickname#wxId、@wxId（纯数字）— 与客户端长按评论预填格式一致。
@@ -60,7 +61,10 @@ func truncatePreview(content string) string {
 
 // InsertNotification 写入一条 inbox 通知并可选 WS 推送。
 func InsertNotification(ctx context.Context, recipientWxID int64, nType string, postID, commentID, actorWxID uint64, preview, postThumbURL string, postMediaKind int) (uint64, error) {
-	if recipientWxID <= 0 || postID == 0 || commentID == 0 || actorWxID == 0 {
+	if recipientWxID <= 0 || postID == 0 || actorWxID == 0 {
+		return 0, gerror.NewCode(gcode.CodeInvalidParameter, "通知参数无效")
+	}
+	if commentID == 0 && nType != NotificationTypeDebateVote {
 		return 0, gerror.NewCode(gcode.CodeInvalidParameter, "通知参数无效")
 	}
 	now := time.Now().Unix()
@@ -86,6 +90,8 @@ func InsertNotification(ctx context.Context, recipientWxID int64, nType string, 
 	})
 	switch nType {
 	case NotificationTypeCommentOnPost, NotificationTypeMentionInComment:
+		PushVisibleComment(ctx, recipientWxID, int64(actorWxID))
+	case NotificationTypeDebateVote:
 		PushVisibleComment(ctx, recipientWxID, int64(actorWxID))
 	}
 	return notifyID, nil
@@ -272,6 +278,13 @@ func parseMentionTargets(content string) []mentionTarget {
 
 // resolvePostCoverSnapshot 写入通知前一次 loadPostMedia，取首条媒体生成封面快照。
 func resolvePostCoverSnapshot(ctx context.Context, postID uint64) (thumbURL string, mediaKind int) {
+	row, err := dao.UcgPost.Ctx(ctx).Where(dao.UcgPost.Columns().Id, postID).One()
+	if err == nil && !row.IsEmpty() {
+		var post entity.UcgPost
+		if sErr := row.Struct(&post); sErr == nil && normalizePostType(post.Type) == PostTypeDebate {
+			return "", PostMediaKindDebate
+		}
+	}
 	media, err := loadPostMedia(ctx, postID)
 	if err != nil || len(media) == 0 {
 		return "", 0
@@ -323,5 +336,20 @@ func NotifyOnComment(ctx context.Context, commenterWxID int64, postAuthorWxID ui
 		}
 		notified[int64(wxID)] = struct{}{}
 		insert(int64(wxID), NotificationTypeMentionInComment)
+	}
+}
+
+// NotifyOnVote 投票成功后通知帖主（非作者本人）。
+func NotifyOnVote(ctx context.Context, voterWxID int64, postAuthorWxID uint64, postID, voteID uint64, sideLabel string) {
+	if postAuthorWxID == 0 || int64(postAuthorWxID) == voterWxID {
+		return
+	}
+	preview := sideLabel
+	if preview == "" {
+		preview = "你的观点"
+	}
+	thumbURL, mediaKind := resolvePostCoverSnapshot(ctx, postID)
+	if _, err := InsertNotification(ctx, int64(postAuthorWxID), NotificationTypeDebateVote, postID, voteID, uint64(voterWxID), preview, thumbURL, mediaKind); err != nil {
+		g.Log().Warningf(ctx, "[ucg-notification] debate_vote insert failed recipient=%d post=%d vote=%d err=%v", postAuthorWxID, postID, voteID, err)
 	}
 }

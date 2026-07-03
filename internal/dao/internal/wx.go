@@ -29,6 +29,7 @@ type WxColumns struct {
 	Account     string // 账户
 	Password    string // 密码哈希（bcrypt，不可逆）
 	IsSimulated string // 1=模拟用户
+	ForceValue  string // 原力值
 	CreatedAt   string // wx 账号创建 Unix 秒
 }
 
@@ -43,6 +44,7 @@ var wxColumns = WxColumns{
 	Account:     "account",
 	Password:    "password",
 	IsSimulated: "is_simulated",
+	ForceValue:  "force_value",
 	CreatedAt:   "created_at",
 }
 

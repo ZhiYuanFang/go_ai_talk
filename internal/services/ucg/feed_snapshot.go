@@ -17,9 +17,12 @@ import (
 
 // PostSnapshot Redis 帖子快照（lat/lng 仅服务端用于距离计算）。
 type PostSnapshot struct {
-	ID          uint64         `json:"id"`
-	Content     string         `json:"content"`
-	Media       []PostMediaDTO `json:"media"`
+	ID           uint64         `json:"id"`
+	Type         string         `json:"type"`
+	Content      string         `json:"content"`
+	DebateLeft   string         `json:"debateLeft"`
+	DebateRight  string         `json:"debateRight"`
+	Media        []PostMediaDTO `json:"media"`
 	AuthorWxID  uint64         `json:"authorWxId"`
 	LikeCount   uint           `json:"likeCount"`
 	IpLocation  string         `json:"ipLocation"`
@@ -53,7 +56,10 @@ func writePostSnapshot(ctx context.Context, post entity.UcgPost) error {
 	}
 	snap := PostSnapshot{
 		ID:          post.Id,
+		Type:        normalizePostType(post.Type),
 		Content:     post.Content,
+		DebateLeft:  strings.TrimSpace(post.DebateLeftLabel),
+		DebateRight: strings.TrimSpace(post.DebateRightLabel),
 		Media:       media,
 		AuthorWxID:  post.AuthorWxId,
 		LikeCount:   post.LikeCount,
@@ -127,6 +133,39 @@ func loadPostSnapshots(ctx context.Context, postIDs []uint64) (map[uint64]PostSn
 	return hits, miss, nil
 }
 
+// filterPostIDsByTypeFromSnapshots 按 Redis snapshot.type 过滤 postId（保留原顺序），供 Feed 避免 MySQL。
+// 返回的 snapshot map 可传入 assembleFeedPosts 复用，避免二次 MGET。
+func filterPostIDsByTypeFromSnapshots(ctx context.Context, ids []uint64, postType string) ([]uint64, map[uint64]PostSnapshot, error) {
+	want := normalizeFeedTypeFilter(postType)
+	if want == "" || len(ids) == 0 {
+		return ids, nil, nil
+	}
+	snaps, miss, err := loadPostSnapshots(ctx, ids)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, id := range miss {
+		snap, bfErr := backfillPostSnapshot(ctx, id)
+		if bfErr == nil {
+			snaps[id] = snap
+		}
+	}
+	out := make([]uint64, 0, len(ids))
+	filtered := make(map[uint64]PostSnapshot, len(ids))
+	for _, id := range ids {
+		snap, ok := snaps[id]
+		if !ok {
+			continue
+		}
+		if normalizePostType(snap.Type) != want {
+			continue
+		}
+		out = append(out, id)
+		filtered[id] = snap
+	}
+	return out, filtered, nil
+}
+
 func backfillPostSnapshot(ctx context.Context, postID uint64) (PostSnapshot, error) {
 	row, err := dao.UcgPost.Ctx(ctx).Where(dao.UcgPost.Columns().Id, postID).One()
 	if err != nil {
@@ -150,7 +189,10 @@ func backfillPostSnapshot(ctx context.Context, postID uint64) (PostSnapshot, err
 	}
 	return PostSnapshot{
 		ID:          post.Id,
+		Type:        normalizePostType(post.Type),
 		Content:     post.Content,
+		DebateLeft:  strings.TrimSpace(post.DebateLeftLabel),
+		DebateRight: strings.TrimSpace(post.DebateRightLabel),
 		Media:       media,
 		AuthorWxID:  post.AuthorWxId,
 		LikeCount:   post.LikeCount,
@@ -227,7 +269,10 @@ func snapshotToPostDTO(
 	return &PostDTO{
 		Id:             snap.ID,
 		AuthorWxId:     snap.AuthorWxID,
+		Type:           normalizePostType(snap.Type),
 		Content:        snap.Content,
+		DebateLeft:     snap.DebateLeft,
+		DebateRight:    snap.DebateRight,
 		Status:         PostStatusPublished,
 		MediaType:      snap.MediaType,
 		LikeCount:      snap.LikeCount,
@@ -300,6 +345,9 @@ func syncPublishedPostRedis(ctx context.Context, postID uint64) error {
 	if err = writePostSnapshot(ctx, post); err != nil {
 		return err
 	}
+	if normalizePostType(post.Type) == PostTypeDebate {
+		_ = initPostVoteCountsRedis(ctx, post.Id)
+	}
 	return writeProfileSnapshot(ctx, post.AuthorWxId)
 }
 
@@ -310,5 +358,6 @@ func removePostFromRecommendRedis(ctx context.Context, postID uint64) error {
 	member := strconv.FormatUint(postID, 10)
 	_ = ucgCache.SortedSetRemove(ctx, cachekit.UCGRecommendScoreKey(), member)
 	_ = ucgCache.GeoRemove(ctx, cachekit.UCGFeedGeoKey(), member)
+	_ = deletePostVoteCountsRedis(ctx, postID)
 	return deletePostSnapshot(ctx, postID)
 }

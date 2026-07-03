@@ -18,6 +18,7 @@ type UcgWxDisplay struct {
 	BabyName    string `json:"babyName"`
 	IpLocation  string `json:"ipLocation,omitempty"`
 	IsSimulated bool   `json:"isSimulated"`
+	ForceValue  int    `json:"forceValue,omitempty"`
 }
 
 var ErrUcgWxIDInvalid = errors.New("wxId 无效")
@@ -42,6 +43,7 @@ func UcgWxValidate(ctx context.Context, wxID int64) (*UcgWxDisplay, error) {
 		BabyName:    babyName,
 		IpLocation:  strings.TrimSpace(row.IpLocation),
 		IsSimulated: row.IsSimulated == 1,
+		ForceValue:  row.ForceValue,
 	}, nil
 }
 
@@ -94,6 +96,24 @@ func UcgWxBabyName(ctx context.Context, wxID int64) (string, error) {
 		return "", err
 	}
 	return ucgBabyNameByDeviceNo(ctx, dn)
+}
+
+// UcgWxIncrementForceValue 作者投票成功时原力 +1。
+func UcgWxIncrementForceValue(ctx context.Context, wxID int64) error {
+	if wxID <= 0 {
+		return ErrUcgWxIDInvalid
+	}
+	row, err := wxRowByWxID(ctx, wxID)
+	if err != nil {
+		return err
+	}
+	if row == nil || row.Id == 0 {
+		return ErrUcgWxIDInvalid
+	}
+	_, err = dao.Wx.Ctx(ctx).
+		Where(dao.Wx.Columns().Id, wxID).
+		Increment(dao.Wx.Columns().ForceValue, 1)
+	return err
 }
 
 func ucgBabyNameByDeviceNo(ctx context.Context, deviceNo string) (string, error) {

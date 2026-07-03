@@ -8,7 +8,10 @@ package entity
 type UcgPost struct {
 	Id                uint64 `json:"id"                ` //
 	AuthorWxId        uint64 `json:"authorWxId"        ` //
+	Type              string `json:"type"              ` // moment|debate
 	Content           string `json:"content"           ` //
+	DebateLeftLabel   string `json:"debateLeftLabel"   ` //
+	DebateRightLabel  string `json:"debateRightLabel"  ` //
 	IpLocation        string   `json:"ipLocation"        ` // 发帖时 IP属地快照
 	Lat               *float64 `json:"lat"               ` // 可选发帖纬度 WGS84
 	Lng               *float64 `json:"lng"               ` // 可选发帖经度 WGS84

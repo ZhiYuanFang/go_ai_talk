@@ -103,9 +103,14 @@ func LikePost(ctx context.Context, wxID int64, postID uint64) error {
 	if wxID <= 0 || postID == 0 {
 		return gerror.NewCode(gcode.CodeInvalidParameter, "参数无效")
 	}
-	if err := ensurePublishedPost(ctx, postID); err != nil {
+	post, err := loadPublishedPost(ctx, postID)
+	if err != nil {
 		return err
 	}
+	if normalizePostType(post.Type) == PostTypeDebate {
+		return gerror.NewCode(gcode.CodeInvalidParameter, "辩论帖不支持点赞")
+	}
+	_ = post
 	cnt, err := dao.UcgPostLike.Ctx(ctx).
 		Where(dao.UcgPostLike.Columns().PostId, postID).
 		Where(dao.UcgPostLike.Columns().WxId, wxID).

@@ -4,6 +4,7 @@ import (
 	"context"
 	"sort"
 	"strconv"
+	"strings"
 
 	"hello/internal/dao"
 	"hello/internal/model/entity"
@@ -34,6 +35,7 @@ func ListRecommendFeed(
 	viewerLat, viewerLng *float64,
 	cursor string,
 	pageSize int,
+	postType string,
 ) (*FeedRecommendResult, error) {
 	p := NormalizePage(1, pageSize)
 	cfg := LoadFeedConfig(ctx)
@@ -76,12 +78,20 @@ func ListRecommendFeed(
 			nextCur.LastPostID = c.postID
 		}
 	}
-
-	hasMore := len(pageIDs) == p.PageSize && (len(candidates) > p.PageSize || nextCur.hasMoreWork(cfg))
-	list, err := assembleFeedPosts(ctx, viewerWxID, viewer, hasViewer, pageIDs, candidates)
+	pageIDs, preloadedSnaps, err := filterPostIDsByTypeFromSnapshots(ctx, pageIDs, postType)
 	if err != nil {
 		return nil, err
 	}
+
+	hasMore := len(pageIDs) == p.PageSize && (len(candidates) > p.PageSize || nextCur.hasMoreWork(cfg))
+	list, err := assembleFeedPosts(ctx, viewerWxID, viewer, hasViewer, pageIDs, candidates, preloadedSnaps)
+	if err != nil {
+		return nil, err
+	}
+	if err = enrichPostsWithVoteData(ctx, viewerWxID, list); err != nil {
+		return nil, err
+	}
+	enrichAuthorForceOnPosts(ctx, list)
 	// 推荐 Feed 响应：本人帖 omit distanceMeters；composite 排序 distanceTerm 不变。
 	omitRecommendOwnPostDistance(viewerWxID, list)
 	_ = markSessionSeen(ctx, cfg, cur.SessionID, pageIDs)
@@ -275,20 +285,26 @@ func assembleFeedPosts(
 	hasViewer bool,
 	pageIDs []uint64,
 	candidates []feedCandidate,
+	preloadedSnaps map[uint64]PostSnapshot,
 ) ([]*PostDTO, error) {
 	distByID := make(map[uint64]float64, len(candidates))
 	for _, c := range candidates {
 		distByID[c.postID] = c.distKm
 	}
 
-	snaps, miss, err := loadPostSnapshots(ctx, pageIDs)
-	if err != nil {
-		return nil, err
-	}
-	for _, id := range miss {
-		snap, bfErr := backfillPostSnapshot(ctx, id)
-		if bfErr == nil {
-			snaps[id] = snap
+	snaps := preloadedSnaps
+	if snaps == nil {
+		var miss []uint64
+		var err error
+		snaps, miss, err = loadPostSnapshots(ctx, pageIDs)
+		if err != nil {
+			return nil, err
+		}
+		for _, id := range miss {
+			snap, bfErr := backfillPostSnapshot(ctx, id)
+			if bfErr == nil {
+				snaps[id] = snap
+			}
 		}
 	}
 
@@ -380,6 +396,7 @@ func ListFollowingFeed(
 	wxID int64,
 	page, pageSize int,
 	viewerLat, viewerLng *float64,
+	postType string,
 ) (*PageResult, error) {
 	if wxID <= 0 {
 		return nil, gerror.NewCode(gcode.CodeNotAuthorized, "缺少 X-Internal-Wx-Id")
@@ -407,6 +424,9 @@ func ListFollowingFeed(
 	model := dao.UcgPost.Ctx(ctx).
 		Where(dao.UcgPost.Columns().Status, PostStatusPublished).
 		WhereIn(dao.UcgPost.Columns().AuthorWxId, ids)
+	if ft := normalizeFeedTypeFilter(postType); ft != "" {
+		model = model.Where(dao.UcgPost.Columns().Type, ft)
+	}
 	total, err := model.Count()
 	if err != nil {
 		return nil, err
@@ -435,9 +455,25 @@ func ListFollowingFeed(
 	for i, id := range pageIDs {
 		candidates[i] = feedCandidate{postID: id} // 无 GEO 预计算，assembleFeedPosts 内 haversine 重算距离
 	}
-	list, err := assembleFeedPosts(ctx, wxID, viewer, hasViewer, pageIDs, candidates)
+	list, err := assembleFeedPosts(ctx, wxID, viewer, hasViewer, pageIDs, candidates, nil)
 	if err != nil {
 		return nil, err
 	}
+	if err = enrichPostsWithVoteData(ctx, wxID, list); err != nil {
+		return nil, err
+	}
+	enrichAuthorForceOnPosts(ctx, list)
 	return &PageResult{List: list, Total: total, Page: p.Page, PageSize: p.PageSize}, nil
+}
+
+// normalizeFeedTypeFilter 广场 Feed 默认仅 debate。
+func normalizeFeedTypeFilter(t string) string {
+	t = strings.TrimSpace(t)
+	if t == "" {
+		return PostTypeDebate
+	}
+	if t == PostTypeDebate || t == PostTypeMoment {
+		return t
+	}
+	return PostTypeDebate
 }

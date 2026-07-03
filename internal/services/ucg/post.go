@@ -26,15 +26,21 @@ type PostMediaInput struct {
 
 // PostDTO 帖子视图。
 type PostDTO struct {
-	Id             uint64         `json:"id"`
-	AuthorWxId     uint64         `json:"authorWxId"`
-	Content        string         `json:"content"`
-	Status         int            `json:"status"`
-	RejectReason   string         `json:"rejectReason,omitempty"`
-	MediaType      int            `json:"mediaType"`
-	LikeCount      uint           `json:"likeCount"`
-	CommentCount   uint           `json:"commentCount"`
-	LikedByMe      bool           `json:"likedByMe"`
+	Id              uint64         `json:"id"`
+	AuthorWxId      uint64         `json:"authorWxId"`
+	Type            string         `json:"type,omitempty"`
+	Content         string         `json:"content"`
+	DebateLeft      string         `json:"debateLeft,omitempty"`
+	DebateRight     string         `json:"debateRight,omitempty"`
+	Status          int            `json:"status"`
+	RejectReason    string         `json:"rejectReason,omitempty"`
+	MediaType       int            `json:"mediaType"`
+	LikeCount       uint           `json:"likeCount"`
+	CommentCount    uint           `json:"commentCount"`
+	LeftVoteCount   uint           `json:"leftVoteCount,omitempty"`
+	RightVoteCount  uint           `json:"rightVoteCount,omitempty"`
+	MyVoteSide      string         `json:"myVoteSide,omitempty"`
+	LikedByMe       bool           `json:"likedByMe"`
 	CreatedAt      int64          `json:"createdAt"`
 	UpdatedAt      int64          `json:"updatedAt"`
 	PublishedAt    int64          `json:"publishedAt,omitempty"`
@@ -53,10 +59,54 @@ type PostMediaDTO struct {
 	SortOrder    int    `json:"sortOrder"`
 }
 
+// CreatePostParams 创建帖子入参。
+type CreatePostParams struct {
+	WxID         int64
+	Content      string
+	MediaType    int
+	Submit       bool
+	Media        []PostMediaInput
+	ClientIP     string
+	Lat, Lng     *float64
+	Type         string
+	DebateLeft   string
+	DebateRight  string
+}
+
 // CreatePost 创建帖子；submit=true 时进入 pending_audit 并事务提交后发 MQ。clientIP 用于服务端快照 ip_location。
 func CreatePost(ctx context.Context, wxID int64, content string, mediaType int, submit bool, media []PostMediaInput, clientIP string, lat, lng *float64) (*PostDTO, error) {
+	return CreatePostWithParams(ctx, CreatePostParams{
+		WxID: wxID, Content: content, MediaType: mediaType, Submit: submit,
+		Media: media, ClientIP: clientIP, Lat: lat, Lng: lng, Type: PostTypeMoment,
+	})
+}
+
+// CreatePostWithParams 支持 moment/debate 创建。
+func CreatePostWithParams(ctx context.Context, p CreatePostParams) (*PostDTO, error) {
+	wxID := p.WxID
+	content := p.Content
+	mediaType := p.MediaType
+	submit := p.Submit
+	media := p.Media
+	clientIP := p.ClientIP
+	lat, lng := p.Lat, p.Lng
+	postType := normalizePostType(p.Type)
+	debateLeft := trimDebateLabel(p.DebateLeft)
+	debateRight := trimDebateLabel(p.DebateRight)
 	if wxID <= 0 {
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "wxId 无效")
+	}
+	if postType == PostTypeDebate {
+		if err := validateDebateLabel(debateLeft); err != nil {
+			return nil, err
+		}
+		if err := validateDebateLabel(debateRight); err != nil {
+			return nil, err
+		}
+		if len(media) > 0 {
+			return nil, gerror.NewCode(gcode.CodeInvalidParameter, "辩论帖不得附带媒体")
+		}
+		mediaType = MediaTypeNone
 	}
 	status := PostStatusDraft
 	auditVersion := 0
@@ -71,11 +121,16 @@ func CreatePost(ctx context.Context, wxID int64, content string, mediaType int, 
 	err := dao.UcgPost.Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
 		data := g.Map{
 			dao.UcgPost.Columns().AuthorWxId: wxID,
+			dao.UcgPost.Columns().Type:       postType,
 			dao.UcgPost.Columns().Content:    strings.TrimSpace(content),
 			dao.UcgPost.Columns().Status:     status,
 			dao.UcgPost.Columns().MediaType:  mediaType,
 			dao.UcgPost.Columns().CreatedAt:  now,
 			dao.UcgPost.Columns().UpdatedAt:  now,
+		}
+		if postType == PostTypeDebate {
+			data[dao.UcgPost.Columns().DebateLeftLabel] = debateLeft
+			data[dao.UcgPost.Columns().DebateRightLabel] = debateRight
 		}
 		if submit {
 			data[dao.UcgPost.Columns().AuditVersion] = auditVersion
@@ -90,9 +145,11 @@ func CreatePost(ctx context.Context, wxID int64, content string, mediaType int, 
 		}
 		id, _ := res.LastInsertId()
 		postID = uint64(id)
-		// 插入媒体
-		if insErr = replacePostMediaTx(ctx, tx, postID, media); insErr != nil {
-			return insErr
+		// 插入媒体（debate 已在上方拒绝 media 入参）
+		if postType != PostTypeDebate {
+			if insErr = replacePostMediaTx(ctx, tx, postID, media); insErr != nil {
+				return insErr
+			}
 		}
 		// 提交审核
 		if submit {
@@ -115,6 +172,12 @@ func UpdatePost(ctx context.Context, wxID int64, postID uint64, content string, 
 	post, err := loadOwnedPost(ctx, wxID, postID)
 	if err != nil {
 		return nil, err
+	}
+	if normalizePostType(post.Type) == PostTypeDebate {
+		if len(media) > 0 {
+			return nil, gerror.NewCode(gcode.CodeInvalidParameter, "辩论帖不得附带媒体")
+		}
+		mediaType = MediaTypeNone
 	}
 	status := post.Status
 	auditVersion := post.AuditVersion
@@ -160,6 +223,13 @@ func UpdatePost(ctx context.Context, wxID int64, postID uint64, content string, 
 		}
 		if uErr = replacePostMediaTx(ctx, tx, postID, media); uErr != nil {
 			return uErr
+		}
+		if normalizePostType(post.Type) == PostTypeDebate {
+			// debate 帖不得保留媒体行
+			if _, uErr = tx.Model(dao.UcgPostMedia.Table()).Ctx(ctx).
+				Where(dao.UcgPostMedia.Columns().PostId, postID).Delete(); uErr != nil {
+				return uErr
+			}
 		}
 		if needPublish && status == PostStatusPendingAudit {
 			outboxID, uErr = enqueueAuditPublishOutboxTx(ctx, tx, eventkit.RoutingUcgPostCreated.String(),
@@ -269,6 +339,9 @@ func GetPostByID(ctx context.Context, postID uint64, viewerWxID int64, viewerLat
 	if dm, dErr := DistanceMetersForPost(ctx, postID, viewerLat, viewerLng); dErr == nil && dm != "" {
 		dto.DistanceMeters = dm
 	}
+	if err = enrichPostsWithVoteData(ctx, viewerWxID, []*PostDTO{dto}); err != nil {
+		return nil, err
+	}
 	return dto, nil
 }
 
@@ -360,6 +433,9 @@ func postsFromResult(ctx context.Context, rows gdb.Result, viewerWxID int64) ([]
 			dto.LikedByMe = liked[dto.Id]
 		}
 	}
+	if err := enrichPostsWithVoteData(ctx, viewerWxID, out); err != nil {
+		return nil, err
+	}
 	return out, nil
 }
 
@@ -376,7 +452,10 @@ func postToDTO(ctx context.Context, post entity.UcgPost) (*PostDTO, error) {
 	dto := &PostDTO{
 		Id:           post.Id,
 		AuthorWxId:   post.AuthorWxId,
+		Type:         normalizePostType(post.Type),
 		Content:      post.Content,
+		DebateLeft:   strings.TrimSpace(post.DebateLeftLabel),
+		DebateRight:  strings.TrimSpace(post.DebateRightLabel),
 		Status:       post.Status,
 		RejectReason: post.RejectReason,
 		MediaType:    post.MediaType,

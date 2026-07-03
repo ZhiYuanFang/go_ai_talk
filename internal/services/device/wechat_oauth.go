@@ -16,6 +16,7 @@ import (
 )
 
 const wechatOAuthAccessTokenURL = "https://api.weixin.qq.com/sns/oauth2/access_token"
+const wechatMiniProgramCode2SessionURL = "https://api.weixin.qq.com/sns/jscode2session"
 
 // wechatOAuthResult 微信开放平台 OAuth 换票成功时的业务字段（微信侧令牌不落库、不记录日志原文）。
 type wechatOAuthResult struct {
@@ -30,6 +31,10 @@ func exchangeAuthCodeForUnionID(ctx context.Context, platform, jsCode string) (*
 	jsCode = strings.TrimSpace(jsCode)
 	if jsCode == "" {
 		return nil, errors.New("jsCode 不能为空")
+	}
+	platform = strings.TrimSpace(platform)
+	if platform == "miniprogram" {
+		return exchangeMiniProgramCodeForUnionID(ctx, platform, jsCode)
 	}
 	appID, secret, err := wechatPlatformCredentials(ctx, platform)
 	if err != nil {
@@ -101,4 +106,57 @@ func wechatPlatformCredentials(ctx context.Context, platform string) (appID, sec
 		return "", "", fmt.Errorf("未配置微信凭据 wechat.platforms.%s 的 appId/appSecret", platform)
 	}
 	return appID, secret, nil
+}
+
+// exchangeMiniProgramCodeForUnionID 小程序 wx.login code → jscode2session。
+func exchangeMiniProgramCodeForUnionID(ctx context.Context, platform, jsCode string) (*wechatOAuthResult, error) {
+	appID, secret, err := wechatPlatformCredentials(ctx, platform)
+	if err != nil {
+		return nil, err
+	}
+	q := url.Values{}
+	q.Set("appid", appID)
+	q.Set("secret", secret)
+	q.Set("js_code", jsCode)
+	q.Set("grant_type", "authorization_code")
+	full := wechatMiniProgramCode2SessionURL + "?" + q.Encode()
+
+	client := gclient.New().Timeout(8 * time.Second)
+	resp, err := client.Get(ctx, full)
+	if err != nil {
+		return nil, fmt.Errorf("调用微信 jscode2session 失败: %w", err)
+	}
+	defer resp.Close()
+	body := resp.ReadAll()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("微信 jscode2session HTTP 状态异常: %d", resp.StatusCode)
+	}
+
+	var raw struct {
+		OpenID     string `json:"openid"`
+		SessionKey string `json:"session_key"`
+		UnionID    string `json:"unionid"`
+		ErrCode    int    `json:"errcode"`
+		ErrMsg     string `json:"errmsg"`
+	}
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, fmt.Errorf("解析微信 jscode2session 响应失败: %w", err)
+	}
+	if raw.ErrCode != 0 {
+		glog.Warningf(ctx, "[wechat-oauth] jscode2session 业务失败 platform=%s errcode=%d", platform, raw.ErrCode)
+		return nil, fmt.Errorf("微信小程序登录校验失败（errcode=%d）", raw.ErrCode)
+	}
+	openid := strings.TrimSpace(raw.OpenID)
+	if openid == "" {
+		return nil, errors.New("微信未返回 openid")
+	}
+	unionid := strings.TrimSpace(raw.UnionID)
+	if unionid == "" {
+		return nil, errors.New("当前小程序未返回 unionid，请确认已绑定微信开放平台")
+	}
+	_ = raw.SessionKey
+	return &wechatOAuthResult{
+		OpenID:  openid,
+		UnionID: unionid,
+	}, nil
 }

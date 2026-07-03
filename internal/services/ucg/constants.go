@@ -37,4 +37,13 @@ const (
 	MediaTypeNone   = 0
 	MediaTypeImages = 1
 	MediaTypeVideo  = 2
+
+	PostTypeMoment = "moment"
+	PostTypeDebate = "debate"
+
+	VoteSideLeft  = "left"
+	VoteSideRight = "right"
+
+	// PostMediaKindDebate 通知缩略图：辩论帖无媒体。
+	PostMediaKindDebate = 3
 )

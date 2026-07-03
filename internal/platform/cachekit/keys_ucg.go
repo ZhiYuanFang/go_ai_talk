@@ -83,6 +83,16 @@ func UCGUserLikedPostsKey(wxID int64) string {
 	return fmt.Sprintf("ucg:user:%d:liked-posts", wxID)
 }
 
+// UCGPostVoteCountsKey 辩论帖投票计数 Hash；field=left|right，value=票数。无 TTL，VotePost 写路径 HINCRBY 维护。
+func UCGPostVoteCountsKey(postID uint64) string {
+	return fmt.Sprintf("ucg:post:%d:vote-counts", postID)
+}
+
+// UCGUserPostVotesKey 用户辩论帖投票立场 Hash；field=postId，value=left|right。无 TTL，VotePost 写路径 HSET 维护。
+func UCGUserPostVotesKey(wxID int64) string {
+	return fmt.Sprintf("ucg:user:%d:post-votes", wxID)
+}
+
 // UCGFeedSessionKey Feed 分页 session 已下发 postId SET；TTL 见 ucg.feed.sessionTtlMinutes（默认 30min）。
 func UCGFeedSessionKey(sessionID string) string {
 	return fmt.Sprintf("ucg:feed:session:%s", strings.TrimSpace(sessionID))

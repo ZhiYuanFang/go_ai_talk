@@ -30,6 +30,8 @@ type ProfileDTO struct {
 	AuditPending       bool   `json:"auditPending,omitempty"`
 	RejectReason       string `json:"rejectReason,omitempty"`
 	IpLocation         string `json:"ipLocation,omitempty"`
+	ForceValue         int    `json:"forceValue,omitempty"`
+	ForceTier          string `json:"forceTier,omitempty"`
 }
 
 // GetOrCreateMyProfile 获取当前用户 profile；不存在时经 device internal API 创建默认昵称。
@@ -230,6 +232,7 @@ func GetPublicProfilesByWxIDs(ctx context.Context, wxIDs []uint64) (map[uint64]*
 		}
 		out[p.WxId] = dto
 	}
+	enrichProfileForceValuesMap(ctx, out)
 	return out, nil
 }
 
@@ -257,6 +260,7 @@ func GetPublicProfile(ctx context.Context, wxID uint64) (*ProfileDTO, error) {
 	}
 	// 与 profile/me 对齐：公开主页也需展示关注/粉丝/发帖统计
 	enrichProfileStats(ctx, wxID, dto)
+	enrichProfileForceValues(ctx, dto)
 	return dto, nil
 }
 

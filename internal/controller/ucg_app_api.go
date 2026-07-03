@@ -208,7 +208,11 @@ func (c *UcgAppCtrl) PostCreate(ctx context.Context, req *v1.UcgPostCreateReq) (
 		return nil, err
 	}
 	clientIP := ucgsvc.ClientIPFromRequest(ghttp.RequestFromCtx(ctx))
-	post, err := ucgsvc.CreatePost(ctx, wxID, req.Content, req.MediaType, req.Submit, toPostMediaInput(req.Media), clientIP, nil, nil)
+	post, err := ucgsvc.CreatePostWithParams(ctx, ucgsvc.CreatePostParams{
+		WxID: wxID, Content: req.Content, MediaType: req.MediaType, Submit: req.Submit,
+		Media: toPostMediaInput(req.Media), ClientIP: clientIP,
+		Type: req.Type, DebateLeft: req.DebateLeft, DebateRight: req.DebateRight,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -222,7 +226,11 @@ func (c *UcgAppCtrl) PostCreateV2(ctx context.Context, req *v2.UcgPostCreateV2Re
 		return nil, err
 	}
 	clientIP := ucgsvc.ClientIPFromRequest(ghttp.RequestFromCtx(ctx))
-	post, err := ucgsvc.CreatePost(ctx, wxID, req.Content, req.MediaType, req.Submit, toPostMediaInputV2(req.Media), clientIP, req.Lat, req.Lng)
+	post, err := ucgsvc.CreatePostWithParams(ctx, ucgsvc.CreatePostParams{
+		WxID: wxID, Content: req.Content, MediaType: req.MediaType, Submit: req.Submit,
+		Media: toPostMediaInputV2(req.Media), ClientIP: clientIP, Lat: req.Lat, Lng: req.Lng,
+		Type: req.Type, DebateLeft: req.DebateLeft, DebateRight: req.DebateRight,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -295,7 +303,7 @@ func (c *UcgAppCtrl) FeedRecommend(ctx context.Context, req *v1.UcgFeedRecommend
 	if cursor == "" {
 		lat, lng = req.Lat, req.Lng
 	}
-	page, err := ucgsvc.ListRecommendFeed(ctx, viewerWxID, lat, lng, cursor, req.PageSize)
+	page, err := ucgsvc.ListRecommendFeed(ctx, viewerWxID, lat, lng, cursor, req.PageSize, req.Type)
 	if err != nil {
 		return nil, err
 	}
@@ -316,7 +324,7 @@ func (c *UcgAppCtrl) FeedFollowing(ctx context.Context, req *v1.UcgFeedFollowing
 	if err != nil {
 		return nil, err
 	}
-	page, err := ucgsvc.ListFollowingFeed(ctx, wxID, req.Page, req.PageSize, req.Lat, req.Lng)
+	page, err := ucgsvc.ListFollowingFeed(ctx, wxID, req.Page, req.PageSize, req.Lat, req.Lng, req.Type)
 	if err != nil {
 		return nil, err
 	}
@@ -377,6 +385,18 @@ func (c *UcgAppCtrl) PostLikePost(ctx context.Context, req *v1.UcgPostLikePostRe
 		return nil, err
 	}
 	return &v1.UcgPostLikePostRes{}, nil
+}
+
+func (c *UcgAppCtrl) PostVotePost(ctx context.Context, req *v1.UcgPostVotePostReq) (res *v1.UcgPostVotePostRes, err error) {
+	_ = c
+	wxID, err := wxIDFromUcgHeader(ghttp.RequestFromCtx(ctx))
+	if err != nil {
+		return nil, err
+	}
+	if err = ucgsvc.VotePost(ctx, wxID, req.Id, req.Side); err != nil {
+		return nil, err
+	}
+	return &v1.UcgPostVotePostRes{}, nil
 }
 
 func (c *UcgAppCtrl) PostLikeDelete(ctx context.Context, req *v1.UcgPostLikeDeleteReq) (res *v1.UcgPostLikeDeleteRes, err error) {
@@ -722,6 +742,8 @@ func profileDTOToRes(p *ucgsvc.ProfileDTO) *v1.UcgProfileRes {
 		UpdatedAt:          p.UpdatedAt,
 		AuditPending:       p.AuditPending,
 		RejectReason:       p.RejectReason,
+		ForceValue:         p.ForceValue,
+		ForceTier:          p.ForceTier,
 	}
 }
 
@@ -758,15 +780,21 @@ func postDTOToItem(p *ucgsvc.PostDTO) v1.UcgPostItem {
 		})
 	}
 	item := v1.UcgPostItem{
-		Id:           p.Id,
-		AuthorWxId:   p.AuthorWxId,
-		Content:      p.Content,
-		Status:       p.Status,
-		RejectReason: p.RejectReason,
-		MediaType:    p.MediaType,
-		LikeCount:    p.LikeCount,
-		CommentCount: p.CommentCount,
-		LikedByMe:    p.LikedByMe,
+		Id:             p.Id,
+		AuthorWxId:     p.AuthorWxId,
+		Type:           p.Type,
+		Content:        p.Content,
+		DebateLeft:     p.DebateLeft,
+		DebateRight:    p.DebateRight,
+		Status:         p.Status,
+		RejectReason:   p.RejectReason,
+		MediaType:      p.MediaType,
+		LikeCount:      p.LikeCount,
+		CommentCount:   p.CommentCount,
+		LeftVoteCount:  p.LeftVoteCount,
+		RightVoteCount: p.RightVoteCount,
+		MyVoteSide:     p.MyVoteSide,
+		LikedByMe:      p.LikedByMe,
 		CreatedAt:    p.CreatedAt,
 		UpdatedAt:    p.UpdatedAt,
 		PublishedAt:    p.PublishedAt,

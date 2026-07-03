@@ -22,7 +22,10 @@ type UcgPostDao struct {
 type UcgPostColumns struct {
 	Id                string //
 	AuthorWxId        string //
+	Type              string // moment|debate
 	Content           string //
+	DebateLeftLabel   string //
+	DebateRightLabel  string //
 	IpLocation        string // 发帖时 IP属地快照
 	Lat               string // 可选发帖纬度 WGS84
 	Lng               string // 可选发帖经度 WGS84
@@ -46,7 +49,10 @@ type UcgPostColumns struct {
 var ucgPostColumns = UcgPostColumns{
 	Id:                "id",
 	AuthorWxId:        "author_wx_id",
+	Type:              "type",
 	Content:           "content",
+	DebateLeftLabel:   "debate_left_label",
+	DebateRightLabel:  "debate_right_label",
 	IpLocation:        "ip_location",
 	Lat:               "lat",
 	Lng:               "lng",

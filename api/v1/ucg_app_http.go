@@ -107,14 +107,19 @@ type UcgProfileRes struct {
 	UpdatedAt      int64  `json:"updatedAt"`
 	AuditPending   bool   `json:"auditPending,omitempty"`
 	RejectReason   string `json:"rejectReason,omitempty"`
+	ForceValue     int    `json:"forceValue,omitempty"`
+	ForceTier      string `json:"forceTier,omitempty"`
 }
 
 type UcgPostCreateReq struct {
-	g.Meta    `path:"/ucg/app/api/posts" method:"post" tags:"ucg" summary:"创建帖子"`
-	Content   string              `json:"content"`
-	MediaType int                 `json:"mediaType"`
-	Submit    bool                `json:"submit"`
-	Media     []UcgPostMediaInput `json:"media"`
+	g.Meta       `path:"/ucg/app/api/posts" method:"post" tags:"ucg" summary:"创建帖子"`
+	Content      string              `json:"content"`
+	Type         string              `json:"type"`
+	DebateLeft   string              `json:"debateLeft"`
+	DebateRight  string              `json:"debateRight"`
+	MediaType    int                 `json:"mediaType"`
+	Submit       bool                `json:"submit"`
+	Media        []UcgPostMediaInput `json:"media"`
 }
 
 type UcgPostUpdateReq struct {
@@ -173,6 +178,7 @@ type UcgFeedRecommendReq struct {
 	g.Meta   `path:"/ucg/app/api/feed/recommend" method:"get" tags:"ucg" summary:"推荐 Feed"`
 	Page     int      `json:"page" in:"query" d:"1"`
 	PageSize int      `json:"pageSize" in:"query" d:"20"`
+	Type     string   `json:"type" in:"query"`
 	Lat      *float64 `json:"lat" in:"query"`
 	Lng      *float64 `json:"lng" in:"query"`
 	Cursor   string   `json:"cursor" in:"query"`
@@ -188,6 +194,7 @@ type UcgFeedFollowingReq struct {
 	g.Meta   `path:"/ucg/app/api/feed/following" method:"get" tags:"ucg" summary:"关注 Feed"`
 	Page     int      `json:"page" in:"query" d:"1"`
 	PageSize int      `json:"pageSize" in:"query" d:"20"`
+	Type     string   `json:"type" in:"query"`
 	Lat      *float64 `json:"lat" in:"query"`
 	Lng      *float64 `json:"lng" in:"query"`
 }
@@ -201,15 +208,21 @@ type UcgPostMediaInput struct {
 }
 
 type UcgPostItem struct {
-	Id           uint64            `json:"id"`
-	AuthorWxId   uint64            `json:"authorWxId"`
-	Content      string            `json:"content"`
-	Status       int               `json:"status"`
-	RejectReason string            `json:"rejectReason,omitempty"`
-	MediaType    int               `json:"mediaType"`
-	LikeCount    uint              `json:"likeCount"`
-	CommentCount uint              `json:"commentCount"`
-	LikedByMe    bool              `json:"likedByMe"`
+	Id             uint64            `json:"id"`
+	AuthorWxId     uint64            `json:"authorWxId"`
+	Type           string            `json:"type,omitempty"`
+	Content        string            `json:"content"`
+	DebateLeft     string            `json:"debateLeft,omitempty"`
+	DebateRight    string            `json:"debateRight,omitempty"`
+	Status         int               `json:"status"`
+	RejectReason   string            `json:"rejectReason,omitempty"`
+	MediaType      int               `json:"mediaType"`
+	LikeCount      uint              `json:"likeCount"`
+	CommentCount   uint              `json:"commentCount"`
+	LeftVoteCount  uint              `json:"leftVoteCount,omitempty"`
+	RightVoteCount uint              `json:"rightVoteCount,omitempty"`
+	MyVoteSide     string            `json:"myVoteSide,omitempty"`
+	LikedByMe      bool              `json:"likedByMe"`
 	CreatedAt    int64             `json:"createdAt"`
 	UpdatedAt    int64             `json:"updatedAt"`
 	PublishedAt  int64             `json:"publishedAt,omitempty"`
@@ -272,6 +285,14 @@ type UcgPostLikeDeleteReq struct {
 }
 
 type UcgPostLikeDeleteRes struct{}
+
+type UcgPostVotePostReq struct {
+	g.Meta `path:"/ucg/app/api/posts/{id}/vote" method:"post" tags:"ucg" summary:"辩论帖投票"`
+	Id     uint64 `json:"id" in:"path" v:"required|min:1"`
+	Side   string `json:"side" v:"required|in:left,right"`
+}
+
+type UcgPostVotePostRes struct{}
 
 type UcgPostLikesGetReq struct {
 	g.Meta   `path:"/ucg/app/api/posts/{id}/likes" method:"get" tags:"ucg" summary:"点赞用户列表"`
