@@ -56,8 +56,6 @@ var (
 		"/device/app/api/version/check",
 		"/device/history/api/event/options",
 		"/ucg/app/api/feed/recommend",
-		// v2 推荐 Feed 与 v1 同语义：未登录可浏览；新增 v2 公开读接口须同步登记。
-		"/ucg/app/api/v2/feed/recommend",
 		"/ucg/app/api/health",
 		"/device/app/version-admin.html",
 		"/device/admin/ucg-admin.html",

@@ -32,7 +32,7 @@ func VotePost(ctx context.Context, wxID int64, postID uint64, side string) error
 	if err != nil {
 		return err
 	}
-	if normalizePostType(post.Type) != PostTypeDebate {
+	if !isDebatePost(post) {
 		return gerror.NewCode(gcode.CodeInvalidParameter, "仅辩论帖可投票")
 	}
 	now := time.Now().Unix()
@@ -111,6 +111,7 @@ func VotePost(ctx context.Context, wxID int64, postID uint64, side string) error
 		}
 		NotifyOnVote(ctx, wxID, post.AuthorWxId, postID, voteID, sideLabel)
 	}
+	refreshPostSnapshotFromDB(ctx, postID)
 	return nil
 }
 
@@ -157,6 +158,22 @@ func trimDebateLabel(label string) string {
 	return strings.TrimSpace(label)
 }
 
+// hasDebateLabels 左右立场标签均非空时视为辩论帖（创建推断与 vote/comment 门禁共用）。
+func hasDebateLabels(left, right string) bool {
+	return trimDebateLabel(left) != "" && trimDebateLabel(right) != ""
+}
+
+// isDebatePost 辩论帖判定：标签双填或 DB type=debate（兼容旧数据）。
+func isDebatePost(post *entity.UcgPost) bool {
+	if post == nil {
+		return false
+	}
+	if hasDebateLabels(post.DebateLeftLabel, post.DebateRightLabel) {
+		return true
+	}
+	return normalizePostType(post.Type) == PostTypeDebate
+}
+
 func aggregateVoteCounts(ctx context.Context, postIDs []uint64) (map[uint64]voteCounts, error) {
 	out := make(map[uint64]voteCounts, len(postIDs))
 	if len(postIDs) == 0 {
@@ -184,6 +201,25 @@ func aggregateVoteCounts(ctx context.Context, postIDs []uint64) (map[uint64]vote
 		out[v.PostId] = c
 	}
 	return out, nil
+}
+
+// resolveVoteCountsForPost 读帖级 left/right 计数：Redis Hash 优先，miss 时 MySQL 聚合并回写 Hash。
+func resolveVoteCountsForPost(ctx context.Context, postID uint64) voteCounts {
+	if postID == 0 {
+		return voteCounts{}
+	}
+	counts, miss, err := loadVoteCountsFromRedis(ctx, []uint64{postID})
+	if err != nil {
+		return voteCounts{}
+	}
+	if len(miss) == 0 {
+		return counts[postID]
+	}
+	c, bfErr := backfillVoteCountsFromMySQL(ctx, postID)
+	if bfErr != nil {
+		return voteCounts{}
+	}
+	return c
 }
 
 func enrichPostsWithVoteData(ctx context.Context, viewerWxID int64, posts []*PostDTO) error {
@@ -219,9 +255,19 @@ func enrichPostsWithVoteData(ctx context.Context, viewerWxID int64, posts []*Pos
 		if p == nil || normalizePostType(p.Type) != PostTypeDebate {
 			continue
 		}
+		snapLeft, snapRight := p.LeftVoteCount, p.RightVoteCount
 		c := counts[p.Id]
-		p.LeftVoteCount = c.left
-		p.RightVoteCount = c.right
+		if c.left > 0 || c.right > 0 {
+			p.LeftVoteCount = c.left
+			p.RightVoteCount = c.right
+		} else if snapLeft > 0 || snapRight > 0 {
+			// Hash miss/全 0 时保留 PostSnapshot 内嵌计数，避免 Feed 长期缺票。
+			p.LeftVoteCount = snapLeft
+			p.RightVoteCount = snapRight
+		} else {
+			p.LeftVoteCount = c.left
+			p.RightVoteCount = c.right
+		}
 		if side, ok := sides[p.Id]; ok {
 			p.MyVoteSide = side
 		}

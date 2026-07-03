@@ -120,6 +120,8 @@ type UcgPostCreateReq struct {
 	MediaType    int                 `json:"mediaType"`
 	Submit       bool                `json:"submit"`
 	Media        []UcgPostMediaInput `json:"media"`
+	Lat          *float64            `json:"lat"`
+	Lng          *float64            `json:"lng"`
 }
 
 type UcgPostUpdateReq struct {
@@ -333,15 +335,17 @@ type UcgPostCommentPostRes struct {
 }
 
 type UcgCommentItem struct {
-	Id           uint64         `json:"id"`
-	PostId       uint64         `json:"postId"`
-	AuthorWxId   uint64         `json:"authorWxId"`
-	Content      string         `json:"content"`
-	Status       int            `json:"status,omitempty"`
-	RejectReason string         `json:"rejectReason,omitempty"`
-	AuditVersion int            `json:"auditVersion,omitempty"`
-	CreatedAt    int64          `json:"createdAt"`
-	Author       *UcgProfileRes `json:"author,omitempty"`
+	Id             uint64         `json:"id"`
+	PostId         uint64         `json:"postId"`
+	AuthorWxId     uint64         `json:"authorWxId"`
+	Content        string         `json:"content"`
+	Status         int            `json:"status,omitempty"`
+	RejectReason   string         `json:"rejectReason,omitempty"`
+	AuditVersion   int            `json:"auditVersion,omitempty"`
+	CreatedAt      int64          `json:"createdAt"`
+	VoteSide       string         `json:"voteSide,omitempty"`
+	VoteSideLabel  string         `json:"voteSideLabel,omitempty"`
+	Author         *UcgProfileRes `json:"author,omitempty"`
 }
 
 type UcgCommentsListRes struct {

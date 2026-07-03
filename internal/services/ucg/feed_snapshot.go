@@ -24,9 +24,11 @@ type PostSnapshot struct {
 	DebateRight  string         `json:"debateRight"`
 	Media        []PostMediaDTO `json:"media"`
 	AuthorWxID    uint64         `json:"authorWxId"`
-	LikeCount     uint           `json:"likeCount"`
-	CommentCount  uint           `json:"commentCount"`
-	IpLocation    string         `json:"ipLocation"`
+	LikeCount      uint           `json:"likeCount"`
+	CommentCount   uint           `json:"commentCount"`
+	LeftVoteCount  uint           `json:"leftVoteCount"`
+	RightVoteCount uint           `json:"rightVoteCount"`
+	IpLocation     string         `json:"ipLocation"`
 	PublishedAt int64          `json:"publishedAt"`
 	MediaType   int            `json:"mediaType"`
 	Lat         *float64       `json:"lat,omitempty"`
@@ -70,6 +72,11 @@ func writePostSnapshot(ctx context.Context, post entity.UcgPost) error {
 		MediaType:   post.MediaType,
 		Lat:         post.Lat,
 		Lng:         post.Lng,
+	}
+	if normalizePostType(post.Type) == PostTypeDebate {
+		vc := resolveVoteCountsForPost(ctx, post.Id)
+		snap.LeftVoteCount = vc.left
+		snap.RightVoteCount = vc.right
 	}
 	raw, err := json.Marshal(snap)
 	if err != nil {
@@ -205,22 +212,28 @@ func backfillPostSnapshot(ctx context.Context, postID uint64) (PostSnapshot, err
 	if err != nil {
 		return PostSnapshot{}, err
 	}
-	return PostSnapshot{
-		ID:          post.Id,
-		Type:        normalizePostType(post.Type),
-		Content:     post.Content,
-		DebateLeft:  strings.TrimSpace(post.DebateLeftLabel),
-		DebateRight: strings.TrimSpace(post.DebateRightLabel),
-		Media:       media,
-		AuthorWxID:   post.AuthorWxId,
-		LikeCount:    post.LikeCount,
-		CommentCount: post.CommentCount,
-		IpLocation:   strings.TrimSpace(post.IpLocation),
-		PublishedAt: post.PublishedAt,
-		MediaType:   post.MediaType,
-		Lat:         post.Lat,
-		Lng:         post.Lng,
-	}, nil
+	snap := PostSnapshot{
+		ID:             post.Id,
+		Type:           normalizePostType(post.Type),
+		Content:        post.Content,
+		DebateLeft:     strings.TrimSpace(post.DebateLeftLabel),
+		DebateRight:    strings.TrimSpace(post.DebateRightLabel),
+		Media:          media,
+		AuthorWxID:     post.AuthorWxId,
+		LikeCount:      post.LikeCount,
+		CommentCount:   post.CommentCount,
+		IpLocation:     strings.TrimSpace(post.IpLocation),
+		PublishedAt:    post.PublishedAt,
+		MediaType:      post.MediaType,
+		Lat:            post.Lat,
+		Lng:            post.Lng,
+	}
+	if normalizePostType(post.Type) == PostTypeDebate {
+		vc := resolveVoteCountsForPost(ctx, post.Id)
+		snap.LeftVoteCount = vc.left
+		snap.RightVoteCount = vc.right
+	}
+	return snap, nil
 }
 
 func loadProfileSnapshots(ctx context.Context, wxIDs []uint64) (map[uint64]ProfileSnapshot, error) {
@@ -310,6 +323,8 @@ func snapshotToPostDTO(
 		MediaType:      snap.MediaType,
 		LikeCount:      snap.LikeCount,
 		CommentCount:   snap.CommentCount,
+		LeftVoteCount:  snap.LeftVoteCount,
+		RightVoteCount: snap.RightVoteCount,
 		LikedByMe:      likedByMe,
 		PublishedAt:    snap.PublishedAt,
 		IpLocation:     snap.IpLocation,

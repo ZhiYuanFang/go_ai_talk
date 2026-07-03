@@ -107,7 +107,7 @@ func LikePost(ctx context.Context, wxID int64, postID uint64) error {
 	if err != nil {
 		return err
 	}
-	if normalizePostType(post.Type) == PostTypeDebate {
+	if isDebatePost(post) {
 		return gerror.NewCode(gcode.CodeInvalidParameter, "辩论帖不支持点赞")
 	}
 	_ = post
@@ -241,7 +241,7 @@ func AddComment(ctx context.Context, wxID int64, postID uint64, content string) 
 	}
 	// 辩论帖须先投票再评论；立场写入 debate_vote_side 快照，读路径不 join 投票表。
 	var debateVoteSide string
-	if normalizePostType(post.Type) == PostTypeDebate {
+	if isDebatePost(post) {
 		voteRow, vErr := dao.UcgPostVote.Ctx(ctx).
 			Where(dao.UcgPostVote.Columns().PostId, postID).
 			Where(dao.UcgPostVote.Columns().VoterWxId, wxID).
@@ -370,6 +370,10 @@ func ListComments(ctx context.Context, postID uint64, viewerWxID int64) (*Commen
 			RejectReason: c.RejectReason,
 			AuditVersion: c.AuditVersion,
 			CreatedAt:    c.CreatedAt,
+		}
+		if side := normalizeVoteSide(c.DebateVoteSide); side != "" {
+			dto.VoteSide = side
+			dto.VoteSideLabel = debateVoteSideLabel(side, post.DebateLeftLabel, post.DebateRightLabel)
 		}
 		if prof := profileMap[c.AuthorWxId]; prof != nil {
 			dto.Author = prof

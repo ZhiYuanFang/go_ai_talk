@@ -91,23 +91,25 @@ func CreatePostWithParams(ctx context.Context, p CreatePostParams) (*PostDTO, er
 	media := p.Media
 	clientIP := p.ClientIP
 	lat, lng := p.Lat, p.Lng
-	postType := normalizePostType(p.Type)
 	debateLeft := trimDebateLabel(p.DebateLeft)
 	debateRight := trimDebateLabel(p.DebateRight)
-	if wxID <= 0 {
-		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "wxId 无效")
+	leftFilled := debateLeft != ""
+	rightFilled := debateRight != ""
+	if leftFilled != rightFilled {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "请补全另一方立场")
 	}
-	if postType == PostTypeDebate {
+	postType := PostTypeMoment
+	if leftFilled && rightFilled {
 		if err := validateDebateLabel(debateLeft); err != nil {
 			return nil, err
 		}
 		if err := validateDebateLabel(debateRight); err != nil {
 			return nil, err
 		}
-		if len(media) > 0 {
-			return nil, gerror.NewCode(gcode.CodeInvalidParameter, "辩论帖不得附带媒体")
-		}
-		mediaType = MediaTypeNone
+		postType = PostTypeDebate
+	}
+	if wxID <= 0 {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "wxId 无效")
 	}
 	status := PostStatusDraft
 	auditVersion := 0
@@ -146,11 +148,8 @@ func CreatePostWithParams(ctx context.Context, p CreatePostParams) (*PostDTO, er
 		}
 		id, _ := res.LastInsertId()
 		postID = uint64(id)
-		// 插入媒体（debate 已在上方拒绝 media 入参）
-		if postType != PostTypeDebate {
-			if insErr = replacePostMediaTx(ctx, tx, postID, media); insErr != nil {
-				return insErr
-			}
+		if insErr = replacePostMediaTx(ctx, tx, postID, media); insErr != nil {
+			return insErr
 		}
 		// 提交审核
 		if submit {
@@ -173,12 +172,6 @@ func UpdatePost(ctx context.Context, wxID int64, postID uint64, content string, 
 	post, err := loadOwnedPost(ctx, wxID, postID)
 	if err != nil {
 		return nil, err
-	}
-	if normalizePostType(post.Type) == PostTypeDebate {
-		if len(media) > 0 {
-			return nil, gerror.NewCode(gcode.CodeInvalidParameter, "辩论帖不得附带媒体")
-		}
-		mediaType = MediaTypeNone
 	}
 	status := post.Status
 	auditVersion := post.AuditVersion
@@ -224,13 +217,6 @@ func UpdatePost(ctx context.Context, wxID int64, postID uint64, content string, 
 		}
 		if uErr = replacePostMediaTx(ctx, tx, postID, media); uErr != nil {
 			return uErr
-		}
-		if normalizePostType(post.Type) == PostTypeDebate {
-			// debate 帖不得保留媒体行
-			if _, uErr = tx.Model(dao.UcgPostMedia.Table()).Ctx(ctx).
-				Where(dao.UcgPostMedia.Columns().PostId, postID).Delete(); uErr != nil {
-				return uErr
-			}
 		}
 		if needPublish && status == PostStatusPendingAudit {
 			outboxID, uErr = enqueueAuditPublishOutboxTx(ctx, tx, eventkit.RoutingUcgPostCreated.String(),

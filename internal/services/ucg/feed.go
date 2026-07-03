@@ -91,9 +91,6 @@ func ListRecommendFeed(
 	if err = enrichPostsWithVoteData(ctx, viewerWxID, list); err != nil {
 		return nil, err
 	}
-	if err = enrichPostsWithCommentsPreview(ctx, list); err != nil {
-		return nil, err
-	}
 	enrichAuthorForceOnPosts(ctx, list)
 	// 推荐 Feed 响应：本人帖 omit distanceMeters；composite 排序 distanceTerm 不变。
 	omitRecommendOwnPostDistance(viewerWxID, list)
@@ -474,21 +471,18 @@ func ListFollowingFeed(
 	if err = enrichPostsWithVoteData(ctx, wxID, list); err != nil {
 		return nil, err
 	}
-	if err = enrichPostsWithCommentsPreview(ctx, list); err != nil {
-		return nil, err
-	}
 	enrichAuthorForceOnPosts(ctx, list)
 	return &PageResult{List: list, Total: total, Page: p.Page, PageSize: p.PageSize}, nil
 }
 
-// normalizeFeedTypeFilter 广场 Feed 默认仅 debate。
+// normalizeFeedTypeFilter 广场 Feed type 过滤：空串表示混排不过滤。
 func normalizeFeedTypeFilter(t string) string {
 	t = strings.TrimSpace(t)
 	if t == "" {
-		return PostTypeDebate
+		return ""
 	}
 	if t == PostTypeDebate || t == PostTypeMoment {
 		return t
 	}
-	return PostTypeDebate
+	return ""
 }

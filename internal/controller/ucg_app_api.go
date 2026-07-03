@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	v1 "hello/api/v1"
-	v2 "hello/api/v2"
 	"hello/internal/services/contracts"
 	"hello/internal/services/gatewayapp"
 	ucgsvc "hello/internal/services/ucg"
@@ -212,29 +211,12 @@ func (c *UcgAppCtrl) PostCreate(ctx context.Context, req *v1.UcgPostCreateReq) (
 		WxID: wxID, Content: req.Content, MediaType: req.MediaType, Submit: req.Submit,
 		Media: toPostMediaInput(req.Media), ClientIP: clientIP,
 		Type: req.Type, DebateLeft: req.DebateLeft, DebateRight: req.DebateRight,
+		Lat: req.Lat, Lng: req.Lng,
 	})
 	if err != nil {
 		return nil, err
 	}
 	return &v1.UcgPostCreateRes{UcgPostItem: postDTOToItem(post)}, nil
-}
-
-func (c *UcgAppCtrl) PostCreateV2(ctx context.Context, req *v2.UcgPostCreateV2Req) (res *v2.UcgPostCreateV2Res, err error) {
-	_ = c
-	wxID, err := wxIDFromUcgHeader(ghttp.RequestFromCtx(ctx))
-	if err != nil {
-		return nil, err
-	}
-	clientIP := ucgsvc.ClientIPFromRequest(ghttp.RequestFromCtx(ctx))
-	post, err := ucgsvc.CreatePostWithParams(ctx, ucgsvc.CreatePostParams{
-		WxID: wxID, Content: req.Content, MediaType: req.MediaType, Submit: req.Submit,
-		Media: toPostMediaInputV2(req.Media), ClientIP: clientIP, Lat: req.Lat, Lng: req.Lng,
-		Type: req.Type, DebateLeft: req.DebateLeft, DebateRight: req.DebateRight,
-	})
-	if err != nil {
-		return nil, err
-	}
-	return &v2.UcgPostCreateV2Res{UcgPostItem: postDTOToItem(post)}, nil
 }
 
 func (c *UcgAppCtrl) PostUpdate(ctx context.Context, req *v1.UcgPostUpdateReq) (res *v1.UcgPostUpdateRes, err error) {
@@ -329,71 +311,6 @@ func (c *UcgAppCtrl) FeedFollowing(ctx context.Context, req *v1.UcgFeedFollowing
 		return nil, err
 	}
 	return pageResultToRes(page), nil
-}
-
-func (c *UcgAppCtrl) FeedRecommendV2(ctx context.Context, req *v2.UcgFeedRecommendV2Req) (res *v2.UcgFeedRecommendV2Res, err error) {
-	_ = c
-	viewerWxID, _ := wxIDFromUcgHeaderOptional(ghttp.RequestFromCtx(ctx))
-	cursor := strings.TrimSpace(req.Cursor)
-	var lat, lng *float64
-	if cursor == "" {
-		lat, lng = req.Lat, req.Lng
-	}
-	page, err := ucgsvc.ListRecommendFeed(ctx, viewerWxID, lat, lng, cursor, req.PageSize, req.Type)
-	if err != nil {
-		return nil, err
-	}
-	list := make([]v2.UcgPostItemV2, 0, len(page.List))
-	for _, p := range page.List {
-		list = append(list, postDTOToItemV2(p))
-	}
-	return &v2.UcgFeedRecommendV2Res{
-		List: list, HasMore: page.HasMore, NextCursor: page.NextCursor,
-	}, nil
-}
-
-func (c *UcgAppCtrl) FeedFollowingV2(ctx context.Context, req *v2.UcgFeedFollowingV2Req) (res *v2.UcgFeedFollowingV2Res, err error) {
-	_ = c
-	wxID, err := wxIDFromUcgHeader(ghttp.RequestFromCtx(ctx))
-	if err != nil {
-		return nil, err
-	}
-	page, err := ucgsvc.ListFollowingFeed(ctx, wxID, req.Page, req.PageSize, req.Lat, req.Lng, req.Type)
-	if err != nil {
-		return nil, err
-	}
-	list := make([]v2.UcgPostItemV2, 0)
-	if posts, ok := page.List.([]*ucgsvc.PostDTO); ok {
-		list = make([]v2.UcgPostItemV2, 0, len(posts))
-		for _, p := range posts {
-			list = append(list, postDTOToItemV2(p))
-		}
-	}
-	return &v2.UcgFeedFollowingV2Res{
-		List: list, Total: page.Total, Page: page.Page, PageSize: page.PageSize,
-	}, nil
-}
-
-func (c *UcgAppCtrl) PostCommentsGetV2(ctx context.Context, req *v2.UcgPostCommentsGetV2Req) (res *v2.UcgCommentsListV2Res, err error) {
-	_ = c
-	result, err := ucgsvc.ListCommentsFromRedis(ctx, req.Id)
-	if err != nil {
-		return nil, err
-	}
-	return commentsListToResV2(result), nil
-}
-
-func (c *UcgAppCtrl) PostCommentPostV2(ctx context.Context, req *v2.UcgPostCommentPostV2Req) (res *v2.UcgPostCommentPostV2Res, err error) {
-	_ = c
-	wxID, err := wxIDFromUcgHeader(ghttp.RequestFromCtx(ctx))
-	if err != nil {
-		return nil, err
-	}
-	cmt, err := ucgsvc.AddComment(ctx, wxID, req.Id, req.Content)
-	if err != nil {
-		return nil, err
-	}
-	return &v2.UcgPostCommentPostV2Res{UcgCommentItemV2: commentDTOToItemV2(cmt)}, nil
 }
 
 func (c *UcgAppCtrl) FollowPost(ctx context.Context, req *v1.UcgFollowPostReq) (res *v1.UcgFollowDeleteRes, err error) {
@@ -756,6 +673,7 @@ func commentDTOToItem(c *ucgsvc.CommentDTO) v1.UcgCommentItem {
 		Id: c.Id, PostId: c.PostId, AuthorWxId: c.AuthorWxId,
 		Content: c.Content, CreatedAt: c.CreatedAt,
 		Status: c.Status, RejectReason: c.RejectReason, AuditVersion: c.AuditVersion,
+		VoteSide: c.VoteSide, VoteSideLabel: c.VoteSideLabel,
 	}
 	if c.Author != nil {
 		item.Author = profileDTOToRes(c.Author)
@@ -826,10 +744,6 @@ func toPostMediaInput(in []v1.UcgPostMediaInput) []ucgsvc.PostMediaInput {
 	return out
 }
 
-func toPostMediaInputV2(in []v1.UcgPostMediaInput) []ucgsvc.PostMediaInput {
-	return toPostMediaInput(in)
-}
-
 func postDTOToItem(p *ucgsvc.PostDTO) v1.UcgPostItem {
 	if p == nil {
 		return v1.UcgPostItem{}
@@ -871,41 +785,6 @@ func postDTOToItem(p *ucgsvc.PostDTO) v1.UcgPostItem {
 		item.Author = profileDTOToRes(p.Author)
 	}
 	return item
-}
-
-func commentDTOToItemV2(c *ucgsvc.CommentDTO) v2.UcgCommentItemV2 {
-	if c == nil {
-		return v2.UcgCommentItemV2{}
-	}
-	return v2.UcgCommentItemV2{
-		UcgCommentItem: commentDTOToItem(c),
-		VoteSide:       c.VoteSide,
-		VoteSideLabel:  c.VoteSideLabel,
-	}
-}
-
-func postDTOToItemV2(p *ucgsvc.PostDTO) v2.UcgPostItemV2 {
-	item := postDTOToItem(p)
-	out := v2.UcgPostItemV2{UcgPostItem: item}
-	if p == nil || len(p.Comments) == 0 {
-		return out
-	}
-	out.Comments = make([]v2.UcgCommentItemV2, 0, len(p.Comments))
-	for _, c := range p.Comments {
-		out.Comments = append(out.Comments, commentDTOToItemV2(c))
-	}
-	return out
-}
-
-func commentsListToResV2(result *ucgsvc.CommentsListResult) *v2.UcgCommentsListV2Res {
-	res := &v2.UcgCommentsListV2Res{
-		Total: result.Total, Truncated: result.Truncated,
-		List: []v2.UcgCommentItemV2{},
-	}
-	for _, c := range result.List {
-		res.List = append(res.List, commentDTOToItemV2(c))
-	}
-	return res
 }
 
 func pageResultToRes(page *ucgsvc.PageResult) *v1.UcgPageRes {
