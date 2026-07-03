@@ -26,20 +26,30 @@ type PostSampleItem struct {
 	AuthorWxId     int64  `json:"authorWxId"`
 	Content        string `json:"content"`
 	MediaType      int    `json:"mediaType"`
+	DebateLeft     string `json:"debateLeft,omitempty"`
+	DebateRight    string `json:"debateRight,omitempty"`
 	CoverObjectKey string `json:"coverObjectKey,omitempty"`
 	// CoverCdnUrl 供 sim 多模态 LLM 使用的封面 URL（图文全图 / 视频首帧 snapshot）。
 	CoverCdnUrl string `json:"coverCdnUrl,omitempty"`
 }
 
+// PostSampleFilter 内部抽样过滤条件（与 isDebatePost 判定一致）。
+type PostSampleFilter struct {
+	ExcludeMediaTypes  []int
+	ExcludeAuthorWxIds []int64
+	ExcludeDebate      bool
+	OnlyDebate         bool
+}
+
 // SamplePublishedPosts 按 published_at 取最新已发布帖样本；单条有界 SQL，不调用 device/postsFromResult。
-func SamplePublishedPosts(ctx context.Context, limit int, excludeMediaTypes []int, excludeAuthorWxIds []int64) ([]PostSampleItem, error) {
+func SamplePublishedPosts(ctx context.Context, limit int, filter PostSampleFilter) ([]PostSampleItem, error) {
 	if limit <= 0 {
 		limit = postSampleLimitDefault
 	}
 	if limit > postSampleLimitMax {
 		limit = postSampleLimitMax
 	}
-	rows, err := postSamplePublishedModel(ctx, excludeMediaTypes, excludeAuthorWxIds).
+	rows, err := postSamplePublishedModel(ctx, filter).
 		OrderDesc("p." + dao.UcgPost.Columns().PublishedAt).
 		OrderDesc("p." + dao.UcgPost.Columns().Id).
 		Limit(limit).
@@ -51,8 +61,8 @@ func SamplePublishedPosts(ctx context.Context, limit int, excludeMediaTypes []in
 }
 
 // SampleRandomPublishedPost 经 ID 探测从全库 published 帖随机取 1 条；锚点幂次偏置 α 略偏新帖。
-func SampleRandomPublishedPost(ctx context.Context, excludeMediaTypes []int, excludeAuthorWxIds []int64) ([]PostSampleItem, error) {
-	bounds, err := postSamplePublishedBoundsModel(ctx, excludeMediaTypes, excludeAuthorWxIds).
+func SampleRandomPublishedPost(ctx context.Context, filter PostSampleFilter) ([]PostSampleItem, error) {
+	bounds, err := postSamplePublishedBoundsModel(ctx, filter).
 		Fields(
 			"MIN("+dao.UcgPost.Columns().Id+") as min_id",
 			"MAX("+dao.UcgPost.Columns().Id+") as max_id",
@@ -83,7 +93,7 @@ func SampleRandomPublishedPost(ctx context.Context, excludeMediaTypes []int, exc
 		}
 	}
 
-	rows, err := postSamplePublishedModel(ctx, excludeMediaTypes, excludeAuthorWxIds).
+	rows, err := postSamplePublishedModel(ctx, filter).
 		Where("p."+dao.UcgPost.Columns().Id+" >= ?", anchor).
 		OrderAsc("p." + dao.UcgPost.Columns().Id).
 		Limit(1).
@@ -93,7 +103,7 @@ func SampleRandomPublishedPost(ctx context.Context, excludeMediaTypes []int, exc
 	}
 	if len(rows) == 0 {
 		// 锚点落在 id 空洞时回退 minId，保证 eligible 帖存在时必命中一条。
-		rows, err = postSamplePublishedModel(ctx, excludeMediaTypes, excludeAuthorWxIds).
+		rows, err = postSamplePublishedModel(ctx, filter).
 			Where("p."+dao.UcgPost.Columns().Id, minID).
 			Limit(1).
 			All()
@@ -115,15 +125,35 @@ func postSampleBaseModel(ctx context.Context) *gdb.Model {
 		Where("p."+dao.UcgPost.Columns().Status, PostStatusPublished)
 }
 
-func postSamplePublishedModel(ctx context.Context, excludeMediaTypes []int, excludeAuthorWxIds []int64) *gdb.Model {
-	m := postSampleApplyMediaExcludes(postSampleBaseModel(ctx), excludeMediaTypes)
-	return postSampleApplyAuthorExcludes(m, excludeAuthorWxIds, "p."+dao.UcgPost.Columns().AuthorWxId)
+func postSamplePublishedModel(ctx context.Context, filter PostSampleFilter) *gdb.Model {
+	m := postSampleApplyMediaExcludes(postSampleBaseModel(ctx), filter.ExcludeMediaTypes)
+	m = postSampleApplyAuthorExcludes(m, filter.ExcludeAuthorWxIds, "p."+dao.UcgPost.Columns().AuthorWxId)
+	return postSampleApplyDebateFilter(m, filter.ExcludeDebate, filter.OnlyDebate,
+		"p."+dao.UcgPost.Columns().DebateLeftLabel,
+		"p."+dao.UcgPost.Columns().DebateRightLabel,
+		"p."+dao.UcgPost.Columns().Type)
 }
 
-func postSamplePublishedBoundsModel(ctx context.Context, excludeMediaTypes []int, excludeAuthorWxIds []int64) *gdb.Model {
+func postSamplePublishedBoundsModel(ctx context.Context, filter PostSampleFilter) *gdb.Model {
 	m := dao.UcgPost.Ctx(ctx).Where(dao.UcgPost.Columns().Status, PostStatusPublished)
-	m = postSampleApplyMediaExcludesOnTable(m, excludeMediaTypes, dao.UcgPost.Columns().MediaType)
-	return postSampleApplyAuthorExcludes(m, excludeAuthorWxIds, dao.UcgPost.Columns().AuthorWxId)
+	m = postSampleApplyMediaExcludesOnTable(m, filter.ExcludeMediaTypes, dao.UcgPost.Columns().MediaType)
+	m = postSampleApplyAuthorExcludes(m, filter.ExcludeAuthorWxIds, dao.UcgPost.Columns().AuthorWxId)
+	return postSampleApplyDebateFilter(m, filter.ExcludeDebate, filter.OnlyDebate,
+		dao.UcgPost.Columns().DebateLeftLabel,
+		dao.UcgPost.Columns().DebateRightLabel,
+		dao.UcgPost.Columns().Type)
+}
+
+// postSampleApplyDebateFilter 与 isDebatePost 一致：(左右标签均非空) OR type=debate。
+func postSampleApplyDebateFilter(m *gdb.Model, excludeDebate, onlyDebate bool, leftCol, rightCol, typeCol string) *gdb.Model {
+	if !excludeDebate && !onlyDebate {
+		return m
+	}
+	debateCond := "((" + leftCol + " != '' AND " + rightCol + " != '') OR " + typeCol + " = ?)"
+	if onlyDebate {
+		return m.Where(debateCond, PostTypeDebate)
+	}
+	return m.Where("NOT "+debateCond, PostTypeDebate)
 }
 
 func postSampleApplyMediaExcludes(m *gdb.Model, excludeMediaTypes []int) *gdb.Model {
@@ -203,6 +233,8 @@ func postSampleSelectFields() []string {
 		"p." + dao.UcgPost.Columns().Id + " as post_id",
 		"p." + dao.UcgPost.Columns().AuthorWxId + " as author_wx_id",
 		"p." + dao.UcgPost.Columns().Content + " as content",
+		"p." + dao.UcgPost.Columns().DebateLeftLabel + " as debate_left",
+		"p." + dao.UcgPost.Columns().DebateRightLabel + " as debate_right",
 		"p." + dao.UcgPost.Columns().MediaType + " as media_type",
 		"(SELECT m." + dao.UcgPostMedia.Columns().ObjectKey +
 			" FROM " + dao.UcgPostMedia.Table() + " m WHERE m." + dao.UcgPostMedia.Columns().PostId + "=p." + dao.UcgPost.Columns().Id +
@@ -224,10 +256,12 @@ func postSampleFromRows(rows gdb.Result) ([]PostSampleItem, error) {
 	out := make([]PostSampleItem, 0, len(rows))
 	for _, row := range rows {
 		item := PostSampleItem{
-			PostId:     row["post_id"].Uint64(),
-			AuthorWxId: row["author_wx_id"].Int64(),
-			Content:    row["content"].String(),
-			MediaType:  row["media_type"].Int(),
+			PostId:      row["post_id"].Uint64(),
+			AuthorWxId:  row["author_wx_id"].Int64(),
+			Content:     row["content"].String(),
+			DebateLeft:  strings.TrimSpace(row["debate_left"].String()),
+			DebateRight: strings.TrimSpace(row["debate_right"].String()),
+			MediaType:   row["media_type"].Int(),
 		}
 		if key := strings.TrimSpace(row["cover_object_key"].String()); key != "" {
 			item.CoverObjectKey = key

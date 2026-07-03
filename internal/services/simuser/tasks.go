@@ -150,11 +150,13 @@ func RunCommentTask(ctx context.Context, password string) {
 		RecordTaskRun(ctx, "comment", false, err.Error())
 		return
 	}
-	var sample struct {
+		var sample struct {
 		List []struct {
 			PostId         uint64 `json:"postId"`
 			Content        string `json:"content"`
 			MediaType      int    `json:"mediaType"`
+			DebateLeft     string `json:"debateLeft"`
+			DebateRight    string `json:"debateRight"`
 			CoverObjectKey string `json:"coverObjectKey"`
 			CoverCdnUrl    string `json:"coverCdnUrl"`
 		} `json:"list"`
@@ -162,11 +164,17 @@ func RunCommentTask(ctx context.Context, password string) {
 	if err = ucgInternalPost(ctx, "/ucg/internal/api/posts/sample", g.Map{
 		"mode":              "random",
 		"excludeMediaTypes": []int{simCommentExcludedMediaTypeVideo},
+		"excludeDebate":     true,
 	}, &sample); err != nil || len(sample.List) == 0 {
 		RecordTaskRun(ctx, "comment", false, "无已发布帖")
 		return
 	}
 	post := sample.List[0]
+	if isDebateSamplePost(post.DebateLeft, post.DebateRight) {
+		glog.Warningf(ctx, "[simuser] comment postId=%d 仍为辩论帖，跳过", post.PostId)
+		RecordTaskRun(ctx, "comment", false, "跳过辩论帖")
+		return
+	}
 	if post.MediaType == simCommentExcludedMediaTypeVideo {
 		glog.Warningf(ctx, "[simuser] comment postId=%d 仍为视频帖，跳过", post.PostId)
 		RecordTaskRun(ctx, "comment", false, "跳过视频帖")

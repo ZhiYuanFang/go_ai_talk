@@ -15,6 +15,7 @@ type manualRunCtxKey struct{}
 func RunnableTaskNames() []string {
 	return []string{
 		"register", "comment", "post_image", "post_video_submit",
+		"post_debate", "debate_comment",
 		"chat_scan", "follow",
 	}
 }
@@ -102,6 +103,10 @@ func RunTaskByName(ctx context.Context, taskName string, flags RuntimeFlags) err
 		RunPostImageTask(ctx, password)
 	case "post_video_submit":
 		RunPostVideoSubmitTask(ctx, password, flags)
+	case "post_debate":
+		RunPostDebateTask(ctx, password)
+	case "debate_comment":
+		RunDebateCommentTask(ctx, password)
 	case "chat_scan":
 		RunChatScanTask(ctx, password, flags)
 	case "follow":

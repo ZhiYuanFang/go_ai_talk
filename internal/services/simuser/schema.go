@@ -162,6 +162,8 @@ func defaultPrompts() map[string]promptSeed {
 		"comment": {user: "作为宝妈，请结合上方配图与下列帖子正文，写一条简短、口语化的评论。\n要求：只输出评论正文，不要解释、不要引号包裹。\n帖子正文：{{post_content}}"},
 		"post_image_text":   {user: "从母婴专家的角度，写一条适合发朋友圈的短文，100字以内。\n主题：{{topic}}"},
 		"post_video_text":   {user: "从母婴专家的角度，写一条适合拍短视频的口播文案，80字以内。\n主题：{{topic}}"},
+		"post_debate_text":  {user: "从母婴社区常见争议想一个可辩论话题。只输出 JSON，不要 markdown：{\"content\":\"话题问句\",\"debateLeft\":\"正方立场≤5字\",\"debateRight\":\"反方立场≤5字\"}。\n主题：{{topic}}"},
+		"debate_comment":    {user: "辩论话题：{{post_content}}\n正方「{{debate_left}}」反方「{{debate_right}}」。只输出 JSON：{\"side\":\"left或right\",\"argument\":\"支持所选方的论点，最多10字\"}"},
 		"chat_reply":        {user: "作为宝妈，根据聊天记录用自然口语回复对方。\n历史：\n{{chat_history}}"},
 	}
 }

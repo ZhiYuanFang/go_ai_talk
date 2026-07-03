@@ -155,11 +155,13 @@
 	const taskSwitchDefs = [
 		{ key: 'register', label: 'T1 注册' }, { key: 'comment', label: 'T2 评论' },
 		{ key: 'postImage', label: 'T3 图文' }, { key: 'postVideo', label: 'T4 视频' },
+		{ key: 'postDebate', label: 'T7 辩论发帖' }, { key: 'debateComment', label: 'T8 辩论论点' },
 		{ key: 'chat', label: 'T5 聊天' }, { key: 'follow', label: 'T6 关注' }
 	];
 	const intervalDefs = [
 		{ key: 'register', label: 'T1' }, { key: 'comment', label: 'T2' },
 		{ key: 'postImage', label: 'T3' }, { key: 'postVideo', label: 'T4 调度' },
+		{ key: 'postDebate', label: 'T7' }, { key: 'debateComment', label: 'T8' },
 		{ key: 'postVideoPollInterval', label: 'T4 轮询间隔' },
 		{ key: 'postVideoPollMaxWait', label: 'T4 轮询上限' },
 		{ key: 'chat', label: 'T5' }, { key: 'follow', label: 'T6' }
@@ -256,12 +258,14 @@
 		panel.classList.remove('hidden');
 	}
 	buildRuntimeFormShell();
-	const types = ['register_nickname','register_avatar','comment','post_image_text','post_video_text','chat_reply'];
+	const types = ['register_nickname','register_avatar','comment','post_image_text','post_video_text','post_debate_text','debate_comment','chat_reply'];
 	const runnableTasks = [
 		{ name: 'register', label: 'T1 注册' },
 		{ name: 'comment', label: 'T2 评论' },
 		{ name: 'post_image', label: 'T3 图文' },
 		{ name: 'post_video_submit', label: 'T4 视频' },
+		{ name: 'post_debate', label: 'T7 辩论发帖' },
+		{ name: 'debate_comment', label: 'T8 辩论论点' },
 		{ name: 'chat_scan', label: 'T5 聊天扫描' },
 		{ name: 'follow', label: 'T6 关注' }
 	];
@@ -377,13 +381,16 @@
 	function taskSwitchLabel(key, on) {
 		const names = {
 			register:'T1注册', comment:'T2评论', postImage:'T3图文', postVideo:'T4视频',
+			postDebate:'T7辩论发帖', debateComment:'T8辩论论点',
 			chat:'T5聊天', follow:'T6关注'
 		};
 		return (names[key] || key) + (on ? '✅' : '❌');
 	}
 	function intervalLabel(key, val) {
 		const names = {
-			register:'T1', comment:'T2', postImage:'T3', postVideo:'T4调度', chat:'T5', follow:'T6',
+			register:'T1', comment:'T2', postImage:'T3', postVideo:'T4调度',
+			postDebate:'T7', debateComment:'T8',
+			chat:'T5', follow:'T6',
 			postVideoPollInterval:'T4轮询间隔', postVideoPollMaxWait:'T4轮询上限',
 			startupStaggerMax:'错峰'
 		};
@@ -407,7 +414,7 @@
 		document.getElementById('rtTaskSwitches').textContent =
 			Object.keys(sw).map(k => taskSwitchLabel(k, sw[k])).join(' · ');
 		const iv = rt.intervals || {};
-		const intervalKeys = ['register','comment','postImage','postVideo','postVideoPollInterval','postVideoPollMaxWait','chat','follow'];
+		const intervalKeys = ['register','comment','postImage','postVideo','postDebate','debateComment','postVideoPollInterval','postVideoPollMaxWait','chat','follow'];
 		document.getElementById('rtIntervals').textContent =
 			intervalKeys.map(k => intervalLabel(k, iv[k] || '—')).join(' · ');
 	}

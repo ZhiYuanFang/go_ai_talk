@@ -105,7 +105,7 @@ func UpdatePrompt(ctx context.Context, taskType, systemPrompt, userTemplate, upd
 }
 
 func ListPromptTypes() []string {
-	return []string{"register_nickname", "register_avatar", "comment", "post_image_text", "post_video_text", "chat_reply"}
+	return []string{"register_nickname", "register_avatar", "comment", "post_image_text", "post_video_text", "post_debate_text", "debate_comment", "chat_reply"}
 }
 
 func NextAccountName(ctx context.Context) (string, error) {

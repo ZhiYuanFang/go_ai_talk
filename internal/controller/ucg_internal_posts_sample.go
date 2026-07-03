@@ -14,10 +14,12 @@ import (
 )
 
 type ucgInternalPostsSampleBody struct {
-	Mode                string  `json:"mode"`
-	Limit               int     `json:"limit"`
-	ExcludeMediaTypes   []int   `json:"excludeMediaTypes"`
-	ExcludeAuthorWxIds  []int64 `json:"excludeAuthorWxIds"`
+	Mode               string  `json:"mode"`
+	Limit              int     `json:"limit"`
+	ExcludeMediaTypes  []int   `json:"excludeMediaTypes"`
+	ExcludeAuthorWxIds []int64 `json:"excludeAuthorWxIds"`
+	ExcludeDebate      bool    `json:"excludeDebate"`
+	OnlyDebate         bool    `json:"onlyDebate"`
 }
 
 // ucgInternalPostsSample POST /ucg/internal/api/posts/sample — 轻量已发布帖抽样。
@@ -50,13 +52,24 @@ func ucgInternalPostsSample(r *ghttp.Request) {
 		}
 	}
 
+	if body.ExcludeDebate && body.OnlyDebate {
+		r.Response.WriteJson(g.Map{"code": 400, "message": "excludeDebate 与 onlyDebate 不可同时为 true"})
+		return
+	}
+	filter := ucgsvc.PostSampleFilter{
+		ExcludeMediaTypes:  body.ExcludeMediaTypes,
+		ExcludeAuthorWxIds: body.ExcludeAuthorWxIds,
+		ExcludeDebate:      body.ExcludeDebate,
+		OnlyDebate:         body.OnlyDebate,
+	}
+
 	mode := strings.ToLower(strings.TrimSpace(body.Mode))
 	var list []ucgsvc.PostSampleItem
 	switch mode {
 	case "", "latest":
-		list, err = ucgsvc.SamplePublishedPosts(ctx, body.Limit, body.ExcludeMediaTypes, body.ExcludeAuthorWxIds)
+		list, err = ucgsvc.SamplePublishedPosts(ctx, body.Limit, filter)
 	case "random":
-		list, err = ucgsvc.SampleRandomPublishedPost(ctx, body.ExcludeMediaTypes, body.ExcludeAuthorWxIds)
+		list, err = ucgsvc.SampleRandomPublishedPost(ctx, filter)
 	default:
 		r.Response.WriteJson(g.Map{"code": 400, "message": "mode 无效，支持 latest 或 random"})
 		return

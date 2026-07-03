@@ -190,9 +190,11 @@ func runtimeScheduleDiff(before FullConfigDTO, after ConfigAdminPutDTO) bool {
 	br, ar := before.Runtime, after.Runtime
 	return br.TaskRegister != ar.TaskRegister || br.TaskComment != ar.TaskComment ||
 		br.TaskPostImage != ar.TaskPostImage || br.TaskPostVideo != ar.TaskPostVideo ||
+		br.TaskPostDebate != ar.TaskPostDebate || br.TaskDebateComment != ar.TaskDebateComment ||
 		br.TaskChat != ar.TaskChat || br.TaskFollow != ar.TaskFollow ||
 		br.IntervalRegisterSec != ar.IntervalRegisterSec || br.IntervalCommentSec != ar.IntervalCommentSec ||
 		br.IntervalPostImageSec != ar.IntervalPostImageSec || br.IntervalPostVideoSec != ar.IntervalPostVideoSec ||
+		br.IntervalPostDebateSec != ar.IntervalPostDebateSec || br.IntervalDebateCommentSec != ar.IntervalDebateCommentSec ||
 		br.IntervalChatSec != ar.IntervalChatSec || br.IntervalFollowSec != ar.IntervalFollowSec ||
 		br.StartupStaggerSec != ar.StartupStaggerSec ||
 		br.RateLimitRps != ar.RateLimitRps || br.RateLimitBurst != ar.RateLimitBurst
@@ -260,12 +262,15 @@ var taskScheduleDefs = []struct {
 	{"comment", "T2 评论", func(r RuntimeConfigDB) bool { return r.TaskComment }, func(r RuntimeConfigDB) int64 { return r.IntervalCommentSec }},
 	{"post_image", "T3 图文", func(r RuntimeConfigDB) bool { return r.TaskPostImage }, func(r RuntimeConfigDB) int64 { return r.IntervalPostImageSec }},
 	{"post_video_submit", "T4 视频", func(r RuntimeConfigDB) bool { return r.TaskPostVideo }, func(r RuntimeConfigDB) int64 { return r.IntervalPostVideoSec }},
+	{"post_debate", "T7 辩论发帖", func(r RuntimeConfigDB) bool { return r.TaskPostDebate }, func(r RuntimeConfigDB) int64 { return r.IntervalPostDebateSec }},
+	{"debate_comment", "T8 辩论论点", func(r RuntimeConfigDB) bool { return r.TaskDebateComment }, func(r RuntimeConfigDB) int64 { return r.IntervalDebateCommentSec }},
 	{"chat_scan", "T5 聊天", func(r RuntimeConfigDB) bool { return r.TaskChat }, func(r RuntimeConfigDB) int64 { return r.IntervalChatSec }},
 	{"follow", "T6 关注", func(r RuntimeConfigDB) bool { return r.TaskFollow }, func(r RuntimeConfigDB) int64 { return r.IntervalFollowSec }},
 }
 
 func hasAnyTaskConfigEnabled(rt RuntimeConfigDB) bool {
-	return rt.TaskRegister || rt.TaskComment || rt.TaskPostImage || rt.TaskPostVideo || rt.TaskChat || rt.TaskFollow
+	return rt.TaskRegister || rt.TaskComment || rt.TaskPostImage || rt.TaskPostVideo ||
+		rt.TaskPostDebate || rt.TaskDebateComment || rt.TaskChat || rt.TaskFollow
 }
 
 func buildTaskSchedule(ctx context.Context, rt RuntimeConfigDB, dbEnabled, serviceEnabled bool) []TaskScheduleItem {

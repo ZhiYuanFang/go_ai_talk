@@ -118,6 +118,8 @@ func startSchedulerGoroutines(ctx context.Context, wg *sync.WaitGroup, flags Run
 		{"comment", flags.TaskComment, flags.IntervalComment, func(c context.Context) { RunCommentTask(c, password) }},
 		{"post_image", flags.TaskPostImage, flags.IntervalPostImage, func(c context.Context) { RunPostImageTask(c, password) }},
 		{"post_video_submit", flags.TaskPostVideo, flags.IntervalPostVideo, func(c context.Context) { RunPostVideoSubmitTask(c, password, flags) }},
+		{"post_debate", flags.TaskPostDebate, flags.IntervalPostDebate, func(c context.Context) { RunPostDebateTask(c, password) }},
+		{"debate_comment", flags.TaskDebateComment, flags.IntervalDebateComment, func(c context.Context) { RunDebateCommentTask(c, password) }},
 		{"chat_scan", flags.TaskChat, flags.IntervalChat, func(c context.Context) { RunChatScanTask(c, password, flags) }},
 		{"follow", flags.TaskFollow, flags.IntervalFollow, func(c context.Context) { RunFollowTask(c, password) }},
 	}

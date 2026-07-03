@@ -8,6 +8,8 @@ const (
 	simTempComment          = 0.85 // T2 评论：口语多样
 	simTempPostImageText    = 0.80 // T3 图文配文：稍稳
 	simTempPostVideoText    = 0.80 // T4 视频文案：稍稳
+	simTempPostDebateText   = 0.80 // T7 辩论话题：稍稳
+	simTempDebateComment    = 0.85 // T8 辩论论点：口语多样
 	simTempChatReply        = 0.88 // T5 未读回复：自然变化
 )
 

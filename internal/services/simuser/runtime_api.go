@@ -11,6 +11,8 @@ type RuntimeAPIInput struct {
 	TaskComment   bool
 	TaskPostImage bool
 	TaskPostVideo bool
+	TaskPostDebate bool
+	TaskDebateComment bool
 	TaskChat      bool
 	TaskFollow    bool
 
@@ -18,6 +20,8 @@ type RuntimeAPIInput struct {
 	IntervalComment             string
 	IntervalPostImage           string
 	IntervalPostVideo           string
+	IntervalPostDebate          string
+	IntervalDebateComment       string
 	IntervalChat                string
 	IntervalFollow              string
 	IntervalPostVideoPoll       string
@@ -38,6 +42,8 @@ func BuildRuntimeConfigFromAPI(in RuntimeAPIInput, current RuntimeConfigDB) (Run
 	out.TaskComment = in.TaskComment
 	out.TaskPostImage = in.TaskPostImage
 	out.TaskPostVideo = in.TaskPostVideo
+	out.TaskPostDebate = in.TaskPostDebate
+	out.TaskDebateComment = in.TaskDebateComment
 	out.TaskChat = in.TaskChat
 	out.TaskFollow = in.TaskFollow
 	if in.RateLimitRps > 0 {
@@ -59,6 +65,12 @@ func BuildRuntimeConfigFromAPI(in RuntimeAPIInput, current RuntimeConfigDB) (Run
 	}
 	if out.IntervalPostVideoSec, err = durSec(in.IntervalPostVideo, out.IntervalPostVideoSec, def.IntervalPostVideoSec); err != nil {
 		return RuntimeConfigDB{}, fmt.Errorf("interval postVideo: %w", err)
+	}
+	if out.IntervalPostDebateSec, err = durSec(in.IntervalPostDebate, out.IntervalPostDebateSec, def.IntervalPostDebateSec); err != nil {
+		return RuntimeConfigDB{}, fmt.Errorf("interval postDebate: %w", err)
+	}
+	if out.IntervalDebateCommentSec, err = durSec(in.IntervalDebateComment, out.IntervalDebateCommentSec, def.IntervalDebateCommentSec); err != nil {
+		return RuntimeConfigDB{}, fmt.Errorf("interval debateComment: %w", err)
 	}
 	if out.IntervalChatSec, err = durSec(in.IntervalChat, out.IntervalChatSec, def.IntervalChatSec); err != nil {
 		return RuntimeConfigDB{}, fmt.Errorf("interval chat: %w", err)
@@ -99,6 +111,8 @@ func RuntimeConfigToAPIIntervals(rt RuntimeConfigDB) map[string]string {
 		"comment":                durationLabel(time.Duration(rt.IntervalCommentSec) * time.Second),
 		"postImage":              durationLabel(time.Duration(rt.IntervalPostImageSec) * time.Second),
 		"postVideo":              durationLabel(time.Duration(rt.IntervalPostVideoSec) * time.Second),
+		"postDebate":             durationLabel(time.Duration(rt.IntervalPostDebateSec) * time.Second),
+		"debateComment":          durationLabel(time.Duration(rt.IntervalDebateCommentSec) * time.Second),
 		"chat":                   durationLabel(time.Duration(rt.IntervalChatSec) * time.Second),
 		"follow":                 durationLabel(time.Duration(rt.IntervalFollowSec) * time.Second),
 		"postVideoPollInterval":  durationLabel(time.Duration(rt.IntervalPostVideoPollSec) * time.Second),

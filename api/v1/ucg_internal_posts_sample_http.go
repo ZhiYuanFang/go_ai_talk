@@ -12,6 +12,10 @@ type UcgInternalPostsSampleReq struct {
 	ExcludeMediaTypes []int `json:"excludeMediaTypes"`
 	// ExcludeAuthorWxIds 排除的作者 wxId（如 sim T6 传全量 sim wxId，仅抽真人 author）。
 	ExcludeAuthorWxIds []int64 `json:"excludeAuthorWxIds"`
+	// ExcludeDebate 为 true 时仅返回非辩论帖（sim T2）。
+	ExcludeDebate bool `json:"excludeDebate"`
+	// OnlyDebate 为 true 时仅返回辩论帖（sim T8）；与 ExcludeDebate 互斥。
+	OnlyDebate bool `json:"onlyDebate"`
 }
 
 // UcgInternalPostSampleItem 抽样项最小字段。
@@ -20,6 +24,8 @@ type UcgInternalPostSampleItem struct {
 	AuthorWxId     int64  `json:"authorWxId"`
 	Content        string `json:"content"`
 	MediaType      int    `json:"mediaType"`
+	DebateLeft     string `json:"debateLeft,omitempty"`
+	DebateRight    string `json:"debateRight,omitempty"`
 	CoverObjectKey string `json:"coverObjectKey,omitempty"`
 	// CoverCdnUrl 封面 CDN URL（图文全图 / 视频首帧），供 simVision 多模态评论。
 	CoverCdnUrl string `json:"coverCdnUrl,omitempty"`

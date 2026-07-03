@@ -55,11 +55,13 @@ func (c *SimAdminCtrl) ConfigGet(ctx context.Context, req *v1.SimAdminConfigGetR
 		TaskSwitches: v1.SimAdminRuntimeTaskSwitchesDTO{
 			Register: cfg.Runtime.TaskRegister, Comment: cfg.Runtime.TaskComment,
 			PostImage: cfg.Runtime.TaskPostImage, PostVideo: cfg.Runtime.TaskPostVideo,
+			PostDebate: cfg.Runtime.TaskPostDebate, DebateComment: cfg.Runtime.TaskDebateComment,
 			Chat: cfg.Runtime.TaskChat, Follow: cfg.Runtime.TaskFollow,
 		},
 		Intervals: v1.SimAdminRuntimeIntervalsDTO{
 			Register: iv["register"], Comment: iv["comment"],
 			PostImage: iv["postImage"], PostVideo: iv["postVideo"],
+			PostDebate: iv["postDebate"], DebateComment: iv["debateComment"],
 			Chat: iv["chat"], Follow: iv["follow"],
 			PostVideoPollInterval: iv["postVideoPollInterval"],
 			PostVideoPollMaxWait:  iv["postVideoPollMaxWait"],
@@ -86,9 +88,11 @@ func (c *SimAdminCtrl) ConfigPut(ctx context.Context, req *v1.SimAdminConfigPutR
 		rt, err = simuser.BuildRuntimeConfigFromAPI(simuser.RuntimeAPIInput{
 		TaskRegister: req.TaskSwitches.Register, TaskComment: req.TaskSwitches.Comment,
 		TaskPostImage: req.TaskSwitches.PostImage, TaskPostVideo: req.TaskSwitches.PostVideo,
+		TaskPostDebate: req.TaskSwitches.PostDebate, TaskDebateComment: req.TaskSwitches.DebateComment,
 		TaskChat: req.TaskSwitches.Chat, TaskFollow: req.TaskSwitches.Follow,
 		IntervalRegister: req.Intervals.Register, IntervalComment: req.Intervals.Comment,
 		IntervalPostImage: req.Intervals.PostImage, IntervalPostVideo: req.Intervals.PostVideo,
+		IntervalPostDebate: req.Intervals.PostDebate, IntervalDebateComment: req.Intervals.DebateComment,
 		IntervalChat: req.Intervals.Chat, IntervalFollow: req.Intervals.Follow,
 		IntervalPostVideoPoll: req.Intervals.PostVideoPollInterval,
 		IntervalPostVideoPollMaxWait: req.Intervals.PostVideoPollMaxWait,
@@ -112,6 +116,7 @@ func (c *SimAdminCtrl) ConfigPut(ctx context.Context, req *v1.SimAdminConfigPutR
 func isMinimalSimConfigPut(req *v1.SimAdminConfigPutReq) bool {
 	iv := req.Intervals
 	return iv.Register == "" && iv.Comment == "" && iv.PostImage == "" && iv.PostVideo == "" &&
+		iv.PostDebate == "" && iv.DebateComment == "" &&
 		iv.Chat == "" && iv.Follow == "" &&
 		iv.PostVideoPollInterval == "" && iv.PostVideoPollMaxWait == "" &&
 		iv.StartupStaggerMax == "" &&
@@ -211,6 +216,8 @@ func (c *SimAdminCtrl) RuntimeGet(ctx context.Context, req *v1.SimAdminRuntimeGe
 			Comment:   rt.TaskSwitches.Comment,
 			PostImage: rt.TaskSwitches.PostImage,
 			PostVideo: rt.TaskSwitches.PostVideo,
+			PostDebate: rt.TaskSwitches.PostDebate,
+			DebateComment: rt.TaskSwitches.DebateComment,
 			Chat:      rt.TaskSwitches.Chat,
 			Follow:    rt.TaskSwitches.Follow,
 		},
@@ -219,6 +226,8 @@ func (c *SimAdminCtrl) RuntimeGet(ctx context.Context, req *v1.SimAdminRuntimeGe
 			Comment:               rt.Intervals.Comment,
 			PostImage:             rt.Intervals.PostImage,
 			PostVideo:             rt.Intervals.PostVideo,
+			PostDebate:            rt.Intervals.PostDebate,
+			DebateComment:         rt.Intervals.DebateComment,
 			Chat:                  rt.Intervals.Chat,
 			Follow:                rt.Intervals.Follow,
 			PostVideoPollInterval: rt.Intervals.PostVideoPollInterval,

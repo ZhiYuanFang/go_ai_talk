@@ -115,6 +115,8 @@ type SimAdminRuntimeTaskSwitchesDTO struct {
 	Comment   bool `json:"comment"`
 	PostImage bool `json:"postImage"`
 	PostVideo bool `json:"postVideo"`
+	PostDebate bool `json:"postDebate"`
+	DebateComment bool `json:"debateComment"`
 	Chat      bool `json:"chat"`
 	Follow    bool `json:"follow"`
 }
@@ -125,6 +127,8 @@ type SimAdminRuntimeIntervalsDTO struct {
 	Comment               string `json:"comment"`
 	PostImage             string `json:"postImage"`
 	PostVideo             string `json:"postVideo"`
+	PostDebate            string `json:"postDebate"`
+	DebateComment         string `json:"debateComment"`
 	Chat                  string `json:"chat"`
 	Follow                string `json:"follow"`
 	PostVideoPollInterval string `json:"postVideoPollInterval"`

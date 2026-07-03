@@ -15,6 +15,8 @@ type RuntimeConfigDB struct {
 	TaskComment   bool `json:"taskComment"`
 	TaskPostImage bool `json:"taskPostImage"`
 	TaskPostVideo bool `json:"taskPostVideo"`
+	TaskPostDebate bool `json:"taskPostDebate"`
+	TaskDebateComment bool `json:"taskDebateComment"`
 	TaskChat      bool `json:"taskChat"`
 	TaskFollow    bool `json:"taskFollow"`
 
@@ -22,6 +24,8 @@ type RuntimeConfigDB struct {
 	IntervalCommentSec              int64 `json:"intervalCommentSec"`
 	IntervalPostImageSec            int64 `json:"intervalPostImageSec"`
 	IntervalPostVideoSec            int64 `json:"intervalPostVideoSec"`
+	IntervalPostDebateSec           int64 `json:"intervalPostDebateSec"`
+	IntervalDebateCommentSec        int64 `json:"intervalDebateCommentSec"`
 	IntervalChatSec                 int64 `json:"intervalChatSec"`
 	IntervalFollowSec               int64 `json:"intervalFollowSec"`
 	IntervalPostVideoPollSec        int64 `json:"intervalPostVideoPollSec"`
@@ -46,12 +50,16 @@ func defaultRuntimeFromEnv(ctx context.Context) RuntimeFlags {
 		TaskComment:           envBool("SIM_TASK_COMMENT_ENABLED", true),
 		TaskPostImage:         envBool("SIM_TASK_POST_IMAGE_ENABLED", true),
 		TaskPostVideo:         envBool("SIM_TASK_POST_VIDEO_ENABLED", true),
+		TaskPostDebate:        envBool("SIM_TASK_POST_DEBATE_ENABLED", true),
+		TaskDebateComment:     envBool("SIM_TASK_DEBATE_COMMENT_ENABLED", true),
 		TaskChat:              envBool("SIM_TASK_CHAT_ENABLED", true),
 		TaskFollow:            envBool("SIM_TASK_FOLLOW_ENABLED", true),
 		IntervalRegister:      envDuration("SIM_INTERVAL_REGISTER", 24*time.Hour),
 		IntervalComment:       envDuration("SIM_INTERVAL_COMMENT", 6*time.Hour),
 		IntervalPostImage:     envDuration("SIM_INTERVAL_POST_IMAGE", 3*time.Hour+30*time.Minute),
 		IntervalPostVideo:     envDuration("SIM_INTERVAL_POST_VIDEO", 6*time.Hour+30*time.Minute),
+		IntervalPostDebate:    envDuration("SIM_INTERVAL_POST_DEBATE", 12*time.Hour),
+		IntervalDebateComment: envDuration("SIM_INTERVAL_DEBATE_COMMENT", time.Hour),
 		IntervalChat:          envDuration("SIM_INTERVAL_CHAT", time.Hour),
 		IntervalFollow:        envDuration("SIM_INTERVAL_FOLLOW", 7*time.Hour),
 		PostVideoPollInterval: envDuration("SIM_POST_VIDEO_POLL_INTERVAL", 2*time.Minute),
@@ -65,11 +73,14 @@ func runtimeConfigFromFlags(f RuntimeFlags) RuntimeConfigDB {
 	return RuntimeConfigDB{
 		TaskRegister: f.TaskRegister, TaskComment: f.TaskComment,
 		TaskPostImage: f.TaskPostImage, TaskPostVideo: f.TaskPostVideo,
+		TaskPostDebate: f.TaskPostDebate, TaskDebateComment: f.TaskDebateComment,
 		TaskChat: f.TaskChat, TaskFollow: f.TaskFollow,
 		IntervalRegisterSec:             int64(f.IntervalRegister / time.Second),
 		IntervalCommentSec:              int64(f.IntervalComment / time.Second),
 		IntervalPostImageSec:            int64(f.IntervalPostImage / time.Second),
 		IntervalPostVideoSec:            int64(f.IntervalPostVideo / time.Second),
+		IntervalPostDebateSec:           int64(f.IntervalPostDebate / time.Second),
+		IntervalDebateCommentSec:        int64(f.IntervalDebateComment / time.Second),
 		IntervalChatSec:                 int64(f.IntervalChat / time.Second),
 		IntervalFollowSec:               int64(f.IntervalFollow / time.Second),
 		IntervalPostVideoPollSec:        int64(f.PostVideoPollInterval / time.Second),
@@ -86,12 +97,16 @@ func (c RuntimeConfigDB) toRuntimeFlags(ctx context.Context) RuntimeFlags {
 		TaskComment:           c.TaskComment,
 		TaskPostImage:         c.TaskPostImage,
 		TaskPostVideo:         c.TaskPostVideo,
+		TaskPostDebate:        c.TaskPostDebate,
+		TaskDebateComment:     c.TaskDebateComment,
 		TaskChat:              c.TaskChat,
 		TaskFollow:            c.TaskFollow,
 		IntervalRegister:      secDuration(c.IntervalRegisterSec, 24*time.Hour),
 		IntervalComment:       secDuration(c.IntervalCommentSec, 6*time.Hour),
 		IntervalPostImage:     secDuration(c.IntervalPostImageSec, 3*time.Hour+30*time.Minute),
 		IntervalPostVideo:     secDuration(c.IntervalPostVideoSec, 6*time.Hour+30*time.Minute),
+		IntervalPostDebate:    secDuration(c.IntervalPostDebateSec, 12*time.Hour),
+		IntervalDebateComment: secDuration(c.IntervalDebateCommentSec, time.Hour),
 		IntervalChat:          secDuration(c.IntervalChatSec, time.Hour),
 		IntervalFollow:        secDuration(c.IntervalFollowSec, 7*time.Hour),
 		PostVideoPollInterval: secDuration(c.IntervalPostVideoPollSec, 2*time.Minute),
@@ -138,6 +153,12 @@ func LoadRuntimeFromDB(ctx context.Context) (RuntimeConfigDB, error) {
 	if c.IntervalPostVideoSec <= 0 {
 		c.IntervalPostVideoSec = def.IntervalPostVideoSec
 	}
+	if c.IntervalPostDebateSec <= 0 {
+		c.IntervalPostDebateSec = def.IntervalPostDebateSec
+	}
+	if c.IntervalDebateCommentSec <= 0 {
+		c.IntervalDebateCommentSec = def.IntervalDebateCommentSec
+	}
 	if c.IntervalChatSec <= 0 {
 		c.IntervalChatSec = def.IntervalChatSec
 	}
@@ -162,6 +183,13 @@ func LoadRuntimeFromDB(ctx context.Context) (RuntimeConfigDB, error) {
 	}
 	if c.RateLimitBurst <= 0 {
 		c.RateLimitBurst = def.RateLimitBurst
+	}
+	// 迁移期：旧 runtime_json 无 T7/T8 字段时默认开启。
+	if !strings.Contains(raw, "taskPostDebate") {
+		c.TaskPostDebate = def.TaskPostDebate
+	}
+	if !strings.Contains(raw, "taskDebateComment") {
+		c.TaskDebateComment = def.TaskDebateComment
 	}
 	return c, nil
 }

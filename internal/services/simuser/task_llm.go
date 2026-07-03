@@ -32,6 +32,12 @@ var taskLLMUsage = map[string][]struct {
 		{aimodel.LaneSimText, "文案"},
 		{aimodel.LaneSimVideoGen, "提交与轮询"},
 	},
+	"post_debate": {
+		{aimodel.LaneSimText, "辩论话题"},
+	},
+	"debate_comment": {
+		{aimodel.LaneSimText, "辩论论点"},
+	},
 	"chat_scan": {
 		{aimodel.LaneSimText, "未读回复"},
 	},

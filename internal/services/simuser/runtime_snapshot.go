@@ -38,6 +38,8 @@ type RuntimeTaskSwitchesDTO struct {
 	Comment   bool
 	PostImage bool
 	PostVideo bool
+	PostDebate bool
+	DebateComment bool
 	Chat      bool
 	Follow    bool
 }
@@ -48,6 +50,8 @@ type RuntimeIntervalsDTO struct {
 	Comment               string
 	PostImage             string
 	PostVideo             string
+	PostDebate            string
+	DebateComment         string
 	Chat                  string
 	Follow                string
 	PostVideoPollInterval string
@@ -83,6 +87,8 @@ func GetRuntimeSnapshot(ctx context.Context) (RuntimeSnapshotDTO, error) {
 			Comment:   flags.TaskComment,
 			PostImage: flags.TaskPostImage,
 			PostVideo: flags.TaskPostVideo,
+			PostDebate: flags.TaskPostDebate,
+			DebateComment: flags.TaskDebateComment,
 			Chat:      flags.TaskChat,
 			Follow:    flags.TaskFollow,
 		},
@@ -91,6 +97,8 @@ func GetRuntimeSnapshot(ctx context.Context) (RuntimeSnapshotDTO, error) {
 			Comment:               durationLabel(flags.IntervalComment),
 			PostImage:             durationLabel(flags.IntervalPostImage),
 			PostVideo:             durationLabel(flags.IntervalPostVideo),
+			PostDebate:            durationLabel(flags.IntervalPostDebate),
+			DebateComment:         durationLabel(flags.IntervalDebateComment),
 			Chat:                  durationLabel(flags.IntervalChat),
 			Follow:                durationLabel(flags.IntervalFollow),
 			PostVideoPollInterval: durationLabel(flags.PostVideoPollInterval),

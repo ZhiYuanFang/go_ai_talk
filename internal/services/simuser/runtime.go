@@ -14,12 +14,16 @@ type RuntimeFlags struct {
 	TaskComment           bool
 	TaskPostImage         bool
 	TaskPostVideo         bool
+	TaskPostDebate        bool
+	TaskDebateComment     bool
 	TaskChat              bool
 	TaskFollow            bool
 	IntervalRegister      time.Duration
 	IntervalComment       time.Duration
 	IntervalPostImage     time.Duration
 	IntervalPostVideo     time.Duration
+	IntervalPostDebate    time.Duration
+	IntervalDebateComment time.Duration
 	IntervalChat          time.Duration
 	IntervalFollow        time.Duration
 	PostVideoPollInterval time.Duration
