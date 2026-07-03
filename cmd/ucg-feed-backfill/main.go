@@ -11,7 +11,9 @@ import (
 
 	"hello/internal/dao"
 	"hello/internal/model/entity"
+	"hello/internal/platform/cachekit"
 	"hello/internal/platform/dbcfg"
+	"hello/internal/platform/rediscfg"
 	ucgsvc "hello/internal/services/ucg"
 	_ "hello/internal/shared/runtime"
 
@@ -38,6 +40,9 @@ func main() {
 	}
 	prepareRuntime()
 	ctx := gctx.New()
+	if !*dryRun {
+		ensureRedisReady(ctx)
+	}
 
 	var postOK, postFail, likeOK, likeFail, commentOK, commentFail, voteOK, voteFail int64
 	if *votesOnly {
@@ -247,6 +252,21 @@ func prepareRuntime() {
 		_ = os.Setenv("GF_GCFG_FILE", "manifest/config/config.ucg-service.yaml")
 	}
 	dbcfg.ApplyGroupFromEnv("ucg-feed-backfill", "default", "UCG_DB_LINK", "GF_DATABASE_DEFAULT_LINK")
+	// 与 ucg-service 一致：Redis 仅经 GF_REDIS_DEFAULT_ADDRESS 注入（yaml 无 redis 段）。
+	rediscfg.ApplyDefaultFromEnv("ucg-feed-backfill")
+}
+
+// ensureRedisReady 非 dry-run 写 Redis 前校验配置与连通性，避免 g.Redis() panic。
+func ensureRedisReady(ctx context.Context) {
+	if rediscfg.DefaultAddressFromEnv() == "" {
+		fmt.Fprintln(os.Stderr, "GF_REDIS_DEFAULT_ADDRESS 未配置：请在 env-file 中设置 Redis 地址。")
+		fmt.Fprintln(os.Stderr, "宿主机执行时须使用可连通的地址（非 Docker 服务名）；或在 ucg-service 容器内运行本命令。")
+		os.Exit(2)
+	}
+	if err := cachekit.Default().Ping(ctx); err != nil {
+		fmt.Fprintf(os.Stderr, "Redis 连通失败 address=%s err=%v\n", rediscfg.DefaultAddressFromEnv(), err)
+		os.Exit(2)
+	}
 }
 
 func loadEnvFile(path string) error {

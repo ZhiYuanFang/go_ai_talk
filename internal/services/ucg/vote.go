@@ -80,6 +80,9 @@ func VotePost(ctx context.Context, wxID int64, postID uint64, side string) error
 	}
 	if patchErr := patchVoteRedis(ctx, wxID, postID, oldSide, side); patchErr != nil {
 		g.Log().Warningf(ctx, "[ucg-vote] patch vote redis failed wxId=%d post=%d err=%v", wxID, postID, patchErr)
+		if _, bfErr := backfillVoteCountsFromMySQL(ctx, postID); bfErr != nil {
+			g.Log().Warningf(ctx, "[ucg-vote] backfill after patch failed post=%d err=%v", postID, bfErr)
+		}
 	}
 	if int64(post.AuthorWxId) == wxID {
 		if incErr := Device().IncrementForceValue(ctx, wxID); incErr != nil {
@@ -203,7 +206,7 @@ func aggregateVoteCounts(ctx context.Context, postIDs []uint64) (map[uint64]vote
 	return out, nil
 }
 
-// resolveVoteCountsForPost 读帖级 left/right 计数：Redis Hash 优先，miss 时 MySQL 聚合并回写 Hash。
+// resolveVoteCountsForPost 读帖级 left/right 计数：Redis 优先，miss 或全 0 时与 MySQL 对齐。
 func resolveVoteCountsForPost(ctx context.Context, postID uint64) voteCounts {
 	if postID == 0 {
 		return voteCounts{}
@@ -212,14 +215,11 @@ func resolveVoteCountsForPost(ctx context.Context, postID uint64) voteCounts {
 	if err != nil {
 		return voteCounts{}
 	}
-	if len(miss) == 0 {
+	reconciled, rErr := reconcileVoteCountsWithMySQL(ctx, counts, miss)
+	if rErr != nil {
 		return counts[postID]
 	}
-	c, bfErr := backfillVoteCountsFromMySQL(ctx, postID)
-	if bfErr != nil {
-		return voteCounts{}
-	}
-	return c
+	return reconciled[postID]
 }
 
 func enrichPostsWithVoteData(ctx context.Context, viewerWxID int64, posts []*PostDTO) error {
@@ -239,13 +239,9 @@ func enrichPostsWithVoteData(ctx context.Context, viewerWxID int64, posts []*Pos
 	if err != nil {
 		return err
 	}
-	for _, id := range miss {
-		c, bfErr := backfillVoteCountsFromMySQL(ctx, id)
-		if bfErr != nil {
-			g.Log().Warningf(ctx, "[ucg-vote] backfill vote counts failed post=%d err=%v", id, bfErr)
-			continue
-		}
-		counts[id] = c
+	counts, err = reconcileVoteCountsWithMySQL(ctx, counts, miss)
+	if err != nil {
+		return err
 	}
 	sides, err := loadMyVoteSidesFromRedis(ctx, viewerWxID, ids)
 	if err != nil {
@@ -257,11 +253,11 @@ func enrichPostsWithVoteData(ctx context.Context, viewerWxID int64, posts []*Pos
 		}
 		snapLeft, snapRight := p.LeftVoteCount, p.RightVoteCount
 		c := counts[p.Id]
-		if c.left > 0 || c.right > 0 {
+		if voteCountsTotal(c) > 0 {
 			p.LeftVoteCount = c.left
 			p.RightVoteCount = c.right
 		} else if snapLeft > 0 || snapRight > 0 {
-			// Hash miss/全 0 时保留 PostSnapshot 内嵌计数，避免 Feed 长期缺票。
+			// Hash 仍为 0 时保留 PostSnapshot 内嵌计数，避免 Feed 长期缺票。
 			p.LeftVoteCount = snapLeft
 			p.RightVoteCount = snapRight
 		} else {

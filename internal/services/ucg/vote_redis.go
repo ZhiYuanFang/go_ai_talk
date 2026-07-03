@@ -9,25 +9,6 @@ import (
 	"github.com/gogf/gf/v2/frame/g"
 )
 
-// patchVoteRedisScript 原子更新帖级计数与用户立场；MySQL 成功后的 best-effort 读模型 patch。
-// KEYS[1]=vote-counts, KEYS[2]=user-post-votes
-// ARGV[1]=postId field, ARGV[2]=newSide, ARGV[3]=oldSide（新票为空串）
-const patchVoteRedisScript = `
-local countsKey = KEYS[1]
-local userKey = KEYS[2]
-local postField = ARGV[1]
-local newSide = ARGV[2]
-local oldSide = ARGV[3]
-if oldSide ~= '' and oldSide ~= newSide then
-  redis.call('HINCRBY', countsKey, oldSide, -1)
-end
-if oldSide == '' or oldSide ~= newSide then
-  redis.call('HINCRBY', countsKey, newSide, 1)
-end
-redis.call('HSET', userKey, postField, newSide)
-return 'OK'
-`
-
 // initPostVoteCountsRedis 辩论帖发布时初始化计数 Hash，避免读路径把「零票」误判为 cache miss。
 func initPostVoteCountsRedis(ctx context.Context, postID uint64) error {
 	if postID == 0 {
@@ -44,7 +25,7 @@ func initPostVoteCountsRedis(ctx context.Context, postID uint64) error {
 	return ucgCache.HashSet(ctx, key, VoteSideRight, "0")
 }
 
-// patchVoteRedis VotePost 写路径同步 patch Redis；失败仅打日志，读 miss 时 MySQL backfill。
+// patchVoteRedis VotePost 写路径同步 patch Redis（分 key 写入，兼容 Redis Cluster，避免跨 slot Lua）。
 func patchVoteRedis(ctx context.Context, wxID int64, postID uint64, oldSide, newSide string) error {
 	if wxID <= 0 || postID == 0 || newSide == "" {
 		return nil
@@ -52,17 +33,19 @@ func patchVoteRedis(ctx context.Context, wxID int64, postID uint64, oldSide, new
 	if oldSide == newSide {
 		return nil
 	}
-	keys := []string{
-		cachekit.UCGPostVoteCountsKey(postID),
-		cachekit.UCGUserPostVotesKey(wxID),
+	countsKey := cachekit.UCGPostVoteCountsKey(postID)
+	if oldSide != "" && oldSide != newSide {
+		if _, err := ucgCache.HashIncrBy(ctx, countsKey, oldSide, -1); err != nil {
+			return err
+		}
 	}
-	args := []string{
-		strconv.FormatUint(postID, 10),
-		newSide,
-		oldSide,
+	if oldSide == "" || oldSide != newSide {
+		if _, err := ucgCache.HashIncrBy(ctx, countsKey, newSide, 1); err != nil {
+			return err
+		}
 	}
-	_, err := ucgCache.Eval(ctx, patchVoteRedisScript, keys, args)
-	return err
+	postField := strconv.FormatUint(postID, 10)
+	return ucgCache.HashSet(ctx, cachekit.UCGUserPostVotesKey(wxID), postField, newSide)
 }
 
 func parseVoteCountsHash(fields map[string]string) voteCounts {
@@ -79,6 +62,10 @@ func parseVoteCountsHash(fields map[string]string) voteCounts {
 		c.right = uint(n)
 	}
 	return c
+}
+
+func voteCountsTotal(c voteCounts) uint {
+	return c.left + c.right
 }
 
 // loadVoteCountsFromRedis 批量读帖级 left/right 计数；key 不存在视为 miss（需 MySQL backfill）。
@@ -105,6 +92,53 @@ func loadVoteCountsFromRedis(ctx context.Context, postIDs []uint64) (map[uint64]
 		out[id] = parseVoteCountsHash(fields)
 	}
 	return out, miss, nil
+}
+
+// reconcileVoteCountsWithMySQL 对 Redis miss 或计数全 0 的帖，批量与 MySQL 对齐并回写 Hash（修复 patch 失败/Cluster 脏 0）。
+func reconcileVoteCountsWithMySQL(ctx context.Context, counts map[uint64]voteCounts, miss []uint64) (map[uint64]voteCounts, error) {
+	if counts == nil {
+		counts = make(map[uint64]voteCounts)
+	}
+	need := make([]uint64, 0, len(miss))
+	seen := make(map[uint64]struct{}, len(miss))
+	for _, id := range miss {
+		if id == 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		need = append(need, id)
+	}
+	for id, c := range counts {
+		if id == 0 {
+			continue
+		}
+		if voteCountsTotal(c) > 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		need = append(need, id)
+	}
+	if len(need) == 0 {
+		return counts, nil
+	}
+	mysql, err := aggregateVoteCounts(ctx, need)
+	if err != nil {
+		return counts, err
+	}
+	for _, id := range need {
+		c := mysql[id]
+		counts[id] = c
+		if wErr := writeVoteCountsRedis(ctx, id, c); wErr != nil {
+			g.Log().Warningf(ctx, "[ucg-vote] reconcile vote counts redis failed post=%d err=%v", id, wErr)
+		}
+	}
+	return counts, nil
 }
 
 // loadMyVoteSidesFromRedis 批量读 viewer 在各帖的投票立场；field miss 表示未投票。
