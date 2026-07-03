@@ -414,7 +414,7 @@ func enrichPostsWithCommentsPreview(ctx context.Context, posts []*PostDTO) error
 	}
 	postIDs := make([]uint64, 0, len(posts))
 	for _, p := range posts {
-		if p == nil || p.CommentCount == 0 {
+		if p == nil || p.Id == 0 {
 			continue
 		}
 		postIDs = append(postIDs, p.Id)
@@ -430,8 +430,16 @@ func enrichPostsWithCommentsPreview(ctx context.Context, posts []*PostDTO) error
 		if p == nil {
 			continue
 		}
-		if comments, ok := preview[p.Id]; ok {
-			p.Comments = comments
+		comments, ok := preview[p.Id]
+		if !ok || len(comments) == 0 {
+			continue
+		}
+		p.Comments = comments
+		// 旧 Redis post snapshot 可能缺 commentCount，用 ZCARD 补展示计数避免 Feed 长期显示 0。
+		if p.CommentCount == 0 {
+			if n, cardErr := ucgCache.SortedSetCard(ctx, cachekit.UCGPostCommentsKey(p.Id)); cardErr == nil && n > 0 {
+				p.CommentCount = uint(n)
+			}
 		}
 	}
 	return nil

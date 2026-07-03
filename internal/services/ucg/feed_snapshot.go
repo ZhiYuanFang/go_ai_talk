@@ -23,9 +23,10 @@ type PostSnapshot struct {
 	DebateLeft   string         `json:"debateLeft"`
 	DebateRight  string         `json:"debateRight"`
 	Media        []PostMediaDTO `json:"media"`
-	AuthorWxID  uint64         `json:"authorWxId"`
-	LikeCount   uint           `json:"likeCount"`
-	IpLocation  string         `json:"ipLocation"`
+	AuthorWxID    uint64         `json:"authorWxId"`
+	LikeCount     uint           `json:"likeCount"`
+	CommentCount  uint           `json:"commentCount"`
+	IpLocation    string         `json:"ipLocation"`
 	PublishedAt int64          `json:"publishedAt"`
 	MediaType   int            `json:"mediaType"`
 	Lat         *float64       `json:"lat,omitempty"`
@@ -61,9 +62,10 @@ func writePostSnapshot(ctx context.Context, post entity.UcgPost) error {
 		DebateLeft:  strings.TrimSpace(post.DebateLeftLabel),
 		DebateRight: strings.TrimSpace(post.DebateRightLabel),
 		Media:       media,
-		AuthorWxID:  post.AuthorWxId,
-		LikeCount:   post.LikeCount,
-		IpLocation:  strings.TrimSpace(post.IpLocation),
+		AuthorWxID:   post.AuthorWxId,
+		LikeCount:    post.LikeCount,
+		CommentCount: post.CommentCount,
+		IpLocation:   strings.TrimSpace(post.IpLocation),
 		PublishedAt: post.PublishedAt,
 		MediaType:   post.MediaType,
 		Lat:         post.Lat,
@@ -98,6 +100,22 @@ func writeProfileSnapshot(ctx context.Context, wxID uint64) error {
 
 func deletePostSnapshot(ctx context.Context, postID uint64) error {
 	return ucgCache.Del(ctx, cachekit.UCGPostSnapshotKey(postID))
+}
+
+// refreshPostSnapshotFromDB 从 MySQL 已发布帖重写 Redis 帖子快照（评论/点赞计数变更后保持 Feed 计数准确）。
+func refreshPostSnapshotFromDB(ctx context.Context, postID uint64) {
+	if postID == 0 {
+		return
+	}
+	row, err := dao.UcgPost.Ctx(ctx).Where(dao.UcgPost.Columns().Id, postID).One()
+	if err != nil || row.IsEmpty() {
+		return
+	}
+	var post entity.UcgPost
+	if err = row.Struct(&post); err != nil || post.Status != PostStatusPublished {
+		return
+	}
+	_ = writePostSnapshot(ctx, post)
 }
 
 func loadPostSnapshots(ctx context.Context, postIDs []uint64) (map[uint64]PostSnapshot, []uint64, error) {
@@ -194,9 +212,10 @@ func backfillPostSnapshot(ctx context.Context, postID uint64) (PostSnapshot, err
 		DebateLeft:  strings.TrimSpace(post.DebateLeftLabel),
 		DebateRight: strings.TrimSpace(post.DebateRightLabel),
 		Media:       media,
-		AuthorWxID:  post.AuthorWxId,
-		LikeCount:   post.LikeCount,
-		IpLocation:  strings.TrimSpace(post.IpLocation),
+		AuthorWxID:   post.AuthorWxId,
+		LikeCount:    post.LikeCount,
+		CommentCount: post.CommentCount,
+		IpLocation:   strings.TrimSpace(post.IpLocation),
 		PublishedAt: post.PublishedAt,
 		MediaType:   post.MediaType,
 		Lat:         post.Lat,
@@ -290,6 +309,7 @@ func snapshotToPostDTO(
 		Status:         PostStatusPublished,
 		MediaType:      snap.MediaType,
 		LikeCount:      snap.LikeCount,
+		CommentCount:   snap.CommentCount,
 		LikedByMe:      likedByMe,
 		PublishedAt:    snap.PublishedAt,
 		IpLocation:     snap.IpLocation,

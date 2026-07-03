@@ -58,6 +58,7 @@ func publishCommentCAS(ctx context.Context, comment entity.UcgPostComment) error
 	_, _ = dao.UcgPost.Ctx(ctx).Where(dao.UcgPost.Columns().Id, comment.PostId).Increment(dao.UcgPost.Columns().CommentCount, 1)
 	PublishCommentPublished(ctx, comment.PostId, comment.Id)
 	_ = appendCommentRedis(ctx, comment)
+	refreshPostSnapshotFromDB(ctx, comment.PostId)
 	postRow, pErr := dao.UcgPost.Ctx(ctx).Where(dao.UcgPost.Columns().Id, comment.PostId).One()
 	if pErr == nil && !postRow.IsEmpty() {
 		var post entity.UcgPost
