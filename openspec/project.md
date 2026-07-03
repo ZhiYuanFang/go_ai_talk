@@ -68,6 +68,14 @@
 - 评审检查项必须包含“**Redis 读缓存**”检查：涉及新读路径或 Redis 键变更时，是否已在 proposal/design 完成收益率评估、负责人确认结论，且实现与 design 一致（见「Redis 读缓存约定」）。
 - 在没有特别要求的情况下，不用生成关于当前变更需求的md文件。当有要求生成文档时，文档必须在`docs/`文件夹内生成md文件，不要生成到`docs/runbooks/`
 
+### gateway-app 对外 App 接口约定（强制）
+
+- **适用范围**：App 客户端经 **gateway-app-server** 访问的 **新增 HTTP 接口**（`api/v1` / `api/v2` 的 `g.Meta`，以及 gateway 上 `BindHandler` 注册的 App 路径）。领域服务（如 `ucg-service`）单独注册路由 **不等于** 已对 App 开放，须完成下列 gateway 侧检查。
+- **反代覆盖**：UCG App 流量由 `installUcgProxyMiddleware` 绑定 `/ucg/app/api/*`（fuzzy，**含** `/ucg/app/api/v2/...`）。device/voice/history 等域同理，新增 path **MUST** 落在对应 `install*ProxyMiddleware` 已绑定前缀下；若新增顶层前缀，**MUST** 扩展 proxy 绑定。
+- **Bearer 鉴权白名单**：匿名可访问的读接口（如 UCG 推荐 Feed）在 `gateway_app_auth_exempt.go` 维护。**新增 v2 且与 v1 同语义时，MUST 同步登记 v2 精确 path**，不得假设「v1 已豁免则 v2 自动生效」。
+- **与 usage 统计、apiregistry 的关系**：本节约束「能否经 gateway 到达」；usage 统计见下节；中文 summary 依赖 `api/v*` 的 `g.Meta` 嵌入 `apiregistry`。
+- **proposal / tasks 检查项**：变更新增 App HTTP 路由时，MUST 包含「gateway-app 登记自检」勾选（反代前缀、auth exempt 同步、usage 结论）。
+
 ### App API 使用统计约定（强制）
 
 - **适用范围**：经 **gateway-app** 对外暴露、且可能被 App 客户端或运维页调用的 **新增 HTTP 接口**（含 `api/v1` 中 `g.Meta` 路由，以及 `gateway-app-server` 上 `BindHandler` 注册的 App 路径）。**不适用**：`/device/internal/*`、`/device/admin/api/*`、WebSocket 升级、静态资源与 HTML 壳页（已由 `usagestats` 结构性 skip 排除，无需重复询问）。

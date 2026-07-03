@@ -26,6 +26,20 @@
 ## 测试文件
 - 当前阶段不新增测试文件（包括 `*_test.go`、`*.spec.*`、`*.test.*`）。
 
+## gateway-app 对外 App 接口（OpenSpec / 实现强制）
+
+新增经 **gateway-app-server** 对外暴露的 App HTTP 接口（含 `api/v1`、`api/v2` 的 `g.Meta` 路由）时，**MUST** 在 propose/apply 与 PR 自检中逐项确认，避免「仅在领域服务注册、网关未放行」：
+
+| 检查项 | 位置 / 说明 |
+|--------|-------------|
+| **领域服务路由** | 对应 `*-service` 的 `controller` + `api/v*` 的 `g.Meta`（path/method/summary） |
+| **gateway 反代** | `installUcgProxyMiddleware` / `installDeviceProxyMiddleware` 等；UCG App 路径 `/ucg/app/api/*` 已 fuzzy 覆盖 v2 子路径，**无需**为 v2 单独 Bind，但 **MUST** 确认 path 前缀落在已绑定模式内 |
+| **Bearer 白名单** | `internal/controller/gateway_app_auth_exempt.go`：若 v1 同语义接口可匿名访问，**v2 MUST 同步**添加精确 path（如 v1 `feed/recommend` ↔ v2 `v2/feed/recommend`） |
+| **usage 统计** | 见下节；维护型排除见 `usagestats/maintenance_skip.go` |
+| **apiregistry** | `api/v2` 路由须含 `g.Meta`，由 `apiregistry.Init` 自动加载 summary |
+
+细则见 **`openspec/project.md`**「gateway-app 对外 App 接口约定」。
+
 ## App API 使用统计（OpenSpec / 实现强制）
 - 新增经 **gateway-app** 对外的 **App HTTP 接口**时，**必须先向负责人询问是否计入 usage 统计**；未获明确答复前不得修改 `usagestats/maintenance_skip.go` 或假定统计策略。
 - 细则见 **`openspec/project.md`**「App API 使用统计约定」；维护型排除列表在 **`internal/services/gatewayapp/usagestats/maintenance_skip.go`**。

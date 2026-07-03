@@ -36,7 +36,9 @@ func installUcgProxyMiddleware(s *ghttp.Server) {
 		// 退出所有中间件
 		r.ExitAll()
 	}
-	// 绑定 ucg-service 反向代理中间件
+	// 绑定 ucg-service 反向代理中间件。
+	// GoFrame 末尾 * 为 fuzzy 节点，覆盖 /ucg/app/api/v2/... 等全部子路径；新增 App 路由仍须在
+	// api/v1|v2 登记 g.Meta，并核对 gateway_app_auth_exempt / usagestats（见 AGENTS.md）。
 	s.BindMiddleware("/ucg/app/api/*", serve)
 	s.BindMiddleware("/ucg/admin/api/*", serve)
 }
