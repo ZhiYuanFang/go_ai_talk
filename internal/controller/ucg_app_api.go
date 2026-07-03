@@ -383,6 +383,19 @@ func (c *UcgAppCtrl) PostCommentsGetV2(ctx context.Context, req *v2.UcgPostComme
 	return commentsListToResV2(result), nil
 }
 
+func (c *UcgAppCtrl) PostCommentPostV2(ctx context.Context, req *v2.UcgPostCommentPostV2Req) (res *v2.UcgPostCommentPostV2Res, err error) {
+	_ = c
+	wxID, err := wxIDFromUcgHeader(ghttp.RequestFromCtx(ctx))
+	if err != nil {
+		return nil, err
+	}
+	cmt, err := ucgsvc.AddComment(ctx, wxID, req.Id, req.Content)
+	if err != nil {
+		return nil, err
+	}
+	return &v2.UcgPostCommentPostV2Res{UcgCommentItemV2: commentDTOToItemV2(cmt)}, nil
+}
+
 func (c *UcgAppCtrl) FollowPost(ctx context.Context, req *v1.UcgFollowPostReq) (res *v1.UcgFollowDeleteRes, err error) {
 	_ = c
 	wxID, err := wxIDFromUcgHeader(ghttp.RequestFromCtx(ctx))
@@ -860,15 +873,26 @@ func postDTOToItem(p *ucgsvc.PostDTO) v1.UcgPostItem {
 	return item
 }
 
+func commentDTOToItemV2(c *ucgsvc.CommentDTO) v2.UcgCommentItemV2 {
+	if c == nil {
+		return v2.UcgCommentItemV2{}
+	}
+	return v2.UcgCommentItemV2{
+		UcgCommentItem: commentDTOToItem(c),
+		VoteSide:       c.VoteSide,
+		VoteSideLabel:  c.VoteSideLabel,
+	}
+}
+
 func postDTOToItemV2(p *ucgsvc.PostDTO) v2.UcgPostItemV2 {
 	item := postDTOToItem(p)
 	out := v2.UcgPostItemV2{UcgPostItem: item}
 	if p == nil || len(p.Comments) == 0 {
 		return out
 	}
-	out.Comments = make([]v1.UcgCommentItem, 0, len(p.Comments))
+	out.Comments = make([]v2.UcgCommentItemV2, 0, len(p.Comments))
 	for _, c := range p.Comments {
-		out.Comments = append(out.Comments, commentDTOToItem(c))
+		out.Comments = append(out.Comments, commentDTOToItemV2(c))
 	}
 	return out
 }
@@ -876,10 +900,10 @@ func postDTOToItemV2(p *ucgsvc.PostDTO) v2.UcgPostItemV2 {
 func commentsListToResV2(result *ucgsvc.CommentsListResult) *v2.UcgCommentsListV2Res {
 	res := &v2.UcgCommentsListV2Res{
 		Total: result.Total, Truncated: result.Truncated,
-		List: []v1.UcgCommentItem{},
+		List: []v2.UcgCommentItemV2{},
 	}
 	for _, c := range result.List {
-		res.List = append(res.List, commentDTOToItem(c))
+		res.List = append(res.List, commentDTOToItemV2(c))
 	}
 	return res
 }

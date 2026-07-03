@@ -123,6 +123,18 @@ func normalizeVoteSide(side string) string {
 	}
 }
 
+// debateVoteSideLabel 由评论快照 side 与帖 debate 标签计算展示文案（left/right 以外返回空）。
+func debateVoteSideLabel(side, leftLabel, rightLabel string) string {
+	switch normalizeVoteSide(side) {
+	case VoteSideLeft:
+		return strings.TrimSpace(leftLabel)
+	case VoteSideRight:
+		return strings.TrimSpace(rightLabel)
+	default:
+		return ""
+	}
+}
+
 func normalizePostType(t string) string {
 	if t == PostTypeDebate {
 		return PostTypeDebate

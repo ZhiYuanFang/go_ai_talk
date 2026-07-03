@@ -28,7 +28,7 @@ type UcgPostCreateV2Res struct {
 // UcgPostItemV2 Feed 帖子项（v1 字段 + 评论预览）。
 type UcgPostItemV2 struct {
 	v1.UcgPostItem
-	Comments []v1.UcgCommentItem `json:"comments,omitempty"`
+	Comments []UcgCommentItemV2 `json:"comments,omitempty"`
 }
 
 // UcgFeedRecommendV2Req v2 推荐 Feed（含评论预览，最多 commentsPreviewMax 条/帖）。
@@ -72,7 +72,25 @@ type UcgPostCommentsGetV2Req struct {
 }
 
 type UcgCommentsListV2Res struct {
-	List      []v1.UcgCommentItem `json:"list"`
-	Total     int                 `json:"total"`
-	Truncated bool                `json:"truncated"`
+	List      []UcgCommentItemV2 `json:"list"`
+	Total     int                `json:"total"`
+	Truncated bool               `json:"truncated"`
+}
+
+// UcgCommentItemV2 v2 评论项（v1 字段 + 辩论立场快照）。
+type UcgCommentItemV2 struct {
+	v1.UcgCommentItem
+	VoteSide      string `json:"voteSide,omitempty"`
+	VoteSideLabel string `json:"voteSideLabel,omitempty"`
+}
+
+// UcgPostCommentPostV2Req v2 发表评论（辩论帖须已投票）。
+type UcgPostCommentPostV2Req struct {
+	g.Meta  `path:"/ucg/app/api/v2/posts/{id}/comments" method:"post" tags:"ucg" summary:"发表评论(v2含立场)"`
+	Id      uint64 `json:"id" in:"path" v:"required|min:1"`
+	Content string `json:"content" v:"required"`
+}
+
+type UcgPostCommentPostV2Res struct {
+	UcgCommentItemV2
 }

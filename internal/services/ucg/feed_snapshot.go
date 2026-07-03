@@ -222,12 +222,26 @@ func loadProfileSnapshots(ctx context.Context, wxIDs []uint64) (map[uint64]Profi
 	}
 	for k, id := range idByKey {
 		raw, ok := vals[k]
-		if !ok {
+		if !ok || strings.TrimSpace(raw) == "" {
 			continue
 		}
 		var snap ProfileSnapshot
 		if err = json.Unmarshal([]byte(raw), &snap); err != nil {
 			continue
+		}
+		// 旧 Redis profile snapshot 可能缺头像 URL，视为 stale 回源刷新（与 feed 帖 content 回填一致）。
+		if strings.TrimSpace(snap.AvatarUrl) == "" && strings.TrimSpace(snap.AvatarThumbnailUrl) == "" {
+			_ = writeProfileSnapshot(ctx, id)
+			if prof, pErr := GetPublicProfile(ctx, id); pErr == nil && prof != nil {
+				out[id] = ProfileSnapshot{
+					WxID:               prof.WxId,
+					Nickname:           prof.Nickname,
+					Bio:                prof.Bio,
+					AvatarUrl:          prof.AvatarUrl,
+					AvatarThumbnailUrl: prof.AvatarThumbnailUrl,
+				}
+				continue
+			}
 		}
 		out[id] = snap
 	}

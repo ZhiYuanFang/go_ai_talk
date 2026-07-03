@@ -21,7 +21,40 @@ type CommentSnapshot struct {
 	PostID     uint64 `json:"postId"`
 	AuthorWxID uint64 `json:"authorWxId"`
 	Content    string `json:"content"`
+	VoteSide   string `json:"voteSide,omitempty"`
 	CreatedAt  int64  `json:"createdAt"`
+}
+
+// debateSideLabels 辩论帖正反方展示文案，供评论 voteSideLabel 计算。
+type debateSideLabels struct {
+	Left  string
+	Right string
+}
+
+func debateLabelsMapFromPostSnaps(snaps map[uint64]PostSnapshot) map[uint64]debateSideLabels {
+	out := make(map[uint64]debateSideLabels)
+	for id, snap := range snaps {
+		if normalizePostType(snap.Type) != PostTypeDebate {
+			continue
+		}
+		out[id] = debateSideLabels{
+			Left:  strings.TrimSpace(snap.DebateLeft),
+			Right: strings.TrimSpace(snap.DebateRight),
+		}
+	}
+	return out
+}
+
+func debateLabelsForPost(post entity.UcgPost) map[uint64]debateSideLabels {
+	if normalizePostType(post.Type) != PostTypeDebate {
+		return nil
+	}
+	return map[uint64]debateSideLabels{
+		post.Id: {
+			Left:  strings.TrimSpace(post.DebateLeftLabel),
+			Right: strings.TrimSpace(post.DebateRightLabel),
+		},
+	}
 }
 
 func commentsPreviewMax(ctx context.Context) int {
@@ -48,7 +81,7 @@ func appendCommentRedis(ctx context.Context, c entity.UcgPostComment) error {
 	}
 	snap := CommentSnapshot{
 		ID: c.Id, PostID: c.PostId, AuthorWxID: c.AuthorWxId,
-		Content: c.Content, CreatedAt: c.CreatedAt,
+		Content: c.Content, VoteSide: strings.TrimSpace(c.DebateVoteSide), CreatedAt: c.CreatedAt,
 	}
 	member := strconv.FormatUint(c.Id, 10)
 	if err := ucgCache.SortedSetAdd(ctx, cachekit.UCGPostCommentsKey(c.PostId), float64(c.CreatedAt), member); err != nil {
@@ -138,11 +171,11 @@ func backfillCommentSnapshot(ctx context.Context, commentID uint64) (CommentSnap
 	_ = appendCommentRedis(ctx, c)
 	return CommentSnapshot{
 		ID: c.Id, PostID: c.PostId, AuthorWxID: c.AuthorWxId,
-		Content: c.Content, CreatedAt: c.CreatedAt,
+		Content: c.Content, VoteSide: strings.TrimSpace(c.DebateVoteSide), CreatedAt: c.CreatedAt,
 	}, nil
 }
 
-func commentSnapshotsToDTOs(ctx context.Context, snaps []CommentSnapshot) ([]*CommentDTO, error) {
+func commentSnapshotsToDTOs(ctx context.Context, snaps []CommentSnapshot, debateLabelsByPost map[uint64]debateSideLabels) ([]*CommentDTO, error) {
 	if len(snaps) == 0 {
 		return nil, nil
 	}
@@ -158,7 +191,7 @@ func commentSnapshotsToDTOs(ctx context.Context, snaps []CommentSnapshot) ([]*Co
 		seen[s.AuthorWxID] = struct{}{}
 		authorIDs = append(authorIDs, s.AuthorWxID)
 	}
-	profiles, err := GetPublicProfilesByWxIDs(ctx, authorIDs)
+	profileSnaps, err := loadProfileSnapshots(ctx, authorIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -167,9 +200,19 @@ func commentSnapshotsToDTOs(ctx context.Context, snaps []CommentSnapshot) ([]*Co
 		dto := &CommentDTO{
 			Id: s.ID, PostId: s.PostID, AuthorWxId: s.AuthorWxID,
 			Content: s.Content, Status: CommentStatusPublished, CreatedAt: s.CreatedAt,
+			VoteSide: strings.TrimSpace(s.VoteSide),
 		}
-		if prof := profiles[s.AuthorWxID]; prof != nil {
-			dto.Author = prof
+		if labels, ok := debateLabelsByPost[s.PostID]; ok {
+			dto.VoteSideLabel = debateVoteSideLabel(dto.VoteSide, labels.Left, labels.Right)
+		}
+		if profSnap, ok := profileSnaps[s.AuthorWxID]; ok {
+			dto.Author = &ProfileDTO{
+				WxId:               profSnap.WxID,
+				Nickname:           profSnap.Nickname,
+				Bio:                profSnap.Bio,
+				AvatarUrl:          profSnap.AvatarUrl,
+				AvatarThumbnailUrl: profSnap.AvatarThumbnailUrl,
+			}
 		}
 		out = append(out, dto)
 	}
@@ -217,6 +260,11 @@ func batchLoadCommentsPreview(ctx context.Context, postIDs []uint64, limit int) 
 	if len(allCommentIDs) == 0 {
 		return out, nil
 	}
+	postSnaps, _, pErr := loadPostSnapshots(ctx, postIDs)
+	if pErr != nil {
+		return nil, pErr
+	}
+	debateLabels := debateLabelsMapFromPostSnaps(postSnaps)
 	snaps, miss, err := loadCommentSnapshots(ctx, allCommentIDs)
 	if err != nil {
 		return nil, err
@@ -234,7 +282,7 @@ func batchLoadCommentsPreview(ctx context.Context, postIDs []uint64, limit int) 
 				ordered = append(ordered, snap)
 			}
 		}
-		dtos, dErr := commentSnapshotsToDTOs(ctx, ordered)
+		dtos, dErr := commentSnapshotsToDTOs(ctx, ordered, debateLabels)
 		if dErr != nil {
 			return nil, dErr
 		}
@@ -347,7 +395,7 @@ func ListCommentsFromRedis(ctx context.Context, postID uint64) (*CommentsListRes
 	if cap > 0 && len(snaps) > cap {
 		snaps = snaps[:cap]
 	}
-	dtos, err := commentSnapshotsToDTOs(ctx, snaps)
+	dtos, err := commentSnapshotsToDTOs(ctx, snaps, debateLabelsForPost(post))
 	if err != nil {
 		return nil, err
 	}

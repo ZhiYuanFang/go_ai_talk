@@ -210,15 +210,17 @@ func UnlikePost(ctx context.Context, wxID int64, postID uint64) error {
 
 // CommentDTO 评论视图。
 type CommentDTO struct {
-	Id           uint64      `json:"id"`
-	PostId       uint64      `json:"postId"`
-	AuthorWxId   uint64      `json:"authorWxId"`
-	Content      string      `json:"content"`
-	Status       int         `json:"status,omitempty"`
-	RejectReason string      `json:"rejectReason,omitempty"`
-	AuditVersion int         `json:"auditVersion,omitempty"`
-	CreatedAt    int64       `json:"createdAt"`
-	Author       *ProfileDTO `json:"author,omitempty"`
+	Id            uint64      `json:"id"`
+	PostId        uint64      `json:"postId"`
+	AuthorWxId    uint64      `json:"authorWxId"`
+	Content       string      `json:"content"`
+	Status        int         `json:"status,omitempty"`
+	RejectReason  string      `json:"rejectReason,omitempty"`
+	AuditVersion  int         `json:"auditVersion,omitempty"`
+	CreatedAt     int64       `json:"createdAt"`
+	VoteSide      string      `json:"voteSide,omitempty"`
+	VoteSideLabel string      `json:"voteSideLabel,omitempty"`
+	Author        *ProfileDTO `json:"author,omitempty"`
 }
 
 // AddComment 发表评论（published 帖）。
@@ -233,22 +235,49 @@ func AddComment(ctx context.Context, wxID int64, postID uint64, content string) 
 	if content == "" {
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "评论不能为空")
 	}
-	if err := ensurePublishedPost(ctx, postID); err != nil {
+	post, err := loadPublishedPost(ctx, postID)
+	if err != nil {
 		return nil, err
+	}
+	// 辩论帖须先投票再评论；立场写入 debate_vote_side 快照，读路径不 join 投票表。
+	var debateVoteSide string
+	if normalizePostType(post.Type) == PostTypeDebate {
+		voteRow, vErr := dao.UcgPostVote.Ctx(ctx).
+			Where(dao.UcgPostVote.Columns().PostId, postID).
+			Where(dao.UcgPostVote.Columns().VoterWxId, wxID).
+			One()
+		if vErr != nil {
+			return nil, vErr
+		}
+		if voteRow.IsEmpty() {
+			return nil, gerror.NewCode(gcode.CodeInvalidParameter, "请先投票后再发表论点")
+		}
+		var vote entity.UcgPostVote
+		if vErr = voteRow.Struct(&vote); vErr != nil {
+			return nil, vErr
+		}
+		debateVoteSide = normalizeVoteSide(vote.Side)
+		if debateVoteSide == "" {
+			return nil, gerror.NewCode(gcode.CodeInvalidParameter, "请先投票后再发表论点")
+		}
 	}
 	now := time.Now().Unix()
 	auditVersion := 1
 	var commentID uint64
 	var outboxID uint64
-	err := dao.UcgPostComment.Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
-		res, insErr := tx.Model(dao.UcgPostComment.Table()).Ctx(ctx).Data(g.Map{
-			dao.UcgPostComment.Columns().PostId:       postID,
-			dao.UcgPostComment.Columns().AuthorWxId:   wxID,
-			dao.UcgPostComment.Columns().Content:      content,
-			dao.UcgPostComment.Columns().Status:       CommentStatusPendingAudit,
-			dao.UcgPostComment.Columns().AuditVersion: auditVersion,
-			dao.UcgPostComment.Columns().CreatedAt:    now,
-		}).Insert()
+	insertData := g.Map{
+		dao.UcgPostComment.Columns().PostId:       postID,
+		dao.UcgPostComment.Columns().AuthorWxId:   wxID,
+		dao.UcgPostComment.Columns().Content:      content,
+		dao.UcgPostComment.Columns().Status:       CommentStatusPendingAudit,
+		dao.UcgPostComment.Columns().AuditVersion: auditVersion,
+		dao.UcgPostComment.Columns().CreatedAt:    now,
+	}
+	if debateVoteSide != "" {
+		insertData[dao.UcgPostComment.Columns().DebateVoteSide] = debateVoteSide
+	}
+	err = dao.UcgPostComment.Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
+		res, insErr := tx.Model(dao.UcgPostComment.Table()).Ctx(ctx).Data(insertData).Insert()
 		if insErr != nil {
 			return insErr
 		}
@@ -270,6 +299,10 @@ func AddComment(ctx context.Context, wxID int64, postID uint64, content string) 
 		Status:       CommentStatusPendingAudit,
 		AuditVersion: auditVersion,
 		CreatedAt:    now,
+		VoteSide:     debateVoteSide,
+	}
+	if debateVoteSide != "" {
+		dto.VoteSideLabel = debateVoteSideLabel(debateVoteSide, post.DebateLeftLabel, post.DebateRightLabel)
 	}
 	if prof, pErr := GetPublicProfile(ctx, uint64(wxID)); pErr == nil {
 		dto.Author = prof

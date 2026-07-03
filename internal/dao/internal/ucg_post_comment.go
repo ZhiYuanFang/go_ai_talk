@@ -32,6 +32,7 @@ type UcgPostCommentColumns struct {
 	ApplyAttempts     string //
 	ApplyFailedAt     string //
 	RejectReason      string //
+	DebateVoteSide    string // left/right 辩论评论发帖时投票立场快照
 	CreatedAt         string //
 }
 
@@ -49,6 +50,7 @@ var ucgPostCommentColumns = UcgPostCommentColumns{
 	ApplyAttempts:     "apply_attempts",
 	ApplyFailedAt:     "apply_failed_at",
 	RejectReason:      "reject_reason",
+	DebateVoteSide:    "debate_vote_side",
 	CreatedAt:         "created_at",
 }
 

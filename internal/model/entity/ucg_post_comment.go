@@ -18,5 +18,6 @@ type UcgPostComment struct {
 	ApplyAttempts     int    `json:"applyAttempts"     ` //
 	ApplyFailedAt     int64  `json:"applyFailedAt"     ` //
 	RejectReason      string `json:"rejectReason"      ` //
+	DebateVoteSide    string `json:"debateVoteSide"    ` // left/right 辩论评论发帖时投票立场快照
 	CreatedAt         int64  `json:"createdAt"         ` //
 }
