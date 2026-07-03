@@ -271,6 +271,13 @@ func (c *observedCache) SortedSetRevRangeWithScores(ctx context.Context, key str
 	return vals, err
 }
 
+func (c *observedCache) SortedSetRange(ctx context.Context, key string, start, stop int64) ([]string, error) {
+	begin := time.Now()
+	vals, err := c.base.SortedSetRange(ctx, key, start, stop)
+	c.observer.OnOperation(ctx, "zrange", key, time.Since(begin), err)
+	return vals, err
+}
+
 func (c *observedCache) SortedSetCard(ctx context.Context, key string) (int64, error) {
 	begin := time.Now()
 	n, err := c.base.SortedSetCard(ctx, key)

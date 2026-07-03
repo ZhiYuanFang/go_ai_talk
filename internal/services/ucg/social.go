@@ -379,6 +379,7 @@ func DeleteComment(ctx context.Context, wxID int64, commentID uint64) error {
 			return err
 		}
 		PublishCommentRemoved(ctx, c.PostId, commentID)
+		_ = removeCommentRedis(ctx, c.PostId, commentID)
 	}
 	return err
 }

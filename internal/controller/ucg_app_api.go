@@ -331,6 +331,58 @@ func (c *UcgAppCtrl) FeedFollowing(ctx context.Context, req *v1.UcgFeedFollowing
 	return pageResultToRes(page), nil
 }
 
+func (c *UcgAppCtrl) FeedRecommendV2(ctx context.Context, req *v2.UcgFeedRecommendV2Req) (res *v2.UcgFeedRecommendV2Res, err error) {
+	_ = c
+	viewerWxID, _ := wxIDFromUcgHeaderOptional(ghttp.RequestFromCtx(ctx))
+	cursor := strings.TrimSpace(req.Cursor)
+	var lat, lng *float64
+	if cursor == "" {
+		lat, lng = req.Lat, req.Lng
+	}
+	page, err := ucgsvc.ListRecommendFeed(ctx, viewerWxID, lat, lng, cursor, req.PageSize, req.Type)
+	if err != nil {
+		return nil, err
+	}
+	list := make([]v2.UcgPostItemV2, 0, len(page.List))
+	for _, p := range page.List {
+		list = append(list, postDTOToItemV2(p))
+	}
+	return &v2.UcgFeedRecommendV2Res{
+		List: list, HasMore: page.HasMore, NextCursor: page.NextCursor,
+	}, nil
+}
+
+func (c *UcgAppCtrl) FeedFollowingV2(ctx context.Context, req *v2.UcgFeedFollowingV2Req) (res *v2.UcgFeedFollowingV2Res, err error) {
+	_ = c
+	wxID, err := wxIDFromUcgHeader(ghttp.RequestFromCtx(ctx))
+	if err != nil {
+		return nil, err
+	}
+	page, err := ucgsvc.ListFollowingFeed(ctx, wxID, req.Page, req.PageSize, req.Lat, req.Lng, req.Type)
+	if err != nil {
+		return nil, err
+	}
+	list := make([]v2.UcgPostItemV2, 0)
+	if posts, ok := page.List.([]*ucgsvc.PostDTO); ok {
+		list = make([]v2.UcgPostItemV2, 0, len(posts))
+		for _, p := range posts {
+			list = append(list, postDTOToItemV2(p))
+		}
+	}
+	return &v2.UcgFeedFollowingV2Res{
+		List: list, Total: page.Total, Page: page.Page, PageSize: page.PageSize,
+	}, nil
+}
+
+func (c *UcgAppCtrl) PostCommentsGetV2(ctx context.Context, req *v2.UcgPostCommentsGetV2Req) (res *v2.UcgCommentsListV2Res, err error) {
+	_ = c
+	result, err := ucgsvc.ListCommentsFromRedis(ctx, req.Id)
+	if err != nil {
+		return nil, err
+	}
+	return commentsListToResV2(result), nil
+}
+
 func (c *UcgAppCtrl) FollowPost(ctx context.Context, req *v1.UcgFollowPostReq) (res *v1.UcgFollowDeleteRes, err error) {
 	_ = c
 	wxID, err := wxIDFromUcgHeader(ghttp.RequestFromCtx(ctx))
@@ -806,6 +858,30 @@ func postDTOToItem(p *ucgsvc.PostDTO) v1.UcgPostItem {
 		item.Author = profileDTOToRes(p.Author)
 	}
 	return item
+}
+
+func postDTOToItemV2(p *ucgsvc.PostDTO) v2.UcgPostItemV2 {
+	item := postDTOToItem(p)
+	out := v2.UcgPostItemV2{UcgPostItem: item}
+	if p == nil || len(p.Comments) == 0 {
+		return out
+	}
+	out.Comments = make([]v1.UcgCommentItem, 0, len(p.Comments))
+	for _, c := range p.Comments {
+		out.Comments = append(out.Comments, commentDTOToItem(c))
+	}
+	return out
+}
+
+func commentsListToResV2(result *ucgsvc.CommentsListResult) *v2.UcgCommentsListV2Res {
+	res := &v2.UcgCommentsListV2Res{
+		Total: result.Total, Truncated: result.Truncated,
+		List: []v1.UcgCommentItem{},
+	}
+	for _, c := range result.List {
+		res.List = append(res.List, commentDTOToItem(c))
+	}
+	return res
 }
 
 func pageResultToRes(page *ucgsvc.PageResult) *v1.UcgPageRes {

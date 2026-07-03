@@ -68,6 +68,7 @@ ucg:
     indexWarmBatchSize: 200      # warm MySQL 分页大小
     indexWarmMaxPosts: 2000      # 单次 Feed 请求 warm 帖数上限
     indexWarmLockSeconds: 60     # warm 分布式锁 TTL（秒）
+    commentsPreviewMax: 6      # Feed 内联评论预览条数（v2 API）
   # AI 润笔（polish lane）：provider/model/maxInFlight/maxWaiters 可由 Admin 热更新；API Key 仅 env。
   # zhipu → GLM_API_KEY；dashscope → UCG_DASHSCOPE_API_KEY。yaml 冷启动兜底见 default_*。
   ai:

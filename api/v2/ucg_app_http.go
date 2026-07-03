@@ -24,3 +24,55 @@ type UcgPostCreateV2Req struct {
 type UcgPostCreateV2Res struct {
 	v1.UcgPostItem
 }
+
+// UcgPostItemV2 Feed 帖子项（v1 字段 + 评论预览）。
+type UcgPostItemV2 struct {
+	v1.UcgPostItem
+	Comments []v1.UcgCommentItem `json:"comments,omitempty"`
+}
+
+// UcgFeedRecommendV2Req v2 推荐 Feed（含评论预览，最多 commentsPreviewMax 条/帖）。
+type UcgFeedRecommendV2Req struct {
+	g.Meta   `path:"/ucg/app/api/v2/feed/recommend" method:"get" tags:"ucg" summary:"推荐 Feed(v2含评论预览)"`
+	Page     int      `json:"page" in:"query" d:"1"`
+	PageSize int      `json:"pageSize" in:"query" d:"20"`
+	Type     string   `json:"type" in:"query"`
+	Lat      *float64 `json:"lat" in:"query"`
+	Lng      *float64 `json:"lng" in:"query"`
+	Cursor   string   `json:"cursor" in:"query"`
+}
+
+type UcgFeedRecommendV2Res struct {
+	List       []UcgPostItemV2 `json:"list"`
+	HasMore    bool            `json:"hasMore"`
+	NextCursor string          `json:"nextCursor,omitempty"`
+}
+
+// UcgFeedFollowingV2Req v2 关注 Feed（含评论预览）。
+type UcgFeedFollowingV2Req struct {
+	g.Meta   `path:"/ucg/app/api/v2/feed/following" method:"get" tags:"ucg" summary:"关注 Feed(v2含评论预览)"`
+	Page     int      `json:"page" in:"query" d:"1"`
+	PageSize int      `json:"pageSize" in:"query" d:"20"`
+	Type     string   `json:"type" in:"query"`
+	Lat      *float64 `json:"lat" in:"query"`
+	Lng      *float64 `json:"lng" in:"query"`
+}
+
+type UcgFeedFollowingV2Res struct {
+	List     []UcgPostItemV2 `json:"list"`
+	Total    int             `json:"total"`
+	Page     int             `json:"page"`
+	PageSize int             `json:"pageSize"`
+}
+
+// UcgPostCommentsGetV2Req v2 全量评论列表（Redis 读模型）。
+type UcgPostCommentsGetV2Req struct {
+	g.Meta `path:"/ucg/app/api/v2/posts/{id}/comments" method:"get" tags:"ucg" summary:"评论列表(v2 Redis)"`
+	Id     uint64 `json:"id" in:"path" v:"required|min:1"`
+}
+
+type UcgCommentsListV2Res struct {
+	List      []v1.UcgCommentItem `json:"list"`
+	Total     int                 `json:"total"`
+	Truncated bool                `json:"truncated"`
+}

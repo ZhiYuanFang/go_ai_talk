@@ -91,6 +91,9 @@ func ListRecommendFeed(
 	if err = enrichPostsWithVoteData(ctx, viewerWxID, list); err != nil {
 		return nil, err
 	}
+	if err = enrichPostsWithCommentsPreview(ctx, list); err != nil {
+		return nil, err
+	}
 	enrichAuthorForceOnPosts(ctx, list)
 	// 推荐 Feed 响应：本人帖 omit distanceMeters；composite 排序 distanceTerm 不变。
 	omitRecommendOwnPostDistance(viewerWxID, list)
@@ -330,6 +333,15 @@ func assembleFeedPosts(
 		if !ok {
 			continue
 		}
+		// 旧版 Redis snapshot 可能缺 content/debate 字段，回源 DB 刷新展示。
+		if strings.TrimSpace(snap.Content) == "" ||
+			(normalizePostType(snap.Type) == PostTypeDebate &&
+				(strings.TrimSpace(snap.DebateLeft) == "" || strings.TrimSpace(snap.DebateRight) == "")) {
+			if bf, bfErr := backfillPostSnapshot(ctx, id); bfErr == nil {
+				snap = bf
+				snaps[id] = snap
+			}
+		}
 		var prof *ProfileSnapshot
 		if p, ok := profiles[snap.AuthorWxID]; ok {
 			pp := p
@@ -460,6 +472,9 @@ func ListFollowingFeed(
 		return nil, err
 	}
 	if err = enrichPostsWithVoteData(ctx, wxID, list); err != nil {
+		return nil, err
+	}
+	if err = enrichPostsWithCommentsPreview(ctx, list); err != nil {
 		return nil, err
 	}
 	enrichAuthorForceOnPosts(ctx, list)

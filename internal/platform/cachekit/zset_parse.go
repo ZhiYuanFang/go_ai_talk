@@ -44,6 +44,23 @@ func parseZRevRangeWithScoresResult(v interface{}) []ZSetMemberScore {
 	return out
 }
 
+// parseZRangeMembersResult 解析 Redis ZRANGE 的 Do 返回值（仅 member，无 score）。
+func parseZRangeMembersResult(v interface{}) []string {
+	arr := gvar.New(v).Array()
+	if len(arr) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(arr))
+	for _, item := range arr {
+		member := zsetFieldString(item)
+		if member == "" {
+			continue
+		}
+		out = append(out, member)
+	}
+	return out
+}
+
 func zsetFieldString(v interface{}) string {
 	if vv, ok := v.(*gvar.Var); ok && vv != nil {
 		return zsetFieldString(vv.Val())

@@ -44,8 +44,9 @@ func isMaintenanceAPI(method, path string) bool {
 	}
 	// GET 评论列表：负责人确认进入帖子详情时高频读，不计入 usage 统计。
 	// 归一化 apiKey：GET /ucg/app/api/posts/{id}/comments（见 api/v1/ucg_app_http.go UcgPostCommentsGetReq）。
+	// v2 同语义：GET /ucg/app/api/v2/posts/{id}/comments。
 	// POST 同路径（发表评论）仍走上方精确表或默认统计逻辑，不在此排除。
-	if isUcgPostCommentsListGET(method, path) {
+	if isUcgPostCommentsListGET(method, path) || isUcgPostCommentsListV2GET(method, path) {
 		return true
 	}
 	return false
@@ -58,6 +59,36 @@ func isUcgPostCommentsListGET(method, path string) bool {
 		return false
 	}
 	const prefix = "/ucg/app/api/posts/"
+	if !strings.HasPrefix(path, prefix) {
+		return false
+	}
+	rest := strings.TrimPrefix(path, prefix)
+	slash := strings.Index(rest, "/")
+	if slash <= 0 {
+		return false
+	}
+	postID := rest[:slash]
+	suffix := rest[slash+1:]
+	if suffix != "comments" {
+		return false
+	}
+	if len(postID) == 0 {
+		return false
+	}
+	for _, c := range postID {
+		if !unicode.IsDigit(c) {
+			return false
+		}
+	}
+	return true
+}
+
+// isUcgPostCommentsListV2GET 匹配 GET /ucg/app/api/v2/posts/<numericPostId>/comments。
+func isUcgPostCommentsListV2GET(method, path string) bool {
+	if method != "GET" {
+		return false
+	}
+	const prefix = "/ucg/app/api/v2/posts/"
 	if !strings.HasPrefix(path, prefix) {
 		return false
 	}

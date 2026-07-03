@@ -359,5 +359,6 @@ func removePostFromRecommendRedis(ctx context.Context, postID uint64) error {
 	_ = ucgCache.SortedSetRemove(ctx, cachekit.UCGRecommendScoreKey(), member)
 	_ = ucgCache.GeoRemove(ctx, cachekit.UCGFeedGeoKey(), member)
 	_ = deletePostVoteCountsRedis(ctx, postID)
+	_ = deletePostCommentsRedis(ctx, postID)
 	return deletePostSnapshot(ctx, postID)
 }

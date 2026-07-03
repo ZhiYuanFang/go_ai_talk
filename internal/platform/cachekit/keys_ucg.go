@@ -103,3 +103,14 @@ func UCGFeedSessionKey(sessionID string) string {
 func UCGFeedIndexWarmLockKey() string {
 	return "ucg:feed:index:warm:lock"
 }
+
+// UCGPostCommentsKey 帖子已发布评论 ZSET 索引；score=created_at，member=commentId。
+// 无 TTL；删帖/下架时 DEL；publish/delete 写路径 ZADD/ZREM 维护。
+func UCGPostCommentsKey(postID uint64) string {
+	return fmt.Sprintf("ucg:post:%d:comments", postID)
+}
+
+// UCGCommentSnapshotKey 已发布评论 JSON 快照；TTL 见 ucg.feed.snapshotTtlDays。
+func UCGCommentSnapshotKey(commentID uint64) string {
+	return fmt.Sprintf("ucg:comment:snapshot:%d", commentID)
+}

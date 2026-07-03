@@ -169,6 +169,22 @@ func (c *RedisCache) SortedSetRevRangeWithScores(
 	return parseZRevRangeWithScoresResult(ret.Val()), nil
 }
 
+// SortedSetRange ZRANGE，按 score 升序返回 member 列表（不含 score）。
+func (c *RedisCache) SortedSetRange(ctx context.Context, key string, start, stop int64) ([]string, error) {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return nil, ErrInvalidKey
+	}
+	ret, err := g.Redis().Do(ctx, "ZRANGE", key, start, stop)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrUnavailable, err)
+	}
+	if ret == nil || ret.IsNil() {
+		return nil, nil
+	}
+	return parseZRangeMembersResult(ret.Val()), nil
+}
+
 // SetIsMemberBatch pipeline SISMEMBER，返回 member→是否成员。
 func (c *RedisCache) SetIsMemberBatch(ctx context.Context, key string, members []string) (map[string]bool, error) {
 	key = strings.TrimSpace(key)

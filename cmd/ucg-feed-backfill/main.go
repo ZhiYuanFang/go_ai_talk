@@ -25,6 +25,7 @@ func main() {
 	limit := flag.Int("limit", 0, "最多处理帖数，0 表示不限制")
 	likesOnly := flag.Bool("likes-only", false, "仅重建 liked SET")
 	postsOnly := flag.Bool("posts-only", false, "仅 backfill 帖 ZSET/GEO/snapshot")
+	commentsOnly := flag.Bool("comments-only", false, "仅 backfill 已发布评论 Redis")
 	envFile := flag.String("env-file", "manifest/docker/env/.env.prod", "启动前加载的 dotenv；空字符串跳过")
 	flag.Parse()
 
@@ -37,17 +38,21 @@ func main() {
 	prepareRuntime()
 	ctx := gctx.New()
 
-	var postOK, postFail, likeOK, likeFail int64
-	if !*likesOnly {
-		postOK, postFail = backfillPosts(ctx, *dryRun, *pageSize, *limit)
+	var postOK, postFail, likeOK, likeFail, commentOK, commentFail int64
+	if *commentsOnly {
+		commentOK, commentFail = backfillComments(ctx, *dryRun, *pageSize, *limit)
+	} else {
+		if !*likesOnly {
+			postOK, postFail = backfillPosts(ctx, *dryRun, *pageSize, *limit)
+		}
+		if !*postsOnly {
+			ok, fail := backfillLikes(ctx, *dryRun)
+			likeOK, likeFail = ok, fail
+		}
 	}
-	if !*postsOnly {
-		ok, fail := backfillLikes(ctx, *dryRun)
-		likeOK, likeFail = ok, fail
-	}
-	fmt.Printf("done posts_ok=%d posts_fail=%d likes_ok=%d likes_fail=%d dry_run=%v\n",
-		postOK, postFail, likeOK, likeFail, *dryRun)
-	if postFail > 0 || likeFail > 0 {
+	fmt.Printf("done posts_ok=%d posts_fail=%d likes_ok=%d likes_fail=%d comments_ok=%d comments_fail=%d dry_run=%v\n",
+		postOK, postFail, likeOK, likeFail, commentOK, commentFail, *dryRun)
+	if postFail > 0 || likeFail > 0 || commentFail > 0 {
 		os.Exit(1)
 	}
 }
@@ -83,6 +88,52 @@ func backfillPosts(ctx context.Context, dryRun bool, pageSize, limit int) (int64
 			if err = ucgsvc.BackfillPublishedPostRedis(ctx, post.Id); err != nil {
 				atomic.AddInt64(&failN, 1)
 				fmt.Fprintf(os.Stderr, "[post-fail] id=%d err=%v\n", post.Id, err)
+				continue
+			}
+			atomic.AddInt64(&okN, 1)
+			if limit > 0 && okN+failN >= int64(limit) {
+				return okN, failN
+			}
+		}
+		if limit > 0 && okN+failN >= int64(limit) {
+			break
+		}
+	}
+	return okN, failN
+}
+
+func backfillComments(ctx context.Context, dryRun bool, pageSize, limit int) (int64, int64) {
+	var okN, failN int64
+	var lastID uint64
+	for {
+		model := dao.UcgPost.Ctx(ctx).
+			Where(dao.UcgPost.Columns().Status, ucgsvc.PostStatusPublished).
+			WhereGT(dao.UcgPost.Columns().CommentCount, 0).
+			WhereGT(dao.UcgPost.Columns().Id, lastID).
+			OrderAsc(dao.UcgPost.Columns().Id).
+			Limit(pageSize)
+		rows, err := model.All()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "scan posts for comments failed: %v\n", err)
+			return okN, failN + 1
+		}
+		if len(rows) == 0 {
+			break
+		}
+		for _, row := range rows {
+			var post entity.UcgPost
+			if err = row.Struct(&post); err != nil {
+				atomic.AddInt64(&failN, 1)
+				continue
+			}
+			lastID = post.Id
+			if dryRun {
+				atomic.AddInt64(&okN, 1)
+				continue
+			}
+			if err = ucgsvc.BackfillPostCommentsRedis(ctx, post.Id); err != nil {
+				atomic.AddInt64(&failN, 1)
+				fmt.Fprintf(os.Stderr, "[comment-fail] postId=%d err=%v\n", post.Id, err)
 				continue
 			}
 			atomic.AddInt64(&okN, 1)

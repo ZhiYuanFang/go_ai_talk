@@ -33,6 +33,7 @@ type FeedConfig struct {
 	IndexWarmBatchSize      int
 	IndexWarmMaxPosts       int
 	IndexWarmLockSeconds    int
+	CommentsPreviewMax      int
 }
 
 // LoadFeedConfig 读取 ucg.feed.* 配置并填充默认值。
@@ -47,6 +48,7 @@ func LoadFeedConfig(ctx context.Context) FeedConfig {
 		IndexWarmBatchSize:   g.Cfg().MustGet(ctx, "ucg.feed.indexWarmBatchSize", feedIndexWarmBatchSizeDef).Int(),
 		IndexWarmMaxPosts:    g.Cfg().MustGet(ctx, "ucg.feed.indexWarmMaxPosts", feedIndexWarmMaxPostsDef).Int(),
 		IndexWarmLockSeconds: g.Cfg().MustGet(ctx, "ucg.feed.indexWarmLockSeconds", feedIndexWarmLockSecondsDef).Int(),
+		CommentsPreviewMax:   g.Cfg().MustGet(ctx, "ucg.feed.commentsPreviewMax", 6).Int(),
 	}
 	steps := g.Cfg().MustGet(ctx, "ucg.feed.radiusStepsKm").Interfaces()
 	for _, v := range steps {

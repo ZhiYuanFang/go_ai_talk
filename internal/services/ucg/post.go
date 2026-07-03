@@ -48,6 +48,7 @@ type PostDTO struct {
 	DistanceMeters string         `json:"distanceMeters,omitempty"`
 	Media          []PostMediaDTO `json:"media,omitempty"`
 	Author         *ProfileDTO    `json:"author,omitempty"`
+	Comments       []*CommentDTO  `json:"comments,omitempty"`
 }
 
 // PostMediaDTO 帖子媒体展示。
