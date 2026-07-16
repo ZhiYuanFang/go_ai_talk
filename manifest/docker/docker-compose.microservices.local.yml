@@ -37,3 +37,7 @@ services:
   notify-service:
     ports:
       - "9806:9806"
+
+  python-ai-talk:
+    ports:
+      - "8000:8000"

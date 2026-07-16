@@ -79,3 +79,10 @@ networks:
   go-ai-talk-test-net:
     external: true
     name: go-ai-talk-test-net
+
+  python-ai-talk:
+    image: ${REGISTRY}/python-ai-talk:${IMAGE_TAG}
+    container_name: go-ai-talk-python-ai-talk-test
+    ports:
+      - "18000:8000"
+    networks: [go-ai-talk-test-net]

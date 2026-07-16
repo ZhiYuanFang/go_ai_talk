@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"hello/internal/model/entity"
+	"hello/internal/services/aimodel"
 	"hello/internal/services/device"
 
 	"github.com/gogf/gf/v2/os/glog"
@@ -388,6 +389,39 @@ func (s *VoiceService) chatWithResult(ctx context.Context, deviceNo, transcript 
 }
 
 func (s *VoiceService) callDeepSeekUnifiedIntent(ctx context.Context, deviceNo, transcript string) (deepSeekUnifiedIntent, error) {
+	// 先尝试调用 Python 微服务进行意图分析
+	if vuProfile, vuErr := aimodel.LoadProfile(ctx, aimodel.LaneVoiceUnderstanding); vuErr == nil {
+		pythonClient := pythonAIClientFromCfg()
+		pythonResp, pythonErr := pythonClient.AnalyzeIntent(ctx, &AnalyzeIntentRequest{
+			Text:     transcript,
+			DeviceNo: deviceNo,
+			Model: PythonModelCfg{
+				Provider:    string(vuProfile.Provider),
+				Name:        vuProfile.Model,
+				MaxInFlight: vuProfile.MaxInFlight,
+			},
+		})
+		if pythonErr == nil && pythonResp != nil {
+			// Python 服务调用成功，将响应映射到 deepSeekUnifiedIntent 结构体
+			intent := deepSeekUnifiedIntent{
+				TargetType:    strings.TrimSpace(strings.ToLower(pythonResp.TargetType)),
+				Action:        strings.TrimSpace(pythonResp.Action),
+				EventName:     strings.TrimSpace(pythonResp.EventName),
+				Reply:         sanitizeModelReplyText(pythonResp.Content),
+				NeedUserReply: true, // 默认需要用户回复
+			}
+			// 对话场景下，如果 action 为 reply，则 need_user_reply 保持 true
+			if intent.TargetType == "conversation" || intent.TargetType == "" {
+				intent.Reply = sanitizeModelReplyText(intent.Reply)
+			}
+			glog.Debugf(ctx, "[Python AI] 意图分析成功（Python）。deviceNo=%s target_type=%s action=%s", deviceNo, intent.TargetType, intent.Action)
+			return intent, nil
+		}
+		// Python 服务调用失败，回退到原有 DeepSeek 直连逻辑
+		if pythonErr != nil {
+			glog.Warningf(ctx, "[Python AI] 意图分析调用失败，回退到 DeepSeek 直连。deviceNo=%s err=%v", deviceNo, pythonErr)
+		}
+	}
 	// 单次请求返回完整意图结构，减少多轮模型调用带来的延迟和不一致。
 	history, _ := s.buildRecentHistory(ctx, deviceNo, 12)
 	historyBytes, _ := json.Marshal(history)
@@ -870,6 +904,30 @@ func parseGeneralChatResult(reply string) (generalChatResult, bool) {
 
 // 普通对话
 func (s *VoiceService) handleIntentGeneral(ctx context.Context, deviceNo, transcript string) (string, bool, error) {
+	// 先尝试调用 Python 微服务进行对话分析
+	if vuProfile, vuErr := aimodel.LoadProfile(ctx, aimodel.LaneVoiceUnderstanding); vuErr == nil {
+		pythonClient := pythonAIClientFromCfg()
+		pythonResp, pythonErr := pythonClient.AnalyzeIntent(ctx, &AnalyzeIntentRequest{
+			Text:     transcript,
+			DeviceNo: deviceNo,
+			Model: PythonModelCfg{
+				Provider:    string(vuProfile.Provider),
+				Name:        vuProfile.Model,
+				MaxInFlight: vuProfile.MaxInFlight,
+			},
+		})
+		if pythonErr == nil && pythonResp != nil && pythonResp.Content != "" {
+			// Python 服务返回了对话回复
+			reply := strings.TrimSpace(pythonResp.Content)
+			if reply != "" {
+				return reply, true, nil
+			}
+		}
+		// Python 服务调用失败或返回空，回退到原有 DeepSeek 直连逻辑
+		if pythonErr != nil {
+			glog.Warningf(ctx, "[Python AI] 对话分析调用失败，回退到 DeepSeek 直连。deviceNo=%s err=%v", deviceNo, pythonErr)
+		}
+	}
 	// 将用户的生日和性别作为宝宝的信息上下文输入，辅助模型判断是否需要回复以及回复内容
 	birthday, gender := s.loadDeviceProfile(ctx, deviceNo)
 	systemMessage := fmt.Sprintf("用户的宝宝出生日期是%s，性别是%s。你还是一个语音助手，可以解答任何问题,回应内容控制在20字以内。", birthday, gender)

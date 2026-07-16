@@ -213,6 +213,37 @@ func (s *VoiceService) buildGrowthSuggestPayload(ctx context.Context, deviceNo s
 
 // callDeepSeekGrowthSuggestion 成长建议：经 LaneVoiceUnderstanding 调用上游。
 func (s *VoiceService) callDeepSeekGrowthSuggestion(ctx context.Context, deviceNo string) (string, error) {
+	// 先尝试调用 Python 微服务获取成长建议
+	if vuProfile, vuErr := aimodel.LoadProfile(ctx, aimodel.LaneVoiceUnderstanding); vuErr == nil {
+		pythonClient := pythonAIClientFromCfg()
+		pythonResp, pythonErr := pythonClient.AnalyzeIntent(ctx, &AnalyzeIntentRequest{
+			Text:     "成长建议",
+			DeviceNo: deviceNo,
+			Model: PythonModelCfg{
+				Provider:    string(vuProfile.Provider),
+				Name:        vuProfile.Model,
+				MaxInFlight: vuProfile.MaxInFlight,
+			},
+		})
+		if pythonErr == nil && pythonResp != nil && pythonResp.Content != "" {
+			reply := strings.TrimSpace(pythonResp.Content)
+			if reply != "" {
+				// 成功获取建议，写入数据库
+				_, insertErr := dao.Suggest.Ctx(ctx).Data(g.Map{
+					dao.Suggest.Columns().DeviceNo: deviceNo,
+					dao.Suggest.Columns().Suggest:  reply,
+					dao.Suggest.Columns().Time:     nowUnixSec(),
+				}).Insert()
+				if insertErr != nil {
+					glog.Warningf(ctx, "insert suggest failed: %v", insertErr)
+				}
+				return reply, nil
+			}
+		}
+		if pythonErr != nil {
+			glog.Warningf(ctx, "[Python AI] 成长建议调用失败，回退到 DeepSeek 直连。deviceNo=%s err=%v", deviceNo, pythonErr)
+		}
+	}
 	payload, err := s.buildGrowthSuggestPayload(ctx, deviceNo)
 	if err != nil {
 		return "", err
@@ -428,6 +459,28 @@ func splitBySentence(input string) []string {
 }
 
 func (s *VoiceService) callDeepSeekHistoryReply(ctx context.Context, deviceNo, transcript string, hours int) (string, error) {
+	// 先尝试调用 Python 微服务进行历史问答
+	if vuProfile, vuErr := aimodel.LoadProfile(ctx, aimodel.LaneVoiceUnderstanding); vuErr == nil {
+		pythonClient := pythonAIClientFromCfg()
+		pythonResp, pythonErr := pythonClient.AnalyzeIntent(ctx, &AnalyzeIntentRequest{
+			Text:     transcript,
+			DeviceNo: deviceNo,
+			Model: PythonModelCfg{
+				Provider:    string(vuProfile.Provider),
+				Name:        vuProfile.Model,
+				MaxInFlight: vuProfile.MaxInFlight,
+			},
+		})
+		if pythonErr == nil && pythonResp != nil && pythonResp.Content != "" {
+			reply := strings.TrimSpace(pythonResp.Content)
+			if reply != "" {
+				return reply, nil
+			}
+		}
+		if pythonErr != nil {
+			glog.Warningf(ctx, "[Python AI] 历史问答调用失败，回退到 DeepSeek 直连。deviceNo=%s err=%v", deviceNo, pythonErr)
+		}
+	}
 	if hours <= 0 {
 		hours = 12
 	}

@@ -13,6 +13,7 @@ import (
 
 // clinicBabyProfile 胖宝诊疗 LLM 注入的宝宝画像（A2 单行 JSON 字段源）。
 type clinicBabyProfile struct {
+	deviceNo  string // 设备编号，供下游 Python 微服务调用使用
 	Birthday  string
 	Gender    string
 	AgeMonths int
@@ -26,6 +27,7 @@ func loadClinicBabyProfile(ctx context.Context, deviceNo string) clinicBabyProfi
 		AgeMonths: 0,
 	}
 	deviceNo = strings.TrimSpace(deviceNo)
+	fallback.deviceNo = deviceNo // 设备号存入画像供下游使用
 	if deviceNo == "" {
 		return fallback
 	}
@@ -34,7 +36,9 @@ func loadClinicBabyProfile(ctx context.Context, deviceNo string) clinicBabyProfi
 		glog.Warningf(ctx, "clinic baby profile degraded: deviceNo=%s err=%v", deviceNo, err)
 		return fallback
 	}
-	return clinicBabyProfileFromDevice(profile)
+	out := clinicBabyProfileFromDevice(profile)
+	out.deviceNo = deviceNo // 设备号存入画像供下游使用
+	return out
 }
 
 // clinicBabyProfileFromDevice 将 device 域画像格式化为 clinic LLM 字段（与语音球 loadDeviceProfile 口径一致）。
