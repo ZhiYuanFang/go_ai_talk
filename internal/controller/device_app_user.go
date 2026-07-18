@@ -364,7 +364,9 @@ func (c *DeviceAppUserCtrl) Deactivate(ctx context.Context, req *v1.DeviceUserDe
 // InternalByID GET /device/app/api/user/internal/by-id — 仅允许携带正确网关密钥的调用方。
 func (c *DeviceAppUserCtrl) InternalByID(ctx context.Context, req *v1.DeviceWxInternalByIDReq) (res *v1.DeviceWxInternalByIDRes, err error) {
 	r := ghttp.RequestFromCtx(ctx)
-	if !device.ValidateGatewayInternalSecret(r.GetHeader("X-Gateway-Internal-Secret")) {
+	// 兼容新旧头名：优先 X-Device-Gateway-Internal-Secret，回退 X-Gateway-Internal-Secret。
+	// voice-service 等内部调用方统一发送新头名，旧头名仅用于历史调用方兼容。
+	if !device.ValidateGatewayInternalSecret(device.GatewayInternalSecretHeaderFromRequest(r)) {
 		return nil, gerror.NewCode(gcode.CodeNotAuthorized, "内部接口未授权")
 	}
 	if req.Id <= 0 {
@@ -380,7 +382,9 @@ func (c *DeviceAppUserCtrl) InternalByID(ctx context.Context, req *v1.DeviceWxIn
 // InternalDeviceNoByWxID GET /device/app/api/user/internal/device-no-by-wx-id — 网关刷新 access 时拉取 device_no。
 func (c *DeviceAppUserCtrl) InternalDeviceNoByWxID(ctx context.Context, req *v1.DeviceWxInternalDeviceNoByWxIDReq) (res *v1.DeviceWxInternalDeviceNoByWxIDRes, err error) {
 	r := ghttp.RequestFromCtx(ctx)
-	if !device.ValidateGatewayInternalSecret(r.GetHeader("X-Gateway-Internal-Secret")) {
+	// 兼容新旧头名：优先 X-Device-Gateway-Internal-Secret，回退 X-Gateway-Internal-Secret。
+	// voice-service 等内部调用方统一发送新头名，旧头名仅用于历史调用方兼容。
+	if !device.ValidateGatewayInternalSecret(device.GatewayInternalSecretHeaderFromRequest(r)) {
 		return nil, gerror.NewCode(gcode.CodeNotAuthorized, "内部接口未授权")
 	}
 	if req.WxId <= 0 {
@@ -396,7 +400,9 @@ func (c *DeviceAppUserCtrl) InternalDeviceNoByWxID(ctx context.Context, req *v1.
 // InternalWxIDByDeviceNo GET /device/app/api/user/internal/wx-id-by-device-no — voice 反查登录态。
 func (c *DeviceAppUserCtrl) InternalWxIDByDeviceNo(ctx context.Context, req *v1.DeviceWxInternalWxIDByDeviceNoReq) (res *v1.DeviceWxInternalWxIDByDeviceNoRes, err error) {
 	r := ghttp.RequestFromCtx(ctx)
-	if !device.ValidateGatewayInternalSecret(r.GetHeader("X-Gateway-Internal-Secret")) {
+	// 兼容新旧头名：优先 X-Device-Gateway-Internal-Secret，回退 X-Gateway-Internal-Secret。
+	// voice-service 等内部调用方统一发送新头名，旧头名仅用于历史调用方兼容。
+	if !device.ValidateGatewayInternalSecret(device.GatewayInternalSecretHeaderFromRequest(r)) {
 		return nil, gerror.NewCode(gcode.CodeNotAuthorized, "内部接口未授权")
 	}
 	wxID, err := device.WxIDByDeviceNo(ctx, req.DeviceNo)
