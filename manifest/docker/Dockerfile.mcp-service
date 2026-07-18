@@ -1,0 +1,27 @@
+FROM m.daocloud.io/docker.io/library/golang:1.23-alpine AS builder
+
+ENV GOPROXY=https://goproxy.cn,https://goproxy.io,direct
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/mcp-service ./cmd/mcp-service
+
+FROM m.daocloud.io/docker.io/library/alpine:3.19
+
+RUN apk add --no-cache tzdata
+ENV TZ=Asia/Shanghai
+
+# mcp-service 不监听 HTTP 端口，仅作为 WebSocket 客户端拨号连接小智接入点；
+# 因此不 EXPOSE 端口、不配置 HTTP healthcheck（依赖进程存活探针）。
+ENV WORKDIR=/app
+ENV GF_GCFG_FILE=manifest/config/config.mcp-service.yaml
+WORKDIR ${WORKDIR}
+
+COPY --from=builder /out/mcp-service ${WORKDIR}/mcp-service
+COPY manifest/config/config.mcp-service.yaml ${WORKDIR}/manifest/config/config.mcp-service.yaml
+
+# 进程级健康检查：mcp-service 无 HTTP 端点，使用 PID 1 存活探针。
+HEALTHCHECK --interval=30s --timeout=3s --retries=3 CMD test -d /proc/1 || exit 1
+CMD ["./mcp-service"]

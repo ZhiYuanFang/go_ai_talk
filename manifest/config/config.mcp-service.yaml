@@ -1,0 +1,12 @@
+# mcp-service 是小智 MCP 接入服务，不连 MySQL、不连 Redis、不监听 HTTP 端口。
+# 运行时依赖：
+#   - VOICE_SERVICE_URL（默认 http://127.0.0.1:9802）：DelegateTextChat 经 HTTP 委派 voice-service
+#   - DEVICE_GATEWAY_INTERNAL_SECRET：内部 HTTP 鉴权密钥，须与 voice-service 一致
+#   - XIAOZHI_MCP_TOKEN / XIAOZHI_MCP_DEVICE_NO：小智接入点凭证（必填，缺失则进程 fail-fast 退出）
+# 可选：
+#   - XIAOZHI_MCP_BASE_URL：接入点基址，默认 wss://api.xiaozhi.me/mcp/
+#   - XIAOZHI_MCP_RECONNECT_MIN_MS / XIAOZHI_MCP_RECONNECT_MAX_MS：重连退避参数，默认 2000 / 60000
+
+logger:
+  level: "all"
+  stdout: true

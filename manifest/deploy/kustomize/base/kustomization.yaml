@@ -11,4 +11,6 @@ resources:
 - voice-service.yaml
 - device-deployment.yaml
 - device-service.yaml
+# mcp-service 仅作为 WebSocket 客户端拨号连接小智接入点，不监听 HTTP 端口，故无对应 Service 资源。
+- mcp-deployment.yaml
 - ingress.yaml

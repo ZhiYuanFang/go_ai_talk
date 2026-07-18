@@ -1,6 +1,6 @@
 ## 部署与运行指南
 
-适用范围：gateway / gateway-app / voice-service / device-service / history-service / ucg-service / **sim-user-service**。
+适用范围：gateway / gateway-app / voice-service / device-service / history-service / ucg-service / **sim-user-service** / **mcp-service**。
 
 **Redis 容灾与恢复**（容器重启、volume 备份/还原、数据分层）：见 [redis-disaster-recovery.md](./redis-disaster-recovery.md)。
 
@@ -1222,6 +1222,50 @@ docker network create go-ai-talk-test-net 2>/dev/null || true
 ```
 
 完整命令见 **B.1**；Conflict 时仅在对应 `up` 前插入 **① / ② / ③** 各 2 行（删 + 验）。
+
+---
+
+## E. mcp-service（小智 MCP 接入服务）
+
+mcp-service 是小智 AI 平台（xiaozhi.me）MCP 接入点桥接进程：作为 MCP Server 通过 WebSocket 主动拨号连接 `wss://api.xiaozhi.me/mcp/?token=<XIAOZHI_MCP_TOKEN>`，向小智暴露 `chat` 工具；小智调用 `chat` 时，本进程经 `histsvc.DelegateTextChat` 以 HTTP 委派 voice-service 完成文本对话并返回回复。
+
+**与其他服务的差异**：
+
+| 维度 | 说明 |
+|------|------|
+| MySQL | **不连库**（不配 `*_DB_LINK`） |
+| Redis | **不连**（不配 `GF_REDIS_DEFAULT_ADDRESS`） |
+| HTTP 端口 | **不监听**（无 `*_SERVICE_ADDR`、无 `/api.json`、无 healthcheck HTTP） |
+| 依赖 | 仅依赖 voice-service 可达 + `DEVICE_GATEWAY_INTERNAL_SECRET` 一致 |
+| K8s Service | 无（无入站流量，仅 Deployment） |
+| Compose 端口映射 | 无（local/test/prod overlay 均不映射端口） |
+
+**环境变量**（`.env.local` / `.env.test` / `.env.prod`）：
+
+| 变量 | 必填 | 说明 |
+|------|------|------|
+| `XIAOZHI_MCP_TOKEN` | 是 | 小智接入点 token，从 xiaozhi.me 控制台智能体配置页获取 |
+| `XIAOZHI_MCP_DEVICE_NO` | 是 | 绑定的设备号（单设备场景） |
+| `XIAOZHI_MCP_BASE_URL` | 否 | 接入点基址，默认 `wss://api.xiaozhi.me/mcp/` |
+| `XIAOZHI_MCP_RECONNECT_MIN_MS` | 否 | 重连初始退避，默认 2000 |
+| `XIAOZHI_MCP_RECONNECT_MAX_MS` | 否 | 重连退避上限，默认 60000 |
+| `VOICE_SERVICE_URL` | 是 | voice-service 基址（compose 内 `http://voice-service:9802`） |
+| `DEVICE_GATEWAY_INTERNAL_SECRET` | 是 | 内部 HTTP 鉴权密钥，须与 voice-service / history-service 一致 |
+
+**启动校验**：`XIAOZHI_MCP_TOKEN` 或 `XIAOZHI_MCP_DEVICE_NO` 为空时进程 fail-fast 退出（非 0），不进入重连循环。
+
+**日志关键字**（排查用）：
+
+| 关键字 | 含义 |
+|--------|------|
+| `[mcp-service] starting` | 进程启动 |
+| `[mcp-bridge] dialing` | 正在拨号连接小智接入点（token 已脱敏） |
+| `[mcp-bridge] connected` | 连接建立，进入读循环 |
+| `[mcp-bridge] reconnect in` | 即将重连，等待时长 |
+| `[mcp-bridge] chat failed` | chat 工具调用下游失败 |
+| `[mcp-service] shutdown` | 收到 SIGTERM 优雅退出 |
+
+**本地联调**：mcp-service 不映射宿主机端口，启动后通过 `docker logs go-ai-talk-mcp-service -f` 观察日志；小智控制台配置好 MCP 接入点后，对智能体发起对话即可触发本服务 `chat` 工具。
 
 ---
 

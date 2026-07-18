@@ -59,3 +59,8 @@ services:
   notify-service:
     mem_limit: 64m
     cpus: "0.05"
+  # mcp-service：仅 WebSocket 客户端 + HTTP 委派，无 DB/Redis，资源占用与 notify-service 同级。
+  mcp-service:
+    mem_limit: 64m
+    cpus: "0.05"
+    <<: *go-gomemlimit-128
