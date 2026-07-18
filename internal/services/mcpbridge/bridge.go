@@ -206,9 +206,6 @@ func (b *Bridge) handleFrame(ctx context.Context, conn *websocket.Conn, payload 
 		return err
 	}
 
-	// 打印req的内容
-	glog.Debugf(ctx, "[mcp-bridge] received request: %+v", req)
-
 	// 通知：无 ID，不响应。
 	if len(req.ID) == 0 || string(req.ID) == "null" {
 		// 仅处理已知通知，未知通知忽略。

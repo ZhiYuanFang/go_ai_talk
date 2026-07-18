@@ -16,10 +16,19 @@ const (
 )
 
 // chatToolName 工具名；小智平台在 tools/list 中按此名称调用。
-const chatToolName = "chat"
+const chatToolName = "baby_feeding_advisor"
 
 // chatToolDescription 工具描述，影响大模型是否选用本工具。
-const chatToolDescription = "与设备进行文本对话：接收用户输入的文本，返回 AI 回复内容。"
+const chatToolDescription = "" +
+	"宝宝喂养与成长顾问。当用户提到以下内容时，必须调用此工具：\n" +
+	"1. 记录喂养信息：奶量、母乳/奶粉/辅食、喂养时间\n" +
+	"2. 查询喂养历史：昨天喂了多少次、最近奶量趋势\n" +
+	"3. 喂养建议：宝宝不爱喝奶怎么办、该加辅食了吗\n" +
+	"4. 成长发育：身高体重是否达标、睡眠建议\n" +
+	"5. 健康提醒：吐奶、胀气、过敏等常见问题\n" +
+	"\n" +
+	"调用时传入用户的原话，工具会自动理解并执行记录或查询，返回专业建议。" +
+	"注意：只要用户提到宝宝、喂养、奶量、辅食、成长、睡眠、健康等相关话题，都必须调用此工具，不要自己回答。"
 
 // chatToolInputSchema 工具入参 schema，遵循 JSON Schema 子集。
 // 仅暴露 transcript 一个必填 string 参数。
