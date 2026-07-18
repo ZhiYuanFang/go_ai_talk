@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -54,7 +55,9 @@ func NewBridge(baseURL, token, deviceNo string, reconnectMin, reconnectMax time.
 		reconnectMax = defaultReconnectMax
 	}
 	return &Bridge{
-		baseURL:      strings.TrimRight(baseURL, "/"),
+		// 不 trim 末尾斜杠：小智接入点路径为 /mcp/（带斜杠），
+		// 部分服务端对 /mcp 与 /mcp/ 路径匹配敏感（301/404），保留用户配置原样。
+		baseURL:      baseURL,
 		token:        strings.TrimSpace(token),
 		deviceNo:     strings.TrimSpace(deviceNo),
 		chat:         NewChatHandler(deviceNo),
@@ -129,10 +132,17 @@ func (b *Bridge) Run(ctx context.Context) error {
 func (b *Bridge) dialAndServe(ctx context.Context) (bool, error) {
 	endpoint := b.endpointURL()
 	glog.Infof(ctx, "[mcp-bridge] dialing %s", maskToken(endpoint))
-	conn, _, err := b.dialer.DialContext(ctx, endpoint, http.Header{})
+	// 携带 User-Agent 便于小智服务端识别本接入服务，便于排障。
+	headers := http.Header{}
+	headers.Set("User-Agent", "xiaozhi-mcp-service/1.0")
+	conn, resp, err := b.dialer.DialContext(ctx, endpoint, headers)
 	if err != nil {
-		return false, fmt.Errorf("dial xiaozhi mcp endpoint: %w", err)
+		// bad handshake 时 gorilla/websocket 仍会返回响应体（含服务端错误说明），
+		// 读取后拼入错误信息，便于排查（如 token 失效、路径 404、协议不匹配）。
+		detail := readHandshakeErrorDetail(resp)
+		return false, fmt.Errorf("dial xiaozhi mcp endpoint: %w%s", err, detail)
 	}
+	// 成功路径下 resp.Body 由 Dial 内部处理，无需手动关闭。
 	defer conn.Close()
 	glog.Infof(ctx, "[mcp-bridge] connected, entering read loop")
 	// 启动 ping 维活 goroutine：定时发 Ping，避免 NAT/中间件超时回收连接。
@@ -141,6 +151,26 @@ func (b *Bridge) dialAndServe(ctx context.Context) (bool, error) {
 	defer pingCancel()
 	go b.runPing(pingCtx, conn)
 	return true, b.readLoop(ctx, conn)
+}
+
+// readHandshakeErrorDetail 从 dial 失败的 HTTP 响应中提取状态码与 Body 摘要。
+// 返回形如 " (status=401, body=token expired)" 的字符串；无响应体时返回空串。
+// 该函数仅用于日志与错误信息增强，不参与协议判断。
+func readHandshakeErrorDetail(resp *http.Response) string {
+	if resp == nil {
+		return ""
+	}
+	detail := fmt.Sprintf(" (status=%d)", resp.StatusCode)
+	if resp.Body == nil {
+		return detail
+	}
+	// 限制读取量，避免服务端返回超大错误页时拖累日志。
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 512))
+	_ = resp.Body.Close()
+	if err != nil || len(body) == 0 {
+		return detail
+	}
+	return fmt.Sprintf("%s body=%s", detail, strings.TrimSpace(string(body)))
 }
 
 // readLoop 持续读取 WebSocket 文本帧并分发到 MCP handler。
