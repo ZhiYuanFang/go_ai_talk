@@ -3,8 +3,10 @@ package mcpbridge
 import (
 	"context"
 	"fmt"
-	histsvc "hello/internal/services/history"
+	"os"
 	"strings"
+
+	histsvc "hello/internal/services/history"
 
 	"github.com/gogf/gf/v2/os/glog"
 )
@@ -79,7 +81,13 @@ func (h *ChatHandler) Handle(ctx context.Context, arguments map[string]any) *Too
 	reply, err := histsvc.DelegateTextChat(ctx, h.deviceNo, transcript, 0)
 	if err != nil {
 		// 下游失败：记录原始错误并返回 tool error，避免暴露内部细节给小智。
-		glog.Errorf(ctx, "[mcp-bridge] chat failed deviceNo=%s err=%v", h.deviceNo, err)
+		// 附带本进程 secret 长度与目标 URL 便于排查「内部接口未授权」类问题：
+		// 该错误说明 mcp-service 与 voice-service 的 DEVICE_GATEWAY_INTERNAL_SECRET 不一致，
+		// 或 VOICE_SERVICE_URL 指向了非预期的 voice-service 实例。
+		secretLen := len(strings.TrimSpace(os.Getenv("DEVICE_GATEWAY_INTERNAL_SECRET")))
+		voiceURL := os.Getenv("VOICE_SERVICE_URL")
+		glog.Errorf(ctx, "[mcp-bridge] chat failed deviceNo=%s secretLen=%d voiceURL=%s err=%v",
+			h.deviceNo, secretLen, voiceURL, err)
 		return NewErrorCallResult(fmt.Sprintf("对话失败：%v", err))
 	}
 	return NewTextCallResult(reply)
