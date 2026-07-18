@@ -23,8 +23,8 @@ import (
 
 // 默认重连参数；可被 Bridge 构造选项覆盖。
 const (
-	defaultReconnectMin = 2 * time.Second
-	defaultReconnectMax = 60 * time.Second
+	defaultReconnectMin  = 2 * time.Second
+	defaultReconnectMax  = 60 * time.Second
 	dialHandshakeTimeout = 30 * time.Second
 	// WebSocket 读写超时：读不设超时（长连接等待），写单帧 10s 超时。
 	writeWait = 10 * time.Second
@@ -34,14 +34,14 @@ const (
 
 // Bridge 维护与小智 MCP 接入点的 WebSocket 长连接，并在其上承载 MCP JSON-RPC。
 type Bridge struct {
-	baseURL       string // 接入点基址，如 wss://api.xiaozhi.me/mcp/
-	token         string // 接入点 token（拼接到 baseURL 的 query）
-	deviceNo      string // 绑定的设备号（注入 chat handler）
-	chat          *ChatHandler
-	reconnectMin  time.Duration
-	reconnectMax  time.Duration
-	dialer        *websocket.Dialer
-	writeMu       sync.Mutex // 串行化 WebSocket 写，避免帧交错
+	baseURL      string // 接入点基址，如 wss://api.xiaozhi.me/mcp/
+	token        string // 接入点 token（拼接到 baseURL 的 query）
+	deviceNo     string // 绑定的设备号（注入 chat handler）
+	chat         *ChatHandler
+	reconnectMin time.Duration
+	reconnectMax time.Duration
+	dialer       *websocket.Dialer
+	writeMu      sync.Mutex // 串行化 WebSocket 写，避免帧交错
 }
 
 // NewBridge 构造 Bridge。
@@ -128,6 +128,7 @@ func (b *Bridge) Run(ctx context.Context) error {
 //   - connected=true 表示拨号成功并进入了读循环（无论后续因何原因退出）；
 //   - connected=false 表示拨号阶段就失败，未进入读循环；
 //   - err 非 nil 时携带退出原因。
+//
 // 连接的 Close 由本函数 defer 处理，调用方无需关心。
 func (b *Bridge) dialAndServe(ctx context.Context) (bool, error) {
 	endpoint := b.endpointURL()
@@ -204,6 +205,10 @@ func (b *Bridge) handleFrame(ctx context.Context, conn *websocket.Conn, payload 
 		glog.Errorf(ctx, "[mcp-bridge] parse frame failed raw=%s err=%v", string(payload), err)
 		return err
 	}
+
+	// 打印req的内容
+	glog.Debugf(ctx, "[mcp-bridge] received request: %+v", req)
+
 	// 通知：无 ID，不响应。
 	if len(req.ID) == 0 || string(req.ID) == "null" {
 		// 仅处理已知通知，未知通知忽略。
