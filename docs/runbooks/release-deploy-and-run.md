@@ -911,6 +911,118 @@ docker inspect go-ai-talk-voice-service-test --format '{{.HostConfig.Memory}}'
 - [ ] `docker stats` 显示各容器 mem/cpu 上限
 - [ ] 测试域名 ASR/WS 通过；生产微服务仍 Up
 
+> **说明**：C.4 描述历史 **2C2G 双栈 survival**。当前生产默认资源见 `resources.prod.yml`（**4C8G**）与 [memory-sizing-guide.md](./memory-sizing-guide.md)；换机切流见下方 **C.5**。
+
+---
+
+### C.5 生产迁至 4C8G ECS（prod 新机 / test 留守旧机）
+
+适用：采购全新 **4 核 8G** ECS，将 **生产 Docker + 生产 MySQL** 迁到新机；**测试栈与 `ai_voice_*_test` 留在旧机**。生产 Redis **空集群冷启**（不迁 AOF）。仓内默认 limits 已按 4C8G 写在 `docker-compose.resources.prod.yml` 与 `docker-compose.redis-cluster.yml`；**不改** `resources.test.yml`。
+
+交叉引用：[memory-sizing-guide.md](./memory-sizing-guide.md)、[redis-disaster-recovery.md](./redis-disaster-recovery.md)（数据分层与冷启后果）。
+
+#### 拓扑
+
+```
+新 ECS 4C8G（仅 PROD）              旧 ECS（仅 TEST）
+─────────────────────              ─────────────────
+MySQL: ai_voice_*（迁入）           MySQL: ai_voice_*_test（不动）
+       （旧 ai_voice_* 可短期只读回滚，稳定后 drop）
+Docker: prod 微服务 + Redis×3      Docker: test 微服务 + redis-test
+        + RabbitMQ prod                    + RabbitMQ test
+.env.prod → MYSQL_TCP_HOST=新机     .env.test → MYSQL_TCP_HOST=旧机（不跟迁）
+静态：/ai_talk_images、/apk/ai_talk  静态：*_test 目录
+域名：生产 www（或等价）→ 新机       域名：test → 旧机
+```
+
+#### 改址约定
+
+- **只改** 新机 `.env.prod` 的 `MYSQL_TCP_HOST` 为容器可达的新机地址（同机常用宿主机内网 IP；勿在容器内误用无法路由的地址）。
+- `*_DB_LINK` 继续写占位符 `mysql-host` + 生产库名 `ai_voice_*`。
+- 旧机 `.env.test` **不跟迁**（仍指旧 MySQL + `_test` 库名）。
+
+#### 新机 MySQL（首日）
+
+```ini
+# my.cnf 片段（示例；按实例路径调整后 restart mysqld）
+innodb_buffer_pool_size = 1G
+max_connections = 100
+```
+
+验收：`SHOW VARIABLES LIKE 'innodb_buffer_pool_size';` → **1073741824**（1G）。旧机 test MySQL 维持约 **256M**，**不跟调**到 1G。
+
+#### Redis 空集群冷启
+
+新机 **不要**拷贝旧机 Redis volume。步骤：
+
+```bash
+# 空盘首次：up 后执行一次 cluster create（volume 已有数据时勿重复 create）
+docker compose -f manifest/docker/docker-compose.redis-cluster.yml up -d
+docker compose -f manifest/docker/docker-compose.redis-cluster.yml exec -T redis-node-1 \
+  redis-cli --cluster create \
+  redis-node-1:7001 redis-node-2:7002 redis-node-3:7003 \
+  --cluster-replicas 0 --cluster-yes
+docker compose -f manifest/docker/docker-compose.redis-cluster.yml exec -T redis-node-1 \
+  redis-cli -p 7001 CLUSTER INFO | grep cluster_state
+# 期望 cluster_state:ok
+```
+
+**冷启用户可感知后果**（维护窗口需知会）：
+
+| 影响 | 说明 |
+|------|------|
+| App refresh token | 失效 → **重新登录** |
+| 语音 / 诊所多轮会话 | 上下文丢失 → 新会话 |
+| AI 月额度 Redis 计数 | **归零**（当月已用次数重置） |
+| Feed 索引 / 快照 | 偏冷 → lazy warm / 写路径重建 |
+| UCG 私信正文 | **不丢**（MySQL 权威，读时 fallback / warm） |
+
+详见 [redis-disaster-recovery.md](./redis-disaster-recovery.md) §4。
+
+#### 切流顺序
+
+1. **新机准备**：安装 MySQL（buffer=1G）、Docker、网络 `go-ai-talk-net`、静态目录、安全组；配置 `.env.prod`（`MYSQL_TCP_HOST`、镜像与密钥等，密钥勿写入本文档）。
+2. **建库导入**：创建 `ai_voice_*`；从旧机 dump **仅生产库**并导入；抽样校验行数。勿迁 `*_test`。
+3. **Redis**：空集群 cold start → `cluster_state:ok`。
+4. **冒烟**：新机 `pull` + 叠加 `resources.prod.yml` 起 prod 栈；用临时 IP/hosts 验收（**先不改**公网 DNS）。
+5. **停写**：旧机 **down 生产微服务 compose**（保留 MySQL 与 **test 栈**）。
+6. **最终同步**（若 dump 后仍有写入）：再 dump/导入或等价增量后切流。
+7. **DNS / Nginx**：生产域名指向新机；test 域名仍指旧机。
+8. **验收**（见下）通过后，旧机可停用旧 prod Redis 以省内存；旧 `ai_voice_*` **保留 N 天**只读回滚（建议约 7 天），再 drop。
+
+#### 回滚
+
+1. DNS / 反代切回旧机。
+2. 旧机临时 `up` 生产微服务（`.env.prod` 的 `MYSQL_TCP_HOST` 仍指旧机；库为旧 `ai_voice_*`）。
+3. 新机保留现场便于排查；确认回滚稳定后再处理新机数据。
+
+#### 验收命令（示例；域名与 IP 用占位符）
+
+```bash
+# 新机：Redis
+docker compose -f manifest/docker/docker-compose.redis-cluster.yml exec -T redis-node-1 \
+  redis-cli -p 7001 CLUSTER INFO | grep cluster_state
+
+# 新机：MYSQL_TCP_HOST 与库名（容器名按实际 prod 调整）
+docker exec go-ai-talk-history-service printenv MYSQL_TCP_HOST
+# 期望为新机可达地址（非旧机）
+docker logs go-ai-talk-history-service 2>&1 | grep "database.default 已用"
+# 期望主机=新机地址，库名=ai_voice_history（无 _test）
+
+# 生产域名：appDatabase 须为生产库
+curl -sS "https://www.example.com/..." | grep -o '"appDatabase":"[^"]*"'
+# 期望 "appDatabase":"ai_voice_app"
+
+# 测试域名：仍打旧机 _test
+curl -sS "https://test.example.com/..." | grep -o '"appDatabase":"[^"]*"'
+# 期望 "appDatabase":"ai_voice_app_test"
+
+# 旧机：确认 prod 微服务已 down，test 仍 Up
+docker ps --format 'table {{.Names}}\t{{.Status}}' | grep go-ai-talk
+```
+
+串线排查：若生产域名返回 `ai_voice_app_test` 或日志主机仍为旧 IP，检查 Nginx/DNS 与旧机是否误起 prod 栈。
+
 ---
 
 ## D. 常见问题与排错（同机双栈部署）

@@ -1,66 +1,71 @@
 version: "3.9"
-# 生产微服务资源上限：单 prod 栈 + 宿主机本机 MySQL @ ~2G ECS（survival profile）。
+# 生产微服务资源上限：单 prod 栈 + 宿主机本机 MySQL @ 4C8G ECS（prod-only）。
 # 与 microservices + microservices.prod 合并使用；不含 test 栈。
 # Redis / RabbitMQ limits 见 redis-cluster.yml、rabbitmq.yml。
 #
 # GOMEMLIMIT ≈ mem_limit 的 86%，在触达 cgroup 硬顶前促使 Go GC，降低 OOM 137。
-# 修改 limit 后须 recreate 对应容器；MySQL 建议 innodb_buffer_pool_size=192M~256M（见 docs/runbooks/memory-sizing-guide.md）。
+# 修改 limit 后须 recreate 对应容器；MySQL 建议 innodb_buffer_pool_size=1G（首日，见 docs/runbooks/memory-sizing-guide.md）。
+# 测试栈仍用 resources.test.yml（旧机 2G），勿与本文件混用。
 
 x-go-gomemlimit: &go-gomemlimit-voice
   environment:
-    GOMEMLIMIT: 330MiB
+    GOMEMLIMIT: 550MiB
 
 x-go-gomemlimit-gateway: &go-gomemlimit-gateway
   environment:
+    GOMEMLIMIT: 220MiB
+
+x-go-gomemlimit-192: &go-gomemlimit-192
+  environment:
     GOMEMLIMIT: 165MiB
+
+x-go-gomemlimit-ucg: &go-gomemlimit-ucg
+  environment:
+    GOMEMLIMIT: 220MiB
+
+x-go-gomemlimit-sim: &go-gomemlimit-sim
+  environment:
+    GOMEMLIMIT: 110MiB
 
 x-go-gomemlimit-128: &go-gomemlimit-128
   environment:
     GOMEMLIMIT: 110MiB
 
-x-go-gomemlimit-ucg: &go-gomemlimit-ucg
-  environment:
-    GOMEMLIMIT: 165MiB
-
-x-go-gomemlimit-sim: &go-gomemlimit-sim
-  environment:
-    GOMEMLIMIT: 85MiB
-
 services:
   gateway:
-    mem_limit: 192m
-    cpus: "0.2"
+    mem_limit: 256m
+    cpus: "0.4"
     <<: *go-gomemlimit-gateway
   gateway-app:
-    mem_limit: 192m
-    cpus: "0.2"
+    mem_limit: 256m
+    cpus: "0.4"
     <<: *go-gomemlimit-gateway
   history-service:
-    mem_limit: 128m
-    cpus: "0.15"
-    <<: *go-gomemlimit-128
+    mem_limit: 192m
+    cpus: "0.25"
+    <<: *go-gomemlimit-192
   voice-service:
-    mem_limit: 384m
-    cpus: "0.35"
+    mem_limit: 640m
+    cpus: "1.0"
     <<: *go-gomemlimit-voice
   device-service:
+    mem_limit: 192m
+    cpus: "0.25"
+    <<: *go-gomemlimit-192
+  ucg-service:
+    mem_limit: 256m
+    cpus: "0.4"
+    <<: *go-gomemlimit-ucg
+  # 推广前可不部署；若容器仍 up，limit 保持低于 voice
+  sim-user-service:
     mem_limit: 128m
     cpus: "0.15"
-    <<: *go-gomemlimit-128
-  ucg-service:
-    mem_limit: 192m
-    cpus: "0.2"
-    <<: *go-gomemlimit-ucg
-  # 推广前可不部署；若容器仍 up，limit 保持低位
-  sim-user-service:
-    mem_limit: 96m
-    cpus: "0.1"
     <<: *go-gomemlimit-sim
   notify-service:
-    mem_limit: 64m
-    cpus: "0.05"
+    mem_limit: 96m
+    cpus: "0.1"
   # mcp-service：仅 WebSocket 客户端 + HTTP 委派，无 DB/Redis，资源占用与 notify-service 同级。
   mcp-service:
-    mem_limit: 64m
-    cpus: "0.05"
+    mem_limit: 96m
+    cpus: "0.1"
     <<: *go-gomemlimit-128

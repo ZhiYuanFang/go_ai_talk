@@ -1,42 +1,42 @@
 # 内存规格与用户规模对照（单 prod + 本机 MySQL）
 
-适用：生产与测试 **不同时常驻**（推广后停 test）；MySQL 跑在 **同一台 ECS** 宿主机；Docker Compose 部署。
+适用：生产与测试 **分机部署**（prod 在 4C8G；test 可留旧 2G）或历史同机单栈；MySQL 跑在 **与对应栈同一台 ECS** 宿主机；Docker Compose 部署。
 
 配置来源：
 
-- 微服务 `mem_limit` / `GOMEMLIMIT`：`manifest/docker/docker-compose.resources.prod.yml`
+- 微服务 `mem_limit` / `GOMEMLIMIT`：`manifest/docker/docker-compose.resources.prod.yml`（**4C8G prod-only 默认**）
 - Redis Cluster：`manifest/docker/docker-compose.redis-cluster.yml`
 - RabbitMQ：`manifest/docker/docker-compose.rabbitmq.yml`（192m）
+- 测试栈 limits：`docker-compose.resources.test.yml`（旧机 2G，**不随 prod 升配**）
 
 ---
 
-## 1. 当前档（2G ECS · prod 单栈）
+## 1. 当前默认档（4C8G ECS · prod 单栈）
 
-宿主机可见内存约 **1.7G** + **1G swap**；MySQL 固定占用约 **350–450MB**（建议 `innodb_buffer_pool_size=192M`~`256M`）。
+宿主机约 **4 核 8G**；生产独占本机 MySQL + Compose；**不与 test 双栈同机**。
 
-### 容器 mem_limit 一览
-
-| 组件 | mem_limit | GOMEMLIMIT / maxmemory | 备注 |
-|------|-----------|----------------------|------|
-| voice-service | 384m | 330MiB | 语音 WS / 流式 STT·LLM·TTS 峰值 |
-| gateway | 192m | 165MiB | |
-| gateway-app | 192m | 165MiB | |
-| ucg-service | 192m | 165MiB | Feed 快照组装 |
-| history / device | 128m | 110MiB | |
-| sim-user-service | 96m | 85MiB | 推广前建议不部署 |
-| rabbitmq | 192m | — | idle ~100MB |
-| redis-node ×3 | 128m | **96mb**/节点 | 集群逻辑 ~288MB；`mem_swappiness: 0` 避免 Redis 页被 swap |
-
-**idle 粗算**：MySQL ~400MB + 容器 ~200MB + OS ~200MB → `available` 目标 **> 400MB**，swap **< 200MB**。
-
-### MySQL 与本机 Redis 争抢
-
-Feed 读路径偏 Redis 时，2G 上推荐：
+### MySQL（首日）
 
 ```ini
-innodb_buffer_pool_size = 192M   # 或 256M（帖量少、DB 压力大时用 256M）
+innodb_buffer_pool_size = 1G
 max_connections = 100
+# 可观测稳定后再考虑 1.5G～2G；旧机 test MySQL 维持约 256M，不跟调
 ```
+
+### 容器 mem_limit 一览（与 compose 一致）
+
+| 组件 | mem_limit | GOMEMLIMIT / maxmemory | 备注 |
+|------|-----------|------------------------|------|
+| voice-service | 640m | 550MiB | 语音 WS / 流式峰值 |
+| gateway / gateway-app | 256m | 220MiB | |
+| ucg-service | 256m | 220MiB | Feed 快照组装 |
+| history / device | 192m | 165MiB | |
+| sim-user-service | 128m | 110MiB | 推广前可不部署 |
+| notify / mcp | 96m | — / 110MiB | |
+| rabbitmq | 192m | — | idle ~100MB |
+| redis-node ×3 | 256m | **200mb**/节点 | `mem_swappiness: 0` |
+
+**idle 粗算**：MySQL ~1.1–1.3G（含 1G buffer）+ 容器常态远低于 limits + OS → `available` 目标 **> 1.5G**，swap 接近 0。
 
 ---
 
@@ -44,14 +44,16 @@ max_connections = 100
 
 以下为 **语音 + UCG 广场** 混合产品；实际以监控为准，用户数仅作采购参考。
 
-### 档位 A — 保持 2G（当前 compose）
+### 档位 A — 2G ECS（历史 survival / 仅作对照）
 
-| 指标 | 建议上限 |
-|------|----------|
+曾用于同机双栈或单 prod @ 2G；compose 旧值为 voice 384m、Redis maxmemory 96mb/节点、MySQL buffer 192–256M。现 **prod 默认已迁出该档**；旧机若只跑 **test**，MySQL 维持约 **256M**，使用 `resources.test.yml`。
+
+| 指标 | 建议上限（单 prod @ 2G 时） |
+|------|------------------------------|
 | DAU | **~200–300** |
 | 峰值并发语音 | **~10–15 路** |
 | 已发布帖（Redis snapshot） | **~3,000** |
-| 同机 test 栈 | **关闭** |
+| 同机 test 栈 | **关闭**（或整机只留 test） |
 
 **升级信号（出现任二项）**：
 
@@ -69,7 +71,7 @@ max_connections = 100
 | 峰值并发语音 | **~20–40 路** |
 | 已发布帖 | **~10,000** |
 
-**建议调整（相对 2G compose）**：
+**建议调整（相对历史 2G survival）**：
 
 | 组件 | 4G 建议 |
 |------|---------|
@@ -79,12 +81,16 @@ max_connections = 100
 | MySQL buffer_pool | **512M** |
 | 可选 | 短期恢复 test 栈做验收 |
 
-### 档位 C — 8G 或拆机
+### 档位 C — 4C8G prod-only（当前推荐采购档）
 
 | 指标 | 说明 |
 |------|------|
-| DAU | **> 1,500** 或峰值语音 **> 40 路** |
-| 架构 | prod 独占；MySQL 迁 RDS/第二台；或 voice 独立节点 |
+| DAU | **~1,500+** 或峰值语音 **~40+ 路**（粗估，盯监控） |
+| 架构 | **prod 独占新机**；MySQL 本机；test 可留旧机 |
+| MySQL buffer | **首日 1G**（见 §1）；旧机 test **不跟调** |
+| compose | 即仓库默认 `resources.prod.yml` + `redis-cluster.yml`（§1 表） |
+
+更高规模再考虑：MySQL 迁 RDS / 第二台，或 voice 独立节点。
 
 ---
 
@@ -124,7 +130,7 @@ mysql -e "SHOW GLOBAL STATUS LIKE 'Threads_connected';"
 ## 5. 应用新 limit
 
 ```bash
-# 仓库根目录；prod 微服务 + resources overlay
+# 仓库根目录；prod 微服务 + resources overlay（默认即 4C8G 档）
 docker compose --env-file manifest/docker/env/.env.prod \
   -f manifest/docker/docker-compose.microservices.yml \
   -f manifest/docker/docker-compose.microservices.prod.yml \
@@ -142,4 +148,4 @@ docker inspect go-ai-talk-redis-redis-node-1-1 --format '{{.HostConfig.MemorySwa
 # 期望输出 0
 ```
 
-双栈同机时 memory 压力叠加；推广后 **先 down test project** 再评估 prod 余量。
+生产换机切流步骤见 **`docs/runbooks/release-deploy-and-run.md` §C.5**。
