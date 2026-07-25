@@ -173,63 +173,16 @@ func voiceChatWS(r *ghttp.Request) {
 		var (
 			ask        string
 			answer     string
-			mode       string
-			casualFlow bool
 			exit       bool
 			finishTalk bool
 			pErr       error
 		)
-		ask, answer, mode, casualFlow, exit, finishTalk, pErr = voice.Voice().HandleTranscriptForStreaming(voice.WithVoiceWxID(ctx, headerWxID), deviceNo, transcript)
-		if casualFlow {
-			chatCtx := voice.WithVoiceWxID(ctx, headerWxID)
-			seq := 0
-			answer, pErr = voice.Voice().StreamCasualReplyWithBaiduTTS(
-				chatCtx,
-				deviceNo,
-				meta,
-				transcript,
-				func(delta string) error {
-					payload, _ := json.Marshal(map[string]interface{}{
-						"type":  "chat_delta",
-						"code":  0,
-						"delta": delta,
-					})
-					return safeWriteMessage(1, payload)
-				},
-				func(chunk []byte, chunkMeta voice.AudioMeta, chunkSeq int) error {
-					seq = chunkSeq
-					glog.Infof(ctx, "[TTS下发] 发送音频分片。deviceNo=%s mode=casual seq=%d audioBytes=%d sampleRate=%d", deviceNo, chunkSeq, len(chunk), chunkMeta.SampleRate)
-					payload, _ := json.Marshal(map[string]interface{}{
-						"type":       "audio_chunk",
-						"audio":      base64.StdEncoding.EncodeToString(chunk),
-						"sampleRate": chunkMeta.SampleRate,
-						"seq":        chunkSeq,
-						"streaming":  true,
-					})
-					return safeWriteMessage(1, payload)
-				},
-			)
-			if pErr == nil {
-				if wxID, wErr := voice.VoiceWxIDFromRequest(chatCtx, deviceNo); wErr == nil {
-					_ = voice.ConsumeVoiceAIQuota(chatCtx, wxID)
-				}
-				glog.Infof(ctx, "[TTS下发] 发送音频结束。deviceNo=%s mode=casual chunks=%d finishTalk=%v", deviceNo, seq, true)
-				endPayload, _ := json.Marshal(map[string]interface{}{
-					"type":        "audio_end",
-					"code":        0,
-					"exit":        false,
-					"finish_talk": true,
-					"streaming":   true,
-					"chunks":      seq,
-				})
-				_ = safeWriteMessage(1, endPayload)
-				finishTalk = true
-			}
-		} else if pErr == nil && !exit {
+		ask, answer, exit, finishTalk, pErr = voice.Voice().HandleTranscriptForStreaming(voice.WithVoiceWxID(ctx, headerWxID), deviceNo, transcript)
+		if pErr == nil && !exit {
 				seq := 0
 				_, pErr = voice.Voice().StreamReplyWithBaiduTTS(ctx, meta, answer, func(chunk []byte, chunkMeta voice.AudioMeta, chunkSeq int) error {
 					seq = chunkSeq
-					glog.Infof(ctx, "[TTS下发] 发送音频分片。deviceNo=%s mode=%s seq=%d audioBytes=%d sampleRate=%d", deviceNo, mode, chunkSeq, len(chunk), chunkMeta.SampleRate)
+					glog.Infof(ctx, "[TTS下发] 发送音频分片。deviceNo=%s seq=%d audioBytes=%d sampleRate=%d", deviceNo, chunkSeq, len(chunk), chunkMeta.SampleRate)
 					payload, _ := json.Marshal(map[string]interface{}{
 						"type":       "audio_chunk",
 						"audio":      base64.StdEncoding.EncodeToString(chunk),
@@ -240,7 +193,7 @@ func voiceChatWS(r *ghttp.Request) {
 					return safeWriteMessage(1, payload)
 				})
 				if pErr == nil {
-					glog.Infof(ctx, "[TTS下发] 发送音频结束。deviceNo=%s mode=%s chunks=%d finishTalk=%v", deviceNo, mode, seq, finishTalk)
+					glog.Infof(ctx, "[TTS下发] 发送音频结束。deviceNo=%s chunks=%d finishTalk=%v", deviceNo, seq, finishTalk)
 					endPayload, _ := json.Marshal(map[string]interface{}{
 						"type":        "audio_end",
 						"code":        0,

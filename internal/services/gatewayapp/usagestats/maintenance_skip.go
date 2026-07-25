@@ -21,6 +21,10 @@ var maintenanceExactAPI = map[string]struct{}{
 	"GET /ucg/app/api/conversations":        {},
 	"GET /device/app/api/user/get":          {},
 	"GET /device/history/api/list":          {},
+	// clinic/tip 点赞反馈：负责人确认不计入 usage（close-clinic-tip-feedback）；
+	// tip generate（POST /device/tip/generate）统计策略属包 B，不得在此排除。
+	"POST /device/api/clinic/feedback": {},
+	"POST /device/api/tip/feedback":    {},
 }
 
 var maintenancePathPrefixes = []string{

@@ -100,7 +100,7 @@ func (s *ClinicService) HandleQuestion(turnCtx context.Context, wxID int64, devi
 	baby := loadClinicBabyProfile(turnCtx, deviceNo)
 	sess, _, _ := loadClinicSession(turnCtx, wxID)
 	prior := clinicSessionMessages(sess)
-	thinking, answer, streamErr := s.streamClinicLLMHeld(turnCtx, profile, baby, summary, question, prior, clinicStreamCallbacks{
+	thinking, answer, answerID, streamErr := s.streamClinicLLMHeld(turnCtx, profile, baby, summary, question, prior, clinicStreamCallbacks{
 		OnThinkingDelta: func(delta string) error {
 			if err := turnCtx.Err(); err != nil {
 				return err
@@ -135,10 +135,11 @@ func (s *ClinicService) HandleQuestion(turnCtx context.Context, wxID int64, devi
 		// 扣减已成功；session 写失败仅记录，仍返回 answer_done
 	}
 	return writeJSON(map[string]interface{}{
-		"type":     "answer_done",
-		"turnId":   turnID,
-		"thinking": thinking,
-		"answer":   answer,
+		"type":      "answer_done",
+		"turnId":    turnID,
+		"thinking":  thinking,
+		"answer":    answer,
+		"answerId":  answerID,
 	})
 }
 

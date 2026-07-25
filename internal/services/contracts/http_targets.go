@@ -40,6 +40,14 @@ func (t HTTPTargets) HistoryListPath() string {
 	return "/device/history/api/list"
 }
 
+func (t HTTPTargets) HistoryFilterPath() string {
+	return "/device/history/api/filter"
+}
+
+func (t HTTPTargets) HistoryListV2Path() string {
+	return "/device/history/api/v2/list"
+}
+
 func (t HTTPTargets) HistorySuggestPath() string {
 	return "/device/history/api/suggest"
 }
@@ -107,6 +115,11 @@ func (t HTTPTargets) VoiceSuggestDeletePath() string {
 // VoiceInternalTextChatPath 语音域内部文本对话（history-service HTTP 委派）。
 func (t HTTPTargets) VoiceInternalTextChatPath() string {
 	return "/voice/internal/api/text/chat"
+}
+
+// VoiceInternalTextChatStreamPath 语音域内部流式文本对话（history-service HTTP 委派）。
+func (t HTTPTargets) VoiceInternalTextChatStreamPath() string {
+	return "/voice/internal/api/text/chat/stream"
 }
 
 // VoiceInternalQaListPath 语音域内部问答库列表（qa 表权威在 voice 库）。

@@ -1,7 +1,7 @@
-# 构建八微服务镜像并 push 至阿里云 ACR（不使用 ACR 控制台「构建规则」）。
+# 构建九微服务镜像并 push 至阿里云 ACR（不使用 ACR 控制台「构建规则」）。
 # 触发（仅 tag，develop push 不构建）：
 #   git tag v1.0.0-rc.1 && git push origin v1.0.0-rc.1
-#     → 测试命名空间，全量 8 服务，tag :v1.0.0-rc.1 + :<sha>
+#     → 测试命名空间，全量 9 服务，tag :v1.0.0-rc.1 + :<sha>
 #   git tag v1.0.0-rc.2+ucg && git push origin v1.0.0-rc.2+ucg
 #     → 仅 build/push ucg-service；ACR 主 tag 仍为 :v1.0.0-rc.2（与 .env IMAGE_TAG 一致）
 #     → 不 retag 其他服务；部署时按服务 pull/up（见 runbook）
@@ -10,7 +10,7 @@
 #   git tag v1.0.0-rc.4+notify && git push origin v1.0.0-rc.4+notify
 #     → 仅 build/push notify-service
 #   git tag v1.0.0 && git push origin v1.0.0
-#     → 生产命名空间，全量 8 服务，tag :v1.0.0 + :<sha>
+#     → 生产命名空间，全量 9 服务，tag :v1.0.0 + :<sha>
 # 规则：vMAJOR.MINOR.PATCH（无 - 后缀）→ 生产；v* 预发布（含 -rc/-beta 等）→ 测试
 # 构建范围后缀：+ 后为逗号分隔服务别名（ucg、sim、gateway、history 等；all=全量）
 # 手动：Actions → Run workflow（workflow_dispatch，可选 services）
@@ -41,7 +41,7 @@ on:
         required: true
         type: string
       services:
-        description: 可选，逗号分隔服务别名（如 ucg 或 sim,gateway,notify）；留空=全量 8 服务
+        description: 可选，逗号分隔服务别名（如 ucg 或 sim,gateway,notify）；留空=全量 9 服务
         required: false
         type: string
         default: ""
@@ -96,6 +96,7 @@ jobs:
               ucg|ucg-service) echo "ucg-service" ;;
               sim|sim-user|sim-user-service) echo "sim-user-service" ;;
               notify|notify-service) echo "notify-service" ;;
+              mcp|mcp-service) echo "mcp-service" ;;
               all) echo "__all__" ;;
               "")
                 echo "::error::服务别名不能为空" >&2
@@ -118,6 +119,7 @@ jobs:
               ucg-service) echo "manifest/docker/Dockerfile.ucg-service" ;;
               sim-user-service) echo "manifest/docker/Dockerfile.sim-user-service" ;;
               notify-service) echo "manifest/docker/Dockerfile.notify-service" ;;
+              mcp-service) echo "manifest/docker/Dockerfile.mcp-service" ;;
               *)
                 echo "::error::内部错误: 无 dockerfile 映射 id=$1" >&2
                 return 1
@@ -125,7 +127,7 @@ jobs:
             esac
           }
 
-          ALL_SERVICES=(gateway gateway-app history-service voice-service device-service ucg-service sim-user-service notify-service)
+          ALL_SERVICES=(gateway gateway-app history-service voice-service device-service ucg-service sim-user-service notify-service mcp-service)
 
           # 根据 build_scope 字符串解析待构建服务 id 列表（写入数组 service_ids）
           parse_build_scope() {

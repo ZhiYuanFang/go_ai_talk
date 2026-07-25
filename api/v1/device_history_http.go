@@ -23,6 +23,21 @@ type DeviceHistoryListRes struct {
 	PageSize int              `json:"pageSize"`
 }
 
+// DeviceHistoryFilterReq 历史筛选请求，支持按事件ID列表、时间范围、返回条数上限筛选。
+type DeviceHistoryFilterReq struct {
+	g.Meta    `path:"/device/history/api/filter" method:"get" tags:"device" summary:"设备历史筛选"`
+	DeviceNo  string `json:"deviceNo"  p:"deviceNo"  dc:"设备号"`
+	EventIds  string `json:"eventIds"  p:"eventIds"  dc:"事件ID列表，逗号分隔，如 1,2,5；空串表示不过滤"`
+	StartTime int64  `json:"startTime" p:"startTime" dc:"开始时间，Unix 秒；0 表示不限制"`
+	EndTime   int64  `json:"endTime"   p:"endTime"   dc:"结束时间，Unix 秒；0 表示不限制"`
+	Limit     int    `json:"limit"     p:"limit"     dc:"返回条数上限，默认 100，上限 500"`
+}
+
+// DeviceHistoryFilterRes 历史筛选结果响应。
+type DeviceHistoryFilterRes struct {
+	List []entity.History `json:"list"`
+}
+
 // DeviceHistorySuggestReq 查询设备建议。
 type DeviceHistorySuggestReq struct {
 	g.Meta   `path:"/device/history/api/suggest" method:"get" tags:"device" summary:"设备建议列表"`
@@ -90,6 +105,16 @@ type DeviceHistoryChatReq struct {
 type DeviceHistoryChatRes struct {
 	Reply string `json:"reply"`
 }
+
+// DeviceHistoryChatStreamReq 流式文本对话请求（SSE 返回 thinking/answer）。
+type DeviceHistoryChatStreamReq struct {
+	g.Meta     `path:"/device/history/api/chat/stream" method:"post" tags:"device" summary:"设备文本对话（流式SSE）"`
+	DeviceNo   string `json:"deviceNo" v:"required" dc:"设备号"`
+	Transcript string `json:"transcript" v:"required" dc:"文本输入"`
+}
+
+// DeviceHistoryChatStreamRes 流式文本对话响应（SSE，无固定 JSON 结构）。
+type DeviceHistoryChatStreamRes struct{}
 
 // DeviceHistoryEventAddReq 手动新增历史事件。
 type DeviceHistoryEventAddReq struct {

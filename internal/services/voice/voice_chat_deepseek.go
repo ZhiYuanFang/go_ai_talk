@@ -3,7 +3,7 @@ package voice
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"math"
 	"strings"
 	"time"
@@ -213,9 +213,9 @@ func (s *VoiceService) buildGrowthSuggestPayload(ctx context.Context, deviceNo s
 
 // callDeepSeekGrowthSuggestion 成长建议：经 LaneVoiceUnderstanding 调用上游。
 func (s *VoiceService) callDeepSeekGrowthSuggestion(ctx context.Context, deviceNo string) (string, error) {
-	// 先尝试调用 Python 微服务获取成长建议
+	// 调用 Python 微服务获取成长建议，Python 不可用时直接返回错误，由上层返回降级提示语。
 	if vuProfile, vuErr := aimodel.LoadProfile(ctx, aimodel.LaneVoiceUnderstanding); vuErr == nil {
-		pythonClient := pythonAIClientFromCfg()
+		pythonClient := PythonAIClientFromCfg()
 		pythonResp, pythonErr := pythonClient.AnalyzeIntent(ctx, &AnalyzeIntentRequest{
 			Text:     "成长建议",
 			DeviceNo: deviceNo,
@@ -228,7 +228,6 @@ func (s *VoiceService) callDeepSeekGrowthSuggestion(ctx context.Context, deviceN
 		if pythonErr == nil && pythonResp != nil && pythonResp.Content != "" {
 			reply := strings.TrimSpace(pythonResp.Content)
 			if reply != "" {
-				// 成功获取建议，写入数据库
 				_, insertErr := dao.Suggest.Ctx(ctx).Data(g.Map{
 					dao.Suggest.Columns().DeviceNo: deviceNo,
 					dao.Suggest.Columns().Suggest:  reply,
@@ -241,194 +240,11 @@ func (s *VoiceService) callDeepSeekGrowthSuggestion(ctx context.Context, deviceN
 			}
 		}
 		if pythonErr != nil {
-			glog.Warningf(ctx, "[Python AI] 成长建议调用失败，回退到 DeepSeek 直连。deviceNo=%s err=%v", deviceNo, pythonErr)
+			glog.Warningf(ctx, "[Python AI] 成长建议调用失败。deviceNo=%s err=%v", deviceNo, pythonErr)
+			return "", pythonErr
 		}
 	}
-	payload, err := s.buildGrowthSuggestPayload(ctx, deviceNo)
-	if err != nil {
-		return "", err
-	}
-	msgs := make([]aimodel.Message, 0, len(payload.Messages))
-	for _, m := range payload.Messages {
-		msgs = append(msgs, aimodel.Message{Role: m.Role, Content: m.Content})
-	}
-	if s.cfg.DebugLog {
-		bodyBytes, _ := json.Marshal(payload)
-		glog.Infof(ctx, "[大模型请求] 发送 LLM 请求（成长建议）。deviceNo=%s 请求体=%s", deviceNo, string(bodyBytes))
-	}
-	resp, err := aimodel.Invoke(ctx, aimodel.LaneVoiceUnderstanding, aimodel.ChatRequest{
-		Messages:   msgs,
-		TimeoutSec: s.cfg.DeepSeek.TimeoutSeconds,
-	})
-	if err != nil {
-		return "", mapVoiceLLMError(err)
-	}
-	if s.cfg.DebugLog {
-		glog.Infof(ctx, "[大模型响应] 收到 LLM 原始响应（成长建议）。deviceNo=%s 响应体=%s", deviceNo, string(resp.RawBody))
-	}
-	rawContent, replyNormalized, _, err := extractChatReplyRaw(resp.RawBody)
-	if err != nil {
-		return "", err
-	}
-	reply := pickGrowthSuggestionDisplayText(rawContent, replyNormalized)
-	if s.cfg.DebugLog {
-		glog.Infof(ctx, "[大模型解析] 解析回复完成（成长建议）。deviceNo=%s 回复文本=%s", deviceNo, reply)
-	}
-
-	_, insertErr := dao.Suggest.Ctx(ctx).Data(g.Map{
-		dao.Suggest.Columns().DeviceNo: deviceNo,
-		dao.Suggest.Columns().Suggest:  reply,
-		dao.Suggest.Columns().Time:     nowUnixSec(),
-	}).Insert()
-	if insertErr != nil {
-		glog.Warningf(ctx, "insert suggest failed: %v", insertErr)
-	}
-
-	return reply, nil
-}
-
-func (s *VoiceService) callDeepSeekRaw(ctx context.Context, deviceNo, prompt string, historyLimit int, systemMessage ...string) (rawContent string, reply string, exit bool, err error) {
-	messages := s.buildChatMessagesWithLimit(deviceNo, prompt, historyLimit, systemMessage...)
-	msgs := mapVoiceChatMessages(messages)
-	if s.cfg.DebugLog {
-		bodyBytes, _ := json.Marshal(map[string]interface{}{"messages": messages, "stream": false})
-		glog.Infof(ctx, "[大模型请求] 发送 LLM 请求（统一调用）。deviceNo=%s historyLimit=%d 请求体=%s", deviceNo, historyLimit, string(bodyBytes))
-	}
-	resp, invokeErr := aimodel.Invoke(ctx, aimodel.LaneVoiceUnderstanding, aimodel.ChatRequest{
-		Messages:   msgs,
-		TimeoutSec: s.cfg.DeepSeek.TimeoutSeconds,
-	})
-	if invokeErr != nil {
-		return "", "", false, mapVoiceLLMError(invokeErr)
-	}
-	if s.cfg.DebugLog {
-		glog.Infof(ctx, "[大模型响应] 收到 LLM 原始响应（统一调用）。deviceNo=%s 响应体=%s", deviceNo, string(resp.RawBody))
-	}
-	return extractChatReplyRaw(resp.RawBody)
-}
-
-func (s *VoiceService) callDeepSeekDirectReply(ctx context.Context, deviceNo, transcript string) (string, error) {
-	systemMessage := "你是闲聊助手，请直接回答用户问题，语言自然简洁。不要使用表情符号或特殊颜文字。"
-	_, reply, _, err := s.callDeepSeekRaw(ctx, deviceNo, transcript, 6, systemMessage)
-	if err != nil {
-		return "", err
-	}
-	reply = sanitizeModelReplyText(reply)
-	if reply == "" {
-		reply = "我在，请继续说。"
-	}
-	return reply, nil
-}
-
-func (s *VoiceService) streamCasualReplyWithBaiduTTS(
-	ctx context.Context,
-	deviceNo string,
-	meta AudioMeta,
-	transcript string,
-	onTextDelta func(text string) error,
-	onAudioChunk func(audio []byte, meta AudioMeta, seq int) error,
-) (string, error) {
-	if strings.ToLower(strings.TrimSpace(s.cfg.TTS.Provider)) != "baidu" {
-		return "", StageError{Stage: "tts", Detail: "闲聊流式音频下发仅支持百度TTS"}
-	}
-	normalized := strings.TrimSpace(transcript)
-	// 模式切换/模式查询属于控制指令，统一复用 chatWithResult，
-	// 避免在闲聊流式分支里被直接交给 DeepSeek 自由回答。
-	if isModeSwitchCommand(normalized) || isModeQueryCommand(normalized) {
-		chatRes, err := s.chatWithResult(ctx, deviceNo, normalized, true)
-		if err != nil {
-			return "", err
-		}
-		reply := chatRes.Reply
-		if onTextDelta != nil && strings.TrimSpace(reply) != "" {
-			if cbErr := onTextDelta(reply); cbErr != nil {
-				return "", cbErr
-			}
-		}
-		if _, ttsErr := s.StreamReplyWithBaiduTTS(ctx, meta, reply, onAudioChunk); ttsErr != nil {
-			return "", ttsErr
-		}
-		return reply, nil
-	}
-	messages := s.buildChatMessagesWithLimit(deviceNo, transcript, 6, "你是闲聊助手，请直接回答用户问题，语言自然简洁。不要使用表情符号或特殊颜文字。")
-	msgs := mapVoiceChatMessages(messages)
-	if s.cfg.DebugLog {
-		bodyBytes, _ := json.Marshal(map[string]interface{}{"messages": messages, "stream": true})
-		glog.Infof(ctx, "[大模型请求] 发送 LLM 流式请求（闲聊）。deviceNo=%s 请求体=%s", deviceNo, string(bodyBytes))
-	}
-
-	var fullReply strings.Builder
-	var sentenceBuf strings.Builder
-	seq := 0
-	if !s.cfg.TTS.StreamEnabled {
-		return "", StageError{Stage: "tts", Detail: "未启用百度流式TTS（tts.streamEnabled=false）"}
-	}
-	ttsSession, sessionErr := s.CreateStreamTTSSession(ctx, meta, func(audio []byte, chunkMeta AudioMeta) error {
-		seq++
-		if onAudioChunk != nil {
-			return onAudioChunk(audio, chunkMeta, seq)
-		}
-		return nil
-	})
-	if sessionErr != nil {
-		return "", sessionErr
-	}
-	defer ttsSession.Close()
-	flushSentence := func(text string) error {
-		trimmed := strings.TrimSpace(text)
-		if trimmed == "" {
-			return nil
-		}
-		return ttsSession.WriteText(trimmed)
-	}
-
-	streamRes, streamErr := aimodel.InvokeStream(ctx, aimodel.LaneVoiceUnderstanding, aimodel.ChatRequest{
-		Messages:   msgs,
-		TimeoutSec: s.cfg.DeepSeek.TimeoutSeconds,
-	}, aimodel.StreamCallbacks{
-		OnContentDelta: func(chunk string) error {
-			chunk = sanitizeModelReplyText(chunk)
-			if chunk == "" {
-				return nil
-			}
-			fullReply.WriteString(chunk)
-			if onTextDelta != nil {
-				if cbErr := onTextDelta(chunk); cbErr != nil {
-					return cbErr
-				}
-			}
-			sentenceBuf.WriteString(chunk)
-			parts := splitBySentence(sentenceBuf.String())
-			if len(parts) == 0 {
-				return nil
-			}
-			for i := 0; i < len(parts)-1; i++ {
-				if err := flushSentence(parts[i]); err != nil {
-					return err
-				}
-			}
-			sentenceBuf.Reset()
-			sentenceBuf.WriteString(parts[len(parts)-1])
-			return nil
-		},
-	})
-	if streamErr != nil {
-		return "", mapVoiceLLMError(streamErr)
-	}
-	if fullReply.Len() == 0 && strings.TrimSpace(streamRes.Content) != "" {
-		fullReply.WriteString(streamRes.Content)
-	}
-	if err := flushSentence(sentenceBuf.String()); err != nil {
-		return "", err
-	}
-	if err := ttsSession.Finish(ctx); err != nil {
-		return "", err
-	}
-	reply := sanitizeModelReplyText(fullReply.String())
-	if reply == "" {
-		reply = "我在，请继续说。"
-	}
-	return reply, nil
+	return "", errors.New("成长建议配置缺失")
 }
 
 func mapVoiceChatMessages(messages []map[string]string) []aimodel.Message {
@@ -459,9 +275,9 @@ func splitBySentence(input string) []string {
 }
 
 func (s *VoiceService) callDeepSeekHistoryReply(ctx context.Context, deviceNo, transcript string, hours int) (string, error) {
-	// 先尝试调用 Python 微服务进行历史问答
+	// 调用 Python 微服务进行历史问答，Python 不可用时直接返回错误，由上层返回降级提示语。
 	if vuProfile, vuErr := aimodel.LoadProfile(ctx, aimodel.LaneVoiceUnderstanding); vuErr == nil {
-		pythonClient := pythonAIClientFromCfg()
+		pythonClient := PythonAIClientFromCfg()
 		pythonResp, pythonErr := pythonClient.AnalyzeIntent(ctx, &AnalyzeIntentRequest{
 			Text:     transcript,
 			DeviceNo: deviceNo,
@@ -478,34 +294,11 @@ func (s *VoiceService) callDeepSeekHistoryReply(ctx context.Context, deviceNo, t
 			}
 		}
 		if pythonErr != nil {
-			glog.Warningf(ctx, "[Python AI] 历史问答调用失败，回退到 DeepSeek 直连。deviceNo=%s err=%v", deviceNo, pythonErr)
+			glog.Warningf(ctx, "[Python AI] 历史问答调用失败。deviceNo=%s err=%v", deviceNo, pythonErr)
+			return "", pythonErr
 		}
 	}
-	if hours <= 0 {
-		hours = 12
-	}
-	history, err := s.buildRecentHistory(ctx, deviceNo, hours)
-	if err != nil {
-		return "", err
-	}
-	historyBytes, _ := json.Marshal(history)
-	prompt := fmt.Sprintf("用户输入=%s。请基于最近%d小时记录回答。记录=%s。仅输出JSON：{\"reply\":\"回复内容\"}。", transcript, hours, string(historyBytes))
-	systemMessage := "您是育儿助手，主要帮助家长根据历史事件回应用户提问。"
-	raw, reply, _, callErr := s.callDeepSeekRaw(ctx, deviceNo, prompt, 5, systemMessage)
-	if callErr != nil {
-		return "", callErr
-	}
-	if parsed, ok := parseGeneralChatResult(raw); ok && strings.TrimSpace(parsed.Reply) != "" {
-		if s.cfg.DebugLog {
-			parsedJSON, _ := json.Marshal(parsed)
-			glog.Infof(ctx, "[思考过程] 历史问答结构化解析成功。deviceNo=%s parsed=%s", deviceNo, string(parsedJSON))
-		}
-		return parsed.Reply, nil
-	}
-	if s.cfg.DebugLog {
-		glog.Warningf(ctx, "[思考过程] 历史问答结构化解析失败，使用文本回复。deviceNo=%s raw=%s", deviceNo, truncateVoiceLogText(raw, 800))
-	}
-	return strings.TrimSpace(reply), nil
+	return "", errors.New("历史问答配置缺失")
 }
 
 // pickGrowthSuggestionDisplayText 成长建议：优先取模型 JSON 内的 reply 字段，避免把整段外层 JSON 写入数据库。

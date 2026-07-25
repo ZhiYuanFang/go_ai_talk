@@ -67,6 +67,23 @@ func (idx eventTreeIndex) sortForMatch(candidates []entity.Event) {
 	})
 }
 
+// hasSignificantOverlap 判断两个文本是否有显著的交集（至少两个连续字符）。
+func hasSignificantOverlap(text, keyword string) bool {
+	textRunes := []rune(text)
+	keywordRunes := []rune(keyword)
+	if len(textRunes) < 2 || len(keywordRunes) < 2 {
+		return false
+	}
+	for i := 0; i < len(textRunes)-1; i++ {
+		for j := 0; j < len(keywordRunes)-1; j++ {
+			if textRunes[i] == keywordRunes[j] && textRunes[i+1] == keywordRunes[j+1] {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // extractEventFromCandidates 在候选集合中按深度与名称长度优先匹配事件。
 func extractEventFromCandidates(ctx context.Context, normalizedTranscript string, candidates []entity.Event, idx eventTreeIndex) (entity.Event, string, bool) {
 	if len(candidates) == 0 {

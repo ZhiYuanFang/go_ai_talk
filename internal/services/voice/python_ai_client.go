@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	contracts "hello/internal/services/contracts"
+
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/glog"
 )
@@ -49,15 +51,45 @@ type PythonModelCfg struct {
 	MaxInFlight int    `json:"max_in_flight"` // 最大并发数
 }
 
+// IntentEvent 单个事件结构
+// 用于描述多事件场景中的单个事件
+type IntentEvent struct {
+	Action    string `json:"action"`
+	EventName string `json:"event_name"`
+	EventId   string `json:"event_id"`
+	Quantity  *int   `json:"quantity,omitempty"` // 从用户输入中提取的数量值
+}
+
 // AnalyzeIntentResponse 意图分析响应体
 // 与 Python 服务的返回结构对齐
 type AnalyzeIntentResponse struct {
-	TargetType string   `json:"target_type"` // 目标类型：feeding|history|suggest|conversation|exit
-	Action     string   `json:"action"`      // 动作类型：start|end|one|search|suggestion|reply|exit
-	EventName  string   `json:"event_name"`  // 匹配到的事件名称（喂养场景）
-	Keywords   []string `json:"keywords"`    // 匹配到的关键词列表
-	Content    string   `json:"content"`     // 对话场景的回答内容
+	TargetType string       `json:"target_type"` // 目标类型：feeding|history|suggest|conversation|exit
+	Action     string       `json:"action"`      // 动作类型：start|end|one|search|suggestion|reply|exit|multi
+	EventName  string       `json:"event_name"`  // 匹配到的事件名称（喂养场景，单事件时使用）
+	EventId    string       `json:"event_id"`    // 事件ID（单事件时使用）
+	Quantity   *int         `json:"quantity,omitempty"`   // 从用户输入中提取的数量值（Python 前置提取）
+	EventType  string       `json:"event_type,omitempty"`  // 事件类型：number|time|one（新事件时 Python 返回）
+	EventUnit  string       `json:"event_unit,omitempty"`  // 事件单位：ml、次、分钟（新事件时 Python 返回）
+	IsNewEvent bool         `json:"is_new_event,omitempty"` // 是否为新事件
+	Keywords   []string     `json:"keywords"`    // 匹配到的关键词列表
+	Content    string       `json:"content"`     // 对话场景的回答内容
+	Events     []IntentEvent `json:"events"`     // 多事件列表（当 action 为 multi 时使用）
+	NeedConfirm    bool     `json:"need_confirm"`    // 是否需要用户确认（Python 图执行中断，等待用户 confirm/reject 后恢复）
+	ConfirmMessage string   `json:"confirm_message"` // 确认提示话术（由 Python 侧生成，引导用户回复确认或取消）
+	ConversationID string   `json:"conversation_id"` // 会话 ID（用于调用 /v1/analyze/intent/confirm 恢复图执行）
 }
+
+// ConfirmIntentRequest confirm 请求体
+// 与 Python 服务的 /v1/analyze/intent/confirm 接口对齐
+// 当 AnalyzeIntentResponse.NeedConfirm=true 时，用户回复后由 go 侧构造该请求体调用 Python 服务恢复图执行
+type ConfirmIntentRequest struct {
+	ConversationID string `json:"conversation_id"` // 会话 ID（来自前一次意图分析的 conversation_id 字段）
+	UserFeedback   string `json:"user_feedback"`   // 用户反馈：confirm 或 reject
+}
+
+// ConfirmIntentResponse confirm 响应体
+// 与 AnalyzeIntentResponse 结构一致，复用类型别名以减少重复定义
+type ConfirmIntentResponse = AnalyzeIntentResponse
 
 // AnalyzeIntent 调用 Python 服务进行意图分析
 // ctx: 上下文，用于超时和取消
@@ -97,6 +129,46 @@ func (c *PythonAIClient) AnalyzeIntent(ctx context.Context, req *AnalyzeIntentRe
 	return &result, nil
 }
 
+// ConfirmIntent 调用 Python 服务进行 confirm/reject 流程
+// 当 Python 意图分析返回 need_confirm=true 时，go 侧将用户反馈通过本方法回传给 Python 服务
+// 由 Python 服务恢复被中断的图执行，并返回最终意图分析结果
+// ctx: 上下文，用于超时和取消
+// req: confirm 请求体（包含 conversation_id 和 user_feedback）
+// 返回：意图分析响应（恢复图执行后的最终结果）和错误
+func (c *PythonAIClient) ConfirmIntent(ctx context.Context, req *ConfirmIntentRequest) (*ConfirmIntentResponse, error) {
+	// 将请求体序列化为 JSON
+	body, _ := json.Marshal(req)
+
+	// 创建 HTTP POST 请求，调用 Python 服务的 confirm 接口
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/v1/analyze/intent/confirm", strings.NewReader(string(body)))
+	if err != nil {
+		return nil, fmt.Errorf("创建 confirm 请求失败: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	// 发送请求
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("调用 Python confirm 服务失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// 检查响应状态码，非 200 视为失败
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("Python confirm 服务返回错误状态码 %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	// 解析响应体（与 AnalyzeIntentResponse 结构一致）
+	var result ConfirmIntentResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("解析 confirm 响应失败: %w", err)
+	}
+
+	glog.Debugf(ctx, "[Python AI] confirm 完成。conversation_id=%s target_type=%s action=%s", req.ConversationID, result.TargetType, result.Action)
+	return &result, nil
+}
+
 // ClinicStreamRequest 胖宝诊疗流式请求体
 // 与 Python 服务的 /v1/clinic/stream 接口对齐
 type ClinicStreamRequest struct {
@@ -110,6 +182,7 @@ type ClinicStreamRequest struct {
 type ClinicStreamCallback struct {
 	OnThinking func(delta string) error // 收到思考过程片段时的回调
 	OnAnswer   func(delta string) error // 收到回答内容片段时的回调
+	OnDone     func(answerID string) error // 收到完成事件时的回调（包含 answer_id 用于反馈）
 }
 
 // ClinicStream 调用 Python 服务进行流式诊疗
@@ -117,14 +190,21 @@ type ClinicStreamCallback struct {
 // req: 诊疗请求
 // cb: 流式回调
 // 返回：完整的思考过程、完整的回答内容、错误
-func (c *PythonAIClient) ClinicStream(ctx context.Context, req *ClinicStreamRequest, cb *ClinicStreamCallback) (thinking, answer string, err error) {
+// ClinicStreamResponse 诊疗流式响应结果
+type ClinicStreamResponse struct {
+	Thinking  string // 完整的思考过程
+	Answer    string // 完整的回答内容
+	AnswerID  string // 回答 ID（用于提交反馈）
+}
+
+func (c *PythonAIClient) ClinicStream(ctx context.Context, req *ClinicStreamRequest, cb *ClinicStreamCallback) (*ClinicStreamResponse, error) {
 	// 将请求体序列化为 JSON
 	body, _ := json.Marshal(req)
 
 	// 创建 HTTP POST 请求，要求流式响应
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/v1/clinic/stream", strings.NewReader(string(body)))
 	if err != nil {
-		return "", "", fmt.Errorf("创建诊疗流式请求失败: %w", err)
+		return nil, fmt.Errorf("创建诊疗流式请求失败: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Accept", "text/event-stream")
@@ -132,17 +212,18 @@ func (c *PythonAIClient) ClinicStream(ctx context.Context, req *ClinicStreamRequ
 	// 发送请求
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
-		return "", "", fmt.Errorf("调用 Python 诊疗流式服务失败: %w", err)
+		return nil, fmt.Errorf("调用 Python 诊疗流式服务失败: %w", err)
 	}
 	defer resp.Body.Close()
 
 	// 检查响应状态码
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
-		return "", "", fmt.Errorf("Python 诊疗流式服务返回错误状态码 %d: %s", resp.StatusCode, string(respBody))
+		return nil, fmt.Errorf("Python 诊疗流式服务返回错误状态码 %d: %s", resp.StatusCode, string(respBody))
 	}
 
 	// 逐行解析 SSE 响应
+	var thinking, answer, answerID string
 	scanner := bufio.NewScanner(resp.Body)
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -153,8 +234,9 @@ func (c *PythonAIClient) ClinicStream(ctx context.Context, req *ClinicStreamRequ
 		// 提取 data 后面的 JSON 内容
 		data := strings.TrimPrefix(line, "data: ")
 		var event struct {
-			Type    string `json:"type"`    // 消息类型：thinking 或 answer
-			Content string `json:"content"` // 内容片段
+			Type     string `json:"type"`      // 消息类型：thinking、answer、done
+			Content  string `json:"content"`   // 内容片段
+			AnswerID string `json:"answer_id"` // 回答 ID（done 事件时返回）
 		}
 		if err := json.Unmarshal([]byte(data), &event); err != nil {
 			continue // 跳过无法解析的行
@@ -166,7 +248,7 @@ func (c *PythonAIClient) ClinicStream(ctx context.Context, req *ClinicStreamRequ
 			thinking += event.Content
 			if cb != nil && cb.OnThinking != nil {
 				if cbErr := cb.OnThinking(event.Content); cbErr != nil {
-					return thinking, answer, cbErr
+					return &ClinicStreamResponse{Thinking: thinking, Answer: answer, AnswerID: answerID}, cbErr
 				}
 			}
 		case "answer":
@@ -174,18 +256,26 @@ func (c *PythonAIClient) ClinicStream(ctx context.Context, req *ClinicStreamRequ
 			answer += event.Content
 			if cb != nil && cb.OnAnswer != nil {
 				if cbErr := cb.OnAnswer(event.Content); cbErr != nil {
-					return thinking, answer, cbErr
+					return &ClinicStreamResponse{Thinking: thinking, Answer: answer, AnswerID: answerID}, cbErr
+				}
+			}
+		case "done":
+			// 记录回答 ID，用于后续反馈
+			answerID = event.AnswerID
+			if cb != nil && cb.OnDone != nil {
+				if cbErr := cb.OnDone(event.AnswerID); cbErr != nil {
+					return &ClinicStreamResponse{Thinking: thinking, Answer: answer, AnswerID: answerID}, cbErr
 				}
 			}
 		}
 	}
 
-	return thinking, answer, scanner.Err()
+	return &ClinicStreamResponse{Thinking: thinking, Answer: answer, AnswerID: answerID}, scanner.Err()
 }
 
-// pythonAIClientFromCfg 从配置中读取 Python 服务地址并创建客户端
+// PythonAIClientFromCfg 从配置中读取 Python 服务地址并创建客户端
 // 优先从配置文件 pythonAiTalk.url 读取，其次环境变量 PYTHON_AI_TALK_URL，默认 http://python-ai-talk:8000
-func pythonAIClientFromCfg() *PythonAIClient {
+func PythonAIClientFromCfg() *PythonAIClient {
 	// 尝试从配置文件读取
 	url := g.Cfg().MustGet(context.Background(), "pythonAiTalk.url", "").String()
 	if url == "" {
@@ -197,4 +287,273 @@ func pythonAIClientFromCfg() *PythonAIClient {
 		url = "http://python-ai-talk:8000"
 	}
 	return NewPythonAIClient(url)
+}
+
+
+// TipStreamRequest 小贴士流式请求体
+// 与 Python 服务的 /v1/tip/stream 接口对齐（snake_case）。
+// 月龄与当前时间由 Python 派生，本结构不再携带 baby_age_months / current_time。
+type TipStreamRequest struct {
+	EventID   int64          `json:"event_id"`   // 触发事件 ID
+	EventName string         `json:"event_name"` // 触发事件名称
+	DeviceNo  string         `json:"device_no"`  // 设备编号
+	Model     PythonModelCfg `json:"model"`      // 模型配置
+}
+
+// TipStream 调用 Python 服务进行流式小贴士生成
+// ctx: 上下文
+// req: 小贴士请求
+// cb: 流式回调
+// 返回：小贴士流式响应结果和错误
+func (c *PythonAIClient) TipStream(ctx context.Context, req *TipStreamRequest, cb *contracts.TipStreamCallback) (*contracts.TipStreamResponse, error) {
+	// 将请求体序列化为 JSON
+	body, _ := json.Marshal(req)
+
+	// 创建 HTTP POST 请求，要求流式响应
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/v1/tip/stream", strings.NewReader(string(body)))
+	if err != nil {
+		return nil, fmt.Errorf("创建小贴士流式请求失败: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Accept", "text/event-stream")
+
+	// 发送请求
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("调用 Python 小贴士流式服务失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// 检查响应状态码
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("Python 小贴士流式服务返回错误状态码 %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	// 逐行解析 SSE 响应
+	var thinking, answer, answerID string
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		data := strings.TrimPrefix(line, "data: ")
+		var event struct {
+			Type     string `json:"type"`      // 消息类型：thinking、answer、done
+			Content  string `json:"content"`   // 内容片段
+			AnswerID string `json:"answer_id"` // 回答 ID（done 事件时返回）
+		}
+		if err := json.Unmarshal([]byte(data), &event); err != nil {
+			continue
+		}
+		switch event.Type {
+		case "thinking":
+			thinking += event.Content
+			if cb != nil && cb.OnThinking != nil {
+				if cbErr := cb.OnThinking(event.Content); cbErr != nil {
+					return &contracts.TipStreamResponse{Thinking: thinking, Answer: answer, AnswerID: answerID}, cbErr
+				}
+			}
+		case "answer":
+			answer += event.Content
+			if cb != nil && cb.OnAnswer != nil {
+				if cbErr := cb.OnAnswer(event.Content); cbErr != nil {
+					return &contracts.TipStreamResponse{Thinking: thinking, Answer: answer, AnswerID: answerID}, cbErr
+				}
+			}
+		case "done":
+			answerID = event.AnswerID
+			if cb != nil && cb.OnDone != nil {
+				if cbErr := cb.OnDone(event.AnswerID); cbErr != nil {
+					return &contracts.TipStreamResponse{Thinking: thinking, Answer: answer, AnswerID: answerID}, cbErr
+				}
+			}
+		}
+	}
+
+	return &contracts.TipStreamResponse{Thinking: thinking, Answer: answer, AnswerID: answerID}, scanner.Err()
+}
+
+// FeedbackRequest 反馈请求体
+// 与 Python 服务的 /v1/clinic/feedback 和 /v1/tip/feedback 接口对齐
+type FeedbackRequest struct {
+	AnswerID string `json:"answer_id"` // 回答 ID（来自流式响应的 done 事件）
+	Feedback int    `json:"feedback"`  // 反馈值：1=thumbs up, -1=thumbs down
+}
+
+// FeedbackResponse 反馈响应体
+type FeedbackResponse struct {
+	Code    int    `json:"code"`    // 状态码：0=成功
+	Message string `json:"message"` // 提示信息
+	Data    struct {
+		AnswerID string `json:"answer_id"` // 回答 ID
+		Feedback int    `json:"feedback"`  // 反馈值
+	} `json:"data"`
+}
+
+// ClinicFeedback 提交诊疗反馈
+// ctx: 上下文
+// req: 反馈请求
+// 返回：反馈响应和错误
+func (c *PythonAIClient) ClinicFeedback(ctx context.Context, req *FeedbackRequest) (*FeedbackResponse, error) {
+	return c.submitFeedback(ctx, "/v1/clinic/feedback", req)
+}
+
+// TipFeedback 提交小贴士反馈
+// ctx: 上下文
+// req: 反馈请求
+// 返回：反馈响应和错误
+func (c *PythonAIClient) TipFeedback(ctx context.Context, req *FeedbackRequest) (*FeedbackResponse, error) {
+	return c.submitFeedback(ctx, "/v1/tip/feedback", req)
+}
+
+// submitFeedback 提交反馈的通用方法
+func (c *PythonAIClient) submitFeedback(ctx context.Context, path string, req *FeedbackRequest) (*FeedbackResponse, error) {
+	// 将请求体序列化为 JSON
+	body, _ := json.Marshal(req)
+
+	// 创建 HTTP POST 请求
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+path, strings.NewReader(string(body)))
+	if err != nil {
+		return nil, fmt.Errorf("创建反馈请求失败: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	// 发送请求
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("调用 Python 反馈服务失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// 检查响应状态码
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("Python 反馈服务返回错误状态码 %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	// 解析响应体
+	var result FeedbackResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("解析反馈响应失败: %w", err)
+	}
+
+	glog.Debugf(ctx, "[Python AI] 反馈提交完成。path=%s answer_id=%s feedback=%d", path, req.AnswerID, req.Feedback)
+	return &result, nil
+}
+
+// AnalyzeIntentStreamRequest 流式意图分析请求体
+// 与非流式 AnalyzeIntentRequest 字段完全一致，使用类型别名以减少重复定义
+type AnalyzeIntentStreamRequest = AnalyzeIntentRequest
+
+// AnalyzeIntentStreamCallback 流式意图分析回调
+// 用于将 SSE 流式响应分块传递给调用方
+type AnalyzeIntentStreamCallback struct {
+	OnThinking func(delta string) error                    // 收到思考过程片段时的回调
+	OnAnswer   func(delta string) error                    // 收到回答内容片段时的回调（answer 内容为 JSON 格式的意图结果）
+	OnDone     func(result *AnalyzeIntentResponse) error   // 收到完成事件时的回调（包含完整的意图分析结果）
+}
+
+// AnalyzeIntentStreamResponse 流式意图分析响应结果
+type AnalyzeIntentStreamResponse struct {
+	Thinking string                   // 完整的思考过程
+	Answer   string                   // 完整的回答内容（JSON 格式的意图结果）
+	Result   *AnalyzeIntentResponse   // 解析后的意图分析结果
+}
+
+// AnalyzeIntentStream 调用 Python 服务进行流式意图分析
+// 以 SSE 流式方式调用 /v1/analyze/intent/stream 接口，逐块返回思考过程和意图结果
+// ctx: 上下文，用于超时和取消
+// req: 流式意图分析请求（与非流式请求字段一致）
+// cb: 流式回调（OnThinking/OnAnswer/OnDone）
+// 返回：流式意图分析响应结果（完整思考内容 + 完整意图 JSON + 解析后的意图结果）和错误
+func (c *PythonAIClient) AnalyzeIntentStream(ctx context.Context, req *AnalyzeIntentStreamRequest, cb *AnalyzeIntentStreamCallback) (*AnalyzeIntentStreamResponse, error) {
+	// 将请求体序列化为 JSON
+	body, _ := json.Marshal(req)
+
+	// 创建 HTTP POST 请求，要求流式响应（SSE）
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/v1/analyze/intent/stream", strings.NewReader(string(body)))
+	if err != nil {
+		return nil, fmt.Errorf("创建流式意图分析请求失败: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Accept", "text/event-stream")
+
+	// 发送请求
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("调用 Python 流式意图分析服务失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// 检查响应状态码
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("Python 流式意图分析服务返回错误状态码 %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	// 逐行解析 SSE 响应
+	var thinking, answer string
+	var result *AnalyzeIntentResponse
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		line := scanner.Text()
+		// SSE 格式：每行以 "data: " 开头
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		// 提取 data 后面的 JSON 内容
+		data := strings.TrimPrefix(line, "data: ")
+		// 检查是否为结束标记
+		if data == "[DONE]" {
+			break
+		}
+		// 解析事件 JSON
+		var event struct {
+			Type    string `json:"type"`    // 消息类型：thinking、answer
+			Content string `json:"content"` // 内容片段
+		}
+		if err := json.Unmarshal([]byte(data), &event); err != nil {
+			continue // 跳过无法解析的行
+		}
+		// 根据类型分发到对应回调
+		switch event.Type {
+		case "thinking":
+			// 累积思考过程并触发回调
+			thinking += event.Content
+			if cb != nil && cb.OnThinking != nil {
+				if cbErr := cb.OnThinking(event.Content); cbErr != nil {
+					return &AnalyzeIntentStreamResponse{Thinking: thinking, Answer: answer, Result: result}, cbErr
+				}
+			}
+		case "answer":
+			// 累积回答内容（answer 为完整的意图分析 JSON）并触发回调
+			answer += event.Content
+			if cb != nil && cb.OnAnswer != nil {
+				if cbErr := cb.OnAnswer(event.Content); cbErr != nil {
+					return &AnalyzeIntentStreamResponse{Thinking: thinking, Answer: answer, Result: result}, cbErr
+				}
+			}
+		}
+	}
+
+	// 流式结束后，解析完整的 answer 为意图分析结果
+	if answer != "" {
+		var parsed AnalyzeIntentResponse
+		if err := json.Unmarshal([]byte(answer), &parsed); err != nil {
+			return &AnalyzeIntentStreamResponse{Thinking: thinking, Answer: answer}, fmt.Errorf("解析流式意图分析结果失败: %w", err)
+		}
+		result = &parsed
+	}
+
+	// 触发 OnDone 回调
+	if cb != nil && cb.OnDone != nil {
+		if cbErr := cb.OnDone(result); cbErr != nil {
+			return &AnalyzeIntentStreamResponse{Thinking: thinking, Answer: answer, Result: result}, cbErr
+		}
+	}
+
+	glog.Debugf(ctx, "[Python AI] 流式意图分析完成。deviceNo=%s target_type=%s action=%s", req.DeviceNo, result.TargetType, result.Action)
+	return &AnalyzeIntentStreamResponse{Thinking: thinking, Answer: answer, Result: result}, scanner.Err()
 }

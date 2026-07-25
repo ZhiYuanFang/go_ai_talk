@@ -2,9 +2,12 @@ package controller
 
 import (
 	"context"
+	"net/http"
+	"strconv"
 	"strings"
 
 	v1 "hello/api/v1"
+	v2 "hello/api/v2"
 	"hello/internal/model/entity"
 	contracts "hello/internal/services/contracts"
 	"hello/internal/services/gatewayapp"
@@ -70,6 +73,49 @@ func (c *HistoryCtrl) List(ctx context.Context, req *v1.DeviceHistoryListReq) (r
 		return nil, err
 	}
 	return &v1.DeviceHistoryListRes{List: result.List, Total: result.Total, Page: result.Page, PageSize: result.PageSize}, nil
+}
+
+// Filter 设备历史筛选，支持按事件ID列表、时间范围、返回条数上限筛选。
+func (c *HistoryCtrl) Filter(ctx context.Context, req *v1.DeviceHistoryFilterReq) (res *v1.DeviceHistoryFilterRes, err error) {
+	deviceNo := strings.TrimSpace(req.DeviceNo)
+	if deviceNo == "" {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "deviceNo 不能为空")
+	}
+	// 解析事件ID列表，逗号分隔；空串或解析失败的项跳过。
+	var eventIds []int64
+	if raw := strings.TrimSpace(req.EventIds); raw != "" {
+		parts := strings.Split(raw, ",")
+		for _, p := range parts {
+			p = strings.TrimSpace(p)
+			if p == "" {
+				continue
+			}
+			id, parseErr := strconv.ParseInt(p, 10, 64)
+			if parseErr != nil {
+				continue
+			}
+			eventIds = append(eventIds, id)
+		}
+	}
+	list, err := c.Svc.ListHistoryFilter(ctx, deviceNo, eventIds, req.StartTime, req.EndTime, req.Limit)
+	if err != nil {
+		return nil, err
+	}
+	return &v1.DeviceHistoryFilterRes{List: list}, nil
+}
+
+// ListV2 设备历史列表 v2，支持时间范围和 limit 参数。
+// 不传新参数时行为与 v1 完全一致。
+func (c *HistoryCtrl) ListV2(ctx context.Context, req *v2.DeviceHistoryListReq) (res *v2.DeviceHistoryListRes, err error) {
+	deviceNo := strings.TrimSpace(req.DeviceNo)
+	if deviceNo == "" {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "deviceNo 不能为空")
+	}
+	result, err := c.Svc.ListHistoryPageV2(ctx, deviceNo, req.Page, req.PageSize, req.StartTime, req.EndTime, req.Limit)
+	if err != nil {
+		return nil, err
+	}
+	return &v2.DeviceHistoryListRes{List: result.List, Total: result.Total, Page: result.Page, PageSize: result.PageSize}, nil
 }
 
 // Suggest 设备建议列表。
@@ -159,6 +205,53 @@ func (c *HistoryCtrl) Chat(ctx context.Context, req *v1.DeviceHistoryChatReq) (r
 		return nil, err
 	}
 	return &v1.DeviceHistoryChatRes{Reply: reply}, nil
+}
+
+// ChatStream 流式文本对话（SSE），逐帧推送 thinking/answer 事件。
+func (c *HistoryCtrl) ChatStream(ctx context.Context, req *v1.DeviceHistoryChatStreamReq) (res *v1.DeviceHistoryChatStreamRes, err error) {
+	deviceNo := strings.TrimSpace(req.DeviceNo)
+	transcript := strings.TrimSpace(req.Transcript)
+	if deviceNo == "" {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "deviceNo 不能为空")
+	}
+	if transcript == "" {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "transcript 不能为空")
+	}
+	r := ghttp.RequestFromCtx(ctx)
+	if r == nil {
+		return nil, gerror.NewCode(gcode.CodeInternalError, "HTTP 请求上下文缺失")
+	}
+	wxID := int64(0)
+	wxID = voice.ParseHeaderWxID(r.GetHeader(gatewayapp.HeaderInternalWxId))
+	// 1. 设置 SSE 响应头
+	var rw http.ResponseWriter = r.Response.Writer
+	rw.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+	rw.Header().Set("Cache-Control", "no-cache, no-transform")
+	rw.Header().Set("Connection", "keep-alive")
+	rw.Header().Set("X-Accel-Buffering", "no")
+	rw.WriteHeader(http.StatusOK)
+	if flusher, ok := rw.(http.Flusher); ok {
+		flusher.Flush()
+	}
+	// 2. 委派流式对话到 voice 服务
+	_, streamErr := histsvc.DelegateTextChatStream(ctx, deviceNo, transcript, wxID, &contracts.IntentStreamCallback{
+		OnThinking: func(delta string) error {
+			return writeSSEEvent(rw, "thinking", delta)
+		},
+		OnAnswer: func(delta string) error {
+			return writeSSEEvent(rw, "answer", delta)
+		},
+	})
+	// 3. 错误处理
+	if streamErr != nil {
+		_ = writeSSEEvent(rw, "error", "AI服务暂时不可用，请稍后再试")
+	}
+	// 4. 结束标记
+	_, _ = rw.Write([]byte("data: [DONE]\n\n"))
+	if flusher, ok := rw.(http.Flusher); ok {
+		flusher.Flush()
+	}
+	return nil, nil
 }
 
 // EventAdd 手动新增历史事件。

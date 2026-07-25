@@ -24,6 +24,8 @@ import (
 	"hello/internal/dao"
 	"hello/internal/model/entity"
 	"hello/internal/platform/cachekit"
+	"hello/internal/services/aimodel"
+	contracts "hello/internal/services/contracts"
 
 	"github.com/gogf/gf/v2/encoding/gjson"
 	"github.com/gogf/gf/v2/frame/g"
@@ -85,11 +87,6 @@ type eventIntentResult struct {
 	Exit          bool `json:"exit"`
 }
 
-type generalChatResult struct {
-	Reply         string `json:"reply"`
-	NeedUserReply bool   `json:"need_user_reply"`
-}
-
 type eventInfo struct {
 	Id        int64  `json:"id"`
 	Name      string `json:"name"`
@@ -108,8 +105,6 @@ type VoiceService struct {
 	sttToken               baiduTokenCache
 	ttsToken               baiduTokenCache
 	sttLimiter             chan struct{}
-	modeMu                 sync.Mutex
-	deviceModes            map[string]string
 	pendingQuantityMu      sync.Mutex
 	pendingQuantity        map[string]pendingQuantityState
 	pendingChildMu         sync.Mutex
@@ -163,7 +158,6 @@ func NewVoiceService(cfg VoiceChatConfig) *VoiceService {
 		},
 		cache:                  cachekit.Default(),
 		sttLimiter:             newLimiter(cfg.STT.MaxConcurrency),
-		deviceModes:            make(map[string]string),
 		pendingQuantity:        make(map[string]pendingQuantityState),
 		pendingChild:           make(map[string]pendingChildEventState),
 		ensureDeviceRegistered: func(ctx context.Context, deviceNo string) error { return nil },
@@ -363,7 +357,7 @@ func (s *VoiceService) HandleWithDialogue(ctx context.Context, deviceNo string, 
 	}
 
 	chatStart := time.Now()
-	chatRes, err := s.chatWithResult(ctx, deviceNo, transcript, true)
+	chatRes, err := s.chatWithResult(ctx, deviceNo, transcript)
 	if err != nil {
 		if isTimeoutErr(err) {
 			glog.Warningf(ctx, "[语音链路] 对话阶段超时。deviceNo=%s 耗时=%s err=%v", deviceNo, time.Since(chatStart), err)
@@ -419,7 +413,7 @@ func (s *VoiceService) HandleWithTranscript(ctx context.Context, deviceNo string
 	}
 
 	chatStart := time.Now()
-	chatRes, err := s.chatWithResult(ctx, deviceNo, transcript, true)
+	chatRes, err := s.chatWithResult(ctx, deviceNo, transcript)
 	if err != nil {
 		if isTimeoutErr(err) {
 			glog.Warningf(ctx, "[语音链路] 对话阶段超时。deviceNo=%s 耗时=%s err=%v", deviceNo, time.Since(chatStart), err)
@@ -718,7 +712,7 @@ func (s *VoiceService) transcribeBaidu(ctx context.Context, meta AudioMeta, audi
 }
 
 func (s *VoiceService) chat(ctx context.Context, deviceNo, transcript string) (string, error) {
-	chatRes, err := s.chatWithResult(ctx, deviceNo, transcript, true)
+	chatRes, err := s.chatWithResult(ctx, deviceNo, transcript)
 	return chatRes.Reply, err
 }
 
@@ -731,10 +725,6 @@ func (s *VoiceService) TextChat(ctx context.Context, deviceNo, transcript string
 		return "", err
 	}
 	return s.chat(ctx, deviceNo, transcript)
-}
-
-func (s *VoiceService) DetectChatMode(deviceNo, transcript string) string {
-	return s.resolveChatMode(deviceNo, transcript)
 }
 
 func (s *VoiceService) CreateStreamTTSSession(ctx context.Context, meta AudioMeta, onAudioChunk func(audio []byte, meta AudioMeta) error) (StreamTTSSession, error) {
@@ -750,21 +740,6 @@ func (s *VoiceService) CreateStreamTTSSession(ctx context.Context, meta AudioMet
 	}
 }
 
-func (s *VoiceService) StreamCasualReplyWithBaiduTTS(
-	ctx context.Context,
-	deviceNo string,
-	meta AudioMeta,
-	transcript string,
-	onTextDelta func(text string) error,
-	onAudioChunk func(audio []byte, meta AudioMeta, seq int) error,
-) (string, error) {
-	// 进入流式回复前先校验设备，避免下游处理后才失败。
-	if err := s.ensureDeviceRegistered(ctx, deviceNo); err != nil {
-		return "", err
-	}
-	return s.streamCasualReplyWithBaiduTTS(ctx, deviceNo, meta, transcript, onTextDelta, onAudioChunk)
-}
-
 func (s *VoiceService) HandleTranscriptChatOnly(ctx context.Context, deviceNo, transcript string) (ask string, answer string, exit bool, finishTalk bool, err error) {
 	if err = s.ensureDeviceRegistered(ctx, deviceNo); err != nil {
 		return "", "", false, false, err
@@ -772,25 +747,134 @@ func (s *VoiceService) HandleTranscriptChatOnly(ctx context.Context, deviceNo, t
 	if err = s.applyTextChatGuards(ctx, deviceNo, transcript); err != nil {
 		return "", "", false, false, err
 	}
-	chatRes, cErr := s.chatWithResult(ctx, deviceNo, transcript, true)
+	chatRes, cErr := s.chatWithResult(ctx, deviceNo, transcript)
 	if cErr != nil {
 		return chatRes.Ask, chatRes.Reply, chatRes.Exit, chatRes.FinishTalk, cErr
 	}
 	return chatRes.Ask, chatRes.Reply, chatRes.Exit, chatRes.FinishTalk, nil
 }
 
-func (s *VoiceService) HandleTranscriptForStreaming(ctx context.Context, deviceNo, transcript string) (ask string, answer string, mode string, needCasualStream bool, exit bool, finishTalk bool, err error) {
+func (s *VoiceService) HandleTranscriptForStreaming(ctx context.Context, deviceNo, transcript string) (ask string, answer string, exit bool, finishTalk bool, err error) {
 	if err = s.ensureDeviceRegistered(ctx, deviceNo); err != nil {
-		return "", "", "", false, false, false, err
+		return "", "", false, false, err
 	}
 	if err = s.applyTextChatGuards(ctx, deviceNo, transcript); err != nil {
-		return "", "", "", false, false, false, err
+		return "", "", false, false, err
 	}
-	chatRes, cErr := s.chatWithResult(ctx, deviceNo, transcript, false)
+	chatRes, cErr := s.chatWithResult(ctx, deviceNo, transcript)
 	if cErr != nil {
-		return chatRes.Ask, chatRes.Reply, chatRes.Mode, chatRes.NeedCasualStream, chatRes.Exit, chatRes.FinishTalk, cErr
+		return chatRes.Ask, chatRes.Reply, chatRes.Exit, chatRes.FinishTalk, cErr
 	}
-	return chatRes.Ask, chatRes.Reply, chatRes.Mode, chatRes.NeedCasualStream, chatRes.Exit, chatRes.FinishTalk, nil
+	return chatRes.Ask, chatRes.Reply, chatRes.Exit, chatRes.FinishTalk, nil
+}
+
+// HandleTranscriptForIntentStream 流式意图分析入口（intent_path=stream_land）。
+// 供 MCP / 纯文字场景：先 preamble（pending confirm / pending child），再单次 AnalyzeIntentStream，
+// 用 stream 结果经 mapPythonRespToIntent → applyUnifiedIntentResult 直接落地。
+// 禁止再调非流式 AnalyzeIntent / callDeepSeekUnifiedIntent / chatWithResult（避免二次意图与语义漂移）。
+// TTS 语音场景继续使用 HandleTranscriptForStreaming（非流式）。
+func (s *VoiceService) HandleTranscriptForIntentStream(ctx context.Context, deviceNo, transcript string, cb *contracts.IntentStreamCallback) (*contracts.IntentStreamResult, error) {
+	// 1. 设备注册校验
+	if err := s.ensureDeviceRegistered(ctx, deviceNo); err != nil {
+		return nil, err
+	}
+	// 2. 文本风控校验
+	if err := s.applyTextChatGuards(ctx, deviceNo, transcript); err != nil {
+		return nil, err
+	}
+
+	// 3. 与 chatWithResult 共享 preamble：pending 轮次不发起 Stream
+	pre := s.prepareChatPreamble(ctx, deviceNo, transcript)
+	if !pre.Continue {
+		return &contracts.IntentStreamResult{
+			Ask:        pre.Result.Ask,
+			Answer:     pre.Result.Reply,
+			Exit:       pre.Result.Exit,
+			FinishTalk: pre.Result.FinishTalk,
+		}, pre.Err
+	}
+
+	normalizedTranscript := pre.NormalizedTranscript
+	events := pre.Events
+	glog.Infof(ctx, "问题=%q intent_path=stream_land", normalizedTranscript)
+
+	// 4. quota guard → 单次 Stream（成功才 consume；pending confirm 恢复已在 preamble 返回，不会走到这里）
+	wxID, qCtx, qErr := s.guardVoiceAIQuota(ctx, deviceNo)
+	if qErr != nil {
+		return nil, qErr
+	}
+	ctx = qCtx
+
+	streamRes, streamErr := s.callDeepSeekUnifiedIntentStream(ctx, deviceNo, normalizedTranscript, cb)
+	if streamErr != nil {
+		// Stream 失败：返回错误，禁止回退非流式 AnalyzeIntent
+		glog.Warningf(ctx, "[IntentStream] stream 失败且不回退非流式。deviceNo=%s err=%v", deviceNo, streamErr)
+		return nil, streamErr
+	}
+	if streamRes == nil || streamRes.Result == nil {
+		// Result 为空：降级话术，禁止回退非流式
+		glog.Warningf(ctx, "[IntentStream] stream Result 为空且不回退非流式。deviceNo=%s", deviceNo)
+		degrade := "AI 服务暂时不可用，请稍后再试"
+		thinking := ""
+		answerJSON := ""
+		if streamRes != nil {
+			thinking = streamRes.Thinking
+			answerJSON = streamRes.Answer
+		}
+		return &contracts.IntentStreamResult{
+			Thinking:   thinking,
+			AnswerJSON: answerJSON,
+			Ask:        normalizedTranscript,
+			Answer:     degrade,
+			Exit:       false,
+			FinishTalk: false,
+		}, errors.New("流式意图结果为空")
+	}
+
+	intent := mapPythonRespToIntent(streamRes.Result)
+	s.consumeVoiceAIQuotaOnSuccess(ctx, wxID)
+
+	// 可观测：标记流式落地路径，便于核对「仅一次 Python intent」
+	glog.Infof(ctx, "[IntentStream] intent_path=stream_land deviceNo=%s target_type=%s action=%s need_confirm=%v",
+		deviceNo, intent.TargetType, intent.Action, intent.NeedConfirm)
+
+	chatRes, chatErr := s.applyUnifiedIntentResult(ctx, deviceNo, normalizedTranscript, events, intent)
+	return &contracts.IntentStreamResult{
+		Thinking:   streamRes.Thinking,
+		AnswerJSON: streamRes.Answer,
+		Ask:        chatRes.Ask,
+		Answer:     chatRes.Reply,
+		Exit:       chatRes.Exit,
+		FinishTalk: chatRes.FinishTalk,
+	}, chatErr
+}
+
+// TipStream 流式小贴士生成入口
+// 以流式方式接收思考过程与建议文案，内部调用 PythonAIClient.TipStream。
+// 月龄与当前时间由 Python tip 图派生，本方法不再接收或转发这两类参数。
+func (s *VoiceService) TipStream(ctx context.Context, deviceNo string, eventID int64, eventName string, cb *contracts.TipStreamCallback) (*contracts.TipStreamResponse, error) {
+	// 1. 设备注册校验
+	if err := s.ensureDeviceRegistered(ctx, deviceNo); err != nil {
+		return nil, err
+	}
+	// 2. 加载模型配置（与诊疗共享 LaneClinic）
+	profile, err := aimodel.LoadProfile(ctx, aimodel.LaneClinic)
+	if err != nil {
+		glog.Warningf(ctx, "[TipStream] 模型配置加载失败。deviceNo=%s err=%v", deviceNo, err)
+		return nil, errors.New("AI服务暂时不可用，请稍后再试")
+	}
+	// 3. 调用 Python 流式小贴士生成（body 不含 baby_age_months / current_time）
+	pythonClient := PythonAIClientFromCfg()
+	return pythonClient.TipStream(ctx, &TipStreamRequest{
+		EventID:   eventID,
+		EventName: eventName,
+		DeviceNo:  deviceNo,
+		Model: PythonModelCfg{
+			Provider:    string(profile.Provider),
+			Name:        profile.Model,
+			MaxInFlight: profile.MaxInFlight,
+		},
+	}, cb)
 }
 
 func (s *VoiceService) StreamReplyWithBaiduTTS(

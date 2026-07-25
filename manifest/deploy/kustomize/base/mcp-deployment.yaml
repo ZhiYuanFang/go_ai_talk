@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-service
+  labels:
+    app: mcp-service
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: mcp-service
+  template:
+    metadata:
+      labels:
+        app: mcp-service
+    spec:
+      containers:
+        - name: mcp-service
+          image: go-ai-talk/mcp-service:latest
+          imagePullPolicy: IfNotPresent
+          # mcp-service 不监听 HTTP 端口（WebSocket 客户端），无需 containerPort / livenessProbe HTTP。
+          # 使用进程存活探针：进程退出即 Pod 重启。
+          env:
+            - name: GF_GCFG_FILE
+              value: manifest/config/config.mcp-service.yaml
+            # Pod 内访问 voice-service 须用 ClusterIP DNS，勿依赖 http_targets 默认的 127.0.0.1。
+            - name: VOICE_SERVICE_URL
+              value: http://voice-service:9802
+            - name: DEVICE_GATEWAY_INTERNAL_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: gateway-internal-secret
+                  key: secret
+            - name: XIAOZHI_MCP_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: xiaozhi-mcp-credentials
+                  key: token
+            - name: XIAOZHI_MCP_DEVICE_NO
+              valueFrom:
+                secretKeyRef:
+                  name: xiaozhi-mcp-credentials
+                  key: deviceNo
+            - name: OTEL_SERVICE_NAME
+              value: mcp-service
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://otel-collector:4317
+            - name: OTEL_EXPORTER_OTLP_INSECURE
+              value: "true"
+          livenessProbe:
+            exec:
+              command: ["test", "-d", "/proc/1"]
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            exec:
+              command: ["test", "-d", "/proc/1"]
+            initialDelaySeconds: 5
+            periodSeconds: 10

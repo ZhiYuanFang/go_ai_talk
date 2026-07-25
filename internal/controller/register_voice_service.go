@@ -23,6 +23,10 @@ func RegisterVoiceServiceHTTP(s *ghttp.Server) {
 		group.Bind(NewVoiceAppAIQuotaCtrl())
 		group.Bind(NewVoiceAdminAIQuotaCtrl())
 		group.Bind(NewVoiceAdminLLMLanesCtrl())
+		// 小贴士流式生成宿主为 voice（非 history）：对外 POST /device/tip/generate（SSE）。
+		group.Bind(NewTipCtrl())
+		// clinic/tip 反馈飞轮：POST /device/api/clinic|tip/feedback → Python AI（同宿主 voice）。
+		group.Bind(&DeviceClinicFeedbackController{})
 	})
 	s.Group("/", func(group *ghttp.RouterGroup) {
 		group.Middleware(deviceUcgInternalSecretMiddleware)

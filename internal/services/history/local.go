@@ -26,6 +26,14 @@ func (s *localService) ListHistoryPage(ctx context.Context, deviceNo string, pag
 	return ListDeviceHistoryPage(ctx, deviceNo, page, pageSize)
 }
 
+func (s *localService) ListHistoryFilter(ctx context.Context, deviceNo string, eventIds []int64, startTime int64, endTime int64, limit int) ([]entity.History, error) {
+	return ListDeviceHistoryFilter(ctx, deviceNo, eventIds, startTime, endTime, limit)
+}
+
+func (s *localService) ListHistoryPageV2(ctx context.Context, deviceNo string, page int, pageSize int, startTime int64, endTime int64, limit int) (contracts.HistoryPageResult, error) {
+	return ListDeviceHistoryPageV2(ctx, deviceNo, page, pageSize, startTime, endTime, limit)
+}
+
 func (s *localService) GetLatestHistory(ctx context.Context, deviceNo string) (entity.History, error) {
 	return GetLatestDeviceHistory(ctx, deviceNo)
 }
@@ -355,4 +363,105 @@ func DeleteDeviceHistory(ctx context.Context, id int64, deviceNo string) error {
 		})
 	}
 	return err
+}
+
+// ListDeviceHistoryFilter 多条件筛选历史记录。
+// eventIds 非空时按事件ID列表过滤，startTime/endTime > 0 时按时间区间过滤。
+// 返回结果按 id 倒序，limit 默认 100，上限 500。
+func ListDeviceHistoryFilter(ctx context.Context, deviceNo string, eventIds []int64, startTime int64, endTime int64, limit int) ([]entity.History, error) {
+	deviceNo = strings.TrimSpace(deviceNo)
+	if deviceNo == "" {
+		return []entity.History{}, nil
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > 500 {
+		limit = 500
+	}
+	m := dao.History.Ctx(ctx).
+		Fields(historyListSelectFields()...).
+		Where(dao.History.Columns().DeviceNo, deviceNo)
+	if len(eventIds) > 0 {
+		m = m.WhereIn(dao.History.Columns().EventId, eventIds)
+	}
+	if startTime > 0 {
+		m = m.WhereGTE(dao.History.Columns().StartTime, startTime)
+	}
+	if endTime > 0 {
+		m = m.WhereLTE(dao.History.Columns().StartTime, endTime)
+	}
+	rows, err := m.
+		OrderDesc(dao.History.Columns().Id).
+		Limit(limit).
+		All()
+	if err != nil {
+		return nil, err
+	}
+	items := make([]entity.History, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, historyRowToEntity(row))
+	}
+	return items, nil
+}
+
+// ListDeviceHistoryPageV2 分页查询设备历史记录 v2，支持时间范围和 limit 参数。
+// limit > 0 时用 limit 替代 pageSize，page 忽略（固定为1）。
+// startTime/endTime > 0 时按时间区间过滤。不传新参数时行为与 v1 完全一致。
+func ListDeviceHistoryPageV2(ctx context.Context, deviceNo string, page int, pageSize int, startTime int64, endTime int64, limit int) (contracts.HistoryPageResult, error) {
+	deviceNo = strings.TrimSpace(deviceNo)
+	effectivePage := page
+	effectivePageSize := pageSize
+	// limit > 0 时替代 pageSize，page 固定为 1
+	if limit > 0 {
+		effectivePage = 1
+		effectivePageSize = limit
+		if effectivePageSize > 500 {
+			effectivePageSize = 500
+		}
+	} else {
+		if effectivePage <= 0 {
+			effectivePage = 1
+		}
+		if effectivePageSize <= 0 {
+			effectivePageSize = 20
+		}
+		if effectivePageSize > 100 {
+			effectivePageSize = 100
+		}
+	}
+	if deviceNo == "" {
+		return contracts.HistoryPageResult{List: []entity.History{}, Total: 0, Page: effectivePage, PageSize: effectivePageSize}, nil
+	}
+	countModel := dao.History.Ctx(ctx).Where(dao.History.Columns().DeviceNo, deviceNo)
+	listModel := dao.History.Ctx(ctx).
+		Fields(historyListSelectFields()...).
+		Where(dao.History.Columns().DeviceNo, deviceNo)
+	if startTime > 0 {
+		countModel = countModel.WhereGTE(dao.History.Columns().StartTime, startTime)
+		listModel = listModel.WhereGTE(dao.History.Columns().StartTime, startTime)
+	}
+	if endTime > 0 {
+		countModel = countModel.WhereLTE(dao.History.Columns().StartTime, endTime)
+		listModel = listModel.WhereLTE(dao.History.Columns().StartTime, endTime)
+	}
+	total, err := countModel.Count()
+	if err != nil {
+		return contracts.HistoryPageResult{}, err
+	}
+	if total == 0 {
+		return contracts.HistoryPageResult{List: []entity.History{}, Total: 0, Page: effectivePage, PageSize: effectivePageSize}, nil
+	}
+	rows, err := listModel.
+		OrderDesc(dao.History.Columns().Id).
+		Page(effectivePage, effectivePageSize).
+		All()
+	if err != nil {
+		return contracts.HistoryPageResult{}, err
+	}
+	items := make([]entity.History, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, historyRowToEntity(row))
+	}
+	return contracts.HistoryPageResult{List: items, Total: total, Page: effectivePage, PageSize: effectivePageSize}, nil
 }

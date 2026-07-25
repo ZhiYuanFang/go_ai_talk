@@ -85,6 +85,71 @@ func (r *historyRemoteClient) ListHistoryPage(ctx context.Context, deviceNo stri
 	return contracts.HistoryPageResult{List: resp.List, Total: resp.Total, Page: resp.Page, PageSize: resp.PageSize}, nil
 }
 
+func (r *historyRemoteClient) ListHistoryFilter(ctx context.Context, deviceNo string, eventIds []int64, startTime int64, endTime int64, limit int) ([]entity.History, error) {
+	if err := r.notReady(); err != nil {
+		return nil, err
+	}
+	var resp struct {
+		List []entity.History `json:"list"`
+	}
+	eventIdsStr := ""
+	if len(eventIds) > 0 {
+		parts := make([]string, 0, len(eventIds))
+		for _, id := range eventIds {
+			parts = append(parts, strconv.FormatInt(id, 10))
+		}
+		eventIdsStr = strings.Join(parts, ",")
+	}
+	query := map[string]string{
+		"deviceNo": strings.TrimSpace(deviceNo),
+		"eventIds": eventIdsStr,
+	}
+	if startTime > 0 {
+		query["startTime"] = strconv.FormatInt(startTime, 10)
+	}
+	if endTime > 0 {
+		query["endTime"] = strconv.FormatInt(endTime, 10)
+	}
+	if limit > 0 {
+		query["limit"] = strconv.Itoa(limit)
+	}
+	t := r.targets
+	err := r.doJSON(ctx, http.MethodGet, r.historyBase, t.HistoryFilterPath(), query, nil, &resp)
+	return resp.List, err
+}
+
+func (r *historyRemoteClient) ListHistoryPageV2(ctx context.Context, deviceNo string, page int, pageSize int, startTime int64, endTime int64, limit int) (contracts.HistoryPageResult, error) {
+	if err := r.notReady(); err != nil {
+		return contracts.HistoryPageResult{}, err
+	}
+	var resp struct {
+		List     []entity.History `json:"list"`
+		Total    int              `json:"total"`
+		Page     int              `json:"page"`
+		PageSize int              `json:"pageSize"`
+	}
+	query := map[string]string{
+		"deviceNo": strings.TrimSpace(deviceNo),
+		"page":     strconv.Itoa(page),
+		"pageSize": strconv.Itoa(pageSize),
+	}
+	if startTime > 0 {
+		query["startTime"] = strconv.FormatInt(startTime, 10)
+	}
+	if endTime > 0 {
+		query["endTime"] = strconv.FormatInt(endTime, 10)
+	}
+	if limit > 0 {
+		query["limit"] = strconv.Itoa(limit)
+	}
+	t := r.targets
+	err := r.doJSON(ctx, http.MethodGet, r.historyBase, t.HistoryListV2Path(), query, nil, &resp)
+	if err != nil {
+		return contracts.HistoryPageResult{}, err
+	}
+	return contracts.HistoryPageResult{List: resp.List, Total: resp.Total, Page: resp.Page, PageSize: resp.PageSize}, nil
+}
+
 func (r *historyRemoteClient) GetLatestHistory(ctx context.Context, deviceNo string) (entity.History, error) {
 	if err := r.notReady(); err != nil {
 		return entity.History{}, err
@@ -384,6 +449,32 @@ func (a *switchAdapter) ListHistoryPage(ctx context.Context, deviceNo string, pa
 	if err != nil && a.cfg.failoverToLocal {
 		glog.Warningf(ctx, "history page degrade source=remote->local deviceNo=%s page=%d pageSize=%d err=%v", deviceNo, page, pageSize, err)
 		return a.local.ListHistoryPage(ctx, deviceNo, page, pageSize)
+	}
+	return result, err
+}
+
+func (a *switchAdapter) ListHistoryFilter(ctx context.Context, deviceNo string, eventIds []int64, startTime int64, endTime int64, limit int) ([]entity.History, error) {
+	deviceNo = strings.TrimSpace(deviceNo)
+	if !a.shouldUseRemote(deviceNo) {
+		return a.local.ListHistoryFilter(ctx, deviceNo, eventIds, startTime, endTime, limit)
+	}
+	items, err := a.remote.ListHistoryFilter(ctx, deviceNo, eventIds, startTime, endTime, limit)
+	if err != nil && a.cfg.failoverToLocal {
+		glog.Warningf(ctx, "history filter degrade source=remote->local deviceNo=%s eventIds=%v err=%v", deviceNo, eventIds, err)
+		return a.local.ListHistoryFilter(ctx, deviceNo, eventIds, startTime, endTime, limit)
+	}
+	return items, err
+}
+
+func (a *switchAdapter) ListHistoryPageV2(ctx context.Context, deviceNo string, page int, pageSize int, startTime int64, endTime int64, limit int) (contracts.HistoryPageResult, error) {
+	deviceNo = strings.TrimSpace(deviceNo)
+	if !a.shouldUseRemote(deviceNo) {
+		return a.local.ListHistoryPageV2(ctx, deviceNo, page, pageSize, startTime, endTime, limit)
+	}
+	result, err := a.remote.ListHistoryPageV2(ctx, deviceNo, page, pageSize, startTime, endTime, limit)
+	if err != nil && a.cfg.failoverToLocal {
+		glog.Warningf(ctx, "history page v2 degrade source=remote->local deviceNo=%s page=%d pageSize=%d limit=%d err=%v", deviceNo, page, pageSize, limit, err)
+		return a.local.ListHistoryPageV2(ctx, deviceNo, page, pageSize, startTime, endTime, limit)
 	}
 	return result, err
 }

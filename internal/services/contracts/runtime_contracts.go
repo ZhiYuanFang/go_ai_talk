@@ -39,18 +39,55 @@ type StreamTTSSession interface {
 	Close() error
 }
 
+// IntentStreamCallback 流式意图分析回调
+// 供 MCP 服务和纯文字场景使用，以流式方式接收思考过程和意图结果
+type IntentStreamCallback struct {
+	OnThinking func(delta string) error // 收到思考过程片段时的回调
+	OnAnswer   func(delta string) error // 收到意图结果 JSON 片段时的回调
+}
+
+// IntentStreamResult 流式意图分析结果
+type IntentStreamResult struct {
+	Thinking   string // 完整的思考过程
+	AnswerJSON string // 完整的意图结果 JSON
+	Ask        string // 用户原始输入
+	Answer     string // AI 回答内容
+	Exit       bool   // 是否退出对话
+	FinishTalk bool   // 是否结束本轮对话
+}
+
+// TipStreamCallback 小贴士流式回调
+type TipStreamCallback struct {
+	OnThinking func(delta string) error   // 收到思考过程片段时的回调
+	OnAnswer   func(delta string) error   // 收到回答内容片段时的回调
+	OnDone     func(answerID string) error // 收到完成事件时的回调（包含 answer_id 用于反馈）
+}
+
+// TipStreamResponse 小贴士流式响应结果
+type TipStreamResponse struct {
+	Thinking  string // 完整的思考过程
+	Answer    string // 完整的回答内容
+	AnswerID  string // 回答 ID（用于提交反馈）
+}
+
 type VoiceContract interface {
 	HandleWithDialogue(ctx context.Context, deviceNo string, meta AudioMeta, audioBase64 string) ([]byte, AudioMeta, string, string, bool, bool, error)
 	HandleWithTranscript(ctx context.Context, deviceNo string, meta AudioMeta, transcript string) ([]byte, AudioMeta, string, string, bool, bool, error)
 	HandleTranscriptChatOnly(ctx context.Context, deviceNo, transcript string) (ask string, answer string, exit bool, finishTalk bool, err error)
-	HandleTranscriptForStreaming(ctx context.Context, deviceNo, transcript string) (ask string, answer string, mode string, needCasualStream bool, exit bool, finishTalk bool, err error)
-	DetectChatMode(deviceNo, transcript string) string
+	HandleTranscriptForStreaming(ctx context.Context, deviceNo, transcript string) (ask string, answer string, exit bool, finishTalk bool, err error)
 	CreateStreamTTSSession(ctx context.Context, meta AudioMeta, onAudioChunk func(audio []byte, meta AudioMeta) error) (StreamTTSSession, error)
-	StreamCasualReplyWithBaiduTTS(ctx context.Context, deviceNo string, meta AudioMeta, transcript string, onTextDelta func(text string) error, onAudioChunk func(audio []byte, meta AudioMeta, seq int) error) (string, error)
 	StreamReplyWithBaiduTTS(ctx context.Context, meta AudioMeta, reply string, onAudioChunk func(audio []byte, meta AudioMeta, seq int) error) (chunks int, err error)
 	CreateStreamASRSession(ctx context.Context, meta AudioMeta, onPartial func(text string), onFinal func(text string)) (StreamASRSession, error)
 	StreamRealtimeOptions() (time.Duration, int)
 	TextChat(ctx context.Context, deviceNo, transcript string) (string, error)
+	// HandleTranscriptForIntentStream 流式意图分析入口
+	// 供 MCP 服务和纯文字场景使用，以流式方式接收思考过程和意图结果
+	// 内部调用 PythonAIClient.AnalyzeIntentStream，TTS 语音场景继续使用 HandleTranscriptForStreaming（非流式）
+	HandleTranscriptForIntentStream(ctx context.Context, deviceNo, transcript string, cb *IntentStreamCallback) (*IntentStreamResult, error)
+	// TipStream 流式小贴士生成入口
+	// 以流式方式接收思考过程与建议文案，内部调用 PythonAIClient.TipStream。
+	// 月龄与当前时间由 Python 派生，调用方无需传入。
+	TipStream(ctx context.Context, deviceNo string, eventID int64, eventName string, cb *TipStreamCallback) (*TipStreamResponse, error)
 }
 
 type DeviceAdminContract interface {
@@ -142,6 +179,8 @@ type WxPageResult struct {
 type DeviceHistoryContract interface {
 	ListHistory(ctx context.Context, deviceNo string) ([]entity.History, error)
 	ListHistoryPage(ctx context.Context, deviceNo string, page int, pageSize int) (HistoryPageResult, error)
+	ListHistoryFilter(ctx context.Context, deviceNo string, eventIds []int64, startTime int64, endTime int64, limit int) ([]entity.History, error)
+	ListHistoryPageV2(ctx context.Context, deviceNo string, page int, pageSize int, startTime int64, endTime int64, limit int) (HistoryPageResult, error)
 	GetLatestHistory(ctx context.Context, deviceNo string) (entity.History, error)
 	// EndLatestHistoryIfMatch 若最近一条历史与 eventID 匹配则更新结束时间；remark 非空时同时覆盖备注，空串表示不修改原备注。
 	EndLatestHistoryIfMatch(ctx context.Context, deviceNo string, eventID int64, endTimeUnixSec int64, remark string) (bool, error)

@@ -1,6 +1,7 @@
 package history
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -137,6 +138,79 @@ func DelegateTextChat(ctx context.Context, deviceNo, transcript string, wxID int
 		return "", err
 	}
 	return resp.Reply, nil
+}
+
+// DelegateTextChatStream 经 voice-service internal HTTP 执行流式文本对话（SSE）。
+// cb 用于逐帧接收 thinking/answer 事件。
+func DelegateTextChatStream(ctx context.Context, deviceNo, transcript string, wxID int64, cb *contracts.IntentStreamCallback) (string, error) {
+	secret := strings.TrimSpace(os.Getenv("DEVICE_GATEWAY_INTERNAL_SECRET"))
+	if secret == "" {
+		return "", fmt.Errorf("DEVICE_GATEWAY_INTERNAL_SECRET 未配置")
+	}
+	t := contracts.ResolveHTTPTargets()
+	// 1. 构造请求体
+	reqBody, _ := json.Marshal(map[string]interface{}{
+		"deviceNo":   strings.TrimSpace(deviceNo),
+		"transcript": strings.TrimSpace(transcript),
+	})
+	// 2. 创建 HTTP 请求
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(t.VoiceBaseURL, "/")+t.VoiceInternalTextChatStreamPath(), strings.NewReader(string(reqBody)))
+	if err != nil {
+		return "", fmt.Errorf("创建流式对话请求失败: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Accept", "text/event-stream")
+	httpReq.Header.Set(device.HeaderDeviceGatewayInternalSecret, secret)
+	if wxID > 0 {
+		httpReq.Header.Set(gatewayapp.HeaderInternalWxId, strconv.FormatInt(wxID, 10))
+	}
+	// 3. 发送请求
+	client := &http.Client{Timeout: 60 * time.Second}
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		return "", fmt.Errorf("调用流式对话服务失败: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("流式对话服务返回错误状态码 %d: %s", resp.StatusCode, string(respBody))
+	}
+	// 4. 逐行解析 SSE 响应并回调
+	var answer string
+	scanner := bufio.NewScanner(resp.Body)
+	var currentEvent string
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "event: ") {
+			currentEvent = strings.TrimPrefix(line, "event: ")
+			continue
+		}
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		data := strings.TrimPrefix(line, "data: ")
+		if data == "[DONE]" {
+			break
+		}
+		switch currentEvent {
+		case "thinking":
+			if cb != nil && cb.OnThinking != nil {
+				if cbErr := cb.OnThinking(data); cbErr != nil {
+					return answer, cbErr
+				}
+			}
+		case "answer":
+			answer += data
+			if cb != nil && cb.OnAnswer != nil {
+				if cbErr := cb.OnAnswer(data); cbErr != nil {
+					return answer, cbErr
+				}
+			}
+		case "error":
+			return answer, fmt.Errorf("%s", data)
+		}
+	}
+	return answer, scanner.Err()
 }
 
 func delegateListSuggest(ctx context.Context, deviceNo string) ([]entity.Suggest, error) {

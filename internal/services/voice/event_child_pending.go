@@ -124,8 +124,6 @@ func (s *VoiceService) applyEventActionTarget(ctx context.Context, deviceNo, act
 		eventNumber := int64(1)
 		if quantity > 0 {
 			eventNumber = int64(quantity)
-		} else if q, ok := extractNumberFromText(normalizedTranscript); ok && q > 0 {
-			eventNumber = int64(q)
 		}
 		_, err = DeviceHistory().AddHistory(ctx, entity.History{
 			DeviceNo:    deviceNo,
@@ -152,13 +150,28 @@ func (s *VoiceService) applyEventActionTarget(ctx context.Context, deviceNo, act
 // resolveEventForAction 解析动作链路中的事件；非叶子时写入 pending 并返回追问。
 func (s *VoiceService) resolveEventForAction(ctx context.Context, deviceNo, normalizedTranscript string, events []entity.Event, actionTarget string, intent *deepSeekUnifiedIntent) (event entity.Event, targetName string, pendingReply string, ok bool, err error) {
 	idx := buildEventTreeIndex(events)
-	res := s.resolveEventLeaf(ctx, normalizedTranscript, events, nil, idx)
+	res := eventLeafResolveResult{}
+
+	// 步骤1：使用 Python 返回的 event_id 直接匹配（优先）
+	if intent != nil && strings.TrimSpace(intent.EventId) != "" {
+		eventIdStr := strings.TrimSpace(intent.EventId)
+		for _, ev := range events {
+			if fmt.Sprintf("%d", ev.Id) == eventIdStr {
+				target := strings.TrimSpace(intent.ExtraEvent)
+				if target == "" {
+					target = ev.Name
+				}
+				res = s.wrapLeafResult(ev, target, idx)
+				break
+			}
+		}
+	}
+
+	// 步骤2：使用 intent.EventName 匹配
 	if !res.OK && intent != nil {
 		target := strings.TrimSpace(intent.ExtraEvent)
 		needle := strings.TrimSpace(intent.EventName)
-		sorted := append([]entity.Event(nil), events...)
-		idx.sortForMatch(sorted)
-		for _, ev := range sorted {
+		for _, ev := range events {
 			if needle != "" && (strings.EqualFold(ev.Name, needle) || strings.Contains(strings.ToLower(ev.Name), strings.ToLower(needle))) {
 				if target == "" {
 					target = ev.Name
@@ -168,16 +181,9 @@ func (s *VoiceService) resolveEventForAction(ctx context.Context, deviceNo, norm
 			}
 		}
 	}
-	if !res.OK {
-		var dsErr error
-		event, targetName, dsErr = s.callDeepSeekEntityExtract(ctx, deviceNo, normalizedTranscript)
-		if dsErr != nil {
-			return entity.Event{}, "", "", false, dsErr
-		}
-		idx = buildEventTreeIndex(events)
-		res = s.wrapLeafResult(event, targetName, idx)
-	}
-	if !res.OK && intent != nil {
+
+	// 步骤3：新事件创建
+	if !res.OK && intent != nil && intent.IsNewEvent {
 		needle := strings.TrimSpace(intent.EventName)
 		if needle != "" {
 			target := strings.TrimSpace(intent.ExtraEvent)
@@ -191,6 +197,7 @@ func (s *VoiceService) resolveEventForAction(ctx context.Context, deviceNo, norm
 			}
 		}
 	}
+
 	if !res.OK {
 		return entity.Event{}, "", "", false, nil
 	}
