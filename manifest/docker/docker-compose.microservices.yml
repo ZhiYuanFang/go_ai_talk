@@ -32,6 +32,7 @@ services:
       dockerfile: manifest/docker/Dockerfile.gateway-service
     image: go-ai-talk/gateway:local
     container_name: go-ai-talk-gateway
+    restart: on-failure:1
     environment:
       <<: *logger-env
       TZ: Asia/Shanghai
@@ -75,6 +76,7 @@ services:
       dockerfile: manifest/docker/Dockerfile.gateway-app-service
     image: go-ai-talk/gateway-app:local
     container_name: go-ai-talk-gateway-app
+    restart: on-failure:1
     environment:
       <<: *logger-env
       TZ: Asia/Shanghai
@@ -140,6 +142,7 @@ services:
       dockerfile: manifest/docker/Dockerfile.history-service
     image: go-ai-talk/history-service:local
     container_name: go-ai-talk-history-service
+    restart: on-failure:1
     # 使容器内可解析 host.docker.internal 为宿主机（连宿主机上 MySQL 时用，见 manifest/docker/.env.local）。
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -176,6 +179,7 @@ services:
     container_name: go-ai-talk-voice-service
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    restart: on-failure:1
     environment:
       <<: *logger-env
       TZ: Asia/Shanghai
@@ -222,6 +226,7 @@ services:
     container_name: go-ai-talk-device-service
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    restart: on-failure:1
     environment:
       <<: *logger-env
       TZ: Asia/Shanghai
@@ -255,6 +260,7 @@ services:
       - ./env/apns:/app/apns:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    restart: on-failure:1
     environment:
       <<: *logger-env
       TZ: Asia/Shanghai
@@ -307,6 +313,7 @@ services:
     container_name: go-ai-talk-notify-service
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    restart: on-failure:1
     environment:
       <<: *logger-env
       TZ: Asia/Shanghai
@@ -334,6 +341,7 @@ services:
     container_name: go-ai-talk-sim-user-service
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    restart: on-failure:1
     environment:
       <<: *logger-env
       TZ: Asia/Shanghai
@@ -369,6 +377,7 @@ services:
     container_name: go-ai-talk-mcp-service
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    restart: on-failure:1
     environment:
       <<: *logger-env
       TZ: Asia/Shanghai

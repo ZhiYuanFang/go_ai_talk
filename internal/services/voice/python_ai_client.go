@@ -47,7 +47,7 @@ type AnalyzeIntentRequest struct {
 // 由 go 侧从 llmLanes 配置中读取，不在 Python 中轮询
 type PythonModelCfg struct {
 	Provider    string `json:"provider"`      // 模型提供商，如 deepseek、zhipu
-	Name        string `json:"name"`          // 模型名称，如 deepseek-chat
+	Name        string `json:"name"`          // 模型名称，如 deepseek-v4-flash
 	MaxInFlight int    `json:"max_in_flight"` // 最大并发数
 }
 
@@ -63,20 +63,20 @@ type IntentEvent struct {
 // AnalyzeIntentResponse 意图分析响应体
 // 与 Python 服务的返回结构对齐
 type AnalyzeIntentResponse struct {
-	TargetType string       `json:"target_type"` // 目标类型：feeding|history|suggest|conversation|exit
-	Action     string       `json:"action"`      // 动作类型：start|end|one|search|suggestion|reply|exit|multi
-	EventName  string       `json:"event_name"`  // 匹配到的事件名称（喂养场景，单事件时使用）
-	EventId    string       `json:"event_id"`    // 事件ID（单事件时使用）
-	Quantity   *int         `json:"quantity,omitempty"`   // 从用户输入中提取的数量值（Python 前置提取）
-	EventType  string       `json:"event_type,omitempty"`  // 事件类型：number|time|one（新事件时 Python 返回）
-	EventUnit  string       `json:"event_unit,omitempty"`  // 事件单位：ml、次、分钟（新事件时 Python 返回）
-	IsNewEvent bool         `json:"is_new_event,omitempty"` // 是否为新事件
-	Keywords   []string     `json:"keywords"`    // 匹配到的关键词列表
-	Content    string       `json:"content"`     // 对话场景的回答内容
-	Events     []IntentEvent `json:"events"`     // 多事件列表（当 action 为 multi 时使用）
-	NeedConfirm    bool     `json:"need_confirm"`    // 是否需要用户确认（Python 图执行中断，等待用户 confirm/reject 后恢复）
-	ConfirmMessage string   `json:"confirm_message"` // 确认提示话术（由 Python 侧生成，引导用户回复确认或取消）
-	ConversationID string   `json:"conversation_id"` // 会话 ID（用于调用 /v1/analyze/intent/confirm 恢复图执行）
+	TargetType     string        `json:"target_type"`            // 目标类型：feeding|history|suggest|conversation|exit
+	Action         string        `json:"action"`                 // 动作类型：start|end|one|search|suggestion|reply|exit|multi
+	EventName      string        `json:"event_name"`             // 匹配到的事件名称（喂养场景，单事件时使用）
+	EventId        string        `json:"event_id"`               // 事件ID（单事件时使用）
+	Quantity       *int          `json:"quantity,omitempty"`     // 从用户输入中提取的数量值（Python 前置提取）
+	EventType      string        `json:"event_type,omitempty"`   // 事件类型：number|time|one（新事件时 Python 返回）
+	EventUnit      string        `json:"event_unit,omitempty"`   // 事件单位：ml、次、分钟（新事件时 Python 返回）
+	IsNewEvent     bool          `json:"is_new_event,omitempty"` // 是否为新事件
+	Keywords       []string      `json:"keywords"`               // 匹配到的关键词列表
+	Content        string        `json:"content"`                // 对话场景的回答内容
+	Events         []IntentEvent `json:"events"`                 // 多事件列表（当 action 为 multi 时使用）
+	NeedConfirm    bool          `json:"need_confirm"`           // 是否需要用户确认（Python 图执行中断，等待用户 confirm/reject 后恢复）
+	ConfirmMessage string        `json:"confirm_message"`        // 确认提示话术（由 Python 侧生成，引导用户回复确认或取消）
+	ConversationID string        `json:"conversation_id"`        // 会话 ID（用于调用 /v1/analyze/intent/confirm 恢复图执行）
 }
 
 // ConfirmIntentRequest confirm 请求体
@@ -180,8 +180,8 @@ type ClinicStreamRequest struct {
 // ClinicStreamCallback 诊疗流式回调
 // 用于将流式响应分块传递给调用方
 type ClinicStreamCallback struct {
-	OnThinking func(delta string) error // 收到思考过程片段时的回调
-	OnAnswer   func(delta string) error // 收到回答内容片段时的回调
+	OnThinking func(delta string) error    // 收到思考过程片段时的回调
+	OnAnswer   func(delta string) error    // 收到回答内容片段时的回调
 	OnDone     func(answerID string) error // 收到完成事件时的回调（包含 answer_id 用于反馈）
 }
 
@@ -192,9 +192,9 @@ type ClinicStreamCallback struct {
 // 返回：完整的思考过程、完整的回答内容、错误
 // ClinicStreamResponse 诊疗流式响应结果
 type ClinicStreamResponse struct {
-	Thinking  string // 完整的思考过程
-	Answer    string // 完整的回答内容
-	AnswerID  string // 回答 ID（用于提交反馈）
+	Thinking string // 完整的思考过程
+	Answer   string // 完整的回答内容
+	AnswerID string // 回答 ID（用于提交反馈）
 }
 
 func (c *PythonAIClient) ClinicStream(ctx context.Context, req *ClinicStreamRequest, cb *ClinicStreamCallback) (*ClinicStreamResponse, error) {
@@ -288,7 +288,6 @@ func PythonAIClientFromCfg() *PythonAIClient {
 	}
 	return NewPythonAIClient(url)
 }
-
 
 // TipStreamRequest 小贴士流式请求体
 // 与 Python 服务的 /v1/tip/stream 接口对齐（snake_case）。
@@ -450,16 +449,16 @@ type AnalyzeIntentStreamRequest = AnalyzeIntentRequest
 // AnalyzeIntentStreamCallback 流式意图分析回调
 // 用于将 SSE 流式响应分块传递给调用方
 type AnalyzeIntentStreamCallback struct {
-	OnThinking func(delta string) error                    // 收到思考过程片段时的回调
-	OnAnswer   func(delta string) error                    // 收到回答内容片段时的回调（answer 内容为 JSON 格式的意图结果）
-	OnDone     func(result *AnalyzeIntentResponse) error   // 收到完成事件时的回调（包含完整的意图分析结果）
+	OnThinking func(delta string) error                  // 收到思考过程片段时的回调
+	OnAnswer   func(delta string) error                  // 收到回答内容片段时的回调（answer 内容为 JSON 格式的意图结果）
+	OnDone     func(result *AnalyzeIntentResponse) error // 收到完成事件时的回调（包含完整的意图分析结果）
 }
 
 // AnalyzeIntentStreamResponse 流式意图分析响应结果
 type AnalyzeIntentStreamResponse struct {
-	Thinking string                   // 完整的思考过程
-	Answer   string                   // 完整的回答内容（JSON 格式的意图结果）
-	Result   *AnalyzeIntentResponse   // 解析后的意图分析结果
+	Thinking string                 // 完整的思考过程
+	Answer   string                 // 完整的回答内容（JSON 格式的意图结果）
+	Result   *AnalyzeIntentResponse // 解析后的意图分析结果
 }
 
 // AnalyzeIntentStream 调用 Python 服务进行流式意图分析

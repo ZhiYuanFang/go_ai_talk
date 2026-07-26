@@ -33,7 +33,7 @@ voiceChat:
   deepseek:
     endpoint: "https://api.deepseek.com/v1/chat/completions"
     apiKey: ""
-    model: "deepseek-chat"
+    model: "deepseek-v4-flash"
     systemPrompt: ""
     stream: true
     minTextLength: 2

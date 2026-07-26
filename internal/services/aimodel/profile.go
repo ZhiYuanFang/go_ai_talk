@@ -26,10 +26,10 @@ type ProfileStore interface {
 }
 
 var (
-	storeMu       sync.RWMutex
-	defaultStore  ProfileStore
-	profileCache  = make(map[Lane]cachedProfile)
-	cacheTTL      = 60 * time.Second
+	storeMu      sync.RWMutex
+	defaultStore ProfileStore
+	profileCache = make(map[Lane]cachedProfile)
+	cacheTTL     = 60 * time.Second
 )
 
 type cachedProfile struct {
@@ -117,7 +117,7 @@ var ProviderModels = map[Provider][]string{
 		"cogvideox-flash",
 	},
 	ProviderDeepSeek: {
-		"deepseek-chat",
+		"deepseek-v4-flash",
 		"deepseek-v4-pro",
 	},
 	ProviderDashScope: {
