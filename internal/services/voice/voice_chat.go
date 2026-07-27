@@ -769,8 +769,9 @@ func (s *VoiceService) HandleTranscriptForStreaming(ctx context.Context, deviceN
 }
 
 // HandleTranscriptForIntentStream 流式意图分析入口（intent_path=stream_land）。
-// 供 MCP / 纯文字场景：先 preamble（pending confirm / pending child），再单次 AnalyzeIntentStream，
+// 供 MCP / 纯文字场景：先 preamble（pending child），再单次 AnalyzeIntentStream（可附带澄清 conversation_id），
 // 用 stream 结果经 mapPythonRespToIntent → applyUnifiedIntentResult 直接落地。
+// 额度：与 chatWithResult 一致——发起前有有效澄清 cid 则免计 guard/consume；冷启动仍计次。
 // 禁止再调非流式 AnalyzeIntent / callDeepSeekUnifiedIntent / chatWithResult（避免二次意图与语义漂移）。
 // TTS 语音场景继续使用 HandleTranscriptForStreaming（非流式）。
 func (s *VoiceService) HandleTranscriptForIntentStream(ctx context.Context, deviceNo, transcript string, cb *contracts.IntentStreamCallback) (*contracts.IntentStreamResult, error) {
@@ -783,7 +784,7 @@ func (s *VoiceService) HandleTranscriptForIntentStream(ctx context.Context, devi
 		return nil, err
 	}
 
-	// 3. 与 chatWithResult 共享 preamble：pending 轮次不发起 Stream
+	// 3. 与 chatWithResult 共享 preamble：pending child 可短路；澄清续聊不在此短路，由 Stream 带 cid
 	pre := s.prepareChatPreamble(ctx, deviceNo, transcript)
 	if !pre.Continue {
 		return &contracts.IntentStreamResult{
@@ -798,16 +799,23 @@ func (s *VoiceService) HandleTranscriptForIntentStream(ctx context.Context, devi
 	events := pre.Events
 	glog.Infof(ctx, "问题=%q intent_path=stream_land", normalizedTranscript)
 
-	// 4. quota guard → 单次 Stream（成功才 consume；pending confirm 恢复已在 preamble 返回，不会走到这里）
-	wxID, qCtx, qErr := s.guardVoiceAIQuota(ctx, deviceNo)
-	if qErr != nil {
-		return nil, qErr
+	// 4. 额度：澄清续聊免计；冷启动 guard → 成功 consume
+	clarifyResume := pendingConversationID(deviceNo) != ""
+	var wxID int64
+	if clarifyResume {
+		glog.Infof(ctx, "[Clarify] stream 续聊免计 AI 额度。deviceNo=%s conversation_id=%s intent_path=stream_land",
+			deviceNo, pendingConversationID(deviceNo))
+	} else {
+		var qErr error
+		wxID, ctx, qErr = s.guardVoiceAIQuota(ctx, deviceNo)
+		if qErr != nil {
+			return nil, qErr
+		}
 	}
-	ctx = qCtx
 
 	streamRes, streamErr := s.callDeepSeekUnifiedIntentStream(ctx, deviceNo, normalizedTranscript, cb)
 	if streamErr != nil {
-		// Stream 失败：返回错误，禁止回退非流式 AnalyzeIntent
+		// Stream 失败：返回错误，禁止回退非流式 AnalyzeIntent；失败不 clear cid
 		glog.Warningf(ctx, "[IntentStream] stream 失败且不回退非流式。deviceNo=%s err=%v", deviceNo, streamErr)
 		return nil, streamErr
 	}
@@ -832,11 +840,13 @@ func (s *VoiceService) HandleTranscriptForIntentStream(ctx context.Context, devi
 	}
 
 	intent := mapPythonRespToIntent(streamRes.Result)
-	s.consumeVoiceAIQuotaOnSuccess(ctx, wxID)
+	if !clarifyResume {
+		s.consumeVoiceAIQuotaOnSuccess(ctx, wxID)
+	}
 
-	// 可观测：标记流式落地路径，便于核对「仅一次 Python intent」
-	glog.Infof(ctx, "[IntentStream] intent_path=stream_land deviceNo=%s target_type=%s action=%s need_confirm=%v",
-		deviceNo, intent.TargetType, intent.Action, intent.NeedConfirm)
+	// 可观测：标记流式落地路径，便于核对「仅一次 Python intent」与澄清免计
+	glog.Infof(ctx, "[IntentStream] intent_path=stream_land deviceNo=%s target_type=%s action=%s need_confirm=%v conversation_id=%s clarify_resume=%v",
+		deviceNo, intent.TargetType, intent.Action, intent.NeedConfirm, intent.ConversationID, clarifyResume)
 
 	chatRes, chatErr := s.applyUnifiedIntentResult(ctx, deviceNo, normalizedTranscript, events, intent)
 	return &contracts.IntentStreamResult{

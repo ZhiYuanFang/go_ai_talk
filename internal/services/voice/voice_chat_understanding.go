@@ -30,9 +30,9 @@ type deepSeekUnifiedIntent struct {
 	Reply         string `json:"reply"`
 	NeedUserReply bool   `json:"need_user_reply"`
 	TargetType    string `json:"target_type"`
-	NeedConfirm    bool   `json:"need_confirm"`    // 是否需要用户确认（Python 图执行中断，等待 confirm/reject）
-	ConfirmMessage string `json:"confirm_message"` // 确认提示话术（Python 生成，引导用户回复）
-	ConversationID string `json:"conversation_id"` // 会话 ID（用于调用 ConfirmIntent 恢复图执行）
+	NeedConfirm    bool   `json:"need_confirm"`    // 是否需要用户澄清（同一 /intent + conversation_id 续聊）
+	ConfirmMessage string `json:"confirm_message"` // 澄清话术（Python 生成，Go 原样透传）
+	ConversationID string `json:"conversation_id"` // 会话 ID；need_confirm 时保存，下一轮 intent 请求带回
 	Events        []IntentEvent `json:"events"`         // 多事件列表（当 action 为 multi 时使用）
 }
 
@@ -105,102 +105,19 @@ type chatPreambleOutcome struct {
 	Events               []entity.Event
 }
 
-// prepareChatPreamble 对话前置编排（流式/非流式入口共享），优先级与现网一致：
+// prepareChatPreamble 对话前置编排（流式/非流式入口共享）：
 // 1) 文本规范化与长度校验
-// 2) pending confirm：命中 confirm/reject → ConfirmIntent → 落库/回复；无法识别则清 pending 后继续
-// 3) pending child：仅在直接子节点中匹配并落库
-// 业务说明：流式入口必须在发起 AnalyzeIntentStream 之前走本函数，避免 pending 轮次白白多一次 Python Stream。
+// 2) pending child：仅在直接子节点中匹配并落库（Go 本域事件树逻辑）
+// 澄清续聊不再在此短路：conversation_id 由统一 AnalyzeIntent / Stream 携带，自由文本由 Python 解析。
 // Args:
-//   - deviceNo: 设备号（pending 状态按设备隔离）
+//   - deviceNo: 设备号（pending child 按设备隔离）
 //   - transcript: 用户本轮原文/转写
 // Returns: Continue=false 时 Result/Err 可直接返回；Continue=true 时携带 NormalizedTranscript 与事件主档。
-// Side Effects: 可能 clear/读 pendingConfirm、调用 ConfirmIntent、insertQa、继续子事件落库。
+// Side Effects: 可能继续子事件落库、insertQa。
 func (s *VoiceService) prepareChatPreamble(ctx context.Context, deviceNo, transcript string) chatPreambleOutcome {
 	normalizedTranscript, err := s.normalizeAndValidateChatText(transcript)
 	if err != nil {
 		return chatPreambleOutcome{Err: err}
-	}
-
-	// pending confirm 优先级最高：上一轮 NeedConfirm 后本轮只解析 confirm/reject
-	if pendingEntry := pendingConfirmState.get(deviceNo); pendingEntry != nil {
-		feedback := parseConfirmFeedback(normalizedTranscript)
-		if feedback != "" {
-			// 先清 pending 再调 ConfirmIntent，避免失败后残留导致死循环
-			pendingConfirmState.clear(deviceNo)
-
-			pythonClient := PythonAIClientFromCfg()
-			confirmResp, confirmErr := pythonClient.ConfirmIntent(ctx, &ConfirmIntentRequest{
-				ConversationID: pendingEntry.ConversationID,
-				UserFeedback:   feedback,
-			})
-			if confirmErr != nil {
-				glog.Warningf(ctx, "[Confirm] confirm 调用失败。deviceNo=%s conversation_id=%s err=%v", deviceNo, pendingEntry.ConversationID, confirmErr)
-				reply := "确认失败，请再说一次"
-				s.insertQa(ctx, normalizedTranscript, reply)
-				return chatPreambleOutcome{
-					Result: chatResult{
-						Reply:      reply,
-						Ask:        normalizedTranscript,
-						FinishTalk: false,
-					},
-				}
-			}
-
-			// Confirm 响应映射为统一意图；confirm 恢复路径不走意图 quota consume（与现网一致）
-			intent := deepSeekUnifiedIntent{
-				TargetType:    strings.TrimSpace(strings.ToLower(confirmResp.TargetType)),
-				Action:        strings.TrimSpace(confirmResp.Action),
-				EventName:     strings.TrimSpace(confirmResp.EventName),
-				Reply:         sanitizeModelReplyText(confirmResp.Content),
-				NeedUserReply: true,
-			}
-			glog.Debugf(ctx, "[Confirm] confirm 恢复图执行成功。deviceNo=%s target_type=%s action=%s", deviceNo, intent.TargetType, intent.Action)
-
-			if ParseActionTargetType(intent.TargetType) == ActionTargetTypeConversation || strings.TrimSpace(intent.TargetType) == "" {
-				reply := strings.TrimSpace(intent.Reply)
-				if reply == "" {
-					reply = "我明白了，请再具体一点，我马上帮你处理。"
-				}
-				s.insertQa(ctx, normalizedTranscript, reply)
-				return chatPreambleOutcome{
-					Result: chatResult{
-						Reply:      reply,
-						Ask:        normalizedTranscript,
-						FinishTalk: !intent.NeedUserReply,
-					},
-				}
-			}
-
-			events := []entity.Event{}
-			events, _ = DeviceAdmin().ListEvents(ctx)
-			action := entity.Action{
-				Name:       strings.TrimSpace(intent.ActionName),
-				TargetType: ParseActionTargetType(intent.TargetType).String(),
-			}
-			if action.Name == "" {
-				action.Name = strings.TrimSpace(intent.Action)
-			}
-			// confirm 恢复路径动作名回退优先用 EventName（与抽取前行为一致）
-			if action.Name == "" {
-				action.Name = strings.TrimSpace(intent.EventName)
-			}
-			glog.Infof(ctx, "[Confirm] confirm 命中动作: %s", action.Name)
-			finalReply, exit, finishTalk, handleErr := s.handleUnifiedIntentAction(ctx, deviceNo, normalizedTranscript, action, events, intent)
-			if handleErr == nil {
-				s.insertQa(ctx, normalizedTranscript, finalReply)
-			}
-			return chatPreambleOutcome{
-				Result: chatResult{
-					Reply:      finalReply,
-					Ask:        normalizedTranscript,
-					Exit:       exit,
-					FinishTalk: finishTalk,
-				},
-				Err: handleErr,
-			}
-		}
-		// 反馈无法识别为 confirm/reject：清 pending 后落入常规意图分析
-		pendingConfirmState.clear(deviceNo)
 	}
 
 	events := []entity.Event{}
@@ -237,17 +154,17 @@ func (s *VoiceService) prepareChatPreamble(ctx context.Context, deviceNo, transc
 	}
 }
 
-// applyUnifiedIntentResult 将已映射的统一意图落地为确认 / 闲聊 / 动作执行。
+// applyUnifiedIntentResult 将已映射的统一意图落地为澄清 / 闲聊 / 动作执行。
 // 供非流式 chatWithResult 与流式 HandleTranscriptForIntentStream 共用，保证行为矩阵单一真源。
-// 业务分支：NeedConfirm → 置 pending；conversation/空 target → insertQa；其余 → handleUnifiedIntentAction（含 multi-event）。
+// 业务分支：NeedConfirm → 仅存 conversation_id 并透传自然语言；否则清 cid → conversation 或 handleUnifiedIntentAction（含 multi-event）。
 // Args:
 //   - normalizedTranscript: 已规范化用户文本
 //   - events: 设备事件主档（经 DeviceAdmin）
 //   - intent: 已由 mapPythonRespToIntent 等映射完成的结构
 // Returns: chatResult 与业务错误
-// Side Effects: 可能 set pendingConfirm、insertQa、经 handleUnifiedIntentAction 写事件
+// Side Effects: 可能 set/clear pendingConfirm cid、insertQa、经 handleUnifiedIntentAction 写事件
 func (s *VoiceService) applyUnifiedIntentResult(ctx context.Context, deviceNo, normalizedTranscript string, events []entity.Event, intent deepSeekUnifiedIntent) (chatResult, error) {
-	// NeedConfirm：保存 pending，返回确认话术，不落库
+	// NeedConfirm：只保存 conversation_id，透传 Python 自然语言，不落库
 	if intent.NeedConfirm {
 		pendingConfirmState.set(deviceNo, &pendingConfirmEntry{
 			ConversationID: intent.ConversationID,
@@ -262,7 +179,7 @@ func (s *VoiceService) applyUnifiedIntentResult(ctx context.Context, deviceNo, n
 		if reply == "" {
 			reply = "请确认是否执行该操作？"
 		}
-		glog.Infof(ctx, "[Confirm] 意图分析返回 need_confirm，等待用户确认。deviceNo=%s conversation_id=%s", deviceNo, intent.ConversationID)
+		glog.Infof(ctx, "[Clarify] need_confirm，透传话术并等待续聊。deviceNo=%s conversation_id=%s", deviceNo, intent.ConversationID)
 		s.insertQa(ctx, normalizedTranscript, reply)
 		return chatResult{
 			Reply:      reply,
@@ -270,6 +187,9 @@ func (s *VoiceService) applyUnifiedIntentResult(ctx context.Context, deviceNo, n
 			FinishTalk: false,
 		}, nil
 	}
+
+	// 非确认结果：清除本地 cid，再走闲聊或 CRUD
+	pendingConfirmState.clear(deviceNo)
 
 	// 闲聊 / 空 target：仅回复，不走动作落库
 	if ParseActionTargetType(intent.TargetType) == ActionTargetTypeConversation || strings.TrimSpace(intent.TargetType) == "" {
@@ -310,8 +230,9 @@ func (s *VoiceService) applyUnifiedIntentResult(ctx context.Context, deviceNo, n
 }
 
 // chatWithResult 对话核心流程（非流式意图分析入口）：
-// - 前置：pending confirm / pending child（prepareChatPreamble）
+// - 前置：pending child（prepareChatPreamble）；澄清 cid 由本函数内 AnalyzeIntent 携带
 // - 常规：非流式 callDeepSeekUnifiedIntent → applyUnifiedIntentResult 落库/回复
+// - 额度：发起前有有效澄清 cid 则免计（跳过 guard/consume）；冷启动含首次 need_confirm 仍计次
 // TTS / HandleTranscriptForStreaming 等仍走本函数；流式入口禁止再调用本函数以免二次 AnalyzeIntent。
 func (s *VoiceService) chatWithResult(ctx context.Context, deviceNo, transcript string) (chatResult, error) {
 	pre := s.prepareChatPreamble(ctx, deviceNo, transcript)
@@ -323,12 +244,20 @@ func (s *VoiceService) chatWithResult(ctx context.Context, deviceNo, transcript 
 
 	glog.Infof(ctx, "问题=%q", normalizedTranscript)
 
-	// 单次非流式 Python 意图分析，成功后再统一落地
-	wxID, qCtx, qErr := s.guardVoiceAIQuota(ctx, deviceNo)
-	if qErr != nil {
-		return chatResult{}, qErr
+	// 澄清续聊判定须在意图调用前读取本地 cid（成功落地后可能 clear）
+	clarifyResume := pendingConversationID(deviceNo) != ""
+	var wxID int64
+	if clarifyResume {
+		// 免计：额度用尽时仍可完成澄清，避免半途卡死
+		glog.Infof(ctx, "[Clarify] 续聊免计 AI 额度。deviceNo=%s conversation_id=%s", deviceNo, pendingConversationID(deviceNo))
+	} else {
+		var qErr error
+		wxID, ctx, qErr = s.guardVoiceAIQuota(ctx, deviceNo)
+		if qErr != nil {
+			return chatResult{}, qErr
+		}
 	}
-	ctx = qCtx
+
 	intent, err := s.callDeepSeekUnifiedIntent(ctx, deviceNo, normalizedTranscript)
 	if err != nil {
 		return chatResult{
@@ -338,16 +267,19 @@ func (s *VoiceService) chatWithResult(ctx context.Context, deviceNo, transcript 
 			FinishTalk: false,
 		}, err
 	}
-	s.consumeVoiceAIQuotaOnSuccess(ctx, wxID)
+	// 仅冷启动成功计次；澄清续聊不 consume
+	if !clarifyResume {
+		s.consumeVoiceAIQuotaOnSuccess(ctx, wxID)
+	}
 
 	return s.applyUnifiedIntentResult(ctx, deviceNo, normalizedTranscript, events, intent)
 }
 
 func (s *VoiceService) callDeepSeekUnifiedIntent(ctx context.Context, deviceNo, transcript string) (deepSeekUnifiedIntent, error) {
-	// 调用 Python 微服务进行意图分析，Python 不可用时直接返回错误，由上层统一返回降级提示语。
+	// 调用 Python 微服务进行意图分析；若有本地澄清 cid 则写入请求以续聊（调用失败不 clear cid）。
 	if vuProfile, vuErr := aimodel.LoadProfile(ctx, aimodel.LaneVoiceUnderstanding); vuErr == nil {
 		pythonClient := PythonAIClientFromCfg()
-		pythonResp, pythonErr := pythonClient.AnalyzeIntent(ctx, &AnalyzeIntentRequest{
+		req := &AnalyzeIntentRequest{
 			Text:     transcript,
 			DeviceNo: deviceNo,
 			Model: PythonModelCfg{
@@ -355,10 +287,13 @@ func (s *VoiceService) callDeepSeekUnifiedIntent(ctx context.Context, deviceNo, 
 				Name:        vuProfile.Model,
 				MaxInFlight: vuProfile.MaxInFlight,
 			},
-		})
+			ConversationID: pendingConversationID(deviceNo),
+		}
+		pythonResp, pythonErr := pythonClient.AnalyzeIntent(ctx, req)
 		if pythonErr == nil && pythonResp != nil {
 			intent := mapPythonRespToIntent(pythonResp)
-			glog.Debugf(ctx, "[Python AI] 意图分析成功。deviceNo=%s target_type=%s action=%s", deviceNo, intent.TargetType, intent.Action)
+			glog.Debugf(ctx, "[Python AI] 意图分析成功。deviceNo=%s target_type=%s action=%s need_confirm=%v conversation_id=%s",
+				deviceNo, intent.TargetType, intent.Action, intent.NeedConfirm, intent.ConversationID)
 			return intent, nil
 		}
 		if pythonErr != nil {
@@ -396,8 +331,8 @@ func mapPythonRespToIntent(pythonResp *AnalyzeIntentResponse) deepSeekUnifiedInt
 	return intent
 }
 
-// callDeepSeekUnifiedIntentStream 调用流式 Python 意图分析接口，同时将结果通过回调推送给调用方
-// 返回流式响应结果（思考内容 + 意图 JSON），供上层复用
+// callDeepSeekUnifiedIntentStream 调用流式 Python 意图分析接口，同时将结果通过回调推送给调用方。
+// 与非流式一致：本地有澄清 cid 时写入请求；调用失败不 clear cid。
 func (s *VoiceService) callDeepSeekUnifiedIntentStream(ctx context.Context, deviceNo, transcript string, cb *contracts.IntentStreamCallback) (*AnalyzeIntentStreamResponse, error) {
 	if vuProfile, vuErr := aimodel.LoadProfile(ctx, aimodel.LaneVoiceUnderstanding); vuErr == nil {
 		pythonClient := PythonAIClientFromCfg()
@@ -415,7 +350,7 @@ func (s *VoiceService) callDeepSeekUnifiedIntentStream(ctx context.Context, devi
 				}
 			}
 		}
-		// 调用流式 Python 接口
+		// 调用流式 Python 接口（可附带 conversation_id 续聊）
 		streamRes, streamErr := pythonClient.AnalyzeIntentStream(ctx, &AnalyzeIntentStreamRequest{
 			Text:     transcript,
 			DeviceNo: deviceNo,
@@ -424,6 +359,7 @@ func (s *VoiceService) callDeepSeekUnifiedIntentStream(ctx context.Context, devi
 				Name:        vuProfile.Model,
 				MaxInFlight: vuProfile.MaxInFlight,
 			},
+			ConversationID: pendingConversationID(deviceNo),
 		}, streamCb)
 		if streamErr != nil {
 			glog.Warningf(ctx, "[Python AI] 流式意图分析调用失败。deviceNo=%s err=%v", deviceNo, streamErr)
@@ -431,7 +367,8 @@ func (s *VoiceService) callDeepSeekUnifiedIntentStream(ctx context.Context, devi
 		}
 		// Result 可能为空：上层流式落地路径须降级，禁止回退非流式 AnalyzeIntent
 		if streamRes != nil && streamRes.Result != nil {
-			glog.Debugf(ctx, "[Python AI] 流式意图分析成功。deviceNo=%s target_type=%s action=%s", deviceNo, streamRes.Result.TargetType, streamRes.Result.Action)
+			glog.Debugf(ctx, "[Python AI] 流式意图分析成功。deviceNo=%s target_type=%s action=%s need_confirm=%v",
+				deviceNo, streamRes.Result.TargetType, streamRes.Result.Action, streamRes.Result.NeedConfirm)
 		} else {
 			glog.Warningf(ctx, "[Python AI] 流式意图分析返回空 Result。deviceNo=%s", deviceNo)
 		}

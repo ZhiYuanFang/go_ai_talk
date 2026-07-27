@@ -36,11 +36,13 @@ func NewPythonAIClient(baseURL string) *PythonAIClient {
 }
 
 // AnalyzeIntentRequest 意图分析请求体
-// 与 Python 服务的 /v1/analyze/intent 接口对齐
+// 与 Python 服务的 /v1/analyze/intent 及 /v1/analyze/intent/stream 对齐（流式复用本结构）。
+// 同一输入框续聊：上一轮 need_confirm 返回的 conversation_id 在本轮可选带回，供 Python 解析自由文本澄清。
 type AnalyzeIntentRequest struct {
-	Text     string         `json:"text"`      // 用户输入的自然语言文本
-	DeviceNo string         `json:"device_no"` // 设备编号
-	Model    PythonModelCfg `json:"model"`     // 模型配置
+	Text           string         `json:"text"`                      // 用户输入的自然语言文本
+	DeviceNo       string         `json:"device_no"`                 // 设备编号
+	Model          PythonModelCfg `json:"model"`                     // 模型配置
+	ConversationID string         `json:"conversation_id,omitempty"` // 可选；有本地澄清 pending 时带回以续聊
 }
 
 // PythonModelCfg 传递给 Python 服务的模型配置
@@ -74,26 +76,14 @@ type AnalyzeIntentResponse struct {
 	Keywords       []string      `json:"keywords"`               // 匹配到的关键词列表
 	Content        string        `json:"content"`                // 对话场景的回答内容
 	Events         []IntentEvent `json:"events"`                 // 多事件列表（当 action 为 multi 时使用）
-	NeedConfirm    bool          `json:"need_confirm"`           // 是否需要用户确认（Python 图执行中断，等待用户 confirm/reject 后恢复）
-	ConfirmMessage string        `json:"confirm_message"`        // 确认提示话术（由 Python 侧生成，引导用户回复确认或取消）
-	ConversationID string        `json:"conversation_id"`        // 会话 ID（用于调用 /v1/analyze/intent/confirm 恢复图执行）
+	NeedConfirm    bool          `json:"need_confirm"`           // 是否需要用户澄清（同一 /intent 输入框续聊，非独立 confirm 通道）
+	ConfirmMessage string        `json:"confirm_message"`        // 澄清话术（由 Python 生成，Go 侧原样透传）
+	ConversationID string        `json:"conversation_id"`        // 会话 ID；need_confirm 时返回，下一轮请求带回同一 /intent 续聊
 }
-
-// ConfirmIntentRequest confirm 请求体
-// 与 Python 服务的 /v1/analyze/intent/confirm 接口对齐
-// 当 AnalyzeIntentResponse.NeedConfirm=true 时，用户回复后由 go 侧构造该请求体调用 Python 服务恢复图执行
-type ConfirmIntentRequest struct {
-	ConversationID string `json:"conversation_id"` // 会话 ID（来自前一次意图分析的 conversation_id 字段）
-	UserFeedback   string `json:"user_feedback"`   // 用户反馈：confirm 或 reject
-}
-
-// ConfirmIntentResponse confirm 响应体
-// 与 AnalyzeIntentResponse 结构一致，复用类型别名以减少重复定义
-type ConfirmIntentResponse = AnalyzeIntentResponse
 
 // AnalyzeIntent 调用 Python 服务进行意图分析
 // ctx: 上下文，用于超时和取消
-// req: 意图分析请求
+// req: 意图分析请求（可含 conversation_id 续聊）
 // 返回：意图分析响应和错误
 func (c *PythonAIClient) AnalyzeIntent(ctx context.Context, req *AnalyzeIntentRequest) (*AnalyzeIntentResponse, error) {
 	// 将请求体序列化为 JSON
@@ -125,47 +115,8 @@ func (c *PythonAIClient) AnalyzeIntent(ctx context.Context, req *AnalyzeIntentRe
 		return nil, fmt.Errorf("解析意图分析响应失败: %w", err)
 	}
 
-	glog.Debugf(ctx, "[Python AI] 意图分析完成。deviceNo=%s target_type=%s action=%s", req.DeviceNo, result.TargetType, result.Action)
-	return &result, nil
-}
-
-// ConfirmIntent 调用 Python 服务进行 confirm/reject 流程
-// 当 Python 意图分析返回 need_confirm=true 时，go 侧将用户反馈通过本方法回传给 Python 服务
-// 由 Python 服务恢复被中断的图执行，并返回最终意图分析结果
-// ctx: 上下文，用于超时和取消
-// req: confirm 请求体（包含 conversation_id 和 user_feedback）
-// 返回：意图分析响应（恢复图执行后的最终结果）和错误
-func (c *PythonAIClient) ConfirmIntent(ctx context.Context, req *ConfirmIntentRequest) (*ConfirmIntentResponse, error) {
-	// 将请求体序列化为 JSON
-	body, _ := json.Marshal(req)
-
-	// 创建 HTTP POST 请求，调用 Python 服务的 confirm 接口
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/v1/analyze/intent/confirm", strings.NewReader(string(body)))
-	if err != nil {
-		return nil, fmt.Errorf("创建 confirm 请求失败: %w", err)
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	// 发送请求
-	resp, err := c.httpClient.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("调用 Python confirm 服务失败: %w", err)
-	}
-	defer resp.Body.Close()
-
-	// 检查响应状态码，非 200 视为失败
-	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("Python confirm 服务返回错误状态码 %d: %s", resp.StatusCode, string(respBody))
-	}
-
-	// 解析响应体（与 AnalyzeIntentResponse 结构一致）
-	var result ConfirmIntentResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("解析 confirm 响应失败: %w", err)
-	}
-
-	glog.Debugf(ctx, "[Python AI] confirm 完成。conversation_id=%s target_type=%s action=%s", req.ConversationID, result.TargetType, result.Action)
+	glog.Debugf(ctx, "[Python AI] 意图分析完成。deviceNo=%s target_type=%s action=%s conversation_id=%s need_confirm=%v",
+		req.DeviceNo, result.TargetType, result.Action, result.ConversationID, result.NeedConfirm)
 	return &result, nil
 }
 

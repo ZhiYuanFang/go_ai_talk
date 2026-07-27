@@ -212,6 +212,7 @@ func (s *VoiceService) buildGrowthSuggestPayload(ctx context.Context, deviceNo s
 }
 
 // callDeepSeekGrowthSuggestion 成长建议：经 LaneVoiceUnderstanding 调用上游。
+// 独立 AnalyzeIntent，不得附带喂养澄清 conversation_id（不调用 pendingConversationID）。
 func (s *VoiceService) callDeepSeekGrowthSuggestion(ctx context.Context, deviceNo string) (string, error) {
 	// 调用 Python 微服务获取成长建议，Python 不可用时直接返回错误，由上层返回降级提示语。
 	if vuProfile, vuErr := aimodel.LoadProfile(ctx, aimodel.LaneVoiceUnderstanding); vuErr == nil {
@@ -275,6 +276,7 @@ func splitBySentence(input string) []string {
 }
 
 func (s *VoiceService) callDeepSeekHistoryReply(ctx context.Context, deviceNo, transcript string, hours int) (string, error) {
+	// 历史问答：独立 AnalyzeIntent，不得附带喂养澄清 conversation_id。
 	// 调用 Python 微服务进行历史问答，Python 不可用时直接返回错误，由上层返回降级提示语。
 	if vuProfile, vuErr := aimodel.LoadProfile(ctx, aimodel.LaneVoiceUnderstanding); vuErr == nil {
 		pythonClient := PythonAIClientFromCfg()
