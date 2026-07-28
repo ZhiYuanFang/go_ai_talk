@@ -154,9 +154,97 @@ func (s *VoiceService) prepareChatPreamble(ctx context.Context, deviceNo, transc
 	}
 }
 
+// pythonIntentLandPlan 按 Python IntentResponse 两轴映射后的落地计划。
+// 权威：target_type=feeding|history|suggest|conversation|exit；
+// 喂养 action=start|end|one|multi|disambiguate（与兄弟仓 schema 对齐）。
+type pythonIntentLandPlan struct {
+	ReplyOnly     bool          // true：仅自然语言，不进入 handleUnifiedIntentAction / AddHistory
+	Action        entity.Action // ReplyOnly=false 时传给动作执行器
+	UnknownDomain bool          // target_type 未识别，调用方应打 Warning
+}
+
+// mapPythonIntentToLandPlan 将 Python 意图两轴映射为 Go 落地计划。
+// 业务说明：
+//   - 领域看 target_type，喂养动作看 action；禁止用 ParseActionTargetType(target_type) 驱动 CRUD
+//   - history→search、suggest→suggest、exit→exit；feeding 的 start|end|one|multi 进动作器
+//   - conversation/空/未知领域、feeding+disambiguate/未知喂养 action → 仅回复
+// Args:
+//   - intent: 已映射的统一意图
+//   - normalizedTranscript: 已规范化用户文本（Action.Name 最终回退）
+// Returns: 落地计划（ReplyOnly 或可执行 Action）
+func mapPythonIntentToLandPlan(intent deepSeekUnifiedIntent, normalizedTranscript string) pythonIntentLandPlan {
+	tt := strings.TrimSpace(strings.ToLower(intent.TargetType))
+	act := strings.TrimSpace(strings.ToLower(intent.Action))
+
+	// Action.Name：展示/日志用，与 CRUD 开关（TargetType）分离
+	name := strings.TrimSpace(intent.ActionName)
+	if name == "" {
+		name = strings.TrimSpace(intent.Action)
+	}
+	if name == "" {
+		name = strings.TrimSpace(intent.EventName)
+	}
+	if name == "" {
+		name = normalizedTranscript
+	}
+
+	switch tt {
+	case "feeding":
+		switch act {
+		case "start", "end", "one":
+			// 喂养 CRUD：TargetType 取 action，而非 target_type
+			return pythonIntentLandPlan{
+				Action: entity.Action{
+					Name:       name,
+					TargetType: ParseActionTargetType(act).String(),
+				},
+			}
+		case "multi":
+			// 多事件：handleUnifiedIntentAction 内按 intent.Action==multi 分流；TargetType 占位即可
+			return pythonIntentLandPlan{
+				Action: entity.Action{
+					Name:       name,
+					TargetType: ActionTargetTypeOne.String(),
+				},
+			}
+		case "disambiguate":
+			// 消歧本应 need_confirm=true；漏标时仅 NL，避免误入库
+			return pythonIntentLandPlan{ReplyOnly: true}
+		default:
+			return pythonIntentLandPlan{ReplyOnly: true}
+		}
+	case "history":
+		return pythonIntentLandPlan{
+			Action: entity.Action{
+				Name:       name,
+				TargetType: ActionTargetTypeSearch.String(),
+			},
+		}
+	case "suggest":
+		// 领域以 target_type=suggest 为准；不依赖 Python action=suggestion 字符串
+		return pythonIntentLandPlan{
+			Action: entity.Action{
+				Name:       name,
+				TargetType: ActionTargetTypeSuggest.String(),
+			},
+		}
+	case "exit":
+		return pythonIntentLandPlan{
+			Action: entity.Action{
+				Name:       name,
+				TargetType: ActionTargetTypeExit.String(),
+			},
+		}
+	case "conversation", "":
+		return pythonIntentLandPlan{ReplyOnly: true}
+	default:
+		return pythonIntentLandPlan{ReplyOnly: true, UnknownDomain: true}
+	}
+}
+
 // applyUnifiedIntentResult 将已映射的统一意图落地为澄清 / 闲聊 / 动作执行。
 // 供非流式 chatWithResult 与流式 HandleTranscriptForIntentStream 共用，保证行为矩阵单一真源。
-// 业务分支：NeedConfirm → 仅存 conversation_id 并透传自然语言；否则清 cid → conversation 或 handleUnifiedIntentAction（含 multi-event）。
+// 业务分支：NeedConfirm → 仅存 conversation_id 并透传自然语言；否则清 cid → 按 Python 两轴映射再 CRUD 或仅回复。
 // Args:
 //   - normalizedTranscript: 已规范化用户文本
 //   - events: 设备事件主档（经 DeviceAdmin）
@@ -188,11 +276,15 @@ func (s *VoiceService) applyUnifiedIntentResult(ctx context.Context, deviceNo, n
 		}, nil
 	}
 
-	// 非确认结果：清除本地 cid，再走闲聊或 CRUD
+	// 非确认结果：清除本地 cid，再按 Python 两轴落地
 	pendingConfirmState.clear(deviceNo)
 
-	// 闲聊 / 空 target：仅回复，不走动作落库
-	if ParseActionTargetType(intent.TargetType) == ActionTargetTypeConversation || strings.TrimSpace(intent.TargetType) == "" {
+	plan := mapPythonIntentToLandPlan(intent, normalizedTranscript)
+	if plan.UnknownDomain {
+		glog.Warningf(ctx, "[IntentLand] 未知 target_type，按 conversation 仅回复。deviceNo=%s target_type=%s action=%s",
+			deviceNo, intent.TargetType, intent.Action)
+	}
+	if plan.ReplyOnly {
 		reply := strings.TrimSpace(intent.Reply)
 		if reply == "" {
 			reply = "我明白了，请再具体一点，我马上帮你处理。"
@@ -205,19 +297,9 @@ func (s *VoiceService) applyUnifiedIntentResult(ctx context.Context, deviceNo, n
 		}, nil
 	}
 
-	action := entity.Action{
-		Name:       strings.TrimSpace(intent.ActionName),
-		TargetType: ParseActionTargetType(intent.TargetType).String(),
-	}
-	if action.Name == "" {
-		action.Name = strings.TrimSpace(intent.Action)
-	}
-	if action.Name == "" {
-		action.Name = normalizedTranscript
-	}
-
-	glog.Infof(ctx, "未命中预设动作，DeepSeek 单次结构化返回命中动作: %s", action.Name)
-	finalReply, exit, finishTalk, err := s.handleUnifiedIntentAction(ctx, deviceNo, normalizedTranscript, action, events, intent)
+	glog.Infof(ctx, "[IntentLand] Python 两轴映射命中动作。deviceNo=%s target_type=%s action=%s go_target=%s name=%s",
+		deviceNo, intent.TargetType, intent.Action, plan.Action.TargetType, plan.Action.Name)
+	finalReply, exit, finishTalk, err := s.handleUnifiedIntentAction(ctx, deviceNo, normalizedTranscript, plan.Action, events, intent)
 	if err == nil {
 		s.insertQa(ctx, normalizedTranscript, finalReply)
 	}
