@@ -18,22 +18,22 @@ import (
 )
 
 type deepSeekUnifiedIntent struct {
-	Action        string `json:"action"`
-	ActionName    string `json:"action_name"`
-	EventName     string `json:"event_name"`
-	ExtraEvent    string `json:"extra_event_name"`
-	EventId       string `json:"event_id"`        // 事件ID（Python 向量匹配返回）
-	EventType     string `json:"event_type"`
-	EventUnit     string `json:"event_unit"`
-	Quantity      int    `json:"quantity"`
-	IsNewEvent    bool   `json:"is_new_event"`    // 是否为新事件（Python 返回）
-	Reply         string `json:"reply"`
-	NeedUserReply bool   `json:"need_user_reply"`
-	TargetType    string `json:"target_type"`
-	NeedConfirm    bool   `json:"need_confirm"`    // 是否需要用户澄清（同一 /intent + conversation_id 续聊）
-	ConfirmMessage string `json:"confirm_message"` // 澄清话术（Python 生成，Go 原样透传）
-	ConversationID string `json:"conversation_id"` // 会话 ID；need_confirm 时保存，下一轮 intent 请求带回
-	Events        []IntentEvent `json:"events"`         // 多事件列表（当 action 为 multi 时使用）
+	Action         string        `json:"action"`
+	ActionName     string        `json:"action_name"`
+	EventName      string        `json:"event_name"`
+	ExtraEvent     string        `json:"extra_event_name"`
+	EventId        string        `json:"event_id"` // 事件ID（Python 向量匹配返回）
+	EventType      string        `json:"event_type"`
+	EventUnit      string        `json:"event_unit"`
+	Quantity       int           `json:"quantity"`
+	IsNewEvent     bool          `json:"is_new_event"` // 是否为新事件（Python 返回）
+	Reply          string        `json:"reply"`
+	NeedUserReply  bool          `json:"need_user_reply"`
+	TargetType     string        `json:"target_type"`
+	NeedConfirm    bool          `json:"need_confirm"`    // 是否需要用户澄清（同一 /intent + conversation_id 续聊）
+	ConfirmMessage string        `json:"confirm_message"` // 澄清话术（Python 生成，Go 原样透传）
+	ConversationID string        `json:"conversation_id"` // 会话 ID；need_confirm 时保存，下一轮 intent 请求带回
+	Events         []IntentEvent `json:"events"`          // 多事件列表（当 action 为 multi 时使用）
 }
 
 // historyRowEventName 写入 history.event_name：始终用事件主档标准名；displayHint 为模型/用户说法或 extra 命中词，仅作主档名为空时的回退。
@@ -112,6 +112,7 @@ type chatPreambleOutcome struct {
 // Args:
 //   - deviceNo: 设备号（pending child 按设备隔离）
 //   - transcript: 用户本轮原文/转写
+//
 // Returns: Continue=false 时 Result/Err 可直接返回；Continue=true 时携带 NormalizedTranscript 与事件主档。
 // Side Effects: 可能继续子事件落库、insertQa。
 func (s *VoiceService) prepareChatPreamble(ctx context.Context, deviceNo, transcript string) chatPreambleOutcome {
@@ -168,9 +169,11 @@ type pythonIntentLandPlan struct {
 //   - 领域看 target_type，喂养动作看 action；禁止用 ParseActionTargetType(target_type) 驱动 CRUD
 //   - history→search、suggest→suggest、exit→exit；feeding 的 start|end|one|multi 进动作器
 //   - conversation/空/未知领域、feeding+disambiguate/未知喂养 action → 仅回复
+//
 // Args:
 //   - intent: 已映射的统一意图
 //   - normalizedTranscript: 已规范化用户文本（Action.Name 最终回退）
+//
 // Returns: 落地计划（ReplyOnly 或可执行 Action）
 func mapPythonIntentToLandPlan(intent deepSeekUnifiedIntent, normalizedTranscript string) pythonIntentLandPlan {
 	tt := strings.TrimSpace(strings.ToLower(intent.TargetType))
@@ -207,9 +210,6 @@ func mapPythonIntentToLandPlan(intent deepSeekUnifiedIntent, normalizedTranscrip
 					TargetType: ActionTargetTypeOne.String(),
 				},
 			}
-		case "disambiguate":
-			// 消歧本应 need_confirm=true；漏标时仅 NL，避免误入库
-			return pythonIntentLandPlan{ReplyOnly: true}
 		default:
 			return pythonIntentLandPlan{ReplyOnly: true}
 		}
@@ -249,6 +249,7 @@ func mapPythonIntentToLandPlan(intent deepSeekUnifiedIntent, normalizedTranscrip
 //   - normalizedTranscript: 已规范化用户文本
 //   - events: 设备事件主档（经 DeviceAdmin）
 //   - intent: 已由 mapPythonRespToIntent 等映射完成的结构
+//
 // Returns: chatResult 与业务错误
 // Side Effects: 可能 set/clear pendingConfirm cid、insertQa、经 handleUnifiedIntentAction 写事件
 func (s *VoiceService) applyUnifiedIntentResult(ctx context.Context, deviceNo, normalizedTranscript string, events []entity.Event, intent deepSeekUnifiedIntent) (chatResult, error) {
@@ -751,5 +752,3 @@ func (s *VoiceService) isGrowthSuggestionIntent(text string) bool {
 	}
 	return false
 }
-
-

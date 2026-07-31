@@ -2,7 +2,6 @@ package controller
 
 import (
 	"context"
-	"os"
 	"strings"
 
 	v1 "hello/api/v1"
@@ -12,7 +11,6 @@ import (
 	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/net/ghttp"
-	"github.com/gogf/gf/v2/os/glog"
 )
 
 // DeviceUcgInternalCtrl device 域 UCG 专用内部接口（须携带网关共享密钥）。
@@ -98,11 +96,6 @@ func deviceUcgInternalSecretMiddleware(r *ghttp.Request) {
 	if secret == "" {
 		secret = strings.TrimSpace(r.GetHeader("X-Gateway-Internal-Secret"))
 	}
-	// 临时诊断日志：记录收到的 secret 长度与本进程期望值长度，便于定位「内部接口未授权」类问题。
-	// 排查完成后可移除。
-	expectLen := len(strings.TrimSpace(os.Getenv("DEVICE_GATEWAY_INTERNAL_SECRET")))
-	glog.Errorf(r.Context(), "[voice-internal-secret] path=%s recvLen=%d expectLen=%d match=%v",
-		r.URL.Path, len(secret), expectLen, device.ValidateGatewayInternalSecretHeader(secret))
 	if !device.ValidateGatewayInternalSecretHeader(secret) {
 		r.Response.Status = 403
 		r.Response.WriteJson(g.Map{"code": 403, "message": "内部接口未授权"})
