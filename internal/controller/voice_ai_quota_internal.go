@@ -29,6 +29,15 @@ func parseVoiceQuotaFeature(s string) (contracts.AIQuotaFeature, error) {
 }
 
 func (c *VoiceAIQuotaInternalCtrl) Check(ctx context.Context, req *v1.VoiceInternalAIQuotaCheckReq) (res *v1.VoiceInternalAIQuotaCheckRes, err error) {
+
+	// 如果wx.id为0，则返回正常可用状态
+	if req.WxId <= 0 {
+		return &v1.VoiceInternalAIQuotaCheckRes{
+			Allowed: true,
+			Used:    0,
+			Limit:   0,
+		}, nil
+	}
 	_ = c
 	feature, err := parseVoiceQuotaFeature(req.Feature)
 	if err != nil {
