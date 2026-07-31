@@ -9,11 +9,12 @@ type VoiceInternalAIQuotaCheckReq struct {
 	Feature string `json:"feature" v:"required|in:voice_ai,clinic_ai"`
 }
 
-// VoiceInternalAIQuotaCheckRes 预检结果。
+// VoiceInternalAIQuotaCheckRes 预检结果（含 degraded，供跨进程对齐降速语义）。
 type VoiceInternalAIQuotaCheckRes struct {
-	Allowed bool `json:"allowed"`
-	Used    int  `json:"used"`
-	Limit   int  `json:"limit"`
+	Allowed  bool `json:"allowed"`
+	Used     int  `json:"used"`
+	Limit    int  `json:"limit"`
+	Degraded bool `json:"degraded"`
 }
 
 // VoiceInternalAIQuotaConsumeReq 内部扣减 voice_ai / clinic_ai 额度。

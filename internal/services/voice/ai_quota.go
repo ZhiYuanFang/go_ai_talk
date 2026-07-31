@@ -58,9 +58,29 @@ func ResolveVoiceWxID(ctx context.Context, headerWxID int64, deviceNo string) (i
 	return wxID, nil
 }
 
-// CheckVoiceAIQuota 喂养 AI 预检（本地 voice 库 + Redis）。
+// CheckVoiceAIQuota 喂养 AI 预检；wxId≤0 返回 40301；用尽且非 degraded 才 40302。
+// 对话主路径请用 CheckVoiceAIQuotaSnapshot + guard 的 degraded 分支。
 func CheckVoiceAIQuota(ctx context.Context, wxID int64) error {
-	return checkAIQuotaFeature(ctx, wxID, contracts.AIQuotaVoiceAI)
+	snap, err := CheckVoiceAIQuotaSnapshot(ctx, wxID)
+	if err != nil {
+		return err
+	}
+	if !snap.Allowed && !snap.Degraded {
+		return &VoiceAIQuotaError{Code: contracts.CodeAIQuotaExhausted, Message: contracts.ErrAIQuotaExhausted.Error()}
+	}
+	return nil
+}
+
+// CheckVoiceAIQuotaSnapshot 喂养 AI 额度快照；用尽时 Degraded=true 而非 40302，供对话降速路径。
+func CheckVoiceAIQuotaSnapshot(ctx context.Context, wxID int64) (contracts.AIQuotaSnapshot, error) {
+	if wxID <= 0 {
+		return contracts.AIQuotaSnapshot{}, &VoiceAIQuotaError{Code: contracts.CodeAINotLoggedIn, Message: contracts.ErrAINotLoggedIn.Error()}
+	}
+	snap, err := CheckVoiceAIQuotaStore(ctx, wxID, contracts.AIQuotaVoiceAI)
+	if err != nil {
+		return contracts.AIQuotaSnapshot{}, mapQuotaStoreErr(err)
+	}
+	return snap, nil
 }
 
 // CheckClinicAIQuota 胖宝 AI 预检；wxId≤0 返回 40301，用尽返回 40302（供非 clinic 路径）。
@@ -103,20 +123,6 @@ func ConsumeVoiceAIQuota(ctx context.Context, wxID int64) error {
 	}
 	_, err := ConsumeVoiceAIQuotaStore(ctx, wxID, contracts.AIQuotaVoiceAI)
 	return mapQuotaStoreErr(err)
-}
-
-func checkAIQuotaFeature(ctx context.Context, wxID int64, feature contracts.AIQuotaFeature) error {
-	if wxID <= 0 {
-		return &VoiceAIQuotaError{Code: contracts.CodeAINotLoggedIn, Message: contracts.ErrAINotLoggedIn.Error()}
-	}
-	snap, err := CheckVoiceAIQuotaStore(ctx, wxID, feature)
-	if err != nil {
-		return mapQuotaStoreErr(err)
-	}
-	if !snap.Allowed {
-		return &VoiceAIQuotaError{Code: contracts.CodeAIQuotaExhausted, Message: contracts.ErrAIQuotaExhausted.Error()}
-	}
-	return nil
 }
 
 func mapQuotaStoreErr(err error) error {

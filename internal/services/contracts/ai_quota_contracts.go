@@ -44,7 +44,7 @@ type AIQuotaSnapshot struct {
 	Used     int  `json:"used"`
 	Limit    int  `json:"limit"`
 	Allowed  bool `json:"allowed"`
-	Degraded bool `json:"degraded"` // 额度用尽且允许降速 fallback（polish/clinic_ai）；voice_ai 恒为 false
+	Degraded bool `json:"degraded"` // 额度用尽且允许降速 fallback（polish / clinic_ai / voice_ai）
 }
 
 // VoiceAIQuotaDefaultDTO voice 域全局默认（voice_ai + clinic_ai）。

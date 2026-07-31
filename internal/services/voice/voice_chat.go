@@ -771,7 +771,7 @@ func (s *VoiceService) HandleTranscriptForStreaming(ctx context.Context, deviceN
 // HandleTranscriptForIntentStream 流式意图分析入口（intent_path=stream_land）。
 // 供 MCP / 纯文字场景：先 preamble（pending child），再单次 AnalyzeIntentStream（可附带澄清 conversation_id），
 // 用 stream 结果经 mapPythonRespToIntent → applyUnifiedIntentResult 直接落地。
-// 额度：与 chatWithResult 一致——发起前有有效澄清 cid 则免计 guard/consume；冷启动仍计次。
+// 额度：澄清续聊免计；冷启动额度内计次；用尽 degraded 强制种子智谱且不计次。
 // 禁止再调非流式 AnalyzeIntent / callDeepSeekUnifiedIntent / chatWithResult（避免二次意图与语义漂移）。
 // TTS 语音场景继续使用 HandleTranscriptForStreaming（非流式）。
 func (s *VoiceService) HandleTranscriptForIntentStream(ctx context.Context, deviceNo, transcript string, cb *contracts.IntentStreamCallback) (*contracts.IntentStreamResult, error) {
@@ -799,15 +799,16 @@ func (s *VoiceService) HandleTranscriptForIntentStream(ctx context.Context, devi
 	events := pre.Events
 	glog.Infof(ctx, "问题=%q intent_path=stream_land", normalizedTranscript)
 
-	// 4. 额度：澄清续聊免计；冷启动 guard → 成功 consume
+	// 4. 额度：澄清续聊免计；冷启动额度内 consume；用尽 degraded 不计次
 	clarifyResume := pendingConversationID(deviceNo) != ""
 	var wxID int64
+	var quotaDegraded bool
 	if clarifyResume {
 		glog.Infof(ctx, "[Clarify] stream 续聊免计 AI 额度。deviceNo=%s conversation_id=%s intent_path=stream_land",
 			deviceNo, pendingConversationID(deviceNo))
 	} else {
 		var qErr error
-		wxID, ctx, qErr = s.guardVoiceAIQuota(ctx, deviceNo)
+		wxID, quotaDegraded, ctx, qErr = s.guardVoiceAIQuota(ctx, deviceNo)
 		if qErr != nil {
 			return nil, qErr
 		}
@@ -840,13 +841,13 @@ func (s *VoiceService) HandleTranscriptForIntentStream(ctx context.Context, devi
 	}
 
 	intent := mapPythonRespToIntent(streamRes.Result)
-	if !clarifyResume {
+	if !clarifyResume && !quotaDegraded {
 		s.consumeVoiceAIQuotaOnSuccess(ctx, wxID)
 	}
 
-	// 可观测：标记流式落地路径，便于核对「仅一次 Python intent」与澄清免计
-	glog.Infof(ctx, "[IntentStream] intent_path=stream_land deviceNo=%s target_type=%s action=%s need_confirm=%v conversation_id=%s clarify_resume=%v",
-		deviceNo, intent.TargetType, intent.Action, intent.NeedConfirm, intent.ConversationID, clarifyResume)
+	// 可观测：标记流式落地路径，便于核对「仅一次 Python intent」与澄清/降速免计
+	glog.Infof(ctx, "[IntentStream] intent_path=stream_land deviceNo=%s target_type=%s action=%s need_confirm=%v conversation_id=%s clarify_resume=%v quota_degraded=%v",
+		deviceNo, intent.TargetType, intent.Action, intent.NeedConfirm, intent.ConversationID, clarifyResume, quotaDegraded)
 
 	chatRes, chatErr := s.applyUnifiedIntentResult(ctx, deviceNo, normalizedTranscript, events, intent)
 	return &contracts.IntentStreamResult{

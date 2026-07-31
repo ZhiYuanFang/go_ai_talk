@@ -23,3 +23,10 @@ func DegradedClinicProfile() Profile {
 		TimeoutSec:  120,
 	}
 }
+
+// DegradedVoiceUnderstandingProfile 喂养 AI 额度用尽时的降速 profile。
+// 与 DefaultSeedProfile(LaneVoiceUnderstanding) 一致：zhipu/glm-4.7-flash，不计入月度额度；
+// 由 Go 填入 Python Intent 的 ModelCfg，不写回 Admin DB lane。
+func DegradedVoiceUnderstandingProfile() Profile {
+	return DefaultSeedProfile(LaneVoiceUnderstanding)
+}

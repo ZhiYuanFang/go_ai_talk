@@ -10,7 +10,6 @@ import (
 	"unicode/utf8"
 
 	"hello/internal/model/entity"
-	"hello/internal/services/aimodel"
 	contracts "hello/internal/services/contracts"
 	"hello/internal/services/device"
 
@@ -315,7 +314,7 @@ func (s *VoiceService) applyUnifiedIntentResult(ctx context.Context, deviceNo, n
 // chatWithResult 对话核心流程（非流式意图分析入口）：
 // - 前置：pending child（prepareChatPreamble）；澄清 cid 由本函数内 AnalyzeIntent 携带
 // - 常规：非流式 callDeepSeekUnifiedIntent → applyUnifiedIntentResult 落库/回复
-// - 额度：发起前有有效澄清 cid 则免计（跳过 guard/consume）；冷启动含首次 need_confirm 仍计次
+// - 额度：澄清续聊免计；冷启动额度内计次；用尽走智谱降速且不计次
 // TTS / HandleTranscriptForStreaming 等仍走本函数；流式入口禁止再调用本函数以免二次 AnalyzeIntent。
 func (s *VoiceService) chatWithResult(ctx context.Context, deviceNo, transcript string) (chatResult, error) {
 	pre := s.prepareChatPreamble(ctx, deviceNo, transcript)
@@ -330,12 +329,13 @@ func (s *VoiceService) chatWithResult(ctx context.Context, deviceNo, transcript 
 	// 澄清续聊判定须在意图调用前读取本地 cid（成功落地后可能 clear）
 	clarifyResume := pendingConversationID(deviceNo) != ""
 	var wxID int64
+	var quotaDegraded bool
 	if clarifyResume {
 		// 免计：额度用尽时仍可完成澄清，避免半途卡死
 		glog.Infof(ctx, "[Clarify] 续聊免计 AI 额度。deviceNo=%s conversation_id=%s", deviceNo, pendingConversationID(deviceNo))
 	} else {
 		var qErr error
-		wxID, ctx, qErr = s.guardVoiceAIQuota(ctx, deviceNo)
+		wxID, quotaDegraded, ctx, qErr = s.guardVoiceAIQuota(ctx, deviceNo)
 		if qErr != nil {
 			return chatResult{}, qErr
 		}
@@ -350,8 +350,8 @@ func (s *VoiceService) chatWithResult(ctx context.Context, deviceNo, transcript 
 			FinishTalk: false,
 		}, err
 	}
-	// 仅冷启动成功计次；澄清续聊不 consume
-	if !clarifyResume {
+	// 仅冷启动且非降速成功计次；澄清续聊 / degraded 不 consume
+	if !clarifyResume && !quotaDegraded {
 		s.consumeVoiceAIQuotaOnSuccess(ctx, wxID)
 	}
 
@@ -360,7 +360,8 @@ func (s *VoiceService) chatWithResult(ctx context.Context, deviceNo, transcript 
 
 func (s *VoiceService) callDeepSeekUnifiedIntent(ctx context.Context, deviceNo, transcript string) (deepSeekUnifiedIntent, error) {
 	// 调用 Python 微服务进行意图分析；若有本地澄清 cid 则写入请求以续聊（调用失败不 clear cid）。
-	if vuProfile, vuErr := aimodel.LoadProfile(ctx, aimodel.LaneVoiceUnderstanding); vuErr == nil {
+	// degraded 时 loadVoiceUnderstandingProfile 强制种子智谱。
+	if vuProfile, vuErr := loadVoiceUnderstandingProfile(ctx); vuErr == nil {
 		pythonClient := PythonAIClientFromCfg()
 		req := &AnalyzeIntentRequest{
 			Text:     transcript,
@@ -375,8 +376,8 @@ func (s *VoiceService) callDeepSeekUnifiedIntent(ctx context.Context, deviceNo, 
 		pythonResp, pythonErr := pythonClient.AnalyzeIntent(ctx, req)
 		if pythonErr == nil && pythonResp != nil {
 			intent := mapPythonRespToIntent(pythonResp)
-			glog.Debugf(ctx, "[Python AI] 意图分析成功。deviceNo=%s target_type=%s action=%s need_confirm=%v conversation_id=%s",
-				deviceNo, intent.TargetType, intent.Action, intent.NeedConfirm, intent.ConversationID)
+			glog.Debugf(ctx, "[Python AI] 意图分析成功。deviceNo=%s target_type=%s action=%s need_confirm=%v conversation_id=%s quota_degraded=%v",
+				deviceNo, intent.TargetType, intent.Action, intent.NeedConfirm, intent.ConversationID, isVoiceQuotaDegraded(ctx))
 			return intent, nil
 		}
 		if pythonErr != nil {
@@ -415,9 +416,9 @@ func mapPythonRespToIntent(pythonResp *AnalyzeIntentResponse) deepSeekUnifiedInt
 }
 
 // callDeepSeekUnifiedIntentStream 调用流式 Python 意图分析接口，同时将结果通过回调推送给调用方。
-// 与非流式一致：本地有澄清 cid 时写入请求；调用失败不 clear cid。
+// 与非流式一致：本地有澄清 cid 时写入请求；调用失败不 clear cid；degraded 强制种子模型。
 func (s *VoiceService) callDeepSeekUnifiedIntentStream(ctx context.Context, deviceNo, transcript string, cb *contracts.IntentStreamCallback) (*AnalyzeIntentStreamResponse, error) {
-	if vuProfile, vuErr := aimodel.LoadProfile(ctx, aimodel.LaneVoiceUnderstanding); vuErr == nil {
+	if vuProfile, vuErr := loadVoiceUnderstandingProfile(ctx); vuErr == nil {
 		pythonClient := PythonAIClientFromCfg()
 		// 构造流式回调：将 Python 侧的流式事件转发给上层调用方
 		streamCb := &AnalyzeIntentStreamCallback{}
@@ -450,8 +451,8 @@ func (s *VoiceService) callDeepSeekUnifiedIntentStream(ctx context.Context, devi
 		}
 		// Result 可能为空：上层流式落地路径须降级，禁止回退非流式 AnalyzeIntent
 		if streamRes != nil && streamRes.Result != nil {
-			glog.Debugf(ctx, "[Python AI] 流式意图分析成功。deviceNo=%s target_type=%s action=%s need_confirm=%v",
-				deviceNo, streamRes.Result.TargetType, streamRes.Result.Action, streamRes.Result.NeedConfirm)
+			glog.Debugf(ctx, "[Python AI] 流式意图分析成功。deviceNo=%s target_type=%s action=%s need_confirm=%v quota_degraded=%v",
+				deviceNo, streamRes.Result.TargetType, streamRes.Result.Action, streamRes.Result.NeedConfirm, isVoiceQuotaDegraded(ctx))
 		} else {
 			glog.Warningf(ctx, "[Python AI] 流式意图分析返回空 Result。deviceNo=%s", deviceNo)
 		}

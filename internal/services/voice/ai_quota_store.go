@@ -161,8 +161,8 @@ func CheckVoiceAIQuotaStore(ctx context.Context, wxID int64, feature contracts.A
 		return contracts.AIQuotaSnapshot{}, err
 	}
 	allowed := used < limit
-	// clinic_ai 用尽时降速 fallback；voice_ai 仍硬阻断 40302，不设 Degraded。
-	degraded := !allowed && feature == contracts.AIQuotaClinicAI
+	// clinic_ai / voice_ai 用尽时均走降速 fallback（Degraded=true），由调用方强制种子模型且不计次。
+	degraded := !allowed && (feature == contracts.AIQuotaClinicAI || feature == contracts.AIQuotaVoiceAI)
 	return contracts.AIQuotaSnapshot{
 		Used:     used,
 		Limit:    limit,

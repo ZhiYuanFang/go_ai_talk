@@ -10,8 +10,6 @@ import (
 
 	"github.com/gogf/gf/v2/errors/gcode"
 	"github.com/gogf/gf/v2/errors/gerror"
-
-	"github.com/gogf/gf/v2/os/glog"
 )
 
 // VoiceAIQuotaInternalCtrl voice 域 AI 额度 internal API。
@@ -31,17 +29,6 @@ func parseVoiceQuotaFeature(s string) (contracts.AIQuotaFeature, error) {
 }
 
 func (c *VoiceAIQuotaInternalCtrl) Check(ctx context.Context, req *v1.VoiceInternalAIQuotaCheckReq) (res *v1.VoiceInternalAIQuotaCheckRes, err error) {
-
-	// 如果wx.id为0，则返回正常可用状态
-	// 打印wxid
-	glog.Infof(ctx, "wxid: %d", req.WxId)
-	if req.WxId <= 0 {
-		return &v1.VoiceInternalAIQuotaCheckRes{
-			Allowed: true,
-			Used:    0,
-			Limit:   0,
-		}, nil
-	}
 	_ = c
 	feature, err := parseVoiceQuotaFeature(req.Feature)
 	if err != nil {
@@ -52,9 +39,10 @@ func (c *VoiceAIQuotaInternalCtrl) Check(ctx context.Context, req *v1.VoiceInter
 		return nil, mapAIQuotaErr(err)
 	}
 	return &v1.VoiceInternalAIQuotaCheckRes{
-		Allowed: snap.Allowed,
-		Used:    snap.Used,
-		Limit:   snap.Limit,
+		Allowed:  snap.Allowed,
+		Used:     snap.Used,
+		Limit:    snap.Limit,
+		Degraded: snap.Degraded,
 	}, nil
 }
 
