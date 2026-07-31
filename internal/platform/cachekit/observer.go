@@ -23,6 +23,5 @@ func (LoggingObserver) OnOperation(ctx context.Context, operation, key string, d
 		glog.Warningf(ctx, "cachekit %s failed key=%s duration=%s err=%v", operation, key, duration, err)
 		return
 	}
-	glog.Debugf(ctx, "cachekit %s success key=%s duration=%s", operation, key, duration)
+	// glog.Debugf(ctx, "cachekit %s success key=%s duration=%s", operation, key, duration)
 }
-
