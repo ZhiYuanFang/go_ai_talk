@@ -39,19 +39,18 @@ type StreamTTSSession interface {
 	Close() error
 }
 
-// IntentStreamCallback 流式意图分析回调
-// 供 MCP 服务和纯文字场景使用，以流式方式接收思考过程和意图结果
+// IntentStreamCallback 流式意图分析对外回调。
+// 仅推送思考过程；意图 JSON 仅在 voice 内部累积解析，不经本回调外泄。
+// 业务话术由 HandleTranscriptForIntentStream 返回值 Reply 承载，由调用方写入 SSE answer。
 type IntentStreamCallback struct {
 	OnThinking func(delta string) error // 收到思考过程片段时的回调
-	OnAnswer   func(delta string) error // 收到意图结果 JSON 片段时的回调
 }
 
-// IntentStreamResult 流式意图分析结果
+// IntentStreamResult 流式意图落地后的聊天结果（与 voice 包内 chatResult 语义对齐）。
+// Thinking / 意图 JSON 不在此返回；UI 思考内容走 OnThinking，业务话术用 Reply。
 type IntentStreamResult struct {
-	Thinking   string // 完整的思考过程
-	AnswerJSON string // 完整的意图结果 JSON
-	Ask        string // 用户原始输入
-	Answer     string // AI 回答内容
+	Ask        string // 用户原始输入 / 规范化问句
+	Reply      string // 业务话术（落库/确认/闲聊等最终回复）
 	Exit       bool   // 是否退出对话
 	FinishTalk bool   // 是否结束本轮对话
 }
@@ -80,9 +79,9 @@ type VoiceContract interface {
 	CreateStreamASRSession(ctx context.Context, meta AudioMeta, onPartial func(text string), onFinal func(text string)) (StreamASRSession, error)
 	StreamRealtimeOptions() (time.Duration, int)
 	TextChat(ctx context.Context, deviceNo, transcript string) (string, error)
-	// HandleTranscriptForIntentStream 流式意图分析入口
-	// 供 MCP 服务和纯文字场景使用，以流式方式接收思考过程和意图结果
-	// 内部调用 PythonAIClient.AnalyzeIntentStream，TTS 语音场景继续使用 HandleTranscriptForStreaming（非流式）
+	// HandleTranscriptForIntentStream 流式意图分析入口（intent_path=stream_land）。
+	// 流式过程仅经 cb.OnThinking 推送思考话术；意图 JSON 内部解析并落地后，
+	// 返回 Ask/Reply/Exit/FinishTalk。TTS 语音场景继续使用 HandleTranscriptForStreaming（非流式）。
 	HandleTranscriptForIntentStream(ctx context.Context, deviceNo, transcript string, cb *IntentStreamCallback) (*IntentStreamResult, error)
 	// TipStream 流式小贴士生成入口
 	// 以流式方式接收思考过程与建议文案，内部调用 PythonAIClient.TipStream。

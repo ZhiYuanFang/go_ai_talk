@@ -141,7 +141,7 @@ func DelegateTextChat(ctx context.Context, deviceNo, transcript string, wxID int
 }
 
 // DelegateTextChatStream 经 voice-service internal HTTP 执行流式文本对话（SSE）。
-// cb 用于逐帧接收 thinking/answer 事件。
+// cb.OnThinking 用于实时转发思考过程；event: answer 仅为业务话术，累积后作为返回值（不经回调）。
 func DelegateTextChatStream(ctx context.Context, deviceNo, transcript string, wxID int64, cb *contracts.IntentStreamCallback) (string, error) {
 	secret := strings.TrimSpace(os.Getenv("DEVICE_GATEWAY_INTERNAL_SECRET"))
 	if secret == "" {
@@ -175,8 +175,9 @@ func DelegateTextChatStream(ctx context.Context, deviceNo, transcript string, wx
 		respBody, _ := io.ReadAll(resp.Body)
 		return "", fmt.Errorf("流式对话服务返回错误状态码 %d: %s", resp.StatusCode, string(respBody))
 	}
-	// 4. 逐行解析 SSE 响应并回调
-	var answer string
+	// 4. 逐行解析 SSE：thinking 实时回调；answer 累积为业务 Reply；error 记下来但不中断，以便仍能读到降级话术
+	var reply string
+	var streamErrMsg string
 	scanner := bufio.NewScanner(resp.Body)
 	var currentEvent string
 	for scanner.Scan() {
@@ -196,21 +197,23 @@ func DelegateTextChatStream(ctx context.Context, deviceNo, transcript string, wx
 		case "thinking":
 			if cb != nil && cb.OnThinking != nil {
 				if cbErr := cb.OnThinking(data); cbErr != nil {
-					return answer, cbErr
+					return reply, cbErr
 				}
 			}
 		case "answer":
-			answer += data
-			if cb != nil && cb.OnAnswer != nil {
-				if cbErr := cb.OnAnswer(data); cbErr != nil {
-					return answer, cbErr
-				}
-			}
+			// 业务话术：只累积（voice 保证 answer=Reply，非意图 JSON）
+			reply += data
 		case "error":
-			return answer, fmt.Errorf("%s", data)
+			streamErrMsg = data
 		}
 	}
-	return answer, scanner.Err()
+	if err := scanner.Err(); err != nil {
+		return reply, err
+	}
+	if streamErrMsg != "" {
+		return reply, fmt.Errorf("%s", streamErrMsg)
+	}
+	return reply, nil
 }
 
 func delegateListSuggest(ctx context.Context, deviceNo string) ([]entity.Suggest, error) {

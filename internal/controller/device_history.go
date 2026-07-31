@@ -207,7 +207,7 @@ func (c *HistoryCtrl) Chat(ctx context.Context, req *v1.DeviceHistoryChatReq) (r
 	return &v1.DeviceHistoryChatRes{Reply: reply}, nil
 }
 
-// ChatStream 流式文本对话（SSE），逐帧推送 thinking/answer 事件。
+// ChatStream 流式文本对话（SSE）：thinking 实时推送，落地后推送业务 Reply 为 answer。
 func (c *HistoryCtrl) ChatStream(ctx context.Context, req *v1.DeviceHistoryChatStreamReq) (res *v1.DeviceHistoryChatStreamRes, err error) {
 	deviceNo := strings.TrimSpace(req.DeviceNo)
 	transcript := strings.TrimSpace(req.Transcript)
@@ -233,18 +233,18 @@ func (c *HistoryCtrl) ChatStream(ctx context.Context, req *v1.DeviceHistoryChatS
 	if flusher, ok := rw.(http.Flusher); ok {
 		flusher.Flush()
 	}
-	// 2. 委派流式对话到 voice 服务
-	_, streamErr := histsvc.DelegateTextChatStream(ctx, deviceNo, transcript, wxID, &contracts.IntentStreamCallback{
+	// 2. 委派流式对话到 voice 服务：thinking 实时转发；业务 Reply 在结束后写入 answer
+	reply, streamErr := histsvc.DelegateTextChatStream(ctx, deviceNo, transcript, wxID, &contracts.IntentStreamCallback{
 		OnThinking: func(delta string) error {
 			return writeSSEEvent(rw, "thinking", delta)
 		},
-		OnAnswer: func(delta string) error {
-			return writeSSEEvent(rw, "answer", delta)
-		},
 	})
-	// 3. 错误处理
+	// 3. 错误处理与业务话术
 	if streamErr != nil {
 		_ = writeSSEEvent(rw, "error", "AI服务暂时不可用，请稍后再试")
+	}
+	if strings.TrimSpace(reply) != "" {
+		_ = writeSSEEvent(rw, "answer", reply)
 	}
 	// 4. 结束标记
 	_, _ = rw.Write([]byte("data: [DONE]\n\n"))

@@ -415,23 +415,17 @@ func mapPythonRespToIntent(pythonResp *AnalyzeIntentResponse) deepSeekUnifiedInt
 	return intent
 }
 
-// callDeepSeekUnifiedIntentStream 调用流式 Python 意图分析接口，同时将结果通过回调推送给调用方。
+// callDeepSeekUnifiedIntentStream 调用流式 Python 意图分析接口。
+// 仅将 thinking 经对外 cb 推送；answer（意图 JSON）由 Python 客户端内部累积解析，不外泄。
 // 与非流式一致：本地有澄清 cid 时写入请求；调用失败不 clear cid；degraded 强制种子模型。
 func (s *VoiceService) callDeepSeekUnifiedIntentStream(ctx context.Context, deviceNo, transcript string, cb *contracts.IntentStreamCallback) (*AnalyzeIntentStreamResponse, error) {
 	if vuProfile, vuErr := loadVoiceUnderstandingProfile(ctx); vuErr == nil {
 		pythonClient := PythonAIClientFromCfg()
-		// 构造流式回调：将 Python 侧的流式事件转发给上层调用方
+		// 仅转发 thinking；不设置 OnAnswer，意图 JSON 留在 AnalyzeIntentStream 内部累积
 		streamCb := &AnalyzeIntentStreamCallback{}
-		if cb != nil {
-			if cb.OnThinking != nil {
-				streamCb.OnThinking = func(delta string) error {
-					return cb.OnThinking(delta)
-				}
-			}
-			if cb.OnAnswer != nil {
-				streamCb.OnAnswer = func(delta string) error {
-					return cb.OnAnswer(delta)
-				}
+		if cb != nil && cb.OnThinking != nil {
+			streamCb.OnThinking = func(delta string) error {
+				return cb.OnThinking(delta)
 			}
 		}
 		// 调用流式 Python 接口（可附带 conversation_id 续聊）

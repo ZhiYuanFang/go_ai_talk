@@ -771,6 +771,7 @@ func (s *VoiceService) HandleTranscriptForStreaming(ctx context.Context, deviceN
 // HandleTranscriptForIntentStream 流式意图分析入口（intent_path=stream_land）。
 // 供 MCP / 纯文字场景：先 preamble（pending child），再单次 AnalyzeIntentStream（可附带澄清 conversation_id），
 // 用 stream 结果经 mapPythonRespToIntent → applyUnifiedIntentResult 直接落地。
+// 流式过程仅经 cb.OnThinking 推送思考话术；返回值对齐 chatResult（Ask/Reply/Exit/FinishTalk）。
 // 额度：澄清续聊免计；冷启动额度内计次；用尽 degraded 强制种子智谱且不计次。
 // 禁止再调非流式 AnalyzeIntent / callDeepSeekUnifiedIntent / chatWithResult（避免二次意图与语义漂移）。
 // TTS 语音场景继续使用 HandleTranscriptForStreaming（非流式）。
@@ -789,7 +790,7 @@ func (s *VoiceService) HandleTranscriptForIntentStream(ctx context.Context, devi
 	if !pre.Continue {
 		return &contracts.IntentStreamResult{
 			Ask:        pre.Result.Ask,
-			Answer:     pre.Result.Reply,
+			Reply:      pre.Result.Reply,
 			Exit:       pre.Result.Exit,
 			FinishTalk: pre.Result.FinishTalk,
 		}, pre.Err
@@ -824,17 +825,9 @@ func (s *VoiceService) HandleTranscriptForIntentStream(ctx context.Context, devi
 		// Result 为空：降级话术，禁止回退非流式
 		glog.Warningf(ctx, "[IntentStream] stream Result 为空且不回退非流式。deviceNo=%s", deviceNo)
 		degrade := "AI 服务暂时不可用，请稍后再试"
-		thinking := ""
-		answerJSON := ""
-		if streamRes != nil {
-			thinking = streamRes.Thinking
-			answerJSON = streamRes.Answer
-		}
 		return &contracts.IntentStreamResult{
-			Thinking:   thinking,
-			AnswerJSON: answerJSON,
 			Ask:        normalizedTranscript,
-			Answer:     degrade,
+			Reply:      degrade,
 			Exit:       false,
 			FinishTalk: false,
 		}, errors.New("流式意图结果为空")
@@ -851,10 +844,8 @@ func (s *VoiceService) HandleTranscriptForIntentStream(ctx context.Context, devi
 
 	chatRes, chatErr := s.applyUnifiedIntentResult(ctx, deviceNo, normalizedTranscript, events, intent)
 	return &contracts.IntentStreamResult{
-		Thinking:   streamRes.Thinking,
-		AnswerJSON: streamRes.Answer,
 		Ask:        chatRes.Ask,
-		Answer:     chatRes.Reply,
+		Reply:      chatRes.Reply,
 		Exit:       chatRes.Exit,
 		FinishTalk: chatRes.FinishTalk,
 	}, chatErr

@@ -48,7 +48,7 @@ func loadVoiceUnderstandingProfile(ctx context.Context) (aimodel.Profile, error)
 func (s *VoiceService) guardVoiceAIQuota(ctx context.Context, deviceNo string) (wxID int64, degraded bool, newCtx context.Context, err error) {
 	wxID, err = VoiceWxIDFromRequest(ctx, deviceNo)
 	if err != nil {
-		return 0, true, ctx, err
+		return 0, false, ctx, err
 	}
 	if isVoiceQuotaChecked(ctx) {
 		return wxID, isVoiceQuotaDegraded(ctx), ctx, nil
