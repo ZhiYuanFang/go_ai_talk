@@ -14,7 +14,9 @@ import (
 	gctx "github.com/gogf/gf/v2/os/gctx"
 )
 
-// ClinicService 胖宝诊疗业务（WS 鉴权、摘要、LLM、会话 Redis）。
+// ClinicService 胖宝诊疗/陪伴业务（WS 鉴权、额度、限流、Python LLM 流转发）。
+// 业务说明：不再在 Go 侧缓存对话 turns、喂养摘要或宝宝画像；
+// UI 历史由客户端本地负责，多轮上下文由 Python companion_session 负责。
 type ClinicService struct {
 	cfg        AIClinicConfig
 	httpClient *http.Client
@@ -44,11 +46,6 @@ func Clinic() *ClinicService {
 	return clinicSvc
 }
 
-// BuildSessionSync 构建 auth_ok 后立即下发的 session_sync 帧（见 clinic_session.go 注释）。
-func (s *ClinicService) BuildSessionSync(ctx context.Context, wxID int64) (SessionSyncPayload, error) {
-	return BuildSessionSync(ctx, wxID, s.cfg.SessionTTLSeconds)
-}
-
 // EmitTurnCancelled 下发 turn_cancelled 帧；供 WS handler（supersede/cancel）复用。
 func EmitTurnCancelled(writeJSON func(v interface{}) error, turnID, reason string) error {
 	return writeJSON(map[string]interface{}{
@@ -58,8 +55,9 @@ func EmitTurnCancelled(writeJSON func(v interface{}) error, turnID, reason strin
 	})
 }
 
-// HandleQuestion 在独立 goroutine 中处理单轮 question：限流 check → 额度 check → 摘要 → LLM 流 → 成功时 consume/限流/session。
-// turnCtx 被取消（cancel/supersede/disconnect）时 MUST NOT 写 answer_done、不 consume clinic_ai、不 append session。
+// HandleQuestion 在独立 goroutine 中处理单轮 question：限流 check → 额度 check → Python LLM 流 → 成功时 consume/限流。
+// turnCtx 被取消（cancel/supersede/disconnect）时 MUST NOT 写 answer_done、不 consume clinic_ai。
+// Args: wxID 鉴权绑定主键；deviceNo 透传 Python（不作 Go 侧摘要/画像拉取）；question/turnID 来自客户端帧。
 func (s *ClinicService) HandleQuestion(turnCtx context.Context, wxID int64, deviceNo, question, turnID string, writeJSON func(v interface{}) error) error {
 	question = strings.TrimSpace(question)
 	if question == "" {
@@ -90,17 +88,11 @@ func (s *ClinicService) HandleQuestion(turnCtx context.Context, wxID int64, devi
 		return clinicWriteQuotaErr(writeJSON, mapVoiceLLMError(err))
 	}
 	defer release()
-	summary, err := s.ensureClinicSummary(turnCtx, wxID, deviceNo)
-	if err != nil {
-		return writeJSON(map[string]interface{}{"type": "error", "code": 500, "message": "喂养摘要加载失败"})
-	}
 	if err := turnCtx.Err(); err != nil {
 		return nil
 	}
-	baby := loadClinicBabyProfile(turnCtx, deviceNo)
-	sess, _, _ := loadClinicSession(turnCtx, wxID)
-	prior := clinicSessionMessages(sess)
-	thinking, answer, answerID, streamErr := s.streamClinicLLMHeld(turnCtx, profile, baby, summary, question, prior, clinicStreamCallbacks{
+	// 直接转发 Python；喂养上下文/画像/多轮由 Python 侧处理，Go 不拼 prompt。
+	thinking, answer, answerID, streamErr := s.streamClinicLLMHeld(turnCtx, profile, deviceNo, question, clinicStreamCallbacks{
 		OnThinkingDelta: func(delta string) error {
 			if err := turnCtx.Err(); err != nil {
 				return err
@@ -131,15 +123,12 @@ func (s *ClinicService) HandleQuestion(turnCtx context.Context, wxID int64, devi
 		}
 	}
 	_ = recordClinicRateLimitOnSuccess(turnCtx, wxID, s.cfg)
-	if err := appendClinicTurn(turnCtx, wxID, s.cfg, deviceNo, question, answer); err != nil {
-		// 扣减已成功；session 写失败仅记录，仍返回 answer_done
-	}
 	return writeJSON(map[string]interface{}{
-		"type":      "answer_done",
-		"turnId":    turnID,
-		"thinking":  thinking,
-		"answer":    answer,
-		"answerId":  answerID,
+		"type":     "answer_done",
+		"turnId":   turnID,
+		"thinking": thinking,
+		"answer":   answer,
+		"answerId": answerID,
 	})
 }
 

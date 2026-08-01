@@ -132,15 +132,9 @@ func voiceClinicWS(r *ghttp.Request) {
 	}
 
 	svc := voice.Clinic()
-	// auth_ok 后立即下发 session_sync（每次重连重复）；读 Redis 失败时下发空 turns，不阻断后续 question。
-	syncPayload, syncErr := svc.BuildSessionSync(connCtx, wxID)
-	if syncErr != nil {
-		glog.Warningf(connCtx, "[胖宝WS] session_sync 读取失败 wxId=%d err=%v", wxID, syncErr)
-		syncPayload = voice.SessionSyncPayload{Type: "session_sync", Turns: []voice.SessionSyncTurn{}, ExpiresAt: 0}
-	}
-	if err := writeJSON(syncPayload); err != nil {
-		return
-	}
+	// 业务说明：不再下发 session_sync。UI 对话历史由 Flutter 本地存储；
+	// agent 多轮上下文由 Python companion_session 负责；Go 仅鉴权/额度/限流/流转发。
+	// auth_ok 后即可进入读循环接收 question/cancel。
 
 	// 非阻塞读循环：question 在 goroutine 中处理，cancel/supersede 可即时打断 LLM。
 	for {

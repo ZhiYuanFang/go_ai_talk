@@ -8,6 +8,10 @@ import (
 	"hello/internal/platform/cachekit"
 )
 
+// clinicCache Clinic 限流等 KV 访问统一经 cachekit（带 LoggingObserver）。
+// 业务说明：原定义在 clinic_session.go；会话/摘要删除后迁至此，供 rate 键使用。
+var clinicCache = cachekit.Default()
+
 // checkClinicRateLimit 固定窗口限流检查（只读 GET，不 INCR）；超限返回 CodeClinicRateLimited（42901）。
 func checkClinicRateLimit(ctx context.Context, wxID int64, cfg AIClinicConfig) error {
 	window := cfg.RateLimitWindowSeconds

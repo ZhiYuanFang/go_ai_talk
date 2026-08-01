@@ -9,6 +9,7 @@ import (
 
 // AIClinicConfig 胖宝诊疗配置（manifest/config/config.voice-service.yaml aiClinic 块）。
 // DeepSeek endpoint/apiKey 从 voice-chat.shared.yaml 的 deepseek 段加载，不在此重复。
+// 业务说明：已移除 sessionTtl/summaryTtl——Go 不再缓存对话 turns 与喂养摘要。
 type AIClinicConfig struct {
 	Model                  string
 	Endpoint               string
@@ -18,20 +19,7 @@ type AIClinicConfig struct {
 	ReasoningEffort        string
 	RateLimitWindowSeconds int
 	RateLimitMaxRequests   int
-	SessionTTLSeconds      int
-	SummaryTTLSeconds      int
-	SystemPrompt           string
 }
-
-const (
-	// Redis 键前缀（负责人已确认引入 voice:clinic:* 读缓存/会话/限流）：
-	// - voice:clinic:session:{wxId}  12h 固定 TTL，自首问起算，非 sliding
-	// - voice:clinic:rate:{wxId}     per-wxId 限流计数
-	// - voice:clinic:summary:{wxId}:{deviceNo}  7 天摘要懒刷新缓存
-	clinicSessionKeyPrefix = "voice:clinic:session:"
-	clinicRateKeyPrefix    = "voice:clinic:rate:"
-	clinicSummaryKeyPrefix = "voice:clinic:summary:"
-)
 
 // CodeClinicRateLimited WS 胖宝 per-wxId 限流超限。
 const CodeClinicRateLimited = 42901
@@ -46,8 +34,6 @@ func loadAIClinicConfig(ctx context.Context, voiceCfg VoiceChatConfig) AIClinicC
 		ReasoningEffort:        "high",
 		RateLimitWindowSeconds: 60,
 		RateLimitMaxRequests:   10,
-		SessionTTLSeconds:      12 * 3600,
-		SummaryTTLSeconds:      24 * 3600,
 	}
 	value, err := g.Cfg().Get(ctx, "aiClinic")
 	if err == nil && value != nil && !value.IsNil() {
@@ -68,20 +54,11 @@ func loadAIClinicConfig(ctx context.Context, voiceCfg VoiceChatConfig) AIClinicC
 	if cfg.RateLimitMaxRequests <= 0 {
 		cfg.RateLimitMaxRequests = 10
 	}
-	if cfg.SessionTTLSeconds <= 0 {
-		cfg.SessionTTLSeconds = 12 * 3600
-	}
-	if cfg.SummaryTTLSeconds <= 0 {
-		cfg.SummaryTTLSeconds = 24 * 3600
-	}
 	if strings.TrimSpace(cfg.Model) == "" {
 		cfg.Model = "deepseek-v4-pro"
 	}
 	if strings.TrimSpace(cfg.ReasoningEffort) == "" {
 		cfg.ReasoningEffort = "high"
-	}
-	if strings.TrimSpace(cfg.SystemPrompt) == "" {
-		cfg.SystemPrompt = "你是「胖宝」AI 育儿助手，结合用户近 7 天喂养事件聚合摘要回答问题。"
 	}
 	return cfg
 }

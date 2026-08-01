@@ -8,9 +8,8 @@ import (
 )
 
 const (
-	voiceClinicSessionPrefix = "voice:clinic:session:"
-	voiceClinicRatePrefix    = "voice:clinic:rate:"
-	voiceClinicSummaryPrefix = "voice:clinic:summary:"
+	// voiceClinicRatePrefix 胖宝 Clinic WS 限流；会话/摘要键已废弃，不再提供 builder。
+	voiceClinicRatePrefix     = "voice:clinic:rate:"
 	voiceSessionDefaultPrefix = "voice:session:"
 )
 
@@ -37,17 +36,7 @@ func VoiceGuardIdemKey(deviceNo string, hash uint32) string {
 	return fmt.Sprintf("voice:guard:idem:%s:%d", deviceNo, hash)
 }
 
-// VoiceClinicSessionKey AI 诊所多轮会话；首问 12h 固定 TTL，非 sliding。
-func VoiceClinicSessionKey(wxID int64) string {
-	return voiceClinicSessionPrefix + strconv.FormatInt(wxID, 10)
-}
-
-// VoiceClinicRateKey 诊所固定窗口限流计数。
+// VoiceClinicRateKey 诊所固定窗口限流计数（answer_done 成功后递增）。
 func VoiceClinicRateKey(wxID int64) string {
 	return voiceClinicRatePrefix + strconv.FormatInt(wxID, 10)
-}
-
-// VoiceClinicSummaryKey 诊所 7 天 history 聚合摘要；TTL 见 summaryTtlSeconds。
-func VoiceClinicSummaryKey(wxID int64, deviceNo string) string {
-	return fmt.Sprintf("%s%d:%s", voiceClinicSummaryPrefix, wxID, strings.TrimSpace(deviceNo))
 }

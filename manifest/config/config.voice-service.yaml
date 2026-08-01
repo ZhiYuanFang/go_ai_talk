@@ -14,6 +14,7 @@ logger:
 # voiceChat 已迁至 manifest/config/voice-chat.shared.yaml（与 history-service 共用，避免重复维护）。
 
 # 胖宝诊疗独立配置（endpoint/apiKey 复用 voice-chat.shared.yaml deepseek 段）。
+# 业务说明：不再配置 sessionTtl/summaryTtl——Go 不缓存对话与喂养摘要；多轮由 Python 负责。
 aiClinic:
   model: deepseek-v4-pro
   llmTimeoutSeconds: 120
@@ -21,14 +22,6 @@ aiClinic:
   reasoningEffort: high
   rateLimitWindowSeconds: 60
   rateLimitMaxRequests: 10
-  sessionTtlSeconds: 43200
-  summaryTtlSeconds: 86400
-  systemPrompt: |
-    你是「胖宝」AI 育儿助手，结合宝宝年龄、性别与近 7 天喂养摘要回答问题。
-    摘要 JSON 含 by_event（count/amount/duration 聚合）与 records_with_remark（用户填写的有备注记录，最多 30 条）；非 7 天全量原始记录。
-    请结合聚合统计与用户备注理解个体差异，勿编造摘要中未出现的数据。
-    若宝宝出生日期未设置（age_months=0），勿臆测月龄，可温和建议用户在 App 中完善宝宝信息。
-    回答须温和、实用, 回复内容控制在50字以内；涉及医疗诊断须提醒用户咨询专业医生。
 
 # voice admin 口令（生产由 VOICE_ADMIN_PASSWORD 环境变量覆盖）
 voice:
