@@ -364,7 +364,7 @@ func (c *HistoryCtrl) EventLatest(ctx context.Context, req *v1.DeviceHistoryLate
 	return &v1.DeviceHistoryLatestRes{Item: item}, nil
 }
 
-// EventEndLatest 条件结束最近一条历史事件（内部契约）。
+// EventEndLatest 结束指定 eventId 的最近一条未闭合历史（内部契约；语义见 EndLatestHistoryIfMatch）。
 func (c *HistoryCtrl) EventEndLatest(ctx context.Context, req *v1.DeviceHistoryEndLatestReq) (res *v1.DeviceHistoryEndLatestRes, err error) {
 	deviceNo := strings.TrimSpace(req.DeviceNo)
 	if deviceNo == "" {

@@ -181,7 +181,8 @@ type DeviceHistoryContract interface {
 	ListHistoryFilter(ctx context.Context, deviceNo string, eventIds []int64, startTime int64, endTime int64, limit int) ([]entity.History, error)
 	ListHistoryPageV2(ctx context.Context, deviceNo string, page int, pageSize int, startTime int64, endTime int64, limit int) (HistoryPageResult, error)
 	GetLatestHistory(ctx context.Context, deviceNo string) (entity.History, error)
-	// EndLatestHistoryIfMatch 若最近一条历史与 eventID 匹配则更新结束时间；remark 非空时同时覆盖备注，空串表示不修改原备注。
+	// EndLatestHistoryIfMatch 若该设备存在 eventID 对应且未闭合（end_time=0）的历史，则闭合其中 id 最大的一条并更新结束时间；
+	// 不要求该行是全局最新一条。remark 非空时同时覆盖备注，空串表示不修改原备注。无未闭合匹配时返回 updated=false。
 	EndLatestHistoryIfMatch(ctx context.Context, deviceNo string, eventID int64, endTimeUnixSec int64, remark string) (bool, error)
 	ListSuggest(ctx context.Context, deviceNo string) ([]entity.Suggest, error)
 	DeleteSuggest(ctx context.Context, id int64, deviceNo string) error

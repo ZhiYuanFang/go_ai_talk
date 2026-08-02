@@ -8,12 +8,13 @@ import (
 )
 
 // applyVoiceEventEndHistory 语音结束动作落库。
-// 以 history-service EndLatestHistoryIfMatch.updated 为权威，避免 voice 侧 GetLatestHistory
-// 缓存预判与 DB 不一致时 updated=false 仍播报成功且无 app:history:notify WS 推送。
-// EndLatest 未匹配时降级瞬时 AddHistory，并在需要时自动闭合上一条未结束计时。
+// 以 history-service EndLatestHistoryIfMatch.updated 为权威：按同 eventId 闭合最近未结束行
+//（允许中间夹杂其它事件），避免 GetLatest 预判与 DB 不一致时误播报且无 WS 推送。
+// 无未闭合同 event 时降级瞬时 AddHistory；若降级前全局最新为其它未结束事件，可顺带尝试闭合。
 func applyVoiceEventEndHistory(ctx context.Context, deviceNo string, event entity.Event, displayTargetName, remark string, nowTime int64) (reply string, err error) {
 	rowName := historyRowEventName(event, displayTargetName)
 
+	// 优先闭合未结束的同 event 记录；命中则不再新建，解决「睡眠未结束却新建瞬时睡眠」。
 	updated, err := DeviceHistory().EndLatestHistoryIfMatch(ctx, deviceNo, event.Id, nowTime, remark)
 	if err != nil {
 		return "更新结束时间失败,请重试", err
@@ -22,7 +23,7 @@ func applyVoiceEventEndHistory(ctx context.Context, deviceNo string, event entit
 		return fmt.Sprintf("好的，已记录%s结束", displayTargetName), nil
 	}
 
-	// EndLatest 未匹配：降级为瞬时结束（history-service AddHistory → publish create）
+	// 无未闭合同 event：降级为瞬时结束（history-service AddHistory → publish create）
 	lastEvent, _ := DeviceHistory().GetLatestHistory(ctx, deviceNo)
 	_, err = DeviceHistory().AddHistory(ctx, entity.History{
 		DeviceNo:  deviceNo,

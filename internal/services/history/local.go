@@ -162,6 +162,14 @@ func GetLatestDeviceHistory(ctx context.Context, deviceNo string) (entity.Histor
 	return item, nil
 }
 
+// EndLatestDeviceHistoryIfMatch 按 eventId 闭合该设备最近一条未结束历史。
+//
+// 业务语义（App end-latest 与语音 feeding+end 共用）：
+//   - 匹配条件：device_no + event_id + end_time=0，按 id DESC 取一条；
+//   - 不要求该行是设备「全局最新」一条，从而「开始睡眠 → 中间记其它事件 → 结束睡眠」仍能闭合原睡眠行；
+//   - 无未闭合同 event 时返回 false（不改已结束行），由 voice 降级瞬时 AddHistory。
+//
+// 注意：禁止再使用「GetLatest 再比 EventId」——那会在中间夹杂其它事件时误判未匹配并导致重复新建。
 func EndLatestDeviceHistoryIfMatch(ctx context.Context, deviceNo string, eventID int64, endTimeUnixSec int64, remark string) (bool, error) {
 	deviceNo = strings.TrimSpace(deviceNo)
 	if deviceNo == "" || eventID <= 0 {
@@ -172,31 +180,42 @@ func EndLatestDeviceHistoryIfMatch(ctx context.Context, deviceNo string, eventID
 		endTimeUnixSec = time.Now().Unix()
 	}
 	remark = strings.TrimSpace(remark)
-	last, err := GetLatestDeviceHistory(ctx, deviceNo)
+
+	// 权威查询：同 event 的最近未闭合行（end_time=0），而非全局最新 history。
+	var open entity.History
+	err := dao.History.Ctx(ctx).
+		Where(dao.History.Columns().DeviceNo, deviceNo).
+		Where(dao.History.Columns().EventId, eventID).
+		Where(dao.History.Columns().EndTime, 0).
+		OrderDesc(dao.History.Columns().Id).
+		Limit(1).
+		Scan(&open)
 	if err != nil {
 		return false, err
 	}
-	if last.Id <= 0 || last.EventId != eventID {
+	if open.Id <= 0 {
 		return false, nil
 	}
+
 	data := g.Map{dao.History.Columns().EndTime: endTimeUnixSec}
 	if remark != "" {
 		data[dao.History.Columns().Remark] = remark
-		last.Remark = remark
+		open.Remark = remark
 	}
 	_, err = dao.History.Ctx(ctx).
-		Where(dao.History.Columns().Id, last.Id).
+		Where(dao.History.Columns().Id, open.Id).
 		Where(dao.History.Columns().DeviceNo, deviceNo).
 		Data(data).
 		Update()
 	if err != nil {
 		return false, err
 	}
-	last.EndTime = endTimeUnixSec
-	historyCache.patchHistoryOnUpdate(ctx, last)
+	open.EndTime = endTimeUnixSec
+	// patchHistoryOnUpdate 仅在 latest.id==本行时改写 latest 缓存，闭合非最新未结束行是安全的。
+	historyCache.patchHistoryOnUpdate(ctx, open)
 	// 与 UpdateDeviceHistory 一致：改 endTime（及可选 remark）时也要递增 piece 版本并向 app:history:notify 广播，否则 App WS 收不到「结束事件」类更新。
 	bumpPieceCacheEpoch(ctx, deviceNo)
-	publishHistoryChange(ctx, deviceNo, "update", historyToNotifyPayload(ctx, last))
+	publishHistoryChange(ctx, deviceNo, "update", historyToNotifyPayload(ctx, open))
 	return true, nil
 }
 
