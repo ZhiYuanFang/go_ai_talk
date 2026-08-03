@@ -15,40 +15,61 @@ const (
 	feedIndexWarmBatchSizeEnv    = "UCG_FEED_INDEX_WARM_BATCH_SIZE"
 	feedIndexWarmMaxPostsEnv     = "UCG_FEED_INDEX_WARM_MAX_POSTS"
 	feedIndexWarmLockSecondsEnv  = "UCG_FEED_INDEX_WARM_LOCK_SECONDS"
-	feedIndexAutoWarmEnabledDef  = true
-	feedIndexWarmBatchSizeDef    = 200
-	feedIndexWarmMaxPostsDef     = 2000
-	feedIndexWarmLockSecondsDef  = 60
+	feedIndexHealGapThresholdEnv = "UCG_FEED_INDEX_HEAL_GAP_THRESHOLD"
+	feedIndexStartupCheckEnv     = "UCG_FEED_INDEX_STARTUP_CHECK_ENABLED"
+	feedIndexStartupHealEnv      = "UCG_FEED_INDEX_STARTUP_HEAL_ENABLED"
+	feedIndexStartupHealMaxEnv   = "UCG_FEED_INDEX_STARTUP_HEAL_MAX_POSTS"
+	feedIndexStartupHealLockEnv  = "UCG_FEED_INDEX_STARTUP_HEAL_LOCK_SECONDS"
+
+	feedIndexAutoWarmEnabledDef     = true
+	feedIndexWarmBatchSizeDef       = 200
+	feedIndexWarmMaxPostsDef        = 2000
+	feedIndexWarmLockSecondsDef     = 60
+	feedIndexHealGapThresholdDef    = 50
+	feedIndexStartupCheckEnabledDef = true
+	feedIndexStartupHealEnabledDef  = true
+	feedIndexStartupHealMaxPostsDef = 10000
+	feedIndexStartupHealLockSecDef  = 1800
 )
 
 // FeedConfig Feed 复合分与 Redis 读路径参数。
 type FeedConfig struct {
-	WDist                 float64
-	DistDecayKm           float64
-	RadiusStepsKm         []float64
-	CandidateBatchSize    int
-	SessionTTLMinutes     int
-	SnapshotTTLDays       int
-	IndexAutoWarmEnabled    bool
-	IndexWarmBatchSize      int
-	IndexWarmMaxPosts       int
-	IndexWarmLockSeconds    int
-	CommentsPreviewMax      int
+	WDist                    float64
+	DistDecayKm              float64
+	RadiusStepsKm            []float64
+	CandidateBatchSize       int
+	SessionTTLMinutes        int
+	SnapshotTTLDays          int
+	IndexAutoWarmEnabled     bool
+	IndexWarmBatchSize       int
+	IndexWarmMaxPosts        int
+	IndexWarmLockSeconds     int
+	IndexHealGapThreshold    int  // published-zcard 缺口达到该值视为短缺
+	IndexStartupCheckEnabled bool // 启动自检
+	IndexStartupHealEnabled  bool // 检出缺口后异步自动补齐
+	IndexStartupHealMaxPosts int
+	IndexStartupHealLockSec  int
+	CommentsPreviewMax       int
 }
 
 // LoadFeedConfig 读取 ucg.feed.* 配置并填充默认值。
 func LoadFeedConfig(ctx context.Context) FeedConfig {
 	cfg := FeedConfig{
-		WDist:                g.Cfg().MustGet(ctx, "ucg.feed.wDist").Float64(),
-		DistDecayKm:          g.Cfg().MustGet(ctx, "ucg.feed.distDecayKm").Float64(),
-		CandidateBatchSize:   g.Cfg().MustGet(ctx, "ucg.feed.candidateBatchSize").Int(),
-		SessionTTLMinutes:    g.Cfg().MustGet(ctx, "ucg.feed.sessionTtlMinutes").Int(),
-		SnapshotTTLDays:      g.Cfg().MustGet(ctx, "ucg.feed.snapshotTtlDays").Int(),
-		IndexAutoWarmEnabled: g.Cfg().MustGet(ctx, "ucg.feed.indexAutoWarmEnabled", feedIndexAutoWarmEnabledDef).Bool(),
-		IndexWarmBatchSize:   g.Cfg().MustGet(ctx, "ucg.feed.indexWarmBatchSize", feedIndexWarmBatchSizeDef).Int(),
-		IndexWarmMaxPosts:    g.Cfg().MustGet(ctx, "ucg.feed.indexWarmMaxPosts", feedIndexWarmMaxPostsDef).Int(),
-		IndexWarmLockSeconds: g.Cfg().MustGet(ctx, "ucg.feed.indexWarmLockSeconds", feedIndexWarmLockSecondsDef).Int(),
-		CommentsPreviewMax:   g.Cfg().MustGet(ctx, "ucg.feed.commentsPreviewMax", 6).Int(),
+		WDist:                    g.Cfg().MustGet(ctx, "ucg.feed.wDist").Float64(),
+		DistDecayKm:              g.Cfg().MustGet(ctx, "ucg.feed.distDecayKm").Float64(),
+		CandidateBatchSize:       g.Cfg().MustGet(ctx, "ucg.feed.candidateBatchSize").Int(),
+		SessionTTLMinutes:        g.Cfg().MustGet(ctx, "ucg.feed.sessionTtlMinutes").Int(),
+		SnapshotTTLDays:          g.Cfg().MustGet(ctx, "ucg.feed.snapshotTtlDays").Int(),
+		IndexAutoWarmEnabled:     g.Cfg().MustGet(ctx, "ucg.feed.indexAutoWarmEnabled", feedIndexAutoWarmEnabledDef).Bool(),
+		IndexWarmBatchSize:       g.Cfg().MustGet(ctx, "ucg.feed.indexWarmBatchSize", feedIndexWarmBatchSizeDef).Int(),
+		IndexWarmMaxPosts:        g.Cfg().MustGet(ctx, "ucg.feed.indexWarmMaxPosts", feedIndexWarmMaxPostsDef).Int(),
+		IndexWarmLockSeconds:     g.Cfg().MustGet(ctx, "ucg.feed.indexWarmLockSeconds", feedIndexWarmLockSecondsDef).Int(),
+		IndexHealGapThreshold:    g.Cfg().MustGet(ctx, "ucg.feed.indexHealGapThreshold", feedIndexHealGapThresholdDef).Int(),
+		IndexStartupCheckEnabled: g.Cfg().MustGet(ctx, "ucg.feed.indexStartupCheckEnabled", feedIndexStartupCheckEnabledDef).Bool(),
+		IndexStartupHealEnabled:  g.Cfg().MustGet(ctx, "ucg.feed.indexStartupHealEnabled", feedIndexStartupHealEnabledDef).Bool(),
+		IndexStartupHealMaxPosts: g.Cfg().MustGet(ctx, "ucg.feed.indexStartupHealMaxPosts", feedIndexStartupHealMaxPostsDef).Int(),
+		IndexStartupHealLockSec:  g.Cfg().MustGet(ctx, "ucg.feed.indexStartupHealLockSeconds", feedIndexStartupHealLockSecDef).Int(),
+		CommentsPreviewMax:       g.Cfg().MustGet(ctx, "ucg.feed.commentsPreviewMax", 6).Int(),
 	}
 	steps := g.Cfg().MustGet(ctx, "ucg.feed.radiusStepsKm").Interfaces()
 	for _, v := range steps {
@@ -72,6 +93,30 @@ func LoadFeedConfig(ctx context.Context) FeedConfig {
 	if cfg.SnapshotTTLDays <= 0 {
 		cfg.SnapshotTTLDays = 7
 	}
+	applyFeedIndexEnvOverrides(&cfg)
+	if cfg.IndexWarmBatchSize <= 0 {
+		cfg.IndexWarmBatchSize = feedIndexWarmBatchSizeDef
+	}
+	if cfg.IndexWarmMaxPosts <= 0 {
+		cfg.IndexWarmMaxPosts = feedIndexWarmMaxPostsDef
+	}
+	if cfg.IndexWarmLockSeconds <= 0 {
+		cfg.IndexWarmLockSeconds = feedIndexWarmLockSecondsDef
+	}
+	if cfg.IndexHealGapThreshold <= 0 {
+		cfg.IndexHealGapThreshold = feedIndexHealGapThresholdDef
+	}
+	if cfg.IndexStartupHealMaxPosts <= 0 {
+		cfg.IndexStartupHealMaxPosts = feedIndexStartupHealMaxPostsDef
+	}
+	if cfg.IndexStartupHealLockSec <= 0 {
+		cfg.IndexStartupHealLockSec = feedIndexStartupHealLockSecDef
+	}
+	return cfg
+}
+
+// applyFeedIndexEnvOverrides 环境变量覆盖 feed 索引 warm/heal 相关开关与上限。
+func applyFeedIndexEnvOverrides(cfg *FeedConfig) {
 	if v := strings.TrimSpace(os.Getenv(feedIndexAutoWarmEnabledEnv)); v != "" {
 		cfg.IndexAutoWarmEnabled = v == "1" || strings.EqualFold(v, "true")
 	}
@@ -90,16 +135,27 @@ func LoadFeedConfig(ctx context.Context) FeedConfig {
 			cfg.IndexWarmLockSeconds = n
 		}
 	}
-	if cfg.IndexWarmBatchSize <= 0 {
-		cfg.IndexWarmBatchSize = feedIndexWarmBatchSizeDef
+	if v := strings.TrimSpace(os.Getenv(feedIndexHealGapThresholdEnv)); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.IndexHealGapThreshold = n
+		}
 	}
-	if cfg.IndexWarmMaxPosts <= 0 {
-		cfg.IndexWarmMaxPosts = feedIndexWarmMaxPostsDef
+	if v := strings.TrimSpace(os.Getenv(feedIndexStartupCheckEnv)); v != "" {
+		cfg.IndexStartupCheckEnabled = v == "1" || strings.EqualFold(v, "true")
 	}
-	if cfg.IndexWarmLockSeconds <= 0 {
-		cfg.IndexWarmLockSeconds = feedIndexWarmLockSecondsDef
+	if v := strings.TrimSpace(os.Getenv(feedIndexStartupHealEnv)); v != "" {
+		cfg.IndexStartupHealEnabled = v == "1" || strings.EqualFold(v, "true")
 	}
-	return cfg
+	if v := strings.TrimSpace(os.Getenv(feedIndexStartupHealMaxEnv)); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.IndexStartupHealMaxPosts = n
+		}
+	}
+	if v := strings.TrimSpace(os.Getenv(feedIndexStartupHealLockEnv)); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.IndexStartupHealLockSec = n
+		}
+	}
 }
 
 func (cfg FeedConfig) sessionTTL() time.Duration {

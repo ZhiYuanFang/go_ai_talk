@@ -29,6 +29,8 @@ func main() {
 		glog.Fatalf(ctx, "push device schema ensure failed: %v", err)
 		return
 	}
+	// 推荐索引启动自检 + 异步自动补齐（不阻塞 Listen；多副本靠 startup-heal 锁）。
+	ucgsvc.StartFeedIndexStartupHeal(ctx)
 	s := g.Server("ucg-service")
 	applyUcgServiceAddress(s)
 	controller.RegisterUcgServiceHTTP(s)

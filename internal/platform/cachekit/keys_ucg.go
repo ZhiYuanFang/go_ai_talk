@@ -104,6 +104,13 @@ func UCGFeedIndexWarmLockKey() string {
 	return "ucg:feed:index:warm:lock"
 }
 
+// UCGFeedIndexStartupHealLockKey ucg-service 启动期索引自动补齐分布式锁。
+// TTL 见 ucg.feed.indexStartupHealLockSeconds（默认 1800s）；跨副本仅一方执行有界 heal，与 warm 锁分离以免长时间互斥。
+// 无业务数据；进程启动一次性争用，非 ticker。
+func UCGFeedIndexStartupHealLockKey() string {
+	return "ucg:feed:index:startup-heal:lock"
+}
+
 // UCGPostCommentsKey 帖子已发布评论 ZSET 索引；score=created_at，member=commentId。
 // 无 TTL；删帖/下架时 DEL；publish/delete 写路径 ZADD/ZREM 维护。
 func UCGPostCommentsKey(postID uint64) string {

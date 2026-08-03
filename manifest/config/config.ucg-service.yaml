@@ -68,6 +68,11 @@ ucg:
     indexWarmBatchSize: 200      # warm MySQL 分页大小
     indexWarmMaxPosts: 2000      # 单次 Feed 请求 warm 帖数上限
     indexWarmLockSeconds: 60     # warm 分布式锁 TTL（秒）
+    indexHealGapThreshold: 50    # published-zcard 缺口阈值；达到则视为短缺（请求 warm / 启动 heal）
+    indexStartupCheckEnabled: true   # ucg-service 启动自检；可用 UCG_FEED_INDEX_STARTUP_CHECK_ENABLED 覆盖
+    indexStartupHealEnabled: true    # 检出缺口后异步自动补齐；可用 UCG_FEED_INDEX_STARTUP_HEAL_ENABLED 覆盖
+    indexStartupHealMaxPosts: 10000  # 启动 heal 帖数上限
+    indexStartupHealLockSeconds: 1800 # 启动 heal 锁 TTL（秒）
     commentsPreviewMax: 6      # Feed 内联评论预览条数（v2 API）
   # AI 润笔（polish lane）：provider/model/maxInFlight/maxWaiters 可由 Admin 热更新；API Key 仅 env。
   # zhipu → GLM_API_KEY；dashscope → UCG_DASHSCOPE_API_KEY。yaml 冷启动兜底见 default_*。
