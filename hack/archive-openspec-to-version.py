@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import subprocess
@@ -48,7 +49,27 @@ def resolve_source_version(target: str, explicit: str | None) -> str:
     return prior[-1]
 
 
+def resolve_openspec_cmd() -> list[str]:
+    """Windows 上 `openspec` 常为 .cmd/.ps1，CreateProcess 直接找无扩展名会失败。"""
+    which = shutil.which("openspec")
+    if which:
+        return [which]
+    # 常见 npm global 路径回退
+    for name in ("openspec.cmd", "openspec"):
+        for base in (
+            Path(os.environ.get("APPDATA", "")) / "npm",
+            Path(r"D:\Program Files\nodejs\node_global"),
+            Path(r"C:\Program Files\nodejs"),
+        ):
+            cand = base / name
+            if cand.is_file():
+                return [str(cand)]
+    return ["openspec"]
+
+
 def run(cmd: list[str], *, check: bool = True) -> subprocess.CompletedProcess[str]:
+    if cmd and cmd[0] == "openspec":
+        cmd = resolve_openspec_cmd() + cmd[1:]
     print("$", " ".join(cmd))
     return subprocess.run(cmd, cwd=ROOT, text=True, check=check)
 
