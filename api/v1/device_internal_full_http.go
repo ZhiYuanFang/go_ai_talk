@@ -70,6 +70,22 @@ type DeviceInternalUserListPageRes struct {
 	PageSize int           `json:"pageSize"`
 }
 
+// DeviceInternalWxListPageReq 内部 wx 账号分页（供 voice 等跨进程契约，无管理口令）。
+type DeviceInternalWxListPageReq struct {
+	g.Meta   `path:"/device/internal/api/wx/list-page" method:"get" tags:"device" summary:"内部-wx 账号分页列表"`
+	Page     int    `json:"page" p:"page"`
+	PageSize int    `json:"pageSize" p:"pageSize"`
+	Q        string `json:"q" p:"q" dc:"id/deviceNo/unionid/account 模糊搜索"`
+}
+
+// DeviceInternalWxListPageRes 内部 wx 分页响应（含 babyName）。
+type DeviceInternalWxListPageRes struct {
+	List     []DeviceAdminWxListItem `json:"list"`
+	Total    int                     `json:"total"`
+	Page     int                     `json:"page"`
+	PageSize int                     `json:"pageSize"`
+}
+
 type DeviceInternalUserTouchAPIAccessReq struct {
 	g.Meta   `path:"/device/internal/api/user/touch-api-access" method:"post" tags:"device" summary:"内部-记录最近 HTTP 接口访问"`
 	DeviceNo string `json:"deviceNo"`

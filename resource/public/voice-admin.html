@@ -6,9 +6,15 @@
 	<title>Voice 运维</title>
 	<link rel="stylesheet" href="/resource/public/pangbao-theme.css" />
 	<link rel="stylesheet" href="/resource/public/admin-pages.css" />
+	<style>
+		/* 额度表略宽：在窄页基础上允许横向滚动 */
+		.quota-table input[type="number"] { width: 72px; padding: 4px 6px; }
+		.quota-hint { font-size: 12px; color: #64748b; line-height: 1.55; margin: 0 0 14px; }
+		.quota-hint code { font-size: 11px; }
+	</style>
 </head>
 <body>
-<div class="page page-narrow">
+<div class="page">
 	<header class="admin-header glass">
 		<div class="logo">Voice</div>
 		<div>
@@ -32,23 +38,45 @@
 			<span id="quotaDefaultMeta" class="msg" style="color:#64748b;"></span>
 		</div>
 		<hr class="divider" />
-		<h4 style="margin:0 0 12px;font-size:15px;">单人 override（wxId）</h4>
-		<div class="row">
-			<input id="quotaWxId" type="number" min="1" step="1" placeholder="wxId" style="width:140px;" />
-			<button id="loadQuotaUserBtn" type="button" class="secondary">加载</button>
+		<h4 style="margin:0 0 8px;font-size:15px;">用户额度</h4>
+		<p class="quota-hint">
+			改上限会影响当月 check / consume / degraded 阈值（路由不变）。<br />
+			<strong>喂养 AI</strong>：<code>/voice/chat/ws</code>；
+			<code>POST /voice/internal/api/text/chat</code>；
+			<code>POST /voice/internal/api/text/chat/stream</code>；
+			<code>POST /device/history/api/chat</code>；
+			<code>POST /device/history/api/chat/stream</code>；
+			<code>POST /voice/text/chat</code>。<br />
+			<strong>胖宝 AI</strong>：<code>/voice/clinic/ws</code>。<br />
+			上限等于全局默认时将清除个人 override，之后跟随全局。
+		</p>
+		<div class="row" style="margin-bottom:12px;">
+			<input id="quotaDeviceNo" type="text" placeholder="按 deviceNo 查询" style="width:220px;" />
+			<button id="quotaSearchBtn" type="button" class="secondary">查询</button>
+			<button id="quotaResetBtn" type="button" class="secondary">重置</button>
 		</div>
-		<div class="field">
-			<label for="quotaVoiceUser">喂养 AI override</label>
-			<input id="quotaVoiceUser" type="number" min="1" step="1" />
-			<label style="margin-top:6px;"><input id="quotaClearVoice" type="checkbox" /> 清除喂养 override</label>
+		<div class="table-wrap">
+			<table>
+				<thead>
+					<tr>
+						<th>deviceNo</th>
+						<th>喂养已用</th>
+						<th>喂养上限</th>
+						<th>胖宝已用</th>
+						<th>胖宝上限</th>
+						<th>wx.id</th>
+						<th>account</th>
+						<th>baby_name</th>
+						<th></th>
+					</tr>
+				</thead>
+				<tbody id="quotaUserBody"></tbody>
+			</table>
 		</div>
-		<div class="field">
-			<label for="quotaClinicUser">胖宝 AI override</label>
-			<input id="quotaClinicUser" type="number" min="1" step="1" />
-			<label style="margin-top:6px;"><input id="quotaClearClinic" type="checkbox" /> 清除胖宝 override</label>
-		</div>
-		<div class="row">
-			<button id="saveQuotaUserBtn" type="button" class="secondary">保存单人额度</button>
+		<div class="row" style="margin-top:12px;align-items:center;gap:8px;">
+			<button id="quotaPrevBtn" type="button" class="secondary">上一页</button>
+			<span id="quotaPageMeta" class="msg" style="color:#64748b;"></span>
+			<button id="quotaNextBtn" type="button" class="secondary">下一页</button>
 		</div>
 		<div id="quotaMsg" class="msg"></div>
 	</div>
@@ -61,6 +89,12 @@ function showMsg(el, text, ok) {
 	el.textContent = text || '';
 	el.style.color = ok ? '#16a34a' : '#dc2626';
 }
+
+var quotaPage = 1;
+var quotaPageSize = 20;
+var quotaTotal = 0;
+var quotaDeviceFilter = '';
+
 async function loadQuotaDefault() {
 	const data = await api('/voice/admin/api/ai-quota/default');
 	document.getElementById('quotaVoiceDefault').value = data.voiceAiMonthlyLimit || 5;
@@ -68,16 +102,73 @@ async function loadQuotaDefault() {
 	const meta = document.getElementById('quotaDefaultMeta');
 	meta.textContent = data.updatedAt ? ('默认更新: ' + new Date(data.updatedAt * 1000).toLocaleString()) : '';
 }
-async function loadQuotaUser() {
-	const wxId = parseInt(document.getElementById('quotaWxId').value, 10);
-	if (!wxId) { showMsg(document.getElementById('quotaMsg'), '请输入 wxId', false); return; }
-	const data = await api('/voice/admin/api/ai-quota/user?wxId=' + wxId);
-	document.getElementById('quotaVoiceUser').value = data.voiceAiMonthlyLimit != null ? data.voiceAiMonthlyLimit : '';
-	document.getElementById('quotaClinicUser').value = data.clinicAiMonthlyLimit != null ? data.clinicAiMonthlyLimit : '';
-	document.getElementById('quotaClearVoice').checked = false;
-	document.getElementById('quotaClearClinic').checked = false;
-	showMsg(document.getElementById('quotaMsg'), '已加载 wxId=' + wxId, true);
+
+function escapeHtml(s) {
+	return String(s == null ? '' : s)
+		.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+		.replace(/"/g, '&quot;');
 }
+
+async function loadQuotaUsers() {
+	const q = encodeURIComponent(quotaDeviceFilter || '');
+	const path = '/voice/admin/api/ai-quota/users?page=' + quotaPage + '&pageSize=' + quotaPageSize
+		+ (quotaDeviceFilter ? '&deviceNo=' + q : '');
+	const data = await api(path);
+	const list = (data && data.list) || [];
+	quotaTotal = (data && typeof data.total === 'number') ? data.total : list.length;
+	quotaPage = (data && data.page) || quotaPage;
+	quotaPageSize = (data && data.pageSize) || quotaPageSize;
+	const body = document.getElementById('quotaUserBody');
+	body.innerHTML = '';
+	if (!list.length) {
+		body.innerHTML = '<tr><td colspan="9" style="color:#64748b;">暂无用户</td></tr>';
+	} else {
+		list.forEach(function(row) {
+			const tr = document.createElement('tr');
+			tr.innerHTML =
+				'<td>' + escapeHtml(row.deviceNo) + '</td>' +
+				'<td>' + (row.voiceAi && row.voiceAi.used != null ? row.voiceAi.used : 0) + '</td>' +
+				'<td><input type="number" min="1" step="1" class="voice-limit" value="' +
+					(row.voiceAi && row.voiceAi.limit != null ? row.voiceAi.limit : '') + '" /></td>' +
+				'<td>' + (row.clinicAi && row.clinicAi.used != null ? row.clinicAi.used : 0) + '</td>' +
+				'<td><input type="number" min="1" step="1" class="clinic-limit" value="' +
+					(row.clinicAi && row.clinicAi.limit != null ? row.clinicAi.limit : '') + '" /></td>' +
+				'<td>' + escapeHtml(row.wxId) + '</td>' +
+				'<td>' + escapeHtml(row.account) + '</td>' +
+				'<td>' + escapeHtml(row.babyName) + '</td>' +
+				'<td><button type="button" class="secondary save-row">保存</button></td>';
+			tr.querySelector('.save-row').addEventListener('click', function() {
+				saveQuotaRow(row.wxId, tr).catch(function(e) {
+					showMsg(document.getElementById('quotaMsg'), e.message || String(e), false);
+				});
+			});
+			body.appendChild(tr);
+		});
+	}
+	const totalPages = quotaTotal > 0 ? Math.ceil(quotaTotal / quotaPageSize) : 0;
+	document.getElementById('quotaPageMeta').textContent =
+		'第 ' + quotaPage + ' / ' + (totalPages || 1) + ' 页 · 共 ' + quotaTotal + ' 人';
+	document.getElementById('quotaPrevBtn').disabled = quotaPage <= 1;
+	document.getElementById('quotaNextBtn').disabled = totalPages === 0 || quotaPage >= totalPages;
+}
+
+async function saveQuotaRow(wxId, tr) {
+	const voiceVal = parseInt(tr.querySelector('.voice-limit').value, 10);
+	const clinicVal = parseInt(tr.querySelector('.clinic-limit').value, 10);
+	if (!wxId) throw new Error('wxId 无效');
+	if (!(voiceVal > 0) || !(clinicVal > 0)) throw new Error('上限须为正整数');
+	await api('/voice/admin/api/ai-quota/user', {
+		method: 'PUT',
+		body: JSON.stringify({
+			wxId: wxId,
+			voiceAiMonthlyLimit: voiceVal,
+			clinicAiMonthlyLimit: clinicVal
+		})
+	});
+	showMsg(document.getElementById('quotaMsg'), '已保存 wxId=' + wxId, true);
+	await loadQuotaUsers();
+}
+
 document.getElementById('saveQuotaDefaultBtn').addEventListener('click', async function() {
 	try {
 		await api('/voice/admin/api/ai-quota/default', { method: 'PUT', body: JSON.stringify({
@@ -85,26 +176,48 @@ document.getElementById('saveQuotaDefaultBtn').addEventListener('click', async f
 			clinicAiMonthlyLimit: parseInt(document.getElementById('quotaClinicDefault').value, 10) || 30
 		})});
 		await loadQuotaDefault();
+		await loadQuotaUsers();
 		showMsg(document.getElementById('quotaMsg'), '全局默认已保存', true);
 	} catch (e) { showMsg(document.getElementById('quotaMsg'), e.message || String(e), false); }
 });
-document.getElementById('loadQuotaUserBtn').addEventListener('click', () => loadQuotaUser().catch(e => showMsg(document.getElementById('quotaMsg'), e.message, false)));
-document.getElementById('saveQuotaUserBtn').addEventListener('click', async function() {
-	try {
-		const wxId = parseInt(document.getElementById('quotaWxId').value, 10);
-		if (!wxId) throw new Error('请输入 wxId');
-		const body = { wxId, clearVoiceAi: document.getElementById('quotaClearVoice').checked, clearClinicAi: document.getElementById('quotaClearClinic').checked };
-		const vVal = document.getElementById('quotaVoiceUser').value.trim();
-		const cVal = document.getElementById('quotaClinicUser').value.trim();
-		if (vVal && !body.clearVoiceAi) body.voiceAiMonthlyLimit = parseInt(vVal, 10);
-		if (cVal && !body.clearClinicAi) body.clinicAiMonthlyLimit = parseInt(cVal, 10);
-		await api('/voice/admin/api/ai-quota/user', { method: 'PUT', body: JSON.stringify(body) });
-		showMsg(document.getElementById('quotaMsg'), '单人额度已保存', true);
-	} catch (e) { showMsg(document.getElementById('quotaMsg'), e.message || String(e), false); }
+
+document.getElementById('quotaSearchBtn').addEventListener('click', function() {
+	quotaDeviceFilter = (document.getElementById('quotaDeviceNo').value || '').trim();
+	quotaPage = 1;
+	loadQuotaUsers().catch(function(e) {
+		showMsg(document.getElementById('quotaMsg'), e.message || String(e), false);
+	});
 });
+document.getElementById('quotaResetBtn').addEventListener('click', function() {
+	document.getElementById('quotaDeviceNo').value = '';
+	quotaDeviceFilter = '';
+	quotaPage = 1;
+	loadQuotaUsers().catch(function(e) {
+		showMsg(document.getElementById('quotaMsg'), e.message || String(e), false);
+	});
+});
+document.getElementById('quotaPrevBtn').addEventListener('click', function() {
+	if (quotaPage <= 1) return;
+	quotaPage -= 1;
+	loadQuotaUsers().catch(function(e) {
+		showMsg(document.getElementById('quotaMsg'), e.message || String(e), false);
+	});
+});
+document.getElementById('quotaNextBtn').addEventListener('click', function() {
+	quotaPage += 1;
+	loadQuotaUsers().catch(function(e) {
+		showMsg(document.getElementById('quotaMsg'), e.message || String(e), false);
+	});
+});
+document.getElementById('quotaDeviceNo').addEventListener('keydown', function(ev) {
+	if (ev.key === 'Enter') document.getElementById('quotaSearchBtn').click();
+});
+
 if (AdminCommon.requireAdmin()) {
 	document.getElementById('mainCard').classList.remove('hidden');
-	loadQuotaDefault().catch(e => showMsg(document.getElementById('quotaMsg'), e.message, false));
+	Promise.all([loadQuotaDefault(), loadQuotaUsers()]).catch(function(e) {
+		showMsg(document.getElementById('quotaMsg'), e.message || String(e), false);
+	});
 }
 </script>
 </body>

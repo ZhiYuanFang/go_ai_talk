@@ -62,6 +62,7 @@ type DeviceAdminWxListItem struct {
 	Platform  string `json:"platform"`
 	Account   string `json:"account"`
 	CreatedAt int64  `json:"createdAt"`
+	BabyName  string `json:"babyName" dc:"宝宝名字，来自 user 画像"`
 }
 
 // DeviceAdminWxListRes wx 账号分页响应。

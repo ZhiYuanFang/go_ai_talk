@@ -93,6 +93,7 @@ func (c *AdminCtrl) WxList(ctx context.Context, req *v1.DeviceAdminWxListReq) (r
 			Platform:  it.Platform,
 			Account:   it.Account,
 			CreatedAt: it.CreatedAt,
+			BabyName:  it.BabyName,
 		})
 	}
 	return &v1.DeviceAdminWxListRes{

@@ -84,7 +84,7 @@ func voiceClinicWS(r *ghttp.Request) {
 	}
 
 	connState := &clinicConnState{}
-	// WS 关闭时取消 active LLM ctx（disconnected）；连接已断，不下发 turn_cancelled。
+	// WS 关闭时取消 active LLM ctx；连接已断 MUST NOT 下发 turn_cancelled（无 reason:disconnected）。
 	defer func() {
 		connState.turnMu.Lock()
 		if connState.cancelTurn != nil {

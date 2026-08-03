@@ -7,7 +7,7 @@ voiceChat:
     sampleRate: 16000
     bits: 16
     channels: 1
-    maxDurationSec: 30
+    maxDurationSec: 60
   session:
     maxRounds: 10
     ttlSeconds: 1800

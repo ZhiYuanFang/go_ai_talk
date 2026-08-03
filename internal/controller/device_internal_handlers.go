@@ -82,6 +82,34 @@ func (c *DeviceInternalCtrl) UserListPage(ctx context.Context, req *v1.DeviceInt
 	}, nil
 }
 
+// WxListPage 真实 wx 账号分页（供 voice 额度列表等跨进程契约，无管理口令）。
+// 业务逻辑：委托 ListWxPage；响应含 babyName。
+func (c *DeviceInternalCtrl) WxListPage(ctx context.Context, req *v1.DeviceInternalWxListPageReq) (res *v1.DeviceInternalWxListPageRes, err error) {
+	_ = c
+	result, err := device.DeviceAdmin().ListWxPage(ctx, req.Page, req.PageSize, req.Q)
+	if err != nil {
+		return nil, err
+	}
+	list := make([]v1.DeviceAdminWxListItem, 0, len(result.List))
+	for _, it := range result.List {
+		list = append(list, v1.DeviceAdminWxListItem{
+			Id:        it.Id,
+			DeviceNo:  it.DeviceNo,
+			Unionid:   it.Unionid,
+			Platform:  it.Platform,
+			Account:   it.Account,
+			CreatedAt: it.CreatedAt,
+			BabyName:  it.BabyName,
+		})
+	}
+	return &v1.DeviceInternalWxListPageRes{
+		List:     list,
+		Total:    result.Total,
+		Page:     result.Page,
+		PageSize: result.PageSize,
+	}, nil
+}
+
 // UserList 设备列表。
 func (c *DeviceInternalCtrl) UserList(ctx context.Context, req *v1.DeviceInternalUserListReq) (res *v1.DeviceInternalUserListRes, err error) {
 	_ = c

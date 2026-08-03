@@ -81,6 +81,24 @@ type VoiceAIQuotaAppStatus struct {
 	ClinicAi AIQuotaSnapshot `json:"clinicAi"`
 }
 
+// VoiceAIQuotaUserListItem Admin 用户额度列表行（身份 + 有效 used/limit）。
+type VoiceAIQuotaUserListItem struct {
+	DeviceNo string          `json:"deviceNo"`
+	WxId     int64           `json:"wxId"`
+	Account  string          `json:"account"`
+	BabyName string          `json:"babyName"`
+	VoiceAi  AIQuotaSnapshot `json:"voiceAi"`
+	ClinicAi AIQuotaSnapshot `json:"clinicAi"`
+}
+
+// VoiceAIQuotaUserPageResult Admin 用户额度分页。
+type VoiceAIQuotaUserPageResult struct {
+	List     []VoiceAIQuotaUserListItem
+	Total    int
+	Page     int
+	PageSize int
+}
+
 // PolishAIQuotaAppStatus App 读 API：ucg 域 polish。
 type PolishAIQuotaAppStatus struct {
 	Polish AIQuotaSnapshot `json:"polish"`

@@ -151,14 +151,23 @@ func (c *httpDeviceAdminClient) ListUsersPage(ctx context.Context, page, pageSiz
 	return out, err
 }
 
+// ListWxPage 经 device 内部 wx 分页契约拉取（含 babyName），无需管理口令。
 func (c *httpDeviceAdminClient) ListWxPage(ctx context.Context, page, pageSize int, q string) (contracts.WxPageResult, error) {
-	var out contracts.WxPageResult
-	err := c.doJSON(ctx, http.MethodGet, "/device/admin/api/wx/list", map[string]string{
+	var out struct {
+		List     []contracts.AdminWxListItem `json:"list"`
+		Total    int                         `json:"total"`
+		Page     int                         `json:"page"`
+		PageSize int                         `json:"pageSize"`
+	}
+	err := c.doJSON(ctx, http.MethodGet, "/device/internal/api/wx/list-page", map[string]string{
 		"page":     fmt.Sprintf("%d", page),
 		"pageSize": fmt.Sprintf("%d", pageSize),
 		"q":        strings.TrimSpace(q),
 	}, nil, &out)
-	return out, err
+	if err != nil {
+		return contracts.WxPageResult{}, err
+	}
+	return contracts.WxPageResult{List: out.List, Total: out.Total, Page: out.Page, PageSize: out.PageSize}, nil
 }
 
 func (c *httpDeviceAdminClient) TouchLastAPIAccess(ctx context.Context, deviceNo, apiPath string, atUnixSec int64) error {

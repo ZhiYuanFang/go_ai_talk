@@ -130,3 +130,34 @@ func (c *VoiceAdminAIQuotaCtrl) UserPut(ctx context.Context, req *v1.VoiceAdminA
 		UpdatedAt:            dto.UpdatedAt,
 	}, nil
 }
+
+// UsersGet 分页列出全部真实 wx 的有效额度与身份字段。
+// 业务逻辑：口令校验后委托 ListVoiceAIQuotaUsersForAdmin；deviceNo 经 device wx 列表过滤。
+func (c *VoiceAdminAIQuotaCtrl) UsersGet(ctx context.Context, req *v1.VoiceAdminAIQuotaUsersGetReq) (res *v1.VoiceAdminAIQuotaUsersGetRes, err error) {
+	if err = c.requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	page := req.Page
+	pageSize := req.PageSize
+	result, err := voice.ListVoiceAIQuotaUsersForAdmin(ctx, page, pageSize, req.DeviceNo)
+	if err != nil {
+		return nil, err
+	}
+	list := make([]v1.VoiceAdminAIQuotaUsersItem, 0, len(result.List))
+	for _, it := range result.List {
+		list = append(list, v1.VoiceAdminAIQuotaUsersItem{
+			DeviceNo: it.DeviceNo,
+			WxId:     it.WxId,
+			Account:  it.Account,
+			BabyName: it.BabyName,
+			VoiceAi:  v1.VoiceAdminAIQuotaUsersFeature{Used: it.VoiceAi.Used, Limit: it.VoiceAi.Limit},
+			ClinicAi: v1.VoiceAdminAIQuotaUsersFeature{Used: it.ClinicAi.Used, Limit: it.ClinicAi.Limit},
+		})
+	}
+	return &v1.VoiceAdminAIQuotaUsersGetRes{
+		List:     list,
+		Total:    result.Total,
+		Page:     result.Page,
+		PageSize: result.PageSize,
+	}, nil
+}

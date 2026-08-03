@@ -96,3 +96,35 @@ type VoiceAdminAIQuotaUserPutReq struct {
 
 // VoiceAdminAIQuotaUserPutRes 更新后 override。
 type VoiceAdminAIQuotaUserPutRes = VoiceAdminAIQuotaUserGetRes
+
+// VoiceAdminAIQuotaUsersGetReq 分页列出全部真实 wx 的有效额度与身份。
+type VoiceAdminAIQuotaUsersGetReq struct {
+	g.Meta   `path:"/voice/admin/api/ai-quota/users" method:"get" tags:"voice-admin" summary:"分页列出用户 voice/clinic AI 额度"`
+	Page     int    `json:"page" p:"page" dc:"页码，从 1 开始"`
+	PageSize int    `json:"pageSize" p:"pageSize" dc:"每页条数，默认 20，最大 100"`
+	DeviceNo string `json:"deviceNo" p:"deviceNo" dc:"按设备号过滤（模糊/前缀，经 device wx 列表 q）"`
+}
+
+// VoiceAdminAIQuotaUsersFeature 列表行内单 feature 已用/上限。
+type VoiceAdminAIQuotaUsersFeature struct {
+	Used  int `json:"used"`
+	Limit int `json:"limit"`
+}
+
+// VoiceAdminAIQuotaUsersItem 用户额度列表行。
+type VoiceAdminAIQuotaUsersItem struct {
+	DeviceNo string                          `json:"deviceNo"`
+	WxId     int64                           `json:"wxId"`
+	Account  string                          `json:"account"`
+	BabyName string                          `json:"babyName"`
+	VoiceAi  VoiceAdminAIQuotaUsersFeature   `json:"voiceAi"`
+	ClinicAi VoiceAdminAIQuotaUsersFeature   `json:"clinicAi"`
+}
+
+// VoiceAdminAIQuotaUsersGetRes 用户额度分页响应。
+type VoiceAdminAIQuotaUsersGetRes struct {
+	List     []VoiceAdminAIQuotaUsersItem `json:"list"`
+	Total    int                          `json:"total"`
+	Page     int                          `json:"page"`
+	PageSize int                          `json:"pageSize"`
+}

@@ -13,6 +13,7 @@ const wxListDefaultPageSize = 20
 const wxListMaxPageSize = 100
 
 // ListWxPage 管理端 wx 账号分页；q 模糊匹配 id/deviceNo/unionid/account。
+// 业务逻辑：排除模拟号；对本页 deviceNo 批量联查 user.baby_name，填充 BabyName（无则空串）。
 func (s *service) ListWxPage(ctx context.Context, page, pageSize int, q string) (contracts.WxPageResult, error) {
 	if page <= 0 {
 		page = 1
@@ -55,5 +56,48 @@ func (s *service) ListWxPage(ctx context.Context, page, pageSize int, q string) 
 	if err != nil {
 		return contracts.WxPageResult{}, err
 	}
+	// 批量补齐宝宝名，避免调用方按 deviceNo N+1 查画像。
+	fillWxListBabyNames(ctx, rows)
 	return contracts.WxPageResult{List: rows, Total: total, Page: page, PageSize: pageSize}, nil
+}
+
+// fillWxListBabyNames 按本页 deviceNo 批量读取 user.baby_name 并写回行。
+// Side Effects: 仅内存填充 rows；查库失败时保留空串，不中断列表。
+func fillWxListBabyNames(ctx context.Context, rows []contracts.AdminWxListItem) {
+	if len(rows) == 0 {
+		return
+	}
+	deviceNos := make([]string, 0, len(rows))
+	seen := make(map[string]struct{}, len(rows))
+	for _, r := range rows {
+		dn := strings.TrimSpace(r.DeviceNo)
+		if dn == "" {
+			continue
+		}
+		if _, ok := seen[dn]; ok {
+			continue
+		}
+		seen[dn] = struct{}{}
+		deviceNos = append(deviceNos, dn)
+	}
+	if len(deviceNos) == 0 {
+		return
+	}
+	uCols := dao.User.Columns()
+	type babyRow struct {
+		DeviceNo string `json:"deviceNo"`
+		BabyName string `json:"babyName"`
+	}
+	var babies []babyRow
+	_ = dao.User.Ctx(ctx).
+		Fields(uCols.DeviceNo, uCols.BabyName).
+		WhereIn(uCols.DeviceNo, deviceNos).
+		Scan(&babies)
+	byDevice := make(map[string]string, len(babies))
+	for _, b := range babies {
+		byDevice[strings.TrimSpace(b.DeviceNo)] = strings.TrimSpace(b.BabyName)
+	}
+	for i := range rows {
+		rows[i].BabyName = byDevice[strings.TrimSpace(rows[i].DeviceNo)]
+	}
 }

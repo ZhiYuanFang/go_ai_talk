@@ -272,6 +272,7 @@ func GetVoiceAIQuotaUserOverrideForAdmin(ctx context.Context, wxID int64) (contr
 }
 
 // UpdateVoiceAIQuotaUserOverrideForAdmin 写入或清除单人 override（nil 表示清除）。
+// 业务逻辑：若提交上限等于当前全局默认，则视为清除该 feature override，便于后续跟随全局。
 func UpdateVoiceAIQuotaUserOverrideForAdmin(ctx context.Context, wxID int64, voiceLimit, clinicLimit *int) (contracts.VoiceAIQuotaUserOverrideDTO, error) {
 	if wxID <= 0 {
 		return contracts.VoiceAIQuotaUserOverrideDTO{}, errors.New("wxId 无效")
@@ -281,6 +282,17 @@ func UpdateVoiceAIQuotaUserOverrideForAdmin(ctx context.Context, wxID int64, voi
 	}
 	if clinicLimit != nil && *clinicLimit <= 0 {
 		return contracts.VoiceAIQuotaUserOverrideDTO{}, errors.New("clinicAiMonthlyLimit 须为正整数")
+	}
+	// 等于全局默认 → 清 override，避免无意义钉死个人值。
+	def, err := loadVoiceAIQuotaDefault(ctx)
+	if err != nil {
+		return contracts.VoiceAIQuotaUserOverrideDTO{}, err
+	}
+	if voiceLimit != nil && *voiceLimit == def.VoiceAiMonthlyLimit {
+		voiceLimit = nil
+	}
+	if clinicLimit != nil && *clinicLimit == def.ClinicAiMonthlyLimit {
+		clinicLimit = nil
 	}
 	now := time.Now().Unix()
 	data := g.Map{
@@ -297,9 +309,109 @@ func UpdateVoiceAIQuotaUserOverrideForAdmin(ctx context.Context, wxID int64, voi
 	} else {
 		data["clinic_ai_monthly_limit"] = *clinicLimit
 	}
-	_, err := g.DB().Model("ai_quota_user_override").Ctx(ctx).Data(data).Save()
+	_, err = g.DB().Model("ai_quota_user_override").Ctx(ctx).Data(data).Save()
 	if err != nil {
 		return contracts.VoiceAIQuotaUserOverrideDTO{}, err
 	}
 	return GetVoiceAIQuotaUserOverrideForAdmin(ctx, wxID)
+}
+
+// ListVoiceAIQuotaUsersForAdmin 分页聚合全部真实 wx 的有效额度与身份。
+// Args: page/pageSize 分页；deviceNo 非空时作为 device wx 列表 q（模糊匹配设备号等）。
+// Returns: 含 deviceNo/wxId/account/babyName 与 voiceAi/clinicAi 的 used/limit。
+// Side Effects: 经 DeviceAdmin HTTP 拉 wx；读本域 override 表与 Redis usage 键；不写库。
+func ListVoiceAIQuotaUsersForAdmin(ctx context.Context, page, pageSize int, deviceNo string) (contracts.VoiceAIQuotaUserPageResult, error) {
+	wxPage, err := DeviceAdmin().ListWxPage(ctx, page, pageSize, strings.TrimSpace(deviceNo))
+	if err != nil {
+		return contracts.VoiceAIQuotaUserPageResult{}, err
+	}
+	empty := contracts.VoiceAIQuotaUserPageResult{
+		List:     []contracts.VoiceAIQuotaUserListItem{},
+		Total:    wxPage.Total,
+		Page:     wxPage.Page,
+		PageSize: wxPage.PageSize,
+	}
+	if len(wxPage.List) == 0 {
+		return empty, nil
+	}
+	def, err := loadVoiceAIQuotaDefault(ctx)
+	if err != nil {
+		return contracts.VoiceAIQuotaUserPageResult{}, err
+	}
+	wxIDs := make([]int64, 0, len(wxPage.List))
+	for _, it := range wxPage.List {
+		if it.Id > 0 {
+			wxIDs = append(wxIDs, it.Id)
+		}
+	}
+	ovByWx := make(map[int64]voiceQuotaOverrideRow, len(wxIDs))
+	if len(wxIDs) > 0 {
+		var ovRows []voiceQuotaOverrideRow
+		_ = g.DB().Model("ai_quota_user_override").Ctx(ctx).WhereIn("wx_id", wxIDs).Scan(&ovRows)
+		for _, ov := range ovRows {
+			ovByWx[ov.WxId] = ov
+		}
+	}
+	// 批量读取当月 usage：每行 voice_ai + clinic_ai 两个键。
+	keys := make([]string, 0, len(wxPage.List)*2)
+	for _, it := range wxPage.List {
+		if it.Id <= 0 {
+			continue
+		}
+		keys = append(keys,
+			aiQuotaUsageRedisKey(contracts.AIQuotaVoiceAI, it.Id),
+			aiQuotaUsageRedisKey(contracts.AIQuotaClinicAI, it.Id),
+		)
+	}
+	usedByKey := map[string]string{}
+	if len(keys) > 0 {
+		usedByKey, err = voiceQuotaCache.MGet(ctx, keys)
+		if err != nil {
+			return contracts.VoiceAIQuotaUserPageResult{}, err
+		}
+	}
+	parseUsed := func(key string) int {
+		v := strings.TrimSpace(usedByKey[key])
+		if v == "" {
+			return 0
+		}
+		n, _ := strconv.Atoi(v)
+		if n < 0 {
+			return 0
+		}
+		return n
+	}
+	list := make([]contracts.VoiceAIQuotaUserListItem, 0, len(wxPage.List))
+	for _, it := range wxPage.List {
+		voiceLimit := def.VoiceAiMonthlyLimit
+		clinicLimit := def.ClinicAiMonthlyLimit
+		if ov, ok := ovByWx[it.Id]; ok {
+			if ov.VoiceAiMonthlyLimit != nil && *ov.VoiceAiMonthlyLimit > 0 {
+				voiceLimit = *ov.VoiceAiMonthlyLimit
+			}
+			if ov.ClinicAiMonthlyLimit != nil && *ov.ClinicAiMonthlyLimit > 0 {
+				clinicLimit = *ov.ClinicAiMonthlyLimit
+			}
+		}
+		voiceUsed := 0
+		clinicUsed := 0
+		if it.Id > 0 {
+			voiceUsed = parseUsed(aiQuotaUsageRedisKey(contracts.AIQuotaVoiceAI, it.Id))
+			clinicUsed = parseUsed(aiQuotaUsageRedisKey(contracts.AIQuotaClinicAI, it.Id))
+		}
+		list = append(list, contracts.VoiceAIQuotaUserListItem{
+			DeviceNo: it.DeviceNo,
+			WxId:     it.Id,
+			Account:  it.Account,
+			BabyName: it.BabyName,
+			VoiceAi:  contracts.AIQuotaSnapshot{Used: voiceUsed, Limit: voiceLimit, Allowed: voiceUsed < voiceLimit},
+			ClinicAi: contracts.AIQuotaSnapshot{Used: clinicUsed, Limit: clinicLimit, Allowed: clinicUsed < clinicLimit},
+		})
+	}
+	return contracts.VoiceAIQuotaUserPageResult{
+		List:     list,
+		Total:    wxPage.Total,
+		Page:     wxPage.Page,
+		PageSize: wxPage.PageSize,
+	}, nil
 }

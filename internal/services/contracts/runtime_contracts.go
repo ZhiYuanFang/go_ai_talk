@@ -165,6 +165,8 @@ type AdminWxListItem struct {
 	Platform  string `json:"platform"`
 	Account   string `json:"account"`
 	CreatedAt int64  `json:"createdAt"`
+	// BabyName 来自 device user 画像；无绑定设备或无档案时为空串。
+	BabyName string `json:"babyName"`
 }
 
 // WxPageResult 管理端 wx 账号分页列表。
