@@ -507,3 +507,123 @@ func (c *PythonAIClient) AnalyzeIntentStream(ctx context.Context, req *AnalyzeIn
 	glog.Debugf(ctx, "[Python AI] 流式意图分析完成。deviceNo=%s target_type=%s action=%s", req.DeviceNo, result.TargetType, result.Action)
 	return &AnalyzeIntentStreamResponse{Thinking: thinking, Answer: answer, Result: result}, scanner.Err()
 }
+
+// ---------- 护理留意（care-alert）Go → Python 内部契约 ----------
+
+// CareAlertAnalyzeRequest 护理留意日分析请求（路径见 Python CONTRACT：/v1/care-alert/analyze）。
+// snake_case 与 tip/clinic 一致；Model 为 deepseek|zhipu 简写，ModelCfg 供 Python 执行 LLM。
+type CareAlertAnalyzeRequest struct {
+	DeviceNo       string                 `json:"device_no"`
+	Day            string                 `json:"day"`
+	Model          string                 `json:"model"` // deepseek|zhipu
+	ModelCfg       PythonModelCfg         `json:"model_cfg"`
+	AgeMonths      int                    `json:"age_months"`
+	HistorySummary map[string]interface{} `json:"history_summary"`
+	KgContext      map[string]interface{} `json:"kg_context"`
+}
+
+// CareAlertAnalyzeReason Python 返回的原因片段。
+type CareAlertAnalyzeReason struct {
+	Type            string   `json:"type"`
+	Score           float64  `json:"score"`
+	ExpectationUsed bool     `json:"expectationUsed"`
+	AgeMonths       int      `json:"ageMonths"`
+	MedianGapMs     int64    `json:"medianGapMs"`
+	LastGapMs       int64    `json:"lastGapMs"`
+	ExpectGapMaxMs  int64    `json:"expectGapMaxMs"`
+	P75DurMs        int64    `json:"p75DurMs"`
+	ElapsedMs       int64    `json:"elapsedMs"`
+	ExpectDurMaxMs  int64    `json:"expectDurMaxMs"`
+	DailyAvg        float64  `json:"dailyAvg"`
+	Recent48hCount  int      `json:"recent48hCount"`
+	StillExpected   bool     `json:"stillExpected"`
+	DetailLines     []string `json:"detailLines"`
+}
+
+// CareAlertAnalyzeItem Python 返回的单条留意（suggestionId 可省略，由 Go 补齐）。
+type CareAlertAnalyzeItem struct {
+	SuggestionID   string                    `json:"suggestionId"`
+	EventID        string                    `json:"eventId"`
+	EventName      string                    `json:"eventName"`
+	SummaryLine    string                    `json:"summaryLine"`
+	FollowUpPrompt string                    `json:"followUpPrompt"`
+	Reasons        []CareAlertAnalyzeReason  `json:"reasons"`
+}
+
+// CareAlertAnalyzeResponse Python 分析响应。
+type CareAlertAnalyzeResponse struct {
+	Items []CareAlertAnalyzeItem `json:"items"`
+}
+
+// CareAlertFeedbackRequest 固定意图飞轮（无 NLP）。
+type CareAlertFeedbackRequest struct {
+	DeviceNo     string `json:"device_no"`
+	SuggestionID string `json:"suggestion_id"`
+	Intent       string `json:"intent"` // ignore|follow_up
+	Day          string `json:"day"`
+}
+
+// CareAlertAnalyze 调用 Python KG+LLM 日分析；超时单独放宽至 100s。
+func (c *PythonAIClient) CareAlertAnalyze(ctx context.Context, req *CareAlertAnalyzeRequest) (*CareAlertAnalyzeResponse, error) {
+	body, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("序列化护理留意分析请求失败: %w", err)
+	}
+	// 与 tip/clinic 同前缀 /v1/...（勿用 /internal/，Python 未挂该前缀）
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/care-alert/analyze", strings.NewReader(string(body)))
+	if err != nil {
+		return nil, fmt.Errorf("创建护理留意分析请求失败: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 100 * time.Second}
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("调用 Python 护理留意分析失败: %w", err)
+	}
+	defer resp.Body.Close()
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Python 护理留意分析返回 %d: %s", resp.StatusCode, string(respBody))
+	}
+	var result CareAlertAnalyzeResponse
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		// 兼容外层 envelope {code,data:{items}}
+		var env struct {
+			Code int                      `json:"code"`
+			Data CareAlertAnalyzeResponse `json:"data"`
+		}
+		if err2 := json.Unmarshal(respBody, &env); err2 != nil || (env.Code != 0 && len(env.Data.Items) == 0) {
+			return nil, fmt.Errorf("解析护理留意分析响应失败: %w", err)
+		}
+		result = env.Data
+	}
+	if result.Items == nil {
+		result.Items = []CareAlertAnalyzeItem{}
+	}
+	glog.Debugf(ctx, "[Python AI] 护理留意分析完成。deviceNo=%s day=%s count=%d", req.DeviceNo, req.Day, len(result.Items))
+	return &result, nil
+}
+
+// CareAlertFeedback 转发固定意图飞轮至 Python（/v1/care-alert/feedback；无 NLP，Python 侧 ACK）。
+func (c *PythonAIClient) CareAlertFeedback(ctx context.Context, req *CareAlertFeedbackRequest) error {
+	body, err := json.Marshal(req)
+	if err != nil {
+		return fmt.Errorf("序列化护理留意飞轮请求失败: %w", err)
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/care-alert/feedback", strings.NewReader(string(body)))
+	if err != nil {
+		return fmt.Errorf("创建护理留意飞轮请求失败: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("调用 Python 护理留意飞轮失败: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("Python 护理留意飞轮返回 %d: %s", resp.StatusCode, string(respBody))
+	}
+	return nil
+}

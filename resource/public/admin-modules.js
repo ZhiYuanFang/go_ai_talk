@@ -31,6 +31,12 @@ window.ADMIN_MODULES = [
 		showInNav: true
 	},
 	{
+		id: 'cash-vip-admin',
+		title: 'VIP 权益',
+		pagePath: '/device/admin/cash-vip-admin.html',
+		showInNav: true
+	},
+	{
 		id: 'app-status-admin',
 		title: 'App 维护通知',
 		externalUrl: 'https://notify.cuplay.top/admin',

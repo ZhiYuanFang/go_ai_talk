@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>VIP 权益</title>
+	<link rel="stylesheet" href="/resource/public/pangbao-theme.css" />
+	<link rel="stylesheet" href="/resource/public/admin-pages.css" />
+	<style>
+		.vip-hint { font-size: 12px; color: #64748b; line-height: 1.55; margin: 0 0 14px; }
+		.vip-pager { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 12px 0 0; font-size: 13px; }
+		.vip-pager button { font-size: 12px; padding: 4px 10px; }
+		.badge-on { color: #059669; font-weight: 600; }
+		.badge-off { color: #dc2626; font-weight: 600; }
+	</style>
+</head>
+<body>
+<div class="page">
+	<header class="admin-header glass">
+		<div class="logo">VIP</div>
+		<div>
+			<h1>VIP 权益</h1>
+			<p>只读列表（含已过期）· 须先在 <a href="/device/admin">运维 Hub</a> 登录</p>
+		</div>
+	</header>
+	<div class="card glass hidden" id="mainCard">
+		<p class="vip-hint">
+			数据来自 cash-service：<code>vip_entitlement</code> 全量行 + 最近一次 <code>status=paid</code> 订单金额。
+			<strong>激活金额单位为「分」</strong>（表内亦换算为元）。本页无改价 / 退款 / 手工开通。
+			浏览器仅携带 Admin JWT，<strong>不</strong>发送 <code>X-Admin-Password</code>。
+		</p>
+		<div class="row" style="margin-bottom:12px;">
+			<input id="wxIdFilter" type="text" inputmode="numeric" placeholder="按 wxId 精确查询" style="width:220px;" />
+			<button id="searchBtn" type="button" class="secondary">查询</button>
+			<button id="resetBtn" type="button" class="secondary">重置</button>
+			<button id="refreshBtn" type="button" class="secondary">刷新</button>
+		</div>
+		<div class="table-wrap">
+			<table>
+				<thead>
+					<tr>
+						<th>wxId</th>
+						<th>是否有效</th>
+						<th>到期时间</th>
+						<th>剩余时间</th>
+						<th>激活金额</th>
+						<th>渠道</th>
+						<th>最近支付时间</th>
+					</tr>
+				</thead>
+				<tbody id="entBody"></tbody>
+			</table>
+		</div>
+		<div class="vip-pager">
+			<button id="prevBtn" type="button" class="secondary">上一页</button>
+			<span id="pageMeta" class="msg" style="color:#64748b;">—</span>
+			<button id="nextBtn" type="button" class="secondary">下一页</button>
+		</div>
+		<div id="msg" class="msg"></div>
+	</div>
+</div>
+<script src="/resource/public/admin-common.js"></script>
+<script>
+// 仅用 AdminCommon.adminFetch（Bearer）；禁止在浏览器设置 X-Admin-Password。
+function api(path, options) { return AdminCommon.adminFetch(path, options); }
+function showMsg(el, text, ok) {
+	if (!el) return;
+	el.textContent = text || '';
+	el.style.color = ok ? '#16a34a' : '#dc2626';
+}
+function escapeHtml(s) {
+	return String(s == null ? '' : s)
+		.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+		.replace(/"/g, '&quot;');
+}
+function fmtTs(sec) {
+	var n = Number(sec);
+	if (!n || n <= 0) return '—';
+	return new Date(n * 1000).toLocaleString();
+}
+function fmtAmountFen(fen) {
+	var n = Number(fen);
+	if (!n && n !== 0) return '—';
+	if (n === 0) return '—';
+	var yuan = (n / 100).toFixed(2);
+	return n + ' 分（¥' + yuan + '）';
+}
+function fmtRemaining(sec, isVip) {
+	var n = Number(sec);
+	if (!isVip || !(n > 0)) return '已过期';
+	var d = Math.floor(n / 86400);
+	var h = Math.floor((n % 86400) / 3600);
+	var m = Math.floor((n % 3600) / 60);
+	if (d > 0) return d + ' 天 ' + h + ' 小时';
+	if (h > 0) return h + ' 小时 ' + m + ' 分';
+	return m + ' 分';
+}
+function channelLabel(ch) {
+	ch = String(ch || '').trim();
+	if (!ch) return '—';
+	if (ch === 'alipay') return '支付宝';
+	if (ch === 'apple_iap') return 'Apple IAP';
+	return escapeHtml(ch);
+}
+
+var page = 1;
+var pageSize = 20;
+var total = 0;
+var wxIdFilter = '';
+
+async function loadList() {
+	var path = '/cash/admin/api/vip/entitlements?page=' + page + '&pageSize=' + pageSize;
+	if (wxIdFilter) {
+		path += '&wxId=' + encodeURIComponent(wxIdFilter);
+	}
+	var data = await api(path);
+	var list = (data && data.list) || [];
+	total = (data && typeof data.total === 'number') ? data.total : list.length;
+	page = (data && data.page) || page;
+	pageSize = (data && data.pageSize) || pageSize;
+	var body = document.getElementById('entBody');
+	body.innerHTML = '';
+	if (!list.length) {
+		body.innerHTML = '<tr><td colspan="7" style="color:#64748b;">暂无权益记录</td></tr>';
+	} else {
+		list.forEach(function (row) {
+			var tr = document.createElement('tr');
+			var active = !!row.isVip;
+			tr.innerHTML =
+				'<td>' + escapeHtml(row.wxId) + '</td>' +
+				'<td class="' + (active ? 'badge-on' : 'badge-off') + '">' + (active ? '有效' : '已过期') + '</td>' +
+				'<td>' + escapeHtml(fmtTs(row.expireAt)) + '</td>' +
+				'<td>' + escapeHtml(fmtRemaining(row.remainingSeconds, active)) + '</td>' +
+				'<td>' + escapeHtml(fmtAmountFen(row.lastPaidAmountFen)) + '</td>' +
+				'<td>' + channelLabel(row.channel) + '</td>' +
+				'<td>' + escapeHtml(fmtTs(row.paidAt)) + '</td>';
+			body.appendChild(tr);
+		});
+	}
+	var totalPages = total > 0 ? Math.ceil(total / pageSize) : 0;
+	document.getElementById('pageMeta').textContent =
+		'第 ' + page + ' / ' + (totalPages || 1) + ' 页 · 共 ' + total + ' 条';
+	document.getElementById('prevBtn').disabled = page <= 1;
+	document.getElementById('nextBtn').disabled = totalPages === 0 || page >= totalPages;
+}
+
+document.getElementById('searchBtn').addEventListener('click', function () {
+	var raw = (document.getElementById('wxIdFilter').value || '').trim();
+	if (raw && !/^\d+$/.test(raw)) {
+		showMsg(document.getElementById('msg'), 'wxId 须为正整数', false);
+		return;
+	}
+	wxIdFilter = raw;
+	page = 1;
+	loadList().then(function () {
+		showMsg(document.getElementById('msg'), '', true);
+	}).catch(function (e) {
+		showMsg(document.getElementById('msg'), e.message || String(e), false);
+	});
+});
+document.getElementById('resetBtn').addEventListener('click', function () {
+	document.getElementById('wxIdFilter').value = '';
+	wxIdFilter = '';
+	page = 1;
+	loadList().catch(function (e) {
+		showMsg(document.getElementById('msg'), e.message || String(e), false);
+	});
+});
+document.getElementById('refreshBtn').addEventListener('click', function () {
+	loadList().catch(function (e) {
+		showMsg(document.getElementById('msg'), e.message || String(e), false);
+	});
+});
+document.getElementById('prevBtn').addEventListener('click', function () {
+	if (page <= 1) return;
+	page -= 1;
+	loadList().catch(function (e) {
+		showMsg(document.getElementById('msg'), e.message || String(e), false);
+	});
+});
+document.getElementById('nextBtn').addEventListener('click', function () {
+	page += 1;
+	loadList().catch(function (e) {
+		showMsg(document.getElementById('msg'), e.message || String(e), false);
+	});
+});
+document.getElementById('wxIdFilter').addEventListener('keydown', function (ev) {
+	if (ev.key === 'Enter') document.getElementById('searchBtn').click();
+});
+
+if (AdminCommon.requireAdmin()) {
+	document.getElementById('mainCard').classList.remove('hidden');
+	loadList().catch(function (e) {
+		showMsg(document.getElementById('msg'), e.message || String(e), false);
+	});
+}
+</script>
+</body>
+</html>

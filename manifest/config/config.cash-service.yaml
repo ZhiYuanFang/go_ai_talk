@@ -1,0 +1,25 @@
+# cash-service 专属配置：仅本域库与支付占位；密钥 MUST 用环境变量注入，勿写入仓库明文。
+# MySQL：CASH_DB_LINK → database.default；库名 ai_voice_cash。
+# 监听：CASH_SERVICE_ADDR（默认 :9807）。
+# 支付宝：CASH_ALIPAY_APP_ID / CASH_ALIPAY_PRIVATE_KEY / CASH_ALIPAY_PUBLIC_KEY / CASH_ALIPAY_NOTIFY_URL
+# Apple IAP：CASH_APPLE_BUNDLE_ID / CASH_APPLE_PRODUCT_ID（映射 vip_monthly_19）
+# 开发旁路（仅非生产）：CASH_PAYMENT_DEV_BYPASS=1 时可跳过渠道验签（仍校验订单号/金额/商品）。
+
+server:
+  address: ":9807"
+  openapiPath: "/api.json"
+  swaggerPath: "/swagger"
+
+logger:
+  level: "all"
+  stdout: true
+
+# database.default.link 由 CASH_DB_LINK / GF_DATABASE_DEFAULT_LINK 覆盖；此处仅占位。
+database:
+  default:
+    link: "mysql:user:password@tcp(127.0.0.1:3306)/ai_voice_cash"
+    debug: false
+
+cash:
+  # 一期 Apple IAP 商品 ID（可被 CASH_APPLE_PRODUCT_ID 覆盖）
+  appleProductId: ""

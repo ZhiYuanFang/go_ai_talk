@@ -40,3 +40,15 @@ func VoiceGuardIdemKey(deviceNo string, hash uint32) string {
 func VoiceClinicRateKey(wxID int64) string {
 	return voiceClinicRatePrefix + strconv.FormatInt(wxID, 10)
 }
+
+// CareAlertDailyKey 宝宝日护理留意列表 JSON；identifier = deviceNo:yyyy-mm-dd（Asia/Shanghai）。
+func CareAlertDailyKey(deviceNo, dayYYYYMMDD string) (string, error) {
+	id := strings.TrimSpace(deviceNo) + ":" + strings.TrimSpace(dayYYYYMMDD)
+	return Key(DomainVoice, "carealert", "daily", id)
+}
+
+// CareAlertDailyLockKey 日列表生成 single-flight 分布式锁；与 CareAlertDailyKey 同日维度。
+func CareAlertDailyLockKey(deviceNo, dayYYYYMMDD string) (string, error) {
+	id := strings.TrimSpace(deviceNo) + ":" + strings.TrimSpace(dayYYYYMMDD)
+	return Key(DomainVoice, "carealert", "lock", id)
+}

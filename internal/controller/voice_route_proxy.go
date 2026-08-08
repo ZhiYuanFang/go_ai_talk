@@ -34,6 +34,7 @@ func installVoiceProxyMiddleware(s *ghttp.Server) {
 	}
 	// /device/tip/*：App 小贴士 SSE（TipCtrl 在 voice-service）。
 	// /device/api/clinic|tip/*：诊疗/小贴士反馈 API（与 device 域 /device/app/api/feedback/* 区分）。
+	// /device/api/care-alert/*：护理留意日缓存（GET daily / DELETE item / POST feedback）。
 	for _, pattern := range []string{
 		"/voice/text/*",
 		"/voice/app/api/*",
@@ -41,6 +42,7 @@ func installVoiceProxyMiddleware(s *ghttp.Server) {
 		"/device/tip/*",
 		"/device/api/clinic/*",
 		"/device/api/tip/*",
+		"/device/api/care-alert/*",
 	} {
 		s.BindMiddleware(pattern, serve)
 	}

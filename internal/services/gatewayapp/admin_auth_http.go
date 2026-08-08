@@ -57,6 +57,8 @@ func InjectAdminDownstreamPassword(r *ghttp.Request) {
 		pwd = SimAdminPassword()
 	case strings.HasPrefix(path, "/voice/admin/api/"):
 		pwd = VoiceAdminPassword()
+	case strings.HasPrefix(path, "/cash/admin/api/"):
+		pwd = CashAdminPassword()
 	default:
 		pwd = DeviceAdminPassword()
 	}

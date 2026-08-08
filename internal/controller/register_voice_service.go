@@ -27,6 +27,8 @@ func RegisterVoiceServiceHTTP(s *ghttp.Server) {
 		group.Bind(NewTipCtrl())
 		// clinic/tip 反馈飞轮：POST /device/api/clinic|tip/feedback → Python AI（同宿主 voice）。
 		group.Bind(&DeviceClinicFeedbackController{})
+		// 护理留意日缓存：GET/DELETE/POST /device/api/care-alert/* → 缓存 + Python 分析/飞轮。
+		group.Bind(&DeviceCareAlertController{})
 	})
 	s.Group("/", func(group *ghttp.RouterGroup) {
 		group.Middleware(deviceUcgInternalSecretMiddleware)

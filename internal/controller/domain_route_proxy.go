@@ -34,6 +34,7 @@ func installDomainProxyMiddlewares(s *ghttp.Server) {
 	installDeviceProxyMiddleware(s)
 	installUcgProxyMiddleware(s)
 	installSimProxyMiddleware(s)
+	installCashProxyMiddleware(s)
 }
 
 func routeKeyForDomainRequest(r *ghttp.Request) string {

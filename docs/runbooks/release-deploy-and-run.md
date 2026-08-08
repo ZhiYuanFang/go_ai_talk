@@ -278,6 +278,15 @@ curl -s http://127.0.0.1:9805/api.json   # sim-user-service
 2. **部署顺序**：`device-service` → `ucg-service` → `gateway-app-server`（gateway 编排 `usage/wx-list` 需 `DEVICE_SERVICE_URL`、`UCG_SERVICE_URL` 与 `DEVICE_GATEWAY_INTERNAL_SECRET` 可达）。
 3. **验收**：打开 `/device/admin/api-usage-stats` →「按用户」列表不含模拟用户、展示 UCG 昵称与注册时间；API 下钻用户表含昵称；新注册 wx 的 `createdAt>0`，历史行 `createdAt=0` 显示「—」。
 
+**VIP 资金域（vip-cash-service / cash-service）**：
+
+1. **建库**：MySQL 创建 `ai_voice_cash`，配置 `CASH_DB_LINK`（进程启动 `EnsureSchema` 建表并种子 `vip_monthly_19`；亦可手工执行 `hack/ddl_cash_vip.sql`）。**禁止**再执行已废弃的 `ddl_wx_is_vip.sql`。
+2. **端口**：`cash-service` 默认 `:9807`（`:9806` 为 notify-service）。
+3. **部署顺序**：`cash-service` → `gateway-app`（`CASH_SERVICE_URL`、反代 `/cash/app/api/*` 与 `/cash/admin/api/*`、支付宝 notify 白名单）→ `voice-service`（`CASH_SERVICE_URL` + 内部密钥，care-alert 读 VIP）。
+4. **支付配置**：`CASH_ALIPAY_*`、`CASH_APPLE_PRODUCT_ID`（ASC 沙箱商品映射一期 19 元月会员）；非生产可临时 `CASH_PAYMENT_DEV_BYPASS=1`。
+5. **验收**：支付成功后 `GET /cash/app/api/vip/status` 为 VIP；care-alert 当日 miss 时 VIP→DeepSeek，非 VIP/cash 不可达→Zhipu；缺 `X-Internal-Wx-Id` 拒绝。
+6. **运维 Hub「VIP 权益」**：登录 `/device/admin` → 模块「VIP 权益」→ `/device/admin/cash-vip-admin.html`。列表走 `GET /cash/admin/api/vip/entitlements`（含已过期；激活金额=最近 paid `amount_fen`）。口令：gateway 注入 `X-Admin-Password`（优先 `CASH_ADMIN_PASSWORD`，否则 `GATEWAY_APP_ADMIN_PASSWORD`）；`cash-service` 须能读到相同口令（compose 已注入二者）。Admin API **不计入** App usage；**禁止** device 直查 `ai_voice_cash`。
+
 首次部署或升级后 `EnsureSchema` 会创建 `sim_config.runtime_json`、`sim_llm_lane_config` 并写入代码默认种子。**任务周期/开关/LLM lane 优先读 DB**，经 Admin 保存即可在线生效（调度类变更会 Stop→Start scheduler，Admin 触发热重启跳过长错峰）。仅 **`SIM_USER_SERVICE_ENABLED`** 仍为 env 硬闸，修改后须 **`--force-recreate sim-user-service`**。仅改 `maxSimUsers` 可不触发 scheduler 全量重启。
 
 **长期开 sim + 共享 MySQL（同机双栈）**：测试与生产共用 MySQL 实例时，sim 任务会经 UCG 审核/推荐链放大 DB 压力。建议：
@@ -1467,6 +1476,7 @@ curl -sk https://test.pangbao.cuplay.top:9702/device/app/api/site/home
 | `GATEWAY_APP_ADMIN_PASSWORD` | Hub 登录密码（必填，未配置则 login 503） |
 | `DEVICE_ADMIN_PASSWORD` | gateway-app 注入 device 反代 `X-Admin-Password`（默认同 Hub 密码） |
 | `UCG_ADMIN_PASSWORD` | gateway-app 注入 ucg 反代 `X-Admin-Password`（默认同 Hub 密码） |
+| `CASH_ADMIN_PASSWORD` | gateway-app / cash-service VIP Admin 口令（可选；空则回退 Hub 密码） |
 | `GATEWAY_APP_PUBLIC_BASE_URL` | APK 绝对 URL、CORS、主网关 302 目标 |
 
 | 页面 | 路径 | API 请求方式 |
@@ -1474,6 +1484,7 @@ curl -sk https://test.pangbao.cuplay.top:9702/device/app/api/site/home
 | 运维 Hub | `/device/admin` | `POST /device/admin/api/login` → Bearer；`/device/admin/api/*` |
 | 历史记录 | `/device/history/{deviceNo}` | 同源 `/device/history/api/*`（用户 JWT 或白名单） |
 | 问答库 / 反馈 / 统计 / UCG | `/device/admin/*` | 同源 + Admin JWT（须先 Hub 登录） |
+| VIP 权益 | `/device/admin/cash-vip-admin.html` | 同源 `GET /cash/admin/api/vip/entitlements` + Admin JWT |
 | 版本管理 | `/device/app/version-admin.html` | 同源 `/device/app/api/version/admin/*` + Admin JWT |
 | App 联调 | `/device/app/integration-test.html` | 默认 `window.location.origin`（可手改 baseUrl） |
 

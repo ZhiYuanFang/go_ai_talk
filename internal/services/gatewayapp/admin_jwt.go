@@ -153,6 +153,15 @@ func SimAdminPassword() string {
 	return AdminPassword()
 }
 
+// CashAdminPassword 网关注入 cash-service 反代用的 X-Admin-Password。
+// 优先 CASH_ADMIN_PASSWORD；否则回退 Hub 口令 GATEWAY_APP_ADMIN_PASSWORD。
+func CashAdminPassword() string {
+	if v := strings.TrimSpace(os.Getenv("CASH_ADMIN_PASSWORD")); v != "" {
+		return v
+	}
+	return AdminPassword()
+}
+
 // AdminLoginEnabled Hub 登录是否可用（须配置密码）。
 func AdminLoginEnabled() bool {
 	return AdminPassword() != ""
@@ -193,6 +202,9 @@ func IsGatewayAdminAPIPath(path string) bool {
 		return true
 	}
 	if strings.HasPrefix(path, "/sim/admin/api/") {
+		return true
+	}
+	if strings.HasPrefix(path, "/cash/admin/api/") {
 		return true
 	}
 	if strings.HasPrefix(path, "/device/app/api/version/admin/") {

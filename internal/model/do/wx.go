@@ -20,5 +20,6 @@ type Wx struct {
 	Account     interface{} // 账户
 	Password    interface{} // 密码哈希（bcrypt，不可逆）
 	IsSimulated interface{} // 1=模拟用户
+	ForceValue  interface{} // 原力值
 	CreatedAt   interface{} // wx 账号创建 Unix 秒
 }

@@ -30,6 +30,8 @@ var (
 		"/device/app/api/user/username/login",
 		"/device/app/api/user/device_login",
 		"/device/admin/api/login",
+		// 支付宝异步通知：匿名到达，cash-service 内验签。
+		"/cash/app/api/vip/alipay/notify",
 	}
 
 	// GET 且路径精确匹配（WebSocket Upgrade 等不要求 HTTP 层 Bearer）。
@@ -57,11 +59,14 @@ var (
 		"/device/history/api/event/options",
 		"/ucg/app/api/feed/recommend",
 		"/ucg/app/api/health",
+		// VIP 商品现价/原价：落地页未登录可读；建单/支付仍须登录。
+		"/cash/app/api/vip/product",
 		"/device/app/version-admin.html",
 		"/device/admin/ucg-admin.html",
 		"/device/admin/voice-admin.html",
 		"/device/admin/ai-model-admin.html",
 		"/device/admin/sim-admin.html",
+		"/device/admin/cash-vip-admin.html",
 		"/user-agreement.html",
 		"/privacy-policy.html",
 		"/favicon.ico",
