@@ -484,7 +484,7 @@ git add … && git commit -m "…"
 git push origin develop
 
 # 测试镜像仅由 tag 触发 CI（develop push 不再构建）
-git tag v1.0.0-rc.1    # 全量 7 服务 → 测试 ACR
+git tag v1.0.0-rc.1    # 全量 10 服务 → 测试 ACR
 git push origin v1.0.0-rc.1
 
 # 小改动仅构建单服务（节省 GitHub Actions 分钟）：
@@ -493,13 +493,16 @@ git push origin v1.0.0-rc.2+ucg
 
 git tag v1.0.0-rc.3+sim    # 仅 build/push sim-user-service
 git push origin v1.0.0-rc.3+sim
+
+git tag v1.0.0-rc.5+cash   # 仅 build/push cash-service
+git push origin v1.0.0-rc.5+cash
 ```
 
 **步骤 2 — 等待 CI**
 
 打开 GitHub → Actions → `docker-acr` 工作流：
 
-- 无 `+` 后缀 tag（如 `v1.0.0-rc.1`）：确认 **七服务** 镜像均 push 成功。
+- 无 `+` 后缀 tag（如 `v1.0.0-rc.1`）：确认 **十服务** 镜像均 push 成功。
 - 带 `+` 后缀 tag（如 `v1.0.0-rc.2+ucg`）：确认 **仅列出的服务** build 成功；ACR **不会**为未构建服务创建该 tag 的镜像（**不 retag**）。
 
 > **路由规则**：`vMAJOR.MINOR.PATCH`（如 `v1.0.0`）→ 生产 ACR；`v1.0.0-rc.1` 等预发布 tag → 测试 ACR。环境路由看 **`+` 前的 base tag**（`v1.0.0-rc.2+ucg` 仍走测试）。
@@ -514,7 +517,7 @@ IMAGE_TAG=v1.0.0-rc.1   # 或 v1.0.0-rc.2（与 git tag 的 + 前 base 一致，
 
 > **git tag 与 IMAGE_TAG**：push `v1.0.0-rc.2+ucg` 时，`.env` 中 `IMAGE_TAG` 写 **`v1.0.0-rc.2`**，不要写 `+ucg` 后缀。
 
-**全量发版**（七服务均在新 tag 下 rebuild 过）— 与原先相同：
+**全量发版**（十服务均在新 tag 下 rebuild 过）— 与原先相同：
 
 ```bash
 # 强制删除悬空镜像
@@ -802,7 +805,7 @@ git push origin v1.0.0
 
 **步骤 3 — 等待 CI**
 
-GitHub Actions `docker-acr` 对 **tag v1.0.0** 构建成功（七服务镜像 `:v1.0.0`）。
+GitHub Actions `docker-acr` 对 **tag v1.0.0** 构建成功（十服务镜像 `:v1.0.0`）。
 
 **步骤 4 — 生产服务器：改 tag、拉镜像、更新**
 
@@ -1549,7 +1552,7 @@ docker exec go-ai-talk-gateway-app-test printenv GATEWAY_APP_PUBLIC_BASE_URL
 
 **日志轮转**：微服务基线 `docker-compose.microservices.yml` 定义 `x-docker-logging`（10m×3）；`microservices.prod.yml` / `.test.yml` **不含 `logging`**，与基线无冲突。验收见 [Docker 容器日志轮转与验收](#docker-容器日志轮转与验收)。
 
-镜像引用：`${REGISTRY}/gateway:${IMAGE_TAG}`。`REGISTRY` = `<ACR域名>/<命名空间>`；仓库名单段（`gateway`、`device-service` 等，无 `go-ai-talk/` 前缀）。
+镜像引用：`${REGISTRY}/gateway:${IMAGE_TAG}`。`REGISTRY` = `<ACR域名>/<命名空间>`；仓库名单段（`gateway`、`device-service`、`cash-service` 等，无 `go-ai-talk/` 前缀）。
 
 ### Docker 容器日志轮转与验收
 
@@ -1689,14 +1692,17 @@ docker compose -f manifest/docker/docker-compose.redis-cluster.yml up -d --force
 
 | git tag 示例 | CI 行为 | ACR |
 |--------------|---------|-----|
-| `v1.0.0-rc.2` | 全量 7 服务 build | 七仓库均有 `:v1.0.0-rc.2` |
+| `v1.0.0-rc.2` | 全量 10 服务 build | 十仓库均有 `:v1.0.0-rc.2` |
 | `v1.0.0-rc.2+ucg` | 仅 `ucg-service` | 仅 `ucg-service:v1.0.0-rc.2`（其他仓库无此 tag） |
 | `v1.0.0-rc.2+ucg,gateway` | 两项 | 对应两仓库 |
 | `v1.0.0-rc.3+sim` | 仅 `sim-user-service` | 仅 `sim-user-service:v1.0.0-rc.3` |
+| `v1.0.0-rc.5+cash` | 仅 `cash-service` | 仅 `cash-service:v1.0.0-rc.5` |
 
-别名：`gateway`、`gateway-app`、`history`/`history-service`、`voice`/`voice-service`、`device`/`device-service`、`ucg`/`ucg-service`、`sim`/`sim-user`/`sim-user-service`、`all`（全量）。`.env` 中 `IMAGE_TAG` 用 **`+` 前 base tag**。
+别名：`gateway`、`gateway-app`、`history`/`history-service`、`voice`/`voice-service`、`device`/`device-service`、`ucg`/`ucg-service`、`sim`/`sim-user`/`sim-user-service`、`notify`/`notify-service`、`mcp`/`mcp-service`、`cash`/`cash-service`、`all`（全量）。`.env` 中 `IMAGE_TAG` 用 **`+` 前 base tag**。
 
-手动触发：Actions → **docker-acr** → Run workflow → 选择 `target_env`、`image_tag`（base tag）；可选 `services`（如 `ucg`，留空=全量）。
+手动触发：Actions → **docker-acr** → Run workflow → 选择 `target_env`、`image_tag`（base tag）；可选 `services`（如 `cash` 或 `ucg`，留空=全量 10 服务）。
+
+**ACR 仓库**：各命名空间须存在与 matrix id 同名的仓库（含 **`cash-service`**）。`pangbao-test` / `pangbao-release` 若尚未建 `cash-service`，须在控制台先创建，再 push（否则常见 `denied`）。
 
 #### GitHub Secrets 配置（首次必做）
 
@@ -1717,7 +1723,7 @@ docker compose -f manifest/docker/docker-compose.redis-cluster.yml up -d --force
 
 CI push 地址由 workflow 从 `REGISTRY` **自动去掉 `-vpc`** 推导，无需单独维护公网域名。
 
-**验证 CI**：配置完成后，Actions → docker-acr → Run workflow → `target_env=test`、`image_tag=v0.0.0-test`（或当前预发布 tag），确认七服务 build + push 成功。部分构建可填 `services=ucg` 或 `services=sim` 验证单服务 matrix。
+**验证 CI**：配置完成后，Actions → docker-acr → Run workflow → `target_env=test`、`image_tag=v0.0.0-test`（或当前预发布 tag），确认十服务 build + push 成功。部分构建可填 `services=cash`、`services=ucg` 或 `services=sim` 验证单服务 matrix。
 
 #### ECS 本地 .env（部署用）
 

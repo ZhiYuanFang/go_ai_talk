@@ -75,6 +75,13 @@ services:
       - "19806:9806"
     networks: [go-ai-talk-test-net]
 
+  cash-service:
+    image: ${REGISTRY}/cash-service:${IMAGE_TAG}
+    container_name: go-ai-talk-cash-service-test
+    ports:
+      - "19807:9807"
+    networks: [go-ai-talk-test-net]
+
   # mcp-service 不监听 HTTP 端口（WebSocket 客户端），无需 ports 映射；
   # 仅需接入 go-ai-talk-test-net 以访问 voice-service。
   mcp-service:

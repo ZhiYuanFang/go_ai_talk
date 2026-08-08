@@ -38,6 +38,15 @@
 - **新建或扩容部署实例**（新 Compose 栈、新集群、新环境）时，同一变更必须同步检查并更新 **`manifest/docker/.env.example`**、**`manifest/docker/docker-compose.microservices.yml`**（各服务 `environment` 中的 `${*_DB_LINK:-}` / `${APP_DB_LINK:-}` 等注入是否齐全）与 **`docs/runbooks/release-deploy-and-run.md`**，避免仅改代码或仅改 yaml 占位 DSN，导致实例上**未设置 `*_DB_LINK` / `APP_DB_LINK`** 仍连占位地址或漏配库；K8s 路径须在 overlay 或 Secret 挂载中同等落实。
 - **tasks 验收**：若本变更引入或可影响库连接，须勾选或描述「`.env.example` / runbook / 服务主配置顶部注释是否已反映新连接约定」；归档前评审须核对此项。
 
+### 微服务 CI / ACR 发版约定（强制）
+- 凡变更**新增**独立微服务进程（含 `cmd/*-service` 与对应 `manifest/docker/Dockerfile.*`），实现与评审 MUST 同步更新发版清单，**禁止**仅完成基线 Compose / 本地 Dockerfile 即视为可发布：
+  1. **GitHub Actions**：至少 `.github/workflows/docker-acr.yml`（服务别名、`dockerfile_for`、`ALL_SERVICES`、全量服务数注释与未知别名错误提示）。
+  2. **环境 overlay**：`manifest/docker/docker-compose.microservices.test.yml` 与 `docker-compose.microservices.prod.yml`（`${REGISTRY}/<id>:${IMAGE_TAG}`、ports、networks、`container_name` 若适用）。
+  3. **发布 runbook**：`docs/runbooks/release-deploy-and-run.md` 中全量服务数、构建范围别名表与相关说明。
+  4. **ACR 仓库**：在目标命名空间（如 `pangbao-test` / `pangbao-release`）创建与 matrix `id` 一致的镜像仓库（运维操作；tasks/PR 须记录是否已建仓）。
+- 基线 `docker-compose.microservices.yml`、`.env.example` 与本条约定叠加，不互相替代。
+- **tasks 验收**：新增微服务变更 MUST 含上述 CI/overlay/runbook（及 ACR 建仓提醒）可勾选项；归档前评审须核对此项。
+
 ### 代码注释约定（强制）
 - 后续生成或修改代码时，必须尽可能补充中文注释，重点覆盖：复杂流程、跨服务调用、重试/降级/错误语义、关键配置项。
 - 公共导出函数、结构体与关键字段优先添加中文注释，保证阅读代码时无需反复跳转上下文。
@@ -63,6 +72,7 @@
 - 评审检查项必须包含“主配置是否回流服务专属字段”与“服务默认配置是否仍指向共享主配置”两项硬性检查。
 - 评审检查项必须包含“是否存在 `hello/internal/service` 旧导入路径”与“`internal/service` 是否新增实现文件”两项硬性检查。
 - 评审检查项必须包含“运行文档是否同步更新”检查：凡涉及运行/发布/DAO 边界变更，必须同时更新 `docs/runbooks/dao-sync-by-domain.md` 与 `docs/runbooks/release-deploy-and-run.md`；若涉及**新进程或新库连接**，还须核对 **`manifest/docker/.env.example`** 与相关 **`manifest/config/config.*.yaml`** 顶部说明是否已包含对应 **`*_DB_LINK` / `APP_DB_LINK`** 约定（见上文「数据库连接与部署实例约定」）。
+- 评审检查项必须包含“**微服务 CI / ACR 发版清单**”检查：凡新增微服务进程，必须同步更新 `.github/workflows/docker-acr.yml`、`docker-compose.microservices.test.yml` / `.prod.yml`、runbook 别名/服务数，并确认 ACR 目标命名空间已建对应仓库（见上文「微服务 CI / ACR 发版约定」）；仅改基线 Compose 视为不完整。
 - 评审检查项必须包含“是否引用并遵循 **`openspec/specs/v3.0.0/spec.md`** 基线”检查：涉及行为变更时必须可追溯到对应 Requirement/Scenario。
 - 评审检查项必须包含“**Redis platform 访问**”检查：业务/controller 是否 bypass `cachekit`/`redismsgkit`（见 `AGENTS.md` 与 `hack/check-redis-bypass.sh`）。
 - 评审检查项必须包含“**Redis 读缓存**”检查：涉及新读路径或 Redis 键变更时，是否已在 proposal/design 完成收益率评估、负责人确认结论，且实现与 design 一致（见「Redis 读缓存约定」）。
