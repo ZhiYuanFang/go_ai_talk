@@ -83,7 +83,7 @@ Header：`X-Internal-Wx-Id`（必填，>0）。固定意图飞轮；**不得**�
 
 - 分析：`POST {pythonAiTalk.url}/v1/care-alert/analyze`
 - 飞轮：`POST {pythonAiTalk.url}/v1/care-alert/feedback`（ACK；Go **best-effort**，失败仅打 Warning）
-- 请求体字段见 `PythonAIClient.CareAlertAnalyze` / `CareAlertFeedback`（snake_case + `model` 简写 + `model_cfg`）
+- 请求体见 `PythonAIClient.CareAlertAnalyze` / `CareAlertFeedback`（snake_case；首选模型为可选 JSON 字段 **`model`** 对象 `{provider,name,max_in_flight}`，与 clinic/tip 同形；nil 则 omit 由 Python 保底。**禁止**依赖已废弃的 `model_cfg`）
 
 ## 实现提示
 

@@ -205,10 +205,11 @@ func careAlertDailyGenerate(ctx context.Context, deviceNo, day string, wxID int6
 	ageMonths := careAlertAgeMonths(genCtx, deviceNo)
 
 	pythonClient := PythonAIClientFromCfg()
+	// Model 走 JSON「model」对象（非 model_cfg），与兄弟仓 Python 契约一致。
 	pyRes, pyErr := pythonClient.CareAlertAnalyze(genCtx, &CareAlertAnalyzeRequest{
 		DeviceNo:       deviceNo,
 		Day:            day,
-		ModelCfg:       modelCfg,
+		Model:          modelCfg,
 		AgeMonths:      ageMonths,
 		HistorySummary: map[string]interface{}{},
 		KgContext:      map[string]interface{}{},
@@ -222,12 +223,15 @@ func careAlertDailyGenerate(ctx context.Context, deviceNo, day string, wxID int6
 		glog.Warningf(ctx, "[CareAlert] 写缓存失败 day=%s err=%v", day, err)
 	}
 	ConsumeVoiceFeatureIfNeeded(ctx, wxID, contracts.AIQuotaCareAlert, ent)
+	// 日志用选模结果：premium/free 有配置时应非空，便于对照 Python provider/name。
 	modelName := ""
+	modelProvider := ""
 	if modelCfg != nil {
 		modelName = modelCfg.Name
+		modelProvider = modelCfg.Provider
 	}
-	glog.Infof(ctx, "[CareAlert] generated day=%s count=%d model=%s wxId=%d premium=%v vip=%v",
-		day, len(items), modelName, wxID, ent.Premium, ent.VIP)
+	glog.Infof(ctx, "[CareAlert] generated day=%s count=%d provider=%s model=%s wxId=%d premium=%v vip=%v",
+		day, len(items), modelProvider, modelName, wxID, ent.Premium, ent.VIP)
 	return items, nil
 }
 
