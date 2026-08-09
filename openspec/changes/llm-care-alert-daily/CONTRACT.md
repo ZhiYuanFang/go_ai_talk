@@ -7,7 +7,7 @@
 ## 职责
 
 - 鉴权后按宝宝日缓存护理留意列表；编排调用 Python KG+LLM。
-- 触发者账号 VIP（`wx.id` / `X-Internal-Wx-Id`）→ DeepSeek；非 VIP → Zhipu；VIP 查询失败**降级** Zhipu。
+- 触发者账号经 VIP∪`care_alert` 额度判定 premium → `careAlert` lane 正式模；非 premium → lane free（可空则 omit 由 Python 自选）。VIP 查询失败降级为非 VIP（仍可有额度）。详见变更 `vip-quota-joint-entitlement`。
 - **不**扣 clinic 配额；**不**支持纯设备会话（必须 `wxId > 0`）。
 - 忽略：删当日缓存项；飞轮固定意图（无 NLP）。
 
@@ -89,15 +89,15 @@ Header：`X-Internal-Wx-Id`（必填，>0）。固定意图飞轮；**不得**�
 
 - Redis 缓存 MUST 经 `cachekit`；键经 builder（`CareAlertDailyKey` / `CareAlertDailyLockKey`）。
 - 每项生成 UUID `suggestionId`；缺 `followUpPrompt` 时 Go 用 summary/事件名补齐。
-- VIP：`isAccountVIP(ctx, wxID)` 经 cash `GET /cash/internal/api/vip/by-wx-id`（`CASH_SERVICE_URL`）；失败/超时降级 false→Zhipu（Warning）。**禁止**按 `deviceNo` 判 VIP，**禁止**读 `wx.is_vip`，**禁止** care-alert 用 `ResolveVoiceWxID` deviceNo fallback。
-- 选模：`resolveCareAlertModelProfile`（复用 `aimodel` allowlist / LaneClinic 闸门数值，**不**调用 clinic 配额 check/consume）；日缓存仍按 `deviceNo+日`（触发者权益：仅 miss 生成读触发者 VIP）。
+- 权益：`ResolveLaneModel(..., LaneCareAlert, care_alert, Account)`；VIP 经 cash `GET /cash/internal/api/vip/by-wx-id`；独立 feature `care_alert`；成功时**仅非 VIP** consume。**禁止**按 `deviceNo` 判 VIP，**禁止**纯设备会话，**禁止** DeepSeek/Zhipu 硬切。
+- 选模/并发：`careAlert` lane（Admin 可配正式模 + free）；日缓存仍按 `deviceNo+日`（触发者权益：仅 miss 生成读触发者权益）。
 
 ## 状态
 
 - [x] GET daily + 缓存
 - [x] DELETE item
 - [x] POST feedback
-- [x] VIP 选模 + 调 Python + 不扣 clinic 配额
+- [x] VIP∪care_alert 额度选模 + 调 Python；非 VIP 成功扣 care_alert；不扣 clinic 配额
 
 ## Flutter 备注
 

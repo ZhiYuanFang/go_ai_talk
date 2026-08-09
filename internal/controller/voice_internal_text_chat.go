@@ -34,9 +34,14 @@ func (c *VoiceInternalTextChatCtrl) Chat(ctx context.Context, req *v1.VoiceInter
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "transcript 不能为空")
 	}
 	chatCtx := ctx
+	wxID := int64(0)
 	if r := ghttp.RequestFromCtx(ctx); r != nil {
-		wxID := voice.ParseHeaderWxID(r.GetHeader(gatewayapp.HeaderInternalWxId))
+		wxID = voice.ParseHeaderWxID(r.GetHeader(gatewayapp.HeaderInternalWxId))
 		chatCtx = voice.WithVoiceWxID(ctx, wxID)
+	}
+	// MCP/纯设备委派常带 wxId=0：按硬件特权 premium 不计次；App 带 wxId 走账号 VIP∪额度。
+	if wxID <= 0 {
+		chatCtx = voice.WithModelPrivilege(chatCtx, voice.PrivilegeHardware)
 	}
 	reply, err := voice.Voice().TextChat(chatCtx, deviceNo, transcript)
 	if err != nil {
@@ -60,9 +65,11 @@ func (c *VoiceInternalTextChatCtrl) ChatStream(ctx context.Context, req *v1.Voic
 	if r == nil {
 		return nil, gerror.NewCode(gcode.CodeInternalError, "HTTP 请求上下文缺失")
 	}
-	chatCtx := ctx
 	wxID := voice.ParseHeaderWxID(r.GetHeader(gatewayapp.HeaderInternalWxId))
-	chatCtx = voice.WithVoiceWxID(ctx, wxID)
+	chatCtx := voice.WithVoiceWxID(ctx, wxID)
+	if wxID <= 0 {
+		chatCtx = voice.WithModelPrivilege(chatCtx, voice.PrivilegeHardware)
+	}
 	// 1. 设置 SSE 响应头
 	var rw http.ResponseWriter = r.Response.Writer
 	rw.Header().Set("Content-Type", "text/event-stream; charset=utf-8")

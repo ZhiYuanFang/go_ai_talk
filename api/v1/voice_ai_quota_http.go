@@ -2,11 +2,11 @@ package v1
 
 import "github.com/gogf/gf/v2/frame/g"
 
-// VoiceInternalAIQuotaCheckReq 内部预检 voice_ai / clinic_ai 额度。
+// VoiceInternalAIQuotaCheckReq 内部预检 voice_ai / clinic_ai / care_alert 额度。
 type VoiceInternalAIQuotaCheckReq struct {
 	g.Meta  `path:"/voice/internal/api/ai-quota/check" method:"post" tags:"voice" summary:"内部-AI 额度预检"`
 	WxId    int64  `json:"wxId" v:"required|min:1"`
-	Feature string `json:"feature" v:"required|in:voice_ai,clinic_ai"`
+	Feature string `json:"feature" v:"required|in:voice_ai,clinic_ai,care_alert"`
 }
 
 // VoiceInternalAIQuotaCheckRes 预检结果（含 degraded，供跨进程对齐降速语义）。
@@ -17,11 +17,11 @@ type VoiceInternalAIQuotaCheckRes struct {
 	Degraded bool `json:"degraded"`
 }
 
-// VoiceInternalAIQuotaConsumeReq 内部扣减 voice_ai / clinic_ai 额度。
+// VoiceInternalAIQuotaConsumeReq 内部扣减额度。
 type VoiceInternalAIQuotaConsumeReq struct {
 	g.Meta  `path:"/voice/internal/api/ai-quota/consume" method:"post" tags:"voice" summary:"内部-AI 额度扣减"`
 	WxId    int64  `json:"wxId" v:"required|min:1"`
-	Feature string `json:"feature" v:"required|in:voice_ai,clinic_ai"`
+	Feature string `json:"feature" v:"required|in:voice_ai,clinic_ai,care_alert"`
 }
 
 // VoiceInternalAIQuotaConsumeRes 扣减后快照。
@@ -42,10 +42,11 @@ type VoiceAppAIQuotaFeatureStatus struct {
 	Degraded bool `json:"degraded"`
 }
 
-// VoiceAppAIQuotaGetRes App 额度响应（voiceAi + clinicAi）。
+// VoiceAppAIQuotaGetRes App 额度响应（voiceAi + clinicAi + careAlert）。
 type VoiceAppAIQuotaGetRes struct {
-	VoiceAi  VoiceAppAIQuotaFeatureStatus `json:"voiceAi"`
-	ClinicAi VoiceAppAIQuotaFeatureStatus `json:"clinicAi"`
+	VoiceAi   VoiceAppAIQuotaFeatureStatus `json:"voiceAi"`
+	ClinicAi  VoiceAppAIQuotaFeatureStatus `json:"clinicAi"`
+	CareAlert VoiceAppAIQuotaFeatureStatus `json:"careAlert"`
 }
 
 // VoiceAdminAIQuotaDefaultGetReq 读取 voice 域全局默认额度。
@@ -55,16 +56,18 @@ type VoiceAdminAIQuotaDefaultGetReq struct {
 
 // VoiceAdminAIQuotaDefaultGetRes 全局默认。
 type VoiceAdminAIQuotaDefaultGetRes struct {
-	VoiceAiMonthlyLimit  int   `json:"voiceAiMonthlyLimit"`
-	ClinicAiMonthlyLimit int   `json:"clinicAiMonthlyLimit"`
-	UpdatedAt            int64 `json:"updatedAt"`
+	VoiceAiMonthlyLimit   int   `json:"voiceAiMonthlyLimit"`
+	ClinicAiMonthlyLimit  int   `json:"clinicAiMonthlyLimit"`
+	CareAlertMonthlyLimit int   `json:"careAlertMonthlyLimit"`
+	UpdatedAt             int64 `json:"updatedAt"`
 }
 
 // VoiceAdminAIQuotaDefaultPutReq 更新 voice 域全局默认额度。
 type VoiceAdminAIQuotaDefaultPutReq struct {
-	g.Meta               `path:"/voice/admin/api/ai-quota/default" method:"put" tags:"voice-admin" summary:"更新 voice AI 额度全局默认"`
-	VoiceAiMonthlyLimit  int `json:"voiceAiMonthlyLimit" v:"required|min:1"`
-	ClinicAiMonthlyLimit int `json:"clinicAiMonthlyLimit" v:"required|min:1"`
+	g.Meta                `path:"/voice/admin/api/ai-quota/default" method:"put" tags:"voice-admin" summary:"更新 voice AI 额度全局默认"`
+	VoiceAiMonthlyLimit   int `json:"voiceAiMonthlyLimit" v:"required|min:1"`
+	ClinicAiMonthlyLimit  int `json:"clinicAiMonthlyLimit" v:"required|min:1"`
+	CareAlertMonthlyLimit int `json:"careAlertMonthlyLimit" v:"required|min:1"`
 }
 
 // VoiceAdminAIQuotaDefaultPutRes 更新后全局默认。
@@ -78,20 +81,23 @@ type VoiceAdminAIQuotaUserGetReq struct {
 
 // VoiceAdminAIQuotaUserGetRes wxId override。
 type VoiceAdminAIQuotaUserGetRes struct {
-	WxId                 int64 `json:"wxId"`
-	VoiceAiMonthlyLimit  *int  `json:"voiceAiMonthlyLimit,omitempty"`
-	ClinicAiMonthlyLimit *int  `json:"clinicAiMonthlyLimit,omitempty"`
-	UpdatedAt            int64 `json:"updatedAt"`
+	WxId                  int64 `json:"wxId"`
+	VoiceAiMonthlyLimit   *int  `json:"voiceAiMonthlyLimit,omitempty"`
+	ClinicAiMonthlyLimit  *int  `json:"clinicAiMonthlyLimit,omitempty"`
+	CareAlertMonthlyLimit *int  `json:"careAlertMonthlyLimit,omitempty"`
+	UpdatedAt             int64 `json:"updatedAt"`
 }
 
 // VoiceAdminAIQuotaUserPutReq 更新 wxId override。
 type VoiceAdminAIQuotaUserPutReq struct {
-	g.Meta               `path:"/voice/admin/api/ai-quota/user" method:"put" tags:"voice-admin" summary:"更新 wxId voice AI 额度 override"`
-	WxId                 int64 `json:"wxId" v:"required|min:1"`
-	VoiceAiMonthlyLimit  *int  `json:"voiceAiMonthlyLimit"`
-	ClinicAiMonthlyLimit *int  `json:"clinicAiMonthlyLimit"`
-	ClearVoiceAi         bool  `json:"clearVoiceAi"`
-	ClearClinicAi        bool  `json:"clearClinicAi"`
+	g.Meta                `path:"/voice/admin/api/ai-quota/user" method:"put" tags:"voice-admin" summary:"更新 wxId voice AI 额度 override"`
+	WxId                  int64 `json:"wxId" v:"required|min:1"`
+	VoiceAiMonthlyLimit   *int  `json:"voiceAiMonthlyLimit"`
+	ClinicAiMonthlyLimit  *int  `json:"clinicAiMonthlyLimit"`
+	CareAlertMonthlyLimit *int  `json:"careAlertMonthlyLimit"`
+	ClearVoiceAi          bool  `json:"clearVoiceAi"`
+	ClearClinicAi         bool  `json:"clearClinicAi"`
+	ClearCareAlert        bool  `json:"clearCareAlert"`
 }
 
 // VoiceAdminAIQuotaUserPutRes 更新后 override。
@@ -99,7 +105,7 @@ type VoiceAdminAIQuotaUserPutRes = VoiceAdminAIQuotaUserGetRes
 
 // VoiceAdminAIQuotaUsersGetReq 分页列出全部真实 wx 的有效额度与身份。
 type VoiceAdminAIQuotaUsersGetReq struct {
-	g.Meta   `path:"/voice/admin/api/ai-quota/users" method:"get" tags:"voice-admin" summary:"分页列出用户 voice/clinic AI 额度"`
+	g.Meta   `path:"/voice/admin/api/ai-quota/users" method:"get" tags:"voice-admin" summary:"分页列出用户 voice/clinic/care-alert AI 额度"`
 	Page     int    `json:"page" p:"page" dc:"页码，从 1 开始"`
 	PageSize int    `json:"pageSize" p:"pageSize" dc:"每页条数，默认 20，最大 100"`
 	DeviceNo string `json:"deviceNo" p:"deviceNo" dc:"按设备号过滤（模糊/前缀，经 device wx 列表 q）"`
@@ -113,12 +119,13 @@ type VoiceAdminAIQuotaUsersFeature struct {
 
 // VoiceAdminAIQuotaUsersItem 用户额度列表行。
 type VoiceAdminAIQuotaUsersItem struct {
-	DeviceNo string                          `json:"deviceNo"`
-	WxId     int64                           `json:"wxId"`
-	Account  string                          `json:"account"`
-	BabyName string                          `json:"babyName"`
-	VoiceAi  VoiceAdminAIQuotaUsersFeature   `json:"voiceAi"`
-	ClinicAi VoiceAdminAIQuotaUsersFeature   `json:"clinicAi"`
+	DeviceNo  string                        `json:"deviceNo"`
+	WxId      int64                         `json:"wxId"`
+	Account   string                        `json:"account"`
+	BabyName  string                        `json:"babyName"`
+	VoiceAi   VoiceAdminAIQuotaUsersFeature `json:"voiceAi"`
+	ClinicAi  VoiceAdminAIQuotaUsersFeature `json:"clinicAi"`
+	CareAlert VoiceAdminAIQuotaUsersFeature `json:"careAlert"`
 }
 
 // VoiceAdminAIQuotaUsersGetRes 用户额度分页响应。

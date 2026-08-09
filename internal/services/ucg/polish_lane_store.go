@@ -60,14 +60,35 @@ type ucgAIConfigLaneRow struct {
 	VisionModel         string `json:"visionModel"`
 	MaxImagesPerRequest int    `json:"maxImagesPerRequest"`
 	Provider            string `json:"provider"`
+	FreeProvider        string `json:"freeProvider"`
+	FreeModel           string `json:"freeModel"`
 	MaxInFlight         int    `json:"maxInFlight"`
 	MaxWaiters          int    `json:"maxWaiters"`
 	UpdatedAt           int64  `json:"updatedAt"`
 	UpdatedBy           string `json:"updatedBy"`
 }
 
+// EnsureUcgAIConfigSchema 幂等补齐 free 列。
+func EnsureUcgAIConfigSchema(ctx context.Context) error {
+	for _, sql := range []string{
+		`ALTER TABLE ucg_ai_config ADD COLUMN free_provider VARCHAR(32) NOT NULL DEFAULT ''`,
+		`ALTER TABLE ucg_ai_config ADD COLUMN free_model VARCHAR(64) NOT NULL DEFAULT ''`,
+	} {
+		if _, err := g.DB().Exec(ctx, sql); err != nil {
+			msg := err.Error()
+			if !strings.Contains(msg, "Duplicate column") && !strings.Contains(msg, "1060") {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 // EnsureUcgAIConfigDefaultRow 保证 ucg_ai_config 单行存在（冷启动 env > 代码种子）。
 func EnsureUcgAIConfigDefaultRow(ctx context.Context) error {
+	if err := EnsureUcgAIConfigSchema(ctx); err != nil {
+		return err
+	}
 	n, err := g.DB().Model("ucg_ai_config").Ctx(ctx).Where("id", aiConfigSingletonID).Count()
 	if err != nil {
 		return err
@@ -107,14 +128,16 @@ func EnsureUcgAIConfigDefaultRow(ctx context.Context) error {
 func loadPolishProfileFresh(ctx context.Context) (aimodel.Profile, error) {
 	cfg := LoadAIConfig(ctx)
 	return aimodel.Profile{
-		Lane:        aimodel.LanePolish,
-		Provider:    aimodel.Provider(strings.TrimSpace(cfg.Provider)),
-		Model:       cfg.VisionModel,
-		MaxInFlight: cfg.MaxInFlight,
-		MaxWaiters:  cfg.MaxWaiters,
-		TimeoutSec:  cfg.TimeoutSeconds,
-		UpdatedAt:   cfg.UpdatedAt,
-		UpdatedBy:   cfg.UpdatedBy,
+		Lane:         aimodel.LanePolish,
+		Provider:     aimodel.Provider(strings.TrimSpace(cfg.Provider)),
+		Model:        cfg.VisionModel,
+		FreeProvider: aimodel.Provider(strings.TrimSpace(cfg.FreeProvider)),
+		FreeModel:    strings.TrimSpace(cfg.FreeModel),
+		MaxInFlight:  cfg.MaxInFlight,
+		MaxWaiters:   cfg.MaxWaiters,
+		TimeoutSec:   cfg.TimeoutSeconds,
+		UpdatedAt:    cfg.UpdatedAt,
+		UpdatedBy:    cfg.UpdatedBy,
 	}, nil
 }
 

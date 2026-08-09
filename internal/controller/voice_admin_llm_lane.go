@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	v1 "hello/api/v1"
+	"hello/internal/services/aimodel"
 	voice "hello/internal/services/voice"
 
 	"github.com/gogf/gf/v2/errors/gcode"
@@ -50,7 +51,7 @@ func (c *VoiceAdminLLMLanesCtrl) Put(ctx context.Context, req *v1.VoiceAdminLLML
 	if updatedBy == "" {
 		updatedBy = "admin"
 	}
-	if err = voice.UpdateLLMLanesForAdmin(ctx, req.VoiceUnderstanding.ToLaneDTO(), req.Clinic.ToLaneDTO(), updatedBy); err != nil {
+	if err = voice.UpdateLLMLanesForAdmin(ctx, req.VoiceUnderstanding.ToLaneDTO(), req.Clinic.ToLaneDTO(), req.CareAlert.ToLaneDTO(), updatedBy); err != nil {
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, err.Error())
 	}
 	dto, err := voice.GetLLMLanesForAdmin(ctx)
@@ -62,22 +63,22 @@ func (c *VoiceAdminLLMLanesCtrl) Put(ctx context.Context, req *v1.VoiceAdminLLML
 
 func mapLLMLanesRes(dto voice.LLMLanesAdminDTO) *v1.VoiceAdminLLMLanesGetRes {
 	return &v1.VoiceAdminLLMLanesGetRes{
-		VoiceUnderstanding: v1.VoiceAdminLLMLaneItem{
-			Provider:    dto.VoiceUnderstanding.Provider,
-			Model:       dto.VoiceUnderstanding.Model,
-			MaxInFlight: dto.VoiceUnderstanding.MaxInFlight,
-			MaxWaiters:  dto.VoiceUnderstanding.MaxWaiters,
-			UpdatedAt:   dto.VoiceUnderstanding.UpdatedAt,
-			UpdatedBy:   dto.VoiceUnderstanding.UpdatedBy,
-		},
-		Clinic: v1.VoiceAdminLLMLaneItem{
-			Provider:    dto.Clinic.Provider,
-			Model:       dto.Clinic.Model,
-			MaxInFlight: dto.Clinic.MaxInFlight,
-			MaxWaiters:  dto.Clinic.MaxWaiters,
-			UpdatedAt:   dto.Clinic.UpdatedAt,
-			UpdatedBy:   dto.Clinic.UpdatedBy,
-		},
-		Allowlist: dto.Allowlist,
+		VoiceUnderstanding: laneItemFromDTO(dto.VoiceUnderstanding),
+		Clinic:             laneItemFromDTO(dto.Clinic),
+		CareAlert:          laneItemFromDTO(dto.CareAlert),
+		Allowlist:          dto.Allowlist,
+	}
+}
+
+func laneItemFromDTO(d aimodel.LaneProfileDTO) v1.VoiceAdminLLMLaneItem {
+	return v1.VoiceAdminLLMLaneItem{
+		Provider:     d.Provider,
+		Model:        d.Model,
+		FreeProvider: d.FreeProvider,
+		FreeModel:    d.FreeModel,
+		MaxInFlight:  d.MaxInFlight,
+		MaxWaiters:   d.MaxWaiters,
+		UpdatedAt:    d.UpdatedAt,
+		UpdatedBy:    d.UpdatedBy,
 	}
 }

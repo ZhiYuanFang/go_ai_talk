@@ -4,14 +4,15 @@ import (
 	"context"
 
 	"hello/internal/services/aimodel"
+	"hello/internal/services/contracts"
 
 	"github.com/gogf/gf/v2/os/glog"
 )
 
 type voiceQuotaCheckedKey struct{}
-type voiceQuotaDegradedKey struct{}
+type voiceLaneEntitlementKey struct{}
 
-// MarkVoiceQuotaChecked 标记本 utterance 已完成额度预检，避免重复 check。
+// MarkVoiceQuotaChecked 标记本 utterance 已完成额度/权益预检，避免重复 check。
 func MarkVoiceQuotaChecked(ctx context.Context) context.Context {
 	return context.WithValue(ctx, voiceQuotaCheckedKey{}, true)
 }
@@ -21,55 +22,61 @@ func isVoiceQuotaChecked(ctx context.Context) bool {
 	return v
 }
 
-// withVoiceQuotaDegraded 将喂养额度降速标记写入 context，供意图/成长建议等共用 profile 选择。
-func withVoiceQuotaDegraded(ctx context.Context, degraded bool) context.Context {
-	if !degraded {
-		return ctx
-	}
-	return context.WithValue(ctx, voiceQuotaDegradedKey{}, true)
+func withLaneEntitlement(ctx context.Context, ent LaneEntitlement) context.Context {
+	return context.WithValue(ctx, voiceLaneEntitlementKey{}, ent)
 }
 
-// isVoiceQuotaDegraded 本轮是否处于 voice_ai 额度用尽降速路径。
-func isVoiceQuotaDegraded(ctx context.Context) bool {
-	v, _ := ctx.Value(voiceQuotaDegradedKey{}).(bool)
-	return v
+// LaneEntitlementFromCtx 读取本轮喂养权益；未设置返回零值。
+func LaneEntitlementFromCtx(ctx context.Context) (LaneEntitlement, bool) {
+	v, ok := ctx.Value(voiceLaneEntitlementKey{}).(LaneEntitlement)
+	return v, ok
 }
 
-// loadVoiceUnderstandingProfile 额度内用 Admin lane；degraded 强制种子智谱（不计次）。
-func loadVoiceUnderstandingProfile(ctx context.Context) (aimodel.Profile, error) {
-	if isVoiceQuotaDegraded(ctx) {
-		return aimodel.DegradedVoiceUnderstandingProfile(), nil
-	}
-	return aimodel.LoadProfile(ctx, aimodel.LaneVoiceUnderstanding)
+// resolveVoiceUnderstandingModel 经公共出口为喂养意图选模（含硬件特权）。
+func resolveVoiceUnderstandingModel(ctx context.Context, wxID int64) (ent LaneEntitlement, runtime aimodel.Profile, modelCfg *PythonModelCfg, err error) {
+	priv := ModelPrivilegeFromCtx(ctx)
+	return ResolveLaneModel(ctx, wxID, aimodel.LaneVoiceUnderstanding, contracts.AIQuotaVoiceAI, priv)
 }
 
-// guardVoiceAIQuota 预检喂养 AI 额度；返回 wxId、是否降速、更新后的 ctx。
-// 用尽时 degraded=true 且不报错（对齐 clinic）；仅未登录等错误返回 err。
-func (s *VoiceService) guardVoiceAIQuota(ctx context.Context, deviceNo string) (wxID int64, degraded bool, newCtx context.Context, err error) {
-	wxID, err = VoiceWxIDFromRequest(ctx, deviceNo)
-	if err != nil {
-		return 0, false, ctx, err
+// guardVoiceAIQuota 预检喂养 AI 权益；返回 wxId、是否应计次、更新后的 ctx。
+// 未登录/反查失败按 wxId=0 非 premium 放行；硬件特权强制 premium 不计次。不再因额度返回 40302。
+func (s *VoiceService) guardVoiceAIQuota(ctx context.Context, deviceNo string) (wxID int64, shouldConsume bool, newCtx context.Context, err error) {
+	wxID, resolveErr := VoiceWxIDFromRequest(ctx, deviceNo)
+	if resolveErr != nil {
+		wxID = VoiceWxIDFromCtx(ctx)
+		glog.Warningf(ctx, "[VoiceAIQuota] wxId 解析降级为 %d deviceNo=%s err=%v", wxID, deviceNo, resolveErr)
 	}
 	if isVoiceQuotaChecked(ctx) {
-		return wxID, isVoiceQuotaDegraded(ctx), ctx, nil
+		ent, ok := LaneEntitlementFromCtx(ctx)
+		if !ok {
+			ent = ResolveLaneEntitlement(ctx, wxID, contracts.AIQuotaVoiceAI, ModelPrivilegeFromCtx(ctx))
+		}
+		return wxID, ent.ShouldConsumeOnSuccess(), ctx, nil
 	}
-	snap, err := CheckVoiceAIQuotaSnapshot(ctx, wxID)
-	if err != nil {
-		return 0, false, ctx, err
+	priv := ModelPrivilegeFromCtx(ctx)
+	ent := ResolveLaneEntitlement(ctx, wxID, contracts.AIQuotaVoiceAI, priv)
+	newCtx = withLaneEntitlement(MarkVoiceQuotaChecked(ctx), ent)
+	if ent.Hardware {
+		glog.Infof(ctx, "[VoiceAIQuota] 硬件特权 premium 不计次 deviceNo=%s", deviceNo)
+	} else if ent.VIP {
+		glog.Infof(ctx, "[VoiceAIQuota] VIP premium 不计次 wxId=%d deviceNo=%s", wxID, deviceNo)
+	} else if !ent.Premium {
+		glog.Infof(ctx, "[VoiceAIQuota] 非 premium 走 free/omit wxId=%d used=%d limit=%d deviceNo=%s",
+			wxID, ent.Snapshot.Used, ent.Snapshot.Limit, deviceNo)
 	}
-	// 用尽：允许继续，标记 degraded，强制后续 Python 使用种子模型
-	degraded = snap.Degraded && !snap.Allowed
-	newCtx = MarkVoiceQuotaChecked(ctx)
-	if degraded {
-		newCtx = withVoiceQuotaDegraded(newCtx, true)
-		glog.Infof(ctx, "[VoiceAIQuota] 额度用尽走降速。wxId=%d used=%d limit=%d deviceNo=%s",
-			wxID, snap.Used, snap.Limit, deviceNo)
-	}
-	return wxID, degraded, newCtx, nil
+	return wxID, ent.ShouldConsumeOnSuccess(), newCtx, nil
 }
 
 func (s *VoiceService) consumeVoiceAIQuotaOnSuccess(ctx context.Context, wxID int64) {
-	if wxID <= 0 {
+	ent, ok := LaneEntitlementFromCtx(ctx)
+	if ok {
+		ConsumeVoiceFeatureIfNeeded(ctx, wxID, contracts.AIQuotaVoiceAI, ent)
+		return
+	}
+	if wxID <= 0 || ModelPrivilegeFromCtx(ctx) == PrivilegeHardware {
+		return
+	}
+	if isAccountVIP(ctx, wxID) {
 		return
 	}
 	if err := ConsumeVoiceAIQuota(ctx, wxID); err != nil {

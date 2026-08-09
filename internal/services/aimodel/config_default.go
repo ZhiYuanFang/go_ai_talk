@@ -21,6 +21,12 @@ func DefaultSeedProfile(lane Lane) Profile {
 			Lane: lane, Provider: ProviderZhipu, Model: "glm-4.1v-thinking-flash",
 			MaxInFlight: 1, MaxWaiters: 10, TimeoutSec: 120,
 		}
+	case LaneCareAlert:
+		// 护理留意默认正式模与 clinic 同族闸门；VIP∪额度选模后由 Admin 覆盖。
+		return Profile{
+			Lane: lane, Provider: ProviderZhipu, Model: "glm-4.7-flash",
+			MaxInFlight: 1, MaxWaiters: 10, TimeoutSec: 90,
+		}
 	case LanePolish:
 		return Profile{
 			Lane: lane, Provider: ProviderZhipu, Model: "glm-4.6v-flash",

@@ -171,7 +171,7 @@ func GetPolishAIQuotaAppStatus(ctx context.Context, wxID int64) (contracts.Polis
 	if err != nil {
 		return contracts.PolishAIQuotaAppStatus{}, err
 	}
-	return contracts.PolishAIQuotaAppStatus{Polish: snap}, nil
+	return contracts.PolishAIQuotaAppStatus{Polish: applyVIPAllowed(ctx, wxID, snap)}, nil
 }
 
 // GetPolishAIQuotaDefaultForAdmin 读取全局润笔默认。

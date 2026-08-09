@@ -29,6 +29,8 @@ func laneEnvPrefix(lane Lane) (prefix string, ok bool) {
 		return "VOICE_LLM_VOICE_UNDERSTANDING", true
 	case LaneClinic:
 		return "VOICE_LLM_CLINIC", true
+	case LaneCareAlert:
+		return "VOICE_LLM_CARE_ALERT", true
 	case LanePolish:
 		return "UCG_AI", true
 	case LaneSimText:

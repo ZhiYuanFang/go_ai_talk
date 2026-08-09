@@ -39,14 +39,14 @@ func NewPythonAIClient(baseURL string) *PythonAIClient {
 // 与 Python 服务的 /v1/analyze/intent 及 /v1/analyze/intent/stream 对齐（流式复用本结构）。
 // 同一输入框续聊：上一轮 need_confirm 返回的 conversation_id 在本轮可选带回，供 Python 解析自由文本澄清。
 type AnalyzeIntentRequest struct {
-	Text           string         `json:"text"`                      // 用户输入的自然语言文本
-	DeviceNo       string         `json:"device_no"`                 // 设备编号
-	Model          PythonModelCfg `json:"model"`                     // 模型配置
-	ConversationID string         `json:"conversation_id,omitempty"` // 可选；有本地澄清 pending 时带回以续聊
+	Text           string          `json:"text"`                      // 用户输入的自然语言文本
+	DeviceNo       string          `json:"device_no"`                 // 设备编号
+	Model          *PythonModelCfg `json:"model,omitempty"`           // 模型配置；nil=omit，由 Python 自选免费模
+	ConversationID string          `json:"conversation_id,omitempty"` // 可选；有本地澄清 pending 时带回以续聊
 }
 
 // PythonModelCfg 传递给 Python 服务的模型配置
-// 由 go 侧从 llmLanes 配置中读取，不在 Python 中轮询
+// 由 go 侧经 ResolveLaneModel 填入；非 premium 且 free 为空时整段 omit。
 type PythonModelCfg struct {
 	Provider    string `json:"provider"`      // 模型提供商，如 deepseek、zhipu
 	Name        string `json:"name"`          // 模型名称，如 deepseek-v4-flash
@@ -123,9 +123,9 @@ func (c *PythonAIClient) AnalyzeIntent(ctx context.Context, req *AnalyzeIntentRe
 // ClinicStreamRequest 胖宝诊疗流式请求体
 // 与 Python 服务的 /v1/clinic/stream 接口对齐
 type ClinicStreamRequest struct {
-	Question string         `json:"question"`  // 用户的诊疗问题
-	DeviceNo string         `json:"device_no"` // 设备编号
-	Model    PythonModelCfg `json:"model"`     // 模型配置
+	Question string          `json:"question"`        // 用户的诊疗问题
+	DeviceNo string          `json:"device_no"`       // 设备编号
+	Model    *PythonModelCfg `json:"model,omitempty"` // 模型配置；nil=omit
 }
 
 // ClinicStreamCallback 诊疗流式回调
@@ -244,10 +244,10 @@ func PythonAIClientFromCfg() *PythonAIClient {
 // 与 Python 服务的 /v1/tip/stream 接口对齐（snake_case）。
 // 月龄与当前时间由 Python 派生，本结构不再携带 baby_age_months / current_time。
 type TipStreamRequest struct {
-	EventID   int64          `json:"event_id"`   // 触发事件 ID
-	EventName string         `json:"event_name"` // 触发事件名称
-	DeviceNo  string         `json:"device_no"`  // 设备编号
-	Model     PythonModelCfg `json:"model"`      // 模型配置
+	EventID   int64           `json:"event_id"`         // 触发事件 ID
+	EventName string          `json:"event_name"`       // 触发事件名称
+	DeviceNo  string          `json:"device_no"`        // 设备编号
+	Model     *PythonModelCfg `json:"model,omitempty"`  // 模型配置；nil=omit
 }
 
 // TipStream 调用 Python 服务进行流式小贴士生成
@@ -511,12 +511,12 @@ func (c *PythonAIClient) AnalyzeIntentStream(ctx context.Context, req *AnalyzeIn
 // ---------- 护理留意（care-alert）Go → Python 内部契约 ----------
 
 // CareAlertAnalyzeRequest 护理留意日分析请求（路径见 Python CONTRACT：/v1/care-alert/analyze）。
-// snake_case 与 tip/clinic 一致；Model 为 deepseek|zhipu 简写，ModelCfg 供 Python 执行 LLM。
+// Model/ModelCfg 均可 omit：非 premium 且 free 为空时由 Python 自选免费模。
 type CareAlertAnalyzeRequest struct {
 	DeviceNo       string                 `json:"device_no"`
 	Day            string                 `json:"day"`
-	Model          string                 `json:"model"` // deepseek|zhipu
-	ModelCfg       PythonModelCfg         `json:"model_cfg"`
+	Model          string                 `json:"model,omitempty"`     // 可选简写；优先以 ModelCfg 为准
+	ModelCfg       *PythonModelCfg        `json:"model_cfg,omitempty"` // 完整模型配置；nil=omit
 	AgeMonths      int                    `json:"age_months"`
 	HistorySummary map[string]interface{} `json:"history_summary"`
 	KgContext      map[string]interface{} `json:"kg_context"`

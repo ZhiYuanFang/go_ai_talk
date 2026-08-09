@@ -13,7 +13,7 @@ import (
 	v1 "hello/api/v1"
 	"hello/internal/platform/cachekit"
 	"hello/internal/services/aimodel"
-	"hello/internal/services/cash"
+	"hello/internal/services/contracts"
 
 	"github.com/gogf/gf/v2/errors/gcode"
 	"github.com/gogf/gf/v2/errors/gerror"
@@ -45,6 +45,7 @@ type careAlertFlightWait struct {
 }
 
 // CareAlertDaily 返回宝宝当日护理留意列表：缓存命中直接返回；未命中 single-flight 调 Python 后写入。
+// 选模：VIP∪care_alert 额度 → careAlert 正式模；否则 free/omit；成功仅非 VIP 计次。
 // 不扣 clinic_ai 配额；触发者 VIP（wxId）→DeepSeek，非 VIP / 查失败降级→Zhipu。
 // wxID 必须 >0（由 controller 校验）；禁止用 deviceNo 反查 wx 作为登录旁路。
 func CareAlertDaily(ctx context.Context, deviceNo string, wxID int64) (day string, items []v1.CareAlertItemDTO, err error) {
@@ -192,15 +193,22 @@ func careAlertDailyGenerate(ctx context.Context, deviceNo, day string, wxID int6
 	genCtx, cancel := context.WithTimeout(ctx, careAlertAnalyzeTimeout)
 	defer cancel()
 
-	profile, vip := resolveCareAlertModelProfile(genCtx, wxID)
+	// VIP∪care_alert 额度选模；成功后仅非 VIP 计次。
+	ent, runtime, modelCfg, _ := ResolveLaneModel(genCtx, wxID, aimodel.LaneCareAlert, contracts.AIQuotaCareAlert, PrivilegeAccount)
+	if modelCfg != nil {
+		rel, acqErr := aimodel.Acquire(genCtx, runtime)
+		if acqErr != nil {
+			return nil, gerror.WrapCode(gcode.CodeInternalError, acqErr, "护理留意队列繁忙")
+		}
+		defer rel()
+	}
 	ageMonths := careAlertAgeMonths(genCtx, deviceNo)
 
 	pythonClient := PythonAIClientFromCfg()
 	pyRes, pyErr := pythonClient.CareAlertAnalyze(genCtx, &CareAlertAnalyzeRequest{
 		DeviceNo:       deviceNo,
 		Day:            day,
-		Model:          string(profile.Provider), // deepseek|zhipu（契约简写）
-		ModelCfg:       PythonModelCfg{Provider: string(profile.Provider), Name: profile.Model, MaxInFlight: profile.MaxInFlight},
+		ModelCfg:       modelCfg,
 		AgeMonths:      ageMonths,
 		HistorySummary: map[string]interface{}{},
 		KgContext:      map[string]interface{}{},
@@ -212,10 +220,14 @@ func careAlertDailyGenerate(ctx context.Context, deviceNo, day string, wxID int6
 	items := normalizeCareAlertItems(pyRes.Items)
 	if err := storeCareAlertDailyCache(ctx, deviceNo, day, items); err != nil {
 		glog.Warningf(ctx, "[CareAlert] 写缓存失败 day=%s err=%v", day, err)
-		// 仍返回本次结果，避免客户端因缓存故障完全不可用。
 	}
-	glog.Infof(ctx, "[CareAlert] generated day=%s count=%d provider=%s model=%s wxId=%d vip=%v",
-		day, len(items), profile.Provider, profile.Model, wxID, vip)
+	ConsumeVoiceFeatureIfNeeded(ctx, wxID, contracts.AIQuotaCareAlert, ent)
+	modelName := ""
+	if modelCfg != nil {
+		modelName = modelCfg.Name
+	}
+	glog.Infof(ctx, "[CareAlert] generated day=%s count=%d model=%s wxId=%d premium=%v vip=%v",
+		day, len(items), modelName, wxID, ent.Premium, ent.VIP)
 	return items, nil
 }
 
@@ -298,44 +310,6 @@ func shanghaiLocation() *time.Location {
 
 func shanghaiDayString(t time.Time) string {
 	return t.In(shanghaiLocation()).Format("2006-01-02")
-}
-
-// isAccountVIP 经 cash-service 内部契约按 wxId 读账号 VIP；失败/超时降级为 false（Zhipu）并打 Warning。
-func isAccountVIP(ctx context.Context, wxID int64) bool {
-	if wxID <= 0 {
-		return false
-	}
-	vip, err := cash.RemoteIsVipByWxID(ctx, wxID)
-	if err != nil {
-		glog.Warningf(ctx, "[CareAlert] VIP 查询降级为非 VIP wxId=%d err=%v", wxID, err)
-		return false
-	}
-	return vip
-}
-
-// resolveCareAlertModelProfile 触发者 VIP→DeepSeek，否则 Zhipu；复用 aimodel 闸门字段，不耦合 clinic 配额。
-// 返回值 vip 为实际用于选模的布尔（含降级后的 false）。
-func resolveCareAlertModelProfile(ctx context.Context, wxID int64) (aimodel.Profile, bool) {
-	base, err := aimodel.LoadProfile(ctx, aimodel.LaneClinic)
-	if err != nil {
-		base = aimodel.DefaultSeedProfile(aimodel.LaneClinic)
-	}
-	vip := isAccountVIP(ctx, wxID)
-	if vip {
-		base.Provider = aimodel.ProviderDeepSeek
-		if !aimodel.IsAllowedModel(aimodel.ProviderDeepSeek, base.Model) {
-			base.Model = "deepseek-v4-flash"
-		}
-	} else {
-		base.Provider = aimodel.ProviderZhipu
-		if !aimodel.IsAllowedModel(aimodel.ProviderZhipu, base.Model) {
-			base.Model = "glm-4.7-flash"
-		}
-	}
-	if base.TimeoutSec < 90 {
-		base.TimeoutSec = 90
-	}
-	return base, vip
 }
 
 func careAlertAgeMonths(ctx context.Context, deviceNo string) int {

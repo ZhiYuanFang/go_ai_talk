@@ -36,6 +36,7 @@ func registerVoiceChatWS(s *ghttp.Server) {
 func voiceChatWS(r *ghttp.Request) {
 	ctx := r.Context()
 	headerWxID := voice.ParseHeaderWxID(r.Header.Get(voice.HeaderInternalWxID))
+	// 设备直连语音通道：按硬件特权 premium（买硬件≈付费），不计次。
 	ws, err := r.WebSocket()
 	if err != nil {
 		r.Response.Status = 400
@@ -177,7 +178,8 @@ func voiceChatWS(r *ghttp.Request) {
 			finishTalk bool
 			pErr       error
 		)
-		ask, answer, exit, finishTalk, pErr = voice.Voice().HandleTranscriptForStreaming(voice.WithVoiceWxID(ctx, headerWxID), deviceNo, transcript)
+		chatCtx := voice.WithModelPrivilege(voice.WithVoiceWxID(ctx, headerWxID), voice.PrivilegeHardware)
+		ask, answer, exit, finishTalk, pErr = voice.Voice().HandleTranscriptForStreaming(chatCtx, deviceNo, transcript)
 		if pErr == nil && !exit {
 				seq := 0
 				_, pErr = voice.Voice().StreamReplyWithBaiduTTS(ctx, meta, answer, func(chunk []byte, chunkMeta voice.AudioMeta, chunkSeq int) error {

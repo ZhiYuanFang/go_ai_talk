@@ -140,3 +140,10 @@ Hub: 可见 wxId / 到期 / 最近 paid amount_fen
 ```
 
 更细步骤见 [cash-vip-sandbox.md](./cash-vip-sandbox.md)。
+
+## 9. AI 权益（VIP∪额度）
+
+- 账号 VIP 时各 AI feature（voice/clinic/care_alert/polish）视为有额度且不计次。
+- 非 VIP 走月度额度；用尽后使用 Admin「AI 模型与并发」中该 lane 的 free 模型（可空，Python 自选）。
+- 硬件 /voice/chat/ws 与 MCP 文本对话按硬件特权 premium、不计次。
+- care-alert 独立额度 `care_alert` 与 lane `careAlert`：月度默认/用户 override 在 **Voice 运维**（`voice-admin.html`）；模型/并发/free 在 **AI 模型与并发**（`ai-model-admin.html`）。详见 OpenSpec `vip-quota-joint-entitlement`。

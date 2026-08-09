@@ -67,32 +67,19 @@ func (s *ClinicService) HandleQuestion(turnCtx context.Context, wxID int64, devi
 	if err := checkClinicRateLimit(turnCtx, wxID, s.cfg); err != nil {
 		return clinicWriteQuotaErr(writeJSON, err)
 	}
-	quotaSnap, err := CheckClinicAIQuotaSnapshot(turnCtx, wxID)
-	if err != nil {
-		return clinicWriteQuotaErr(writeJSON, err)
-	}
-	clinicDegraded := quotaSnap.Degraded && !quotaSnap.Allowed
-	var profile aimodel.Profile
-	if quotaSnap.Allowed {
-		profile, err = aimodel.LoadProfile(turnCtx, aimodel.LaneClinic)
+	ent, runtime, modelCfg, _ := ResolveLaneModel(turnCtx, wxID, aimodel.LaneClinic, contracts.AIQuotaClinicAI, PrivilegeAccount)
+	if modelCfg != nil {
+		release, err := aimodel.Acquire(turnCtx, runtime)
 		if err != nil {
-			return writeJSON(map[string]interface{}{"type": "error", "code": 500, "message": err.Error()})
+			return clinicWriteQuotaErr(writeJSON, mapVoiceLLMError(err))
 		}
-	} else if clinicDegraded {
-		profile = aimodel.DegradedClinicProfile()
-	} else {
-		return clinicWriteQuotaErr(writeJSON, &VoiceAIQuotaError{Code: contracts.CodeAIQuotaExhausted, Message: contracts.ErrAIQuotaExhausted.Error()})
+		defer release()
 	}
-	release, err := aimodel.Acquire(turnCtx, profile)
-	if err != nil {
-		return clinicWriteQuotaErr(writeJSON, mapVoiceLLMError(err))
-	}
-	defer release()
 	if err := turnCtx.Err(); err != nil {
 		return nil
 	}
-	// 直接转发 Python；喂养上下文/画像/多轮由 Python 侧处理，Go 不拼 prompt。
-	thinking, answer, answerID, streamErr := s.streamClinicLLMHeld(turnCtx, profile, deviceNo, question, clinicStreamCallbacks{
+	// 直接转发 Python；选模经 VIP∪额度公共出口（free 空则 omit）。
+	thinking, answer, answerID, streamErr := s.streamClinicLLMHeld(turnCtx, modelCfg, deviceNo, question, clinicStreamCallbacks{
 		OnThinkingDelta: func(delta string) error {
 			if err := turnCtx.Err(); err != nil {
 				return err
@@ -107,7 +94,7 @@ func (s *ClinicService) HandleQuestion(turnCtx context.Context, wxID int64, devi
 		},
 	})
 	if streamErr != nil {
-		// cancel/supersede/disconnect 中断流：静默结束，不下发 error、不写 answer_done、不扣费。
+		// cancel/supersede/disconnect 中断流：静默结束，不下发 error、不发 answer_done、不扣费。
 		if errors.Is(streamErr, context.Canceled) || errors.Is(streamErr, context.DeadlineExceeded) {
 			return nil
 		}
@@ -116,13 +103,9 @@ func (s *ClinicService) HandleQuestion(turnCtx context.Context, wxID int64, devi
 	if err := turnCtx.Err(); err != nil {
 		return nil
 	}
-	// 仅正常额度路径扣 clinic_ai；降速 fallback 不 consume。
-	if quotaSnap.Allowed {
-		if err := ConsumeClinicAIQuota(turnCtx, wxID); err != nil {
-			return clinicWriteQuotaErr(writeJSON, err)
-		}
-	}
-	_ = recordClinicRateLimitOnSuccess(turnCtx, wxID, s.cfg)
+	// VIP/硬件不计次；非 VIP 且 premium 成功才 consume。
+	ConsumeVoiceFeatureIfNeeded(turnCtx, wxID, contracts.AIQuotaClinicAI, ent)
+		_ = recordClinicRateLimitOnSuccess(turnCtx, wxID, s.cfg)
 	return writeJSON(map[string]interface{}{
 		"type":     "answer_done",
 		"turnId":   turnID,

@@ -8,15 +8,18 @@ import (
 )
 
 // Profile 单条 lane 的运行时配置（Admin DB > YAML > 代码兜底）。
+// FreeProvider/FreeModel：非 premium（非 VIP 且额度用尽）时使用；二者皆空表示 omit，由 Python 自选免费模。
 type Profile struct {
-	Lane        Lane
-	Provider    Provider
-	Model       string
-	MaxInFlight int
-	MaxWaiters  int
-	TimeoutSec  int
-	UpdatedAt   int64
-	UpdatedBy   string
+	Lane         Lane
+	Provider     Provider
+	Model        string
+	FreeProvider Provider // 额度不足模型供应商；可空
+	FreeModel    string   // 额度不足模型名；可空
+	MaxInFlight  int
+	MaxWaiters   int
+	TimeoutSec   int
+	UpdatedAt    int64
+	UpdatedBy    string
 }
 
 // ProfileStore 按进程注入：voice 提供 understanding+clinic，ucg 提供 polish。
@@ -98,13 +101,29 @@ func NormalizeModel(model string) string {
 }
 
 // LaneProfileDTO Admin API 对外字段。
+// FreeProvider/FreeModel 可空；Sim 域可不填。
 type LaneProfileDTO struct {
-	Provider    string `json:"provider"`
-	Model       string `json:"model"`
-	MaxInFlight int    `json:"maxInFlight"`
-	MaxWaiters  int    `json:"maxWaiters"`
-	UpdatedAt   int64  `json:"updatedAt"`
-	UpdatedBy   string `json:"updatedBy"`
+	Provider     string `json:"provider"`
+	Model        string `json:"model"`
+	FreeProvider string `json:"freeProvider"`
+	FreeModel    string `json:"freeModel"`
+	MaxInFlight  int    `json:"maxInFlight"`
+	MaxWaiters   int    `json:"maxWaiters"`
+	UpdatedAt    int64  `json:"updatedAt"`
+	UpdatedBy    string `json:"updatedBy"`
+}
+
+// HasFreeModel 是否配置了有效的额度不足模型（供选模出口判断 omit）。
+func (p Profile) HasFreeModel() bool {
+	return strings.TrimSpace(string(p.FreeProvider)) != "" && strings.TrimSpace(p.FreeModel) != ""
+}
+
+// FreeAsRuntimeProfile 将 free 配置投影为可 Acquire/Invoke 的运行时 Profile（闸门参数沿用正式 lane）。
+func (p Profile) FreeAsRuntimeProfile() Profile {
+	out := p
+	out.Provider = p.FreeProvider
+	out.Model = NormalizeModel(p.FreeModel)
+	return out
 }
 
 // ProviderModels allowlist：provider -> models。

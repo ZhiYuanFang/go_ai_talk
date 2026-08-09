@@ -11,20 +11,23 @@ type VoiceAdminLLMLanesGetReq struct {
 	g.Meta `path:"/voice/admin/api/llm-lanes" method:"get" tags:"voice-admin" summary:"读取 LLM lane 配置"`
 }
 
-// VoiceAdminLLMLaneItem 单条 lane 配置。
+// VoiceAdminLLMLaneItem 单条 lane 配置（含可选额度不足 free 模型）。
 type VoiceAdminLLMLaneItem struct {
-	Provider    string `json:"provider"`
-	Model       string `json:"model"`
-	MaxInFlight int    `json:"maxInFlight"`
-	MaxWaiters  int    `json:"maxWaiters"`
-	UpdatedAt   int64  `json:"updatedAt"`
-	UpdatedBy   string `json:"updatedBy"`
+	Provider     string `json:"provider"`
+	Model        string `json:"model"`
+	FreeProvider string `json:"freeProvider"`
+	FreeModel    string `json:"freeModel"`
+	MaxInFlight  int    `json:"maxInFlight"`
+	MaxWaiters   int    `json:"maxWaiters"`
+	UpdatedAt    int64  `json:"updatedAt"`
+	UpdatedBy    string `json:"updatedBy"`
 }
 
-// VoiceAdminLLMLanesGetRes GET 响应。
+// VoiceAdminLLMLanesGetRes GET 响应（含 careAlert）。
 type VoiceAdminLLMLanesGetRes struct {
 	VoiceUnderstanding VoiceAdminLLMLaneItem `json:"voiceUnderstanding"`
 	Clinic             VoiceAdminLLMLaneItem `json:"clinic"`
+	CareAlert          VoiceAdminLLMLaneItem `json:"careAlert"`
 	Allowlist          map[string][]string   `json:"allowlist"`
 }
 
@@ -33,6 +36,7 @@ type VoiceAdminLLMLanesPutReq struct {
 	g.Meta             `path:"/voice/admin/api/llm-lanes" method:"put" tags:"voice-admin" summary:"更新 LLM lane 配置"`
 	VoiceUnderstanding VoiceAdminLLMLaneItem `json:"voiceUnderstanding" v:"required"`
 	Clinic             VoiceAdminLLMLaneItem `json:"clinic" v:"required"`
+	CareAlert          VoiceAdminLLMLaneItem `json:"careAlert" v:"required"`
 	UpdatedBy          string                `json:"updatedBy"`
 }
 
@@ -42,11 +46,13 @@ type VoiceAdminLLMLanesPutRes = VoiceAdminLLMLanesGetRes
 // ToLaneDTO 将 API item 转为 aimodel DTO。
 func (item VoiceAdminLLMLaneItem) ToLaneDTO() aimodel.LaneProfileDTO {
 	return aimodel.LaneProfileDTO{
-		Provider:    item.Provider,
-		Model:       item.Model,
-		MaxInFlight: item.MaxInFlight,
-		MaxWaiters:  item.MaxWaiters,
-		UpdatedAt:   item.UpdatedAt,
-		UpdatedBy:   item.UpdatedBy,
+		Provider:     item.Provider,
+		Model:        item.Model,
+		FreeProvider: item.FreeProvider,
+		FreeModel:    item.FreeModel,
+		MaxInFlight:  item.MaxInFlight,
+		MaxWaiters:   item.MaxWaiters,
+		UpdatedAt:    item.UpdatedAt,
+		UpdatedBy:    item.UpdatedBy,
 	}
 }

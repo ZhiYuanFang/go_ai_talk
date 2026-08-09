@@ -42,11 +42,28 @@ func aiQuotaUsageRedisKey(feature contracts.AIQuotaFeature, wxID int64) string {
 
 func validateVoiceQuotaFeature(feature contracts.AIQuotaFeature) error {
 	switch feature {
-	case contracts.AIQuotaVoiceAI, contracts.AIQuotaClinicAI:
+	case contracts.AIQuotaVoiceAI, contracts.AIQuotaClinicAI, contracts.AIQuotaCareAlert:
 		return nil
 	default:
 		return fmt.Errorf("未知 feature: %s", feature)
 	}
+}
+
+// EnsureVoiceAIQuotaSchema 幂等补齐 care_alert 额度列。
+func EnsureVoiceAIQuotaSchema(ctx context.Context) error {
+	alters := []string{
+		`ALTER TABLE ai_quota_default ADD COLUMN care_alert_monthly_limit INT NOT NULL DEFAULT 10`,
+		`ALTER TABLE ai_quota_user_override ADD COLUMN care_alert_monthly_limit INT NULL`,
+	}
+	for _, sql := range alters {
+		if _, err := g.DB().Exec(ctx, sql); err != nil {
+			msg := err.Error()
+			if !strings.Contains(msg, "Duplicate column") && !strings.Contains(msg, "1060") {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func validateWxIDForAI(wxID int64) error {
@@ -56,8 +73,11 @@ func validateWxIDForAI(wxID int64) error {
 	return nil
 }
 
-// EnsureVoiceAIQuotaDefaultRow 保证 singleton 行存在（默认 5/30）。
+// EnsureVoiceAIQuotaDefaultRow 保证 singleton 行存在（默认 5/30/10）。
 func EnsureVoiceAIQuotaDefaultRow(ctx context.Context) error {
+	if err := EnsureVoiceAIQuotaSchema(ctx); err != nil {
+		return err
+	}
 	n, err := g.DB().Model("ai_quota_default").Ctx(ctx).Where("id", aiQuotaDefaultSingletonID).Count()
 	if err != nil {
 		return err
@@ -67,18 +87,20 @@ func EnsureVoiceAIQuotaDefaultRow(ctx context.Context) error {
 	}
 	now := time.Now().Unix()
 	_, err = g.DB().Model("ai_quota_default").Ctx(ctx).Data(g.Map{
-		"id":                      aiQuotaDefaultSingletonID,
-		"voice_ai_monthly_limit":  5,
-		"clinic_ai_monthly_limit": 30,
-		"updated_at":              now,
+		"id":                        aiQuotaDefaultSingletonID,
+		"voice_ai_monthly_limit":    5,
+		"clinic_ai_monthly_limit":   30,
+		"care_alert_monthly_limit":  10,
+		"updated_at":                now,
 	}).Insert()
 	return err
 }
 
 type voiceQuotaDefaultRow struct {
-	VoiceAiMonthlyLimit  int   `json:"voiceAiMonthlyLimit"`
-	ClinicAiMonthlyLimit int   `json:"clinicAiMonthlyLimit"`
-	UpdatedAt            int64 `json:"updatedAt"`
+	VoiceAiMonthlyLimit   int   `json:"voiceAiMonthlyLimit"`
+	ClinicAiMonthlyLimit  int   `json:"clinicAiMonthlyLimit"`
+	CareAlertMonthlyLimit int   `json:"careAlertMonthlyLimit"`
+	UpdatedAt             int64 `json:"updatedAt"`
 }
 
 func loadVoiceAIQuotaDefault(ctx context.Context) (voiceQuotaDefaultRow, error) {
@@ -95,14 +117,18 @@ func loadVoiceAIQuotaDefault(ctx context.Context) (voiceQuotaDefaultRow, error) 
 	if row.ClinicAiMonthlyLimit <= 0 {
 		row.ClinicAiMonthlyLimit = 30
 	}
+	if row.CareAlertMonthlyLimit <= 0 {
+		row.CareAlertMonthlyLimit = 10
+	}
 	return row, nil
 }
 
 type voiceQuotaOverrideRow struct {
-	WxId                 int64 `json:"wxId"`
-	VoiceAiMonthlyLimit  *int  `json:"voiceAiMonthlyLimit"`
-	ClinicAiMonthlyLimit *int  `json:"clinicAiMonthlyLimit"`
-	UpdatedAt            int64 `json:"updatedAt"`
+	WxId                  int64 `json:"wxId"`
+	VoiceAiMonthlyLimit   *int  `json:"voiceAiMonthlyLimit"`
+	ClinicAiMonthlyLimit  *int  `json:"clinicAiMonthlyLimit"`
+	CareAlertMonthlyLimit *int  `json:"careAlertMonthlyLimit"`
+	UpdatedAt             int64 `json:"updatedAt"`
 }
 
 func effectiveVoiceLimitForFeature(ctx context.Context, wxID int64, feature contracts.AIQuotaFeature) (int, error) {
@@ -111,8 +137,11 @@ func effectiveVoiceLimitForFeature(ctx context.Context, wxID int64, feature cont
 		return 0, err
 	}
 	limit := def.VoiceAiMonthlyLimit
-	if feature == contracts.AIQuotaClinicAI {
+	switch feature {
+	case contracts.AIQuotaClinicAI:
 		limit = def.ClinicAiMonthlyLimit
+	case contracts.AIQuotaCareAlert:
+		limit = def.CareAlertMonthlyLimit
 	}
 	var ov voiceQuotaOverrideRow
 	_ = g.DB().Model("ai_quota_user_override").Ctx(ctx).Where("wx_id", wxID).Scan(&ov)
@@ -122,6 +151,9 @@ func effectiveVoiceLimitForFeature(ctx context.Context, wxID int64, feature cont
 		}
 		if feature == contracts.AIQuotaClinicAI && ov.ClinicAiMonthlyLimit != nil && *ov.ClinicAiMonthlyLimit > 0 {
 			limit = *ov.ClinicAiMonthlyLimit
+		}
+		if feature == contracts.AIQuotaCareAlert && ov.CareAlertMonthlyLimit != nil && *ov.CareAlertMonthlyLimit > 0 {
+			limit = *ov.CareAlertMonthlyLimit
 		}
 	}
 	return limit, nil
@@ -161,8 +193,8 @@ func CheckVoiceAIQuotaStore(ctx context.Context, wxID int64, feature contracts.A
 		return contracts.AIQuotaSnapshot{}, err
 	}
 	allowed := used < limit
-	// clinic_ai / voice_ai 用尽时均走降速 fallback（Degraded=true），由调用方强制种子模型且不计次。
-	degraded := !allowed && (feature == contracts.AIQuotaClinicAI || feature == contracts.AIQuotaVoiceAI)
+	// 用尽时 Degraded=true：调用方走 lane.free / omit，不计次。
+	degraded := !allowed && (feature == contracts.AIQuotaClinicAI || feature == contracts.AIQuotaVoiceAI || feature == contracts.AIQuotaCareAlert)
 	return contracts.AIQuotaSnapshot{
 		Used:     used,
 		Limit:    limit,
@@ -197,12 +229,21 @@ func ConsumeVoiceAIQuotaStore(ctx context.Context, wxID int64, feature contracts
 	return contracts.AIQuotaSnapshot{Used: used, Limit: limit, Allowed: true}, nil
 }
 
-// GetVoiceAIQuotaAppStatus 返回 voiceAi + clinicAi 快照。
+// applyVIPToSnapshot VIP 时强制有额度（不计次由 consume 路径保证）。
+func applyVIPToSnapshot(ctx context.Context, wxID int64, snap contracts.AIQuotaSnapshot) contracts.AIQuotaSnapshot {
+	if isAccountVIP(ctx, wxID) {
+		snap.Allowed = true
+		snap.Degraded = false
+	}
+	return snap
+}
+
+// GetVoiceAIQuotaAppStatus 返回 voiceAi + clinicAi + careAlert 快照（VIP 视为有额度）。
 func GetVoiceAIQuotaAppStatus(ctx context.Context, wxID int64) (contracts.VoiceAIQuotaAppStatus, error) {
 	if err := validateWxIDForAI(wxID); err != nil {
 		return contracts.VoiceAIQuotaAppStatus{}, err
 	}
-	voice, err := CheckVoiceAIQuotaStore(ctx, wxID, contracts.AIQuotaVoiceAI)
+	voiceSnap, err := CheckVoiceAIQuotaStore(ctx, wxID, contracts.AIQuotaVoiceAI)
 	if err != nil {
 		return contracts.VoiceAIQuotaAppStatus{}, err
 	}
@@ -210,7 +251,15 @@ func GetVoiceAIQuotaAppStatus(ctx context.Context, wxID int64) (contracts.VoiceA
 	if err != nil {
 		return contracts.VoiceAIQuotaAppStatus{}, err
 	}
-	return contracts.VoiceAIQuotaAppStatus{VoiceAi: voice, ClinicAi: clinic}, nil
+	care, err := CheckVoiceAIQuotaStore(ctx, wxID, contracts.AIQuotaCareAlert)
+	if err != nil {
+		return contracts.VoiceAIQuotaAppStatus{}, err
+	}
+	return contracts.VoiceAIQuotaAppStatus{
+		VoiceAi:   applyVIPToSnapshot(ctx, wxID, voiceSnap),
+		ClinicAi:  applyVIPToSnapshot(ctx, wxID, clinic),
+		CareAlert: applyVIPToSnapshot(ctx, wxID, care),
+	}, nil
 }
 
 // GetVoiceAIQuotaDefaultForAdmin 读取全局默认。
@@ -220,15 +269,16 @@ func GetVoiceAIQuotaDefaultForAdmin(ctx context.Context) (contracts.VoiceAIQuota
 		return contracts.VoiceAIQuotaDefaultDTO{}, err
 	}
 	return contracts.VoiceAIQuotaDefaultDTO{
-		VoiceAiMonthlyLimit:  row.VoiceAiMonthlyLimit,
-		ClinicAiMonthlyLimit: row.ClinicAiMonthlyLimit,
-		UpdatedAt:            row.UpdatedAt,
+		VoiceAiMonthlyLimit:   row.VoiceAiMonthlyLimit,
+		ClinicAiMonthlyLimit:  row.ClinicAiMonthlyLimit,
+		CareAlertMonthlyLimit: row.CareAlertMonthlyLimit,
+		UpdatedAt:             row.UpdatedAt,
 	}, nil
 }
 
 // UpdateVoiceAIQuotaDefaultForAdmin 更新全局默认。
-func UpdateVoiceAIQuotaDefaultForAdmin(ctx context.Context, voiceLimit, clinicLimit int) (contracts.VoiceAIQuotaDefaultDTO, error) {
-	if voiceLimit <= 0 || clinicLimit <= 0 {
+func UpdateVoiceAIQuotaDefaultForAdmin(ctx context.Context, voiceLimit, clinicLimit, careAlertLimit int) (contracts.VoiceAIQuotaDefaultDTO, error) {
+	if voiceLimit <= 0 || clinicLimit <= 0 || careAlertLimit <= 0 {
 		return contracts.VoiceAIQuotaDefaultDTO{}, errors.New("额度须为正整数")
 	}
 	if err := EnsureVoiceAIQuotaDefaultRow(ctx); err != nil {
@@ -236,17 +286,19 @@ func UpdateVoiceAIQuotaDefaultForAdmin(ctx context.Context, voiceLimit, clinicLi
 	}
 	now := time.Now().Unix()
 	_, err := g.DB().Model("ai_quota_default").Ctx(ctx).Where("id", aiQuotaDefaultSingletonID).Data(g.Map{
-		"voice_ai_monthly_limit":  voiceLimit,
-		"clinic_ai_monthly_limit": clinicLimit,
-		"updated_at":              now,
+		"voice_ai_monthly_limit":   voiceLimit,
+		"clinic_ai_monthly_limit":  clinicLimit,
+		"care_alert_monthly_limit": careAlertLimit,
+		"updated_at":               now,
 	}).Update()
 	if err != nil {
 		return contracts.VoiceAIQuotaDefaultDTO{}, err
 	}
 	return contracts.VoiceAIQuotaDefaultDTO{
-		VoiceAiMonthlyLimit:  voiceLimit,
-		ClinicAiMonthlyLimit: clinicLimit,
-		UpdatedAt:            now,
+		VoiceAiMonthlyLimit:   voiceLimit,
+		ClinicAiMonthlyLimit:  clinicLimit,
+		CareAlertMonthlyLimit: careAlertLimit,
+		UpdatedAt:             now,
 	}, nil
 }
 
@@ -264,16 +316,17 @@ func GetVoiceAIQuotaUserOverrideForAdmin(ctx context.Context, wxID int64) (contr
 		return contracts.VoiceAIQuotaUserOverrideDTO{WxId: wxID}, nil
 	}
 	return contracts.VoiceAIQuotaUserOverrideDTO{
-		WxId:                 row.WxId,
-		VoiceAiMonthlyLimit:  row.VoiceAiMonthlyLimit,
-		ClinicAiMonthlyLimit: row.ClinicAiMonthlyLimit,
-		UpdatedAt:            row.UpdatedAt,
+		WxId:                  row.WxId,
+		VoiceAiMonthlyLimit:   row.VoiceAiMonthlyLimit,
+		ClinicAiMonthlyLimit:  row.ClinicAiMonthlyLimit,
+		CareAlertMonthlyLimit: row.CareAlertMonthlyLimit,
+		UpdatedAt:             row.UpdatedAt,
 	}, nil
 }
 
 // UpdateVoiceAIQuotaUserOverrideForAdmin 写入或清除单人 override（nil 表示清除）。
 // 业务逻辑：若提交上限等于当前全局默认，则视为清除该 feature override，便于后续跟随全局。
-func UpdateVoiceAIQuotaUserOverrideForAdmin(ctx context.Context, wxID int64, voiceLimit, clinicLimit *int) (contracts.VoiceAIQuotaUserOverrideDTO, error) {
+func UpdateVoiceAIQuotaUserOverrideForAdmin(ctx context.Context, wxID int64, voiceLimit, clinicLimit, careAlertLimit *int) (contracts.VoiceAIQuotaUserOverrideDTO, error) {
 	if wxID <= 0 {
 		return contracts.VoiceAIQuotaUserOverrideDTO{}, errors.New("wxId 无效")
 	}
@@ -282,6 +335,9 @@ func UpdateVoiceAIQuotaUserOverrideForAdmin(ctx context.Context, wxID int64, voi
 	}
 	if clinicLimit != nil && *clinicLimit <= 0 {
 		return contracts.VoiceAIQuotaUserOverrideDTO{}, errors.New("clinicAiMonthlyLimit 须为正整数")
+	}
+	if careAlertLimit != nil && *careAlertLimit <= 0 {
+		return contracts.VoiceAIQuotaUserOverrideDTO{}, errors.New("careAlertMonthlyLimit 须为正整数")
 	}
 	// 等于全局默认 → 清 override，避免无意义钉死个人值。
 	def, err := loadVoiceAIQuotaDefault(ctx)
@@ -293,6 +349,9 @@ func UpdateVoiceAIQuotaUserOverrideForAdmin(ctx context.Context, wxID int64, voi
 	}
 	if clinicLimit != nil && *clinicLimit == def.ClinicAiMonthlyLimit {
 		clinicLimit = nil
+	}
+	if careAlertLimit != nil && *careAlertLimit == def.CareAlertMonthlyLimit {
+		careAlertLimit = nil
 	}
 	now := time.Now().Unix()
 	data := g.Map{
@@ -308,6 +367,11 @@ func UpdateVoiceAIQuotaUserOverrideForAdmin(ctx context.Context, wxID int64, voi
 		data["clinic_ai_monthly_limit"] = nil
 	} else {
 		data["clinic_ai_monthly_limit"] = *clinicLimit
+	}
+	if careAlertLimit == nil {
+		data["care_alert_monthly_limit"] = nil
+	} else {
+		data["care_alert_monthly_limit"] = *careAlertLimit
 	}
 	_, err = g.DB().Model("ai_quota_user_override").Ctx(ctx).Data(data).Save()
 	if err != nil {
@@ -352,8 +416,8 @@ func ListVoiceAIQuotaUsersForAdmin(ctx context.Context, page, pageSize int, devi
 			ovByWx[ov.WxId] = ov
 		}
 	}
-	// 批量读取当月 usage：每行 voice_ai + clinic_ai 两个键。
-	keys := make([]string, 0, len(wxPage.List)*2)
+	// 批量读取当月 usage：每行 voice_ai + clinic_ai + care_alert。
+	keys := make([]string, 0, len(wxPage.List)*3)
 	for _, it := range wxPage.List {
 		if it.Id <= 0 {
 			continue
@@ -361,6 +425,7 @@ func ListVoiceAIQuotaUsersForAdmin(ctx context.Context, page, pageSize int, devi
 		keys = append(keys,
 			aiQuotaUsageRedisKey(contracts.AIQuotaVoiceAI, it.Id),
 			aiQuotaUsageRedisKey(contracts.AIQuotaClinicAI, it.Id),
+			aiQuotaUsageRedisKey(contracts.AIQuotaCareAlert, it.Id),
 		)
 	}
 	usedByKey := map[string]string{}
@@ -385,6 +450,7 @@ func ListVoiceAIQuotaUsersForAdmin(ctx context.Context, page, pageSize int, devi
 	for _, it := range wxPage.List {
 		voiceLimit := def.VoiceAiMonthlyLimit
 		clinicLimit := def.ClinicAiMonthlyLimit
+		careLimit := def.CareAlertMonthlyLimit
 		if ov, ok := ovByWx[it.Id]; ok {
 			if ov.VoiceAiMonthlyLimit != nil && *ov.VoiceAiMonthlyLimit > 0 {
 				voiceLimit = *ov.VoiceAiMonthlyLimit
@@ -392,20 +458,26 @@ func ListVoiceAIQuotaUsersForAdmin(ctx context.Context, page, pageSize int, devi
 			if ov.ClinicAiMonthlyLimit != nil && *ov.ClinicAiMonthlyLimit > 0 {
 				clinicLimit = *ov.ClinicAiMonthlyLimit
 			}
+			if ov.CareAlertMonthlyLimit != nil && *ov.CareAlertMonthlyLimit > 0 {
+				careLimit = *ov.CareAlertMonthlyLimit
+			}
 		}
 		voiceUsed := 0
 		clinicUsed := 0
+		careUsed := 0
 		if it.Id > 0 {
 			voiceUsed = parseUsed(aiQuotaUsageRedisKey(contracts.AIQuotaVoiceAI, it.Id))
 			clinicUsed = parseUsed(aiQuotaUsageRedisKey(contracts.AIQuotaClinicAI, it.Id))
+			careUsed = parseUsed(aiQuotaUsageRedisKey(contracts.AIQuotaCareAlert, it.Id))
 		}
 		list = append(list, contracts.VoiceAIQuotaUserListItem{
-			DeviceNo: it.DeviceNo,
-			WxId:     it.Id,
-			Account:  it.Account,
-			BabyName: it.BabyName,
-			VoiceAi:  contracts.AIQuotaSnapshot{Used: voiceUsed, Limit: voiceLimit, Allowed: voiceUsed < voiceLimit},
-			ClinicAi: contracts.AIQuotaSnapshot{Used: clinicUsed, Limit: clinicLimit, Allowed: clinicUsed < clinicLimit},
+			DeviceNo:  it.DeviceNo,
+			WxId:      it.Id,
+			Account:   it.Account,
+			BabyName:  it.BabyName,
+			VoiceAi:   contracts.AIQuotaSnapshot{Used: voiceUsed, Limit: voiceLimit, Allowed: voiceUsed < voiceLimit},
+			ClinicAi:  contracts.AIQuotaSnapshot{Used: clinicUsed, Limit: clinicLimit, Allowed: clinicUsed < clinicLimit},
+			CareAlert: contracts.AIQuotaSnapshot{Used: careUsed, Limit: careLimit, Allowed: careUsed < careLimit},
 		})
 	}
 	return contracts.VoiceAIQuotaUserPageResult{

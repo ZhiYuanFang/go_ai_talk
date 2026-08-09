@@ -16,7 +16,7 @@ import (
 
 const llmLaneConfigTable = "llm_lane_config"
 
-// VoiceLLMLaneStore voice-service 侧 understanding + clinic profile 源（DB > YAML > 种子 A）。
+// VoiceLLMLaneStore voice-service 侧 understanding + clinic + careAlert profile 源（DB > YAML > 种子）。
 type VoiceLLMLaneStore struct {
 	mu    sync.Mutex
 	cache map[aimodel.Lane]aimodel.Profile
@@ -36,6 +36,9 @@ func (s *VoiceLLMLaneStore) Load(ctx context.Context, lane aimodel.Lane) (aimode
 	}
 	s.mu.Unlock()
 
+	if err := EnsureLLMLaneSchema(ctx); err != nil {
+		return aimodel.Profile{}, err
+	}
 	if err := EnsureLLMLaneDefaultRows(ctx); err != nil {
 		return aimodel.Profile{}, err
 	}
@@ -57,18 +60,46 @@ func (s *VoiceLLMLaneStore) InvalidateCache() {
 }
 
 type llmLaneRow struct {
-	Lane        string `json:"lane"`
-	Provider    string `json:"provider"`
-	Model       string `json:"model"`
-	MaxInFlight int    `json:"maxInFlight"`
-	MaxWaiters  int    `json:"maxWaiters"`
-	UpdatedAt   int64  `json:"updatedAt"`
-	UpdatedBy   string `json:"updatedBy"`
+	Lane         string `json:"lane"`
+	Provider     string `json:"provider"`
+	Model        string `json:"model"`
+	FreeProvider string `json:"freeProvider"`
+	FreeModel    string `json:"freeModel"`
+	MaxInFlight  int    `json:"maxInFlight"`
+	MaxWaiters   int    `json:"maxWaiters"`
+	UpdatedAt    int64  `json:"updatedAt"`
+	UpdatedBy    string `json:"updatedBy"`
+}
+
+// EnsureLLMLaneSchema 幂等补齐 free 列（重复执行忽略 Duplicate column）。
+func EnsureLLMLaneSchema(ctx context.Context) error {
+	alters := []string{
+		`ALTER TABLE llm_lane_config ADD COLUMN free_provider VARCHAR(32) NOT NULL DEFAULT ''`,
+		`ALTER TABLE llm_lane_config ADD COLUMN free_model VARCHAR(64) NOT NULL DEFAULT ''`,
+	}
+	for _, sql := range alters {
+		if _, err := g.DB().Exec(ctx, sql); err != nil {
+			msg := err.Error()
+			if !strings.Contains(msg, "Duplicate column") && !strings.Contains(msg, "1060") {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+var voiceLLMLanes = []aimodel.Lane{
+	aimodel.LaneVoiceUnderstanding,
+	aimodel.LaneClinic,
+	aimodel.LaneCareAlert,
 }
 
 // EnsureLLMLaneDefaultRows 保证 llm_lane_config 表存在种子行；种子行在启动时按 env 刷新 provider/model。
 func EnsureLLMLaneDefaultRows(ctx context.Context) error {
-	for _, lane := range []aimodel.Lane{aimodel.LaneVoiceUnderstanding, aimodel.LaneClinic} {
+	if err := EnsureLLMLaneSchema(ctx); err != nil {
+		return err
+	}
+	for _, lane := range voiceLLMLanes {
 		yamlP, yamlOK := loadLLMLaneYAMLProfile(ctx, lane)
 		cold := aimodel.MergeColdStartProfile(lane, yamlP, yamlOK)
 		n, err := g.DB().Model(llmLaneConfigTable).Ctx(ctx).Where("lane", string(lane)).Count()
@@ -81,6 +112,8 @@ func EnsureLLMLaneDefaultRows(ctx context.Context) error {
 				"lane":          string(lane),
 				"provider":      string(cold.Provider),
 				"model":         cold.Model,
+				"free_provider": "",
+				"free_model":    "",
 				"max_in_flight": cold.MaxInFlight,
 				"max_waiters":   cold.MaxWaiters,
 				"updated_at":    now,
@@ -134,13 +167,15 @@ func loadLLMLaneProfile(ctx context.Context, lane aimodel.Lane) (aimodel.Profile
 
 func rowToProfile(lane aimodel.Lane, row llmLaneRow) aimodel.Profile {
 	p := aimodel.Profile{
-		Lane:        lane,
-		Provider:    aimodel.Provider(strings.TrimSpace(row.Provider)),
-		Model:       row.Model,
-		MaxInFlight: row.MaxInFlight,
-		MaxWaiters:  row.MaxWaiters,
-		UpdatedAt:   row.UpdatedAt,
-		UpdatedBy:   row.UpdatedBy,
+		Lane:         lane,
+		Provider:     aimodel.Provider(strings.TrimSpace(row.Provider)),
+		Model:        row.Model,
+		FreeProvider: aimodel.Provider(strings.TrimSpace(row.FreeProvider)),
+		FreeModel:    strings.TrimSpace(row.FreeModel),
+		MaxInFlight:  row.MaxInFlight,
+		MaxWaiters:   row.MaxWaiters,
+		UpdatedAt:    row.UpdatedAt,
+		UpdatedBy:    row.UpdatedBy,
 	}
 	if p.Provider == "" {
 		p.Provider = aimodel.DefaultSeedProfile(lane).Provider
@@ -202,12 +237,13 @@ func loadLLMLaneYAMLProfile(ctx context.Context, lane aimodel.Lane) (aimodel.Pro
 
 // LLMLanesAdminDTO Admin GET 响应。
 type LLMLanesAdminDTO struct {
-	VoiceUnderstanding aimodel.LaneProfileDTO            `json:"voiceUnderstanding"`
-	Clinic             aimodel.LaneProfileDTO            `json:"clinic"`
-	Allowlist          map[string][]string               `json:"allowlist"`
+	VoiceUnderstanding aimodel.LaneProfileDTO `json:"voiceUnderstanding"`
+	Clinic             aimodel.LaneProfileDTO `json:"clinic"`
+	CareAlert          aimodel.LaneProfileDTO `json:"careAlert"`
+	Allowlist          map[string][]string    `json:"allowlist"`
 }
 
-// GetLLMLanesForAdmin 读取两 lane 当前配置。
+// GetLLMLanesForAdmin 读取三条 voice lane 当前配置。
 func GetLLMLanesForAdmin(ctx context.Context) (LLMLanesAdminDTO, error) {
 	store := NewVoiceLLMLaneStore()
 	vu, err := store.Load(ctx, aimodel.LaneVoiceUnderstanding)
@@ -218,21 +254,28 @@ func GetLLMLanesForAdmin(ctx context.Context) (LLMLanesAdminDTO, error) {
 	if err != nil {
 		return LLMLanesAdminDTO{}, err
 	}
+	ca, err := store.Load(ctx, aimodel.LaneCareAlert)
+	if err != nil {
+		return LLMLanesAdminDTO{}, err
+	}
 	return LLMLanesAdminDTO{
 		VoiceUnderstanding: profileToDTO(vu),
 		Clinic:             profileToDTO(cl),
+		CareAlert:          profileToDTO(ca),
 		Allowlist:          buildProviderAllowlist(),
 	}, nil
 }
 
 func profileToDTO(p aimodel.Profile) aimodel.LaneProfileDTO {
 	return aimodel.LaneProfileDTO{
-		Provider:    string(p.Provider),
-		Model:       p.Model,
-		MaxInFlight: p.MaxInFlight,
-		MaxWaiters:  p.MaxWaiters,
-		UpdatedAt:   p.UpdatedAt,
-		UpdatedBy:   p.UpdatedBy,
+		Provider:     string(p.Provider),
+		Model:        p.Model,
+		FreeProvider: string(p.FreeProvider),
+		FreeModel:    p.FreeModel,
+		MaxInFlight:  p.MaxInFlight,
+		MaxWaiters:   p.MaxWaiters,
+		UpdatedAt:    p.UpdatedAt,
+		UpdatedBy:    p.UpdatedBy,
 	}
 }
 
@@ -244,12 +287,15 @@ func buildProviderAllowlist() map[string][]string {
 	return out
 }
 
-// UpdateLLMLanesForAdmin 校验并持久化 Admin PUT。
-func UpdateLLMLanesForAdmin(ctx context.Context, vu, clinic aimodel.LaneProfileDTO, updatedBy string) error {
+// UpdateLLMLanesForAdmin 校验并持久化 Admin PUT（含 careAlert 与 free）。
+func UpdateLLMLanesForAdmin(ctx context.Context, vu, clinic, careAlert aimodel.LaneProfileDTO, updatedBy string) error {
 	if err := validateLaneDTO(aimodel.LaneVoiceUnderstanding, vu); err != nil {
 		return err
 	}
 	if err := validateLaneDTO(aimodel.LaneClinic, clinic); err != nil {
+		return err
+	}
+	if err := validateLaneDTO(aimodel.LaneCareAlert, careAlert); err != nil {
 		return err
 	}
 	now := time.Now().Unix()
@@ -257,10 +303,16 @@ func UpdateLLMLanesForAdmin(ctx context.Context, vu, clinic aimodel.LaneProfileD
 	if operator == "" {
 		operator = "admin"
 	}
+	if err := EnsureLLMLaneSchema(ctx); err != nil {
+		return err
+	}
 	if err := upsertLLMLaneRow(ctx, aimodel.LaneVoiceUnderstanding, vu, now, operator); err != nil {
 		return err
 	}
 	if err := upsertLLMLaneRow(ctx, aimodel.LaneClinic, clinic, now, operator); err != nil {
+		return err
+	}
+	if err := upsertLLMLaneRow(ctx, aimodel.LaneCareAlert, careAlert, now, operator); err != nil {
 		return err
 	}
 	NewVoiceLLMLaneStore().InvalidateCache()
@@ -276,6 +328,16 @@ func validateLaneDTO(lane aimodel.Lane, dto aimodel.LaneProfileDTO) error {
 	if !aimodel.IsAllowedModel(provider, dto.Model) {
 		return fmt.Errorf("%s: model 不在 allowlist", lane)
 	}
+	fp := strings.TrimSpace(dto.FreeProvider)
+	fm := strings.TrimSpace(dto.FreeModel)
+	if fp != "" || fm != "" {
+		if fp == "" || fm == "" {
+			return fmt.Errorf("%s: freeProvider 与 freeModel 须同时为空或同时非空", lane)
+		}
+		if !aimodel.IsAllowedModel(aimodel.Provider(fp), fm) {
+			return fmt.Errorf("%s: free model 不在 allowlist", lane)
+		}
+	}
 	if dto.MaxInFlight < 1 {
 		return fmt.Errorf("%s: maxInFlight 须 >= 1", lane)
 	}
@@ -290,6 +352,8 @@ func upsertLLMLaneRow(ctx context.Context, lane aimodel.Lane, dto aimodel.LanePr
 		"lane":          string(lane),
 		"provider":      strings.TrimSpace(dto.Provider),
 		"model":         strings.TrimSpace(dto.Model),
+		"free_provider": strings.TrimSpace(dto.FreeProvider),
+		"free_model":    strings.TrimSpace(dto.FreeModel),
 		"max_in_flight": dto.MaxInFlight,
 		"max_waiters":   dto.MaxWaiters,
 		"updated_at":    now,

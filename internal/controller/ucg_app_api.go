@@ -110,19 +110,15 @@ func (c *UcgAppCtrl) PostsPolish(ctx context.Context, req *v1.UcgPostsPolishReq)
 	if err != nil {
 		return nil, err
 	}
-	snap, err := ucgsvc.CheckPolishAIQuota(ctx, wxID)
-	if err != nil {
-		if errors.Is(err, contracts.ErrAINotLoggedIn) {
-			return nil, gerror.NewCode(contracts.GCodeAINotLoggedIn(), err.Error())
-		}
-		return nil, err
-	}
-	quotaDegraded := snap.Degraded && !snap.Allowed
-	polished, err := ucgsvc.PolishPostText(ctx, req.ImageKeys, req.Text, quotaDegraded)
+	ent, profile, _, err := ucgsvc.ResolvePolishRuntimeProfile(ctx, wxID)
 	if err != nil {
 		return nil, err
 	}
-	if snap.Allowed {
+	polished, err := ucgsvc.PolishPostText(ctx, req.ImageKeys, req.Text, profile)
+	if err != nil {
+		return nil, err
+	}
+	if ent.ShouldConsumePolish() {
 		if _, err = ucgsvc.ConsumePolishAIQuota(ctx, wxID); err != nil {
 			if errors.Is(err, contracts.ErrAIQuotaExhausted) {
 				return nil, gerror.NewCode(contracts.GCodeAIQuotaExhausted(), err.Error())
@@ -130,7 +126,7 @@ func (c *UcgAppCtrl) PostsPolish(ctx context.Context, req *v1.UcgPostsPolishReq)
 			return nil, err
 		}
 	}
-	return &v1.UcgPostsPolishRes{PolishedText: polished, QuotaDegraded: quotaDegraded}, nil
+	return &v1.UcgPostsPolishRes{PolishedText: polished, QuotaDegraded: !ent.Premium}, nil
 }
 
 // AIQuotaGet GET /ucg/app/api/ai-quota

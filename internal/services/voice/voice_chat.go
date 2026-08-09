@@ -800,16 +800,16 @@ func (s *VoiceService) HandleTranscriptForIntentStream(ctx context.Context, devi
 	events := pre.Events
 	glog.Infof(ctx, "问题=%q intent_path=stream_land", normalizedTranscript)
 
-	// 4. 额度：澄清续聊免计；冷启动额度内 consume；用尽 degraded 不计次
+	// 4. 额度：澄清续聊免计；VIP/硬件/额尽不计；有额非 VIP 计次
 	clarifyResume := pendingConversationID(deviceNo) != ""
 	var wxID int64
-	var quotaDegraded bool
+	var shouldConsume bool
 	if clarifyResume {
 		glog.Infof(ctx, "[Clarify] stream 续聊免计 AI 额度。deviceNo=%s conversation_id=%s intent_path=stream_land",
 			deviceNo, pendingConversationID(deviceNo))
 	} else {
 		var qErr error
-		wxID, quotaDegraded, ctx, qErr = s.guardVoiceAIQuota(ctx, deviceNo)
+		wxID, shouldConsume, ctx, qErr = s.guardVoiceAIQuota(ctx, deviceNo)
 		if qErr != nil {
 			return nil, qErr
 		}
@@ -834,13 +834,12 @@ func (s *VoiceService) HandleTranscriptForIntentStream(ctx context.Context, devi
 	}
 
 	intent := mapPythonRespToIntent(streamRes.Result)
-	if !clarifyResume && !quotaDegraded {
+	if !clarifyResume && shouldConsume {
 		s.consumeVoiceAIQuotaOnSuccess(ctx, wxID)
 	}
 
-	// 可观测：标记流式落地路径，便于核对「仅一次 Python intent」与澄清/降速免计
-	glog.Infof(ctx, "[IntentStream] intent_path=stream_land deviceNo=%s target_type=%s action=%s need_confirm=%v conversation_id=%s clarify_resume=%v quota_degraded=%v",
-		deviceNo, intent.TargetType, intent.Action, intent.NeedConfirm, intent.ConversationID, clarifyResume, quotaDegraded)
+	glog.Infof(ctx, "[IntentStream] intent_path=stream_land deviceNo=%s target_type=%s action=%s need_confirm=%v conversation_id=%s clarify_resume=%v should_consume=%v",
+		deviceNo, intent.TargetType, intent.Action, intent.NeedConfirm, intent.ConversationID, clarifyResume, shouldConsume)
 
 	chatRes, chatErr := s.applyUnifiedIntentResult(ctx, deviceNo, normalizedTranscript, events, intent)
 	return &contracts.IntentStreamResult{
@@ -851,32 +850,33 @@ func (s *VoiceService) HandleTranscriptForIntentStream(ctx context.Context, devi
 	}, chatErr
 }
 
-// TipStream 流式小贴士生成入口
-// 以流式方式接收思考过程与建议文案，内部调用 PythonAIClient.TipStream。
-// 月龄与当前时间由 Python tip 图派生，本方法不再接收或转发这两类参数。
+// TipStream 流式小贴士生成入口。
+// 挂靠 clinic_ai + LaneClinic（含 free）；VIP∪额度共同策略；成功非 VIP 计次。
 func (s *VoiceService) TipStream(ctx context.Context, deviceNo string, eventID int64, eventName string, cb *contracts.TipStreamCallback) (*contracts.TipStreamResponse, error) {
-	// 1. 设备注册校验
 	if err := s.ensureDeviceRegistered(ctx, deviceNo); err != nil {
 		return nil, err
 	}
-	// 2. 加载模型配置（与诊疗共享 LaneClinic）
-	profile, err := aimodel.LoadProfile(ctx, aimodel.LaneClinic)
-	if err != nil {
-		glog.Warningf(ctx, "[TipStream] 模型配置加载失败。deviceNo=%s err=%v", deviceNo, err)
-		return nil, errors.New("AI服务暂时不可用，请稍后再试")
+	wxID, _ := VoiceWxIDFromRequest(ctx, deviceNo)
+	ent, runtime, modelCfg, _ := ResolveLaneModel(ctx, wxID, aimodel.LaneClinic, contracts.AIQuotaClinicAI, PrivilegeAccount)
+	if modelCfg != nil {
+		rel, acqErr := aimodel.Acquire(ctx, runtime)
+		if acqErr != nil {
+			glog.Warningf(ctx, "[TipStream] 闸门失败 deviceNo=%s err=%v", deviceNo, acqErr)
+			return nil, errors.New("AI服务暂时不可用，请稍后再试")
+		}
+		defer rel()
 	}
-	// 3. 调用 Python 流式小贴士生成（body 不含 baby_age_months / current_time）
 	pythonClient := PythonAIClientFromCfg()
-	return pythonClient.TipStream(ctx, &TipStreamRequest{
+	res, err := pythonClient.TipStream(ctx, &TipStreamRequest{
 		EventID:   eventID,
 		EventName: eventName,
 		DeviceNo:  deviceNo,
-		Model: PythonModelCfg{
-			Provider:    string(profile.Provider),
-			Name:        profile.Model,
-			MaxInFlight: profile.MaxInFlight,
-		},
+		Model:     modelCfg,
 	}, cb)
+	if err == nil {
+		ConsumeVoiceFeatureIfNeeded(ctx, wxID, contracts.AIQuotaClinicAI, ent)
+	}
+	return res, err
 }
 
 func (s *VoiceService) StreamReplyWithBaiduTTS(

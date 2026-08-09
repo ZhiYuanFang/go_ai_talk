@@ -47,6 +47,8 @@ var AllowedProviders = []string{
 
 // RuntimeAIConfig polish 运行时配置（含 provider 与闸门参数）。
 type RuntimeAIConfig struct {
+	FreeProvider string
+	FreeModel    string
 	Provider            string
 	VisionModel         string
 	MaxImagesPerRequest int
@@ -150,6 +152,8 @@ func loadAIConfigFresh(ctx context.Context) RuntimeAIConfig {
 		}
 		cfg.UpdatedAt = row.UpdatedAt
 		cfg.UpdatedBy = row.UpdatedBy
+		cfg.FreeProvider = strings.TrimSpace(row.FreeProvider)
+		cfg.FreeModel = strings.TrimSpace(row.FreeModel)
 		if aimodel.IsSeedUpdatedBy(row.UpdatedBy) {
 			cold := aimodel.MergeColdStartProfile(aimodel.LanePolish, aimodel.Profile{}, false)
 			if p, ok := aimodel.ProfileFromEnv(aimodel.LanePolish); ok {
@@ -170,6 +174,8 @@ func loadAIConfigFresh(ctx context.Context) RuntimeAIConfig {
 type AIConfigDTO struct {
 	Provider            string `json:"provider"`
 	VisionModel         string `json:"visionModel"`
+	FreeProvider        string `json:"freeProvider"`
+	FreeModel           string `json:"freeModel"`
 	MaxImagesPerRequest int    `json:"maxImagesPerRequest"`
 	MaxInFlight         int    `json:"maxInFlight"`
 	MaxWaiters          int    `json:"maxWaiters"`
@@ -195,6 +201,8 @@ func GetAIConfigForAdmin(ctx context.Context) AIConfigDTO {
 	return AIConfigDTO{
 		Provider:            row.Provider,
 		VisionModel:         row.VisionModel,
+		FreeProvider:        row.FreeProvider,
+		FreeModel:           row.FreeModel,
 		MaxImagesPerRequest: row.MaxImagesPerRequest,
 		MaxInFlight:         row.MaxInFlight,
 		MaxWaiters:          row.MaxWaiters,
@@ -204,7 +212,7 @@ func GetAIConfigForAdmin(ctx context.Context) AIConfigDTO {
 }
 
 // UpdateAIConfigForAdmin validates and persists Admin PUT.
-func UpdateAIConfigForAdmin(ctx context.Context, provider, visionModel string, maxImages, maxInFlight, maxWaiters int, updatedBy string) error {
+func UpdateAIConfigForAdmin(ctx context.Context, provider, visionModel, freeProvider, freeModel string, maxImages, maxInFlight, maxWaiters int, updatedBy string) error {
 	provider = strings.TrimSpace(provider)
 	if provider == "" {
 		provider = string(aimodel.ProviderZhipu)
@@ -226,10 +234,20 @@ func UpdateAIConfigForAdmin(ctx context.Context, provider, visionModel string, m
 		return gerror.NewCode(gcode.CodeInvalidParameter, "maxWaiters 须 >= 0")
 	}
 	now := time.Now().Unix()
+	fp := strings.TrimSpace(freeProvider)
+	fm := strings.TrimSpace(freeModel)
+	if (fp == "") != (fm == "") {
+		return gerror.NewCode(gcode.CodeInvalidParameter, "freeProvider 与 freeModel 须同时为空或同时非空")
+	}
+	if fp != "" && !isAllowedVisionModelForProvider(fp, fm) {
+		return gerror.NewCode(gcode.CodeInvalidParameter, "free model 不在 allowlist")
+	}
 	_, err := g.DB().Model("ucg_ai_config").Ctx(ctx).Data(g.Map{
 		"id":                     aiConfigSingletonID,
 		"provider":               provider,
 		"vision_model":           visionModel,
+		"free_provider":          fp,
+		"free_model":             fm,
 		"max_images_per_request": maxImages,
 		"max_in_flight":          maxInFlight,
 		"max_waiters":            maxWaiters,

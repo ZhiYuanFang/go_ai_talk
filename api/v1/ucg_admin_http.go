@@ -9,6 +9,8 @@ type UcgAdminAiConfigGetReq struct {
 type UcgAdminAiConfigGetRes struct {
 	Provider            string            `json:"provider"`
 	VisionModel         string            `json:"visionModel"`
+	FreeProvider        string            `json:"freeProvider"`
+	FreeModel           string            `json:"freeModel"`
 	MaxImagesPerRequest int               `json:"maxImagesPerRequest"`
 	MaxInFlight         int               `json:"maxInFlight"`
 	MaxWaiters          int               `json:"maxWaiters"`
@@ -23,6 +25,8 @@ type UcgAdminAiConfigPutReq struct {
 	g.Meta              `path:"/ucg/admin/api/ai-config" method:"put" tags:"ucg-admin" summary:"更新 UCG AI 配置"`
 	Provider            string `json:"provider" v:"required"`
 	VisionModel         string `json:"visionModel" v:"required"`
+	FreeProvider        string `json:"freeProvider"`
+	FreeModel           string `json:"freeModel"`
 	MaxImagesPerRequest int    `json:"maxImagesPerRequest" v:"required|between:1,9"`
 	MaxInFlight         int    `json:"maxInFlight" v:"required|min:1"`
 	MaxWaiters          int    `json:"maxWaiters" v:"required|min:0"`
@@ -32,6 +36,8 @@ type UcgAdminAiConfigPutReq struct {
 type UcgAdminAiConfigPutRes struct {
 	Provider            string `json:"provider"`
 	VisionModel         string `json:"visionModel"`
+	FreeProvider        string `json:"freeProvider"`
+	FreeModel           string `json:"freeModel"`
 	MaxImagesPerRequest int    `json:"maxImagesPerRequest"`
 	MaxInFlight         int    `json:"maxInFlight"`
 	MaxWaiters          int    `json:"maxWaiters"`

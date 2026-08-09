@@ -34,9 +34,10 @@ func GCodeAIQuotaExhausted() gcode.Code {
 type AIQuotaFeature string
 
 const (
-	AIQuotaPolish   AIQuotaFeature = "polish"
-	AIQuotaVoiceAI  AIQuotaFeature = "voice_ai"
-	AIQuotaClinicAI AIQuotaFeature = "clinic_ai"
+	AIQuotaPolish    AIQuotaFeature = "polish"
+	AIQuotaVoiceAI   AIQuotaFeature = "voice_ai"
+	AIQuotaClinicAI  AIQuotaFeature = "clinic_ai"
+	AIQuotaCareAlert AIQuotaFeature = "care_alert"
 )
 
 // AIQuotaSnapshot 某 feature 当月 used/limit 快照。
@@ -47,19 +48,21 @@ type AIQuotaSnapshot struct {
 	Degraded bool `json:"degraded"` // 额度用尽且允许降速 fallback（polish / clinic_ai / voice_ai）
 }
 
-// VoiceAIQuotaDefaultDTO voice 域全局默认（voice_ai + clinic_ai）。
+// VoiceAIQuotaDefaultDTO voice 域全局默认（voice_ai + clinic_ai + care_alert）。
 type VoiceAIQuotaDefaultDTO struct {
-	VoiceAiMonthlyLimit  int   `json:"voiceAiMonthlyLimit"`
-	ClinicAiMonthlyLimit int   `json:"clinicAiMonthlyLimit"`
-	UpdatedAt            int64 `json:"updatedAt"`
+	VoiceAiMonthlyLimit    int   `json:"voiceAiMonthlyLimit"`
+	ClinicAiMonthlyLimit   int   `json:"clinicAiMonthlyLimit"`
+	CareAlertMonthlyLimit  int   `json:"careAlertMonthlyLimit"`
+	UpdatedAt              int64 `json:"updatedAt"`
 }
 
 // VoiceAIQuotaUserOverrideDTO voice 域 per-wxId override。
 type VoiceAIQuotaUserOverrideDTO struct {
-	WxId                 int64 `json:"wxId"`
-	VoiceAiMonthlyLimit  *int  `json:"voiceAiMonthlyLimit,omitempty"`
-	ClinicAiMonthlyLimit *int  `json:"clinicAiMonthlyLimit,omitempty"`
-	UpdatedAt            int64 `json:"updatedAt"`
+	WxId                   int64 `json:"wxId"`
+	VoiceAiMonthlyLimit    *int  `json:"voiceAiMonthlyLimit,omitempty"`
+	ClinicAiMonthlyLimit   *int  `json:"clinicAiMonthlyLimit,omitempty"`
+	CareAlertMonthlyLimit  *int  `json:"careAlertMonthlyLimit,omitempty"`
+	UpdatedAt              int64 `json:"updatedAt"`
 }
 
 // PolishAIQuotaDefaultDTO ucg 域全局润笔默认。
@@ -75,20 +78,22 @@ type PolishAIQuotaUserOverrideDTO struct {
 	UpdatedAt          int64 `json:"updatedAt"`
 }
 
-// VoiceAIQuotaAppStatus App 读 API：voice 域 voiceAi + clinicAi。
+// VoiceAIQuotaAppStatus App 读 API：voice 域 voiceAi + clinicAi + careAlert。
 type VoiceAIQuotaAppStatus struct {
-	VoiceAi  AIQuotaSnapshot `json:"voiceAi"`
-	ClinicAi AIQuotaSnapshot `json:"clinicAi"`
+	VoiceAi   AIQuotaSnapshot `json:"voiceAi"`
+	ClinicAi  AIQuotaSnapshot `json:"clinicAi"`
+	CareAlert AIQuotaSnapshot `json:"careAlert"`
 }
 
 // VoiceAIQuotaUserListItem Admin 用户额度列表行（身份 + 有效 used/limit）。
 type VoiceAIQuotaUserListItem struct {
-	DeviceNo string          `json:"deviceNo"`
-	WxId     int64           `json:"wxId"`
-	Account  string          `json:"account"`
-	BabyName string          `json:"babyName"`
-	VoiceAi  AIQuotaSnapshot `json:"voiceAi"`
-	ClinicAi AIQuotaSnapshot `json:"clinicAi"`
+	DeviceNo  string          `json:"deviceNo"`
+	WxId      int64           `json:"wxId"`
+	Account   string          `json:"account"`
+	BabyName  string          `json:"babyName"`
+	VoiceAi   AIQuotaSnapshot `json:"voiceAi"`
+	ClinicAi  AIQuotaSnapshot `json:"clinicAi"`
+	CareAlert AIQuotaSnapshot `json:"careAlert"`
 }
 
 // VoiceAIQuotaUserPageResult Admin 用户额度分页。

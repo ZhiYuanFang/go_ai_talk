@@ -41,6 +41,8 @@ func (c *UcgAdminCtrl) AiConfigGet(ctx context.Context, req *v1.UcgAdminAiConfig
 	return &v1.UcgAdminAiConfigGetRes{
 		Provider:            dto.Provider,
 		VisionModel:         dto.VisionModel,
+		FreeProvider:        dto.FreeProvider,
+		FreeModel:           dto.FreeModel,
 		MaxImagesPerRequest: dto.MaxImagesPerRequest,
 		MaxInFlight:         dto.MaxInFlight,
 		MaxWaiters:          dto.MaxWaiters,
@@ -71,13 +73,15 @@ func (c *UcgAdminCtrl) AiConfigPut(ctx context.Context, req *v1.UcgAdminAiConfig
 	if updatedBy == "" {
 		updatedBy = "admin"
 	}
-	if err = ucgsvc.UpdateAIConfigForAdmin(ctx, req.Provider, req.VisionModel, req.MaxImagesPerRequest, req.MaxInFlight, req.MaxWaiters, updatedBy); err != nil {
+	if err = ucgsvc.UpdateAIConfigForAdmin(ctx, req.Provider, req.VisionModel, req.FreeProvider, req.FreeModel, req.MaxImagesPerRequest, req.MaxInFlight, req.MaxWaiters, updatedBy); err != nil {
 		return nil, err
 	}
 	dto := ucgsvc.GetAIConfigForAdmin(ctx)
 	return &v1.UcgAdminAiConfigPutRes{
 		Provider:            dto.Provider,
 		VisionModel:         dto.VisionModel,
+		FreeProvider:        dto.FreeProvider,
+		FreeModel:           dto.FreeModel,
 		MaxImagesPerRequest: dto.MaxImagesPerRequest,
 		MaxInFlight:         dto.MaxInFlight,
 		MaxWaiters:          dto.MaxWaiters,

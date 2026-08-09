@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"hello/internal/services/aimodel"
+	"hello/internal/services/contracts"
 
 	"github.com/gogf/gf/v2/os/glog"
 )
@@ -16,11 +17,8 @@ type clinicStreamCallbacks struct {
 	OnDone          func(answerID string) error
 }
 
-// streamClinicLLMHeld 在调用方已持 clinic 闸门槽位时发起流式请求。
-// 业务说明：仅向 Python 透传 question、device_no、model；不传 Go 侧摘要/画像/prior。
-// Python 不可用时直接返回错误，由上层返回可诊断 error 帧。
-// Args: deviceNo 为 auth 锁定设备号；question 为用户提问正文。
-func (s *ClinicService) streamClinicLLMHeld(ctx context.Context, profile aimodel.Profile, deviceNo, question string, cb clinicStreamCallbacks) (thinking, answer, answerID string, err error) {
+// streamClinicLLMHeld 在调用方已持 clinic 闸门槽位时发起流式请求（modelCfg 可为 nil=omit）。
+func (s *ClinicService) streamClinicLLMHeld(ctx context.Context, modelCfg *PythonModelCfg, deviceNo, question string, cb clinicStreamCallbacks) (thinking, answer, answerID string, err error) {
 	deviceNo = strings.TrimSpace(deviceNo)
 	if deviceNo == "" {
 		return "", "", "", errors.New("诊疗服务设备号缺失")
@@ -29,11 +27,7 @@ func (s *ClinicService) streamClinicLLMHeld(ctx context.Context, profile aimodel
 	pythonResp, pythonErr := pythonClient.ClinicStream(ctx, &ClinicStreamRequest{
 		Question: question,
 		DeviceNo: deviceNo,
-		Model: PythonModelCfg{
-			Provider:    string(profile.Provider),
-			Name:        profile.Model,
-			MaxInFlight: 1,
-		},
+		Model:    modelCfg,
 	}, &ClinicStreamCallback{
 		OnThinking: cb.OnThinkingDelta,
 		OnAnswer:   cb.OnAnswerDelta,
@@ -46,16 +40,19 @@ func (s *ClinicService) streamClinicLLMHeld(ctx context.Context, profile aimodel
 	return pythonResp.Thinking, pythonResp.Answer, pythonResp.AnswerID, nil
 }
 
-// streamClinicLLM 经 LaneClinic 调用上游流式接口（内部 Acquire）；供非 WS 复用入口。
-func (s *ClinicService) streamClinicLLM(ctx context.Context, deviceNo, question string, cb clinicStreamCallbacks) (thinking, answer, answerID string, err error) {
-	profile, err := aimodel.LoadProfile(ctx, aimodel.LaneClinic)
-	if err != nil {
-		return "", "", "", err
+// streamClinicLLM 经统一权益选模后调用上游流式接口。
+func (s *ClinicService) streamClinicLLM(ctx context.Context, wxID int64, deviceNo, question string, cb clinicStreamCallbacks) (thinking, answer, answerID string, err error) {
+	ent, runtime, modelCfg, _ := ResolveLaneModel(ctx, wxID, aimodel.LaneClinic, contracts.AIQuotaClinicAI, PrivilegeAccount)
+	if modelCfg != nil {
+		release, acqErr := aimodel.Acquire(ctx, runtime)
+		if acqErr != nil {
+			return "", "", "", acqErr
+		}
+		defer release()
 	}
-	release, err := aimodel.Acquire(ctx, profile)
-	if err != nil {
-		return "", "", "", err
+	thinking, answer, answerID, err = s.streamClinicLLMHeld(ctx, modelCfg, deviceNo, question, cb)
+	if err == nil {
+		ConsumeVoiceFeatureIfNeeded(ctx, wxID, contracts.AIQuotaClinicAI, ent)
 	}
-	defer release()
-	return s.streamClinicLLMHeld(ctx, profile, deviceNo, question, cb)
+	return thinking, answer, answerID, err
 }

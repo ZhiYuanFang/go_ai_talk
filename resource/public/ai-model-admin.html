@@ -26,11 +26,13 @@
 	</header>
 	<div class="card glass hidden" id="mainCard">
 		<p class="hint-box">同一 <code>provider+model</code> 的多条 lane 共享 Redis 并发闸门池。保存时三域 API 并行提交；某域失败不影响其它域已成功的部分（请查看下方分域结果）。</p>
-		<h3 style="margin:0 0 12px;font-size:16px;">Voice（2）</h3>
+		<h3 style="margin:0 0 12px;font-size:16px;">Voice（3）</h3>
 		<div class="lane-block" id="blockVu">
 			<h4>voiceUnderstanding（喂养 LLM）</h4>
 			<div class="field"><label>Provider</label><select id="vuProvider"></select></div>
 			<div class="field"><label>Model</label><select id="vuModel"></select></div>
+			<div class="field"><label>额度不足 Provider</label><select id="vuFreeProvider"><option value="">（空=Python自选）</option></select></div>
+			<div class="field"><label>额度不足 Model</label><select id="vuFreeModel"><option value="">（空=Python自选）</option></select></div>
 			<div class="field"><label>maxInFlight</label><input id="vuInFlight" type="number" min="1" step="1" /></div>
 			<div class="field"><label>maxWaiters</label><input id="vuWaiters" type="number" min="0" step="1" /></div>
 		</div>
@@ -38,14 +40,27 @@
 			<h4>clinic（胖宝诊疗）</h4>
 			<div class="field"><label>Provider</label><select id="clProvider"></select></div>
 			<div class="field"><label>Model</label><select id="clModel"></select></div>
+			<div class="field"><label>额度不足 Provider</label><select id="clFreeProvider"><option value="">（空=Python自选）</option></select></div>
+			<div class="field"><label>额度不足 Model</label><select id="clFreeModel"><option value="">（空=Python自选）</option></select></div>
 			<div class="field"><label>maxInFlight</label><input id="clInFlight" type="number" min="1" step="1" /></div>
 			<div class="field"><label>maxWaiters</label><input id="clWaiters" type="number" min="0" step="1" /></div>
+		</div>
+		<div class="lane-block" id="blockCa">
+			<h4>careAlert（护理留意）</h4>
+			<div class="field"><label>Provider</label><select id="caProvider"></select></div>
+			<div class="field"><label>Model</label><select id="caModel"></select></div>
+			<div class="field"><label>额度不足 Provider</label><select id="caFreeProvider"><option value="">（空=Python自选）</option></select></div>
+			<div class="field"><label>额度不足 Model</label><select id="caFreeModel"><option value="">（空=Python自选）</option></select></div>
+			<div class="field"><label>maxInFlight</label><input id="caInFlight" type="number" min="1" step="1" /></div>
+			<div class="field"><label>maxWaiters</label><input id="caWaiters" type="number" min="0" step="1" /></div>
 		</div>
 		<h3 style="margin:16px 0 12px;font-size:16px;">UCG 润笔（1）</h3>
 		<div class="lane-block">
 			<h4>polish（visionModel）</h4>
 			<div class="field"><label>Provider</label><select id="ucgProvider"></select></div>
 			<div class="field"><label>Model</label><select id="ucgModel"></select></div>
+			<div class="field"><label>额度不足 Provider</label><select id="ucgFreeProvider"><option value="">（空=Python自选）</option></select></div>
+			<div class="field"><label>额度不足 Model</label><select id="ucgFreeModel"><option value="">（空=Python自选）</option></select></div>
 			<div class="field"><label>maxInFlight</label><input id="ucgInFlight" type="number" min="1" step="1" /></div>
 			<div class="field"><label>maxWaiters</label><input id="ucgWaiters" type="number" min="0" step="1" /></div>
 		</div>
@@ -118,19 +133,57 @@ function bindLane(prefix, allowlistRef) {
 		fillModelSelect(mSel, al, pSel.value, '');
 	});
 }
-function setLane(prefix, allowlist, lane) {
+function setLane(prefix, allowlist, lane, withFree) {
 	fillProviderSelect(document.getElementById(prefix + 'Provider'), Object.keys(allowlist || {}), lane.provider || 'zhipu');
 	fillModelSelect(document.getElementById(prefix + 'Model'), allowlist, lane.provider || 'zhipu', lane.model);
 	document.getElementById(prefix + 'InFlight').value = lane.maxInFlight || 1;
 	document.getElementById(prefix + 'Waiters').value = lane.maxWaiters != null ? lane.maxWaiters : 0;
+	if (withFree) {
+		const fps = document.getElementById(prefix + 'FreeProvider');
+		const fms = document.getElementById(prefix + 'FreeModel');
+		if (!fps || !fms) return;
+		const providers = [''].concat(Object.keys(allowlist || {}));
+		fps.innerHTML = '';
+		providers.forEach(p => {
+			const opt = document.createElement('option');
+			opt.value = p; opt.textContent = p || '（空=Python自选）';
+			if (p === (lane.freeProvider || '')) opt.selected = true;
+			fps.appendChild(opt);
+		});
+		fms.innerHTML = '';
+		const empty = document.createElement('option'); empty.value=''; empty.textContent='（空=Python自选）'; fms.appendChild(empty);
+		const fp = lane.freeProvider || '';
+		((allowlist && allowlist[fp]) || []).forEach(m => {
+			const opt = document.createElement('option');
+			opt.value = m; opt.textContent = m;
+			if (m === (lane.freeModel || '')) opt.selected = true;
+			fms.appendChild(opt);
+		});
+		fps.onchange = () => {
+			fms.innerHTML = '';
+			const e2 = document.createElement('option'); e2.value=''; e2.textContent='（空=Python自选）'; fms.appendChild(e2);
+			((allowlist && allowlist[fps.value]) || []).forEach(m => {
+				const opt = document.createElement('option');
+				opt.value = m; opt.textContent = m;
+				fms.appendChild(opt);
+			});
+		};
+	}
 }
-function laneBody(prefix) {
-	return {
+function laneBody(prefix, withFree) {
+	const body = {
 		provider: document.getElementById(prefix + 'Provider').value,
 		model: document.getElementById(prefix + 'Model').value,
 		maxInFlight: parseInt(document.getElementById(prefix + 'InFlight').value, 10) || 1,
-		maxWaiters: parseInt(document.getElementById(prefix + 'Waiters').value, 10)
+		maxWaiters: parseInt(document.getElementById(prefix + 'Waiters').value, 10) || 0
 	};
+	if (withFree) {
+		const fp = document.getElementById(prefix + 'FreeProvider');
+		const fm = document.getElementById(prefix + 'FreeModel');
+		body.freeProvider = fp ? (fp.value || '') : '';
+		body.freeModel = fm ? (fm.value || '') : '';
+	}
+	return body;
 }
 
 async function loadAll() {
@@ -140,14 +193,16 @@ async function loadAll() {
 		api('/sim/admin/api/llm-lanes')
 	]);
 	voiceAllowlist = voice.allowlist || {};
-	setLane('vu', voiceAllowlist, voice.voiceUnderstanding || {});
-	setLane('cl', voiceAllowlist, voice.clinic || {});
+	setLane('vu', voiceAllowlist, voice.voiceUnderstanding || {}, true);
+	setLane('cl', voiceAllowlist, voice.clinic || {}, true);
+	setLane('ca', voiceAllowlist, voice.careAlert || {}, true);
 	ucgProviderModels = ucg.providerModels || {};
 	cachedUcgAi = ucg;
 	fillProviderSelect(document.getElementById('ucgProvider'), ucg.allowedProviders || Object.keys(ucgProviderModels), ucg.provider || 'zhipu');
 	fillModelSelect(document.getElementById('ucgModel'), ucgProviderModels, ucg.provider || 'zhipu', ucg.visionModel);
 	document.getElementById('ucgInFlight').value = ucg.maxInFlight || 1;
 	document.getElementById('ucgWaiters').value = ucg.maxWaiters != null ? ucg.maxWaiters : 15;
+	setLane('ucg', ucgProviderModels, {provider: ucg.provider, model: ucg.visionModel, freeProvider: ucg.freeProvider, freeModel: ucg.freeModel, maxInFlight: ucg.maxInFlight, maxWaiters: ucg.maxWaiters}, true);
 	simAllowlist = sim.allowlist || {};
 	setLane('st', simAllowlist, sim.simText || {});
 	setLane('sv', simAllowlist, sim.simVision || {});
@@ -164,13 +219,16 @@ async function saveAll() {
 	const msgs = [];
 	try {
 		const voiceBody = {
-			voiceUnderstanding: laneBody('vu'),
-			clinic: laneBody('cl'),
+			voiceUnderstanding: laneBody('vu', true),
+			clinic: laneBody('cl', true),
+			careAlert: laneBody('ca', true),
 			updatedBy: 'ai-model-admin.html'
 		};
 		const ucgBody = Object.assign({}, cachedUcgAi, {
 			provider: document.getElementById('ucgProvider').value,
 			visionModel: document.getElementById('ucgModel').value,
+				freeProvider: document.getElementById('ucgFreeProvider') ? document.getElementById('ucgFreeProvider').value : '',
+				freeModel: document.getElementById('ucgFreeModel') ? document.getElementById('ucgFreeModel').value : '',
 			maxInFlight: parseInt(document.getElementById('ucgInFlight').value, 10) || 1,
 			maxWaiters: parseInt(document.getElementById('ucgWaiters').value, 10),
 			updatedBy: 'ai-model-admin.html'
