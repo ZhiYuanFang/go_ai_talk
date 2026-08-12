@@ -67,6 +67,8 @@ func voiceChatWS(r *ghttp.Request) {
 		}
 	}()
 	streamStartAt := time.Time{}
+	// 首字等待锚点：仅在流式 ASR 建连成功后置位，避免「久静后出声立刻空 commit」。
+	asrWaitStartAt := time.Time{}
 	chunkCount := 0
 	streamMode := false
 	streamASRBroken := false
@@ -357,6 +359,9 @@ func voiceChatWS(r *ghttp.Request) {
 			return sErr
 		}
 		streamASR = sess
+		// G1：首字超时从 ASR 建连起算，不用过期的 session start。
+		asrWaitStartAt = time.Now()
+		glog.Infof(ctx, "[语音WS] 流式ASR已建连，重置首字等待时钟。deviceNo=%s gap=%s", deviceNo, wsInitialNoASRGap)
 		return nil
 	}
 	resetStreamASRUntilNextValid = func() {
@@ -368,6 +373,7 @@ func voiceChatWS(r *ghttp.Request) {
 		asrCallbackCount = 0
 		lastASRAt = time.Time{}
 		lastNoASRWarnChunk = 0
+		asrWaitStartAt = time.Time{}
 	}
 	tryAutoCommitWhenNoASRCallback := func() {
 		// 长时间无回调时主动 commit，防止连接卡在“只收音频不出字”状态。
@@ -475,6 +481,7 @@ func voiceChatWS(r *ghttp.Request) {
 				asrCallbackCount = 0
 				lastASRAt = time.Time{}
 				lastNoASRWarnChunk = 0
+				asrWaitStartAt = time.Time{}
 				resetRealtimeState(true)
 				if streamMode {
 					resetStreamASRUntilNextValid()
@@ -552,6 +559,7 @@ func voiceChatWS(r *ghttp.Request) {
 					streamASR = nil
 				}
 				streamStartAt = time.Time{}
+				asrWaitStartAt = time.Time{}
 				endPayload, _ := json.Marshal(map[string]interface{}{"type": "ended", "code": 0})
 				_ = safeWriteMessage(1, endPayload)
 				continue
@@ -641,12 +649,12 @@ func voiceChatWS(r *ghttp.Request) {
 			}
 
 			hasFirstSTT := !lastASRAt.IsZero()
-			noFirstSTTTimeout := !hasFirstSTT && !streamStartAt.IsZero() && now.Sub(streamStartAt) >= wsInitialNoASRGap
+			noFirstSTTTimeout := !hasFirstSTT && !asrWaitStartAt.IsZero() && now.Sub(asrWaitStartAt) >= wsInitialNoASRGap
 			sttTimeout := hasFirstSTT && sttSilence >= wsInterruptCommitGap
 
 			if noFirstSTTTimeout {
-				// 首次回调长期缺失，主动打断并 commit 当前片段。
-				// glog.Warningf(ctx, "[语音WS] 触发主动commit中断。deviceNo=%s reason=no_stt_callback_since_start sinceStart=%s threshold=%s chunks=%d recvBytes=%d", deviceNo, now.Sub(streamStartAt), wsInitialNoASRGap, chunkCount, audioBuffer.Len())
+				// 建连后首字长期缺失，主动打断并 commit 当前片段。
+				// glog.Warningf(ctx, "[语音WS] 触发主动commit中断。deviceNo=%s reason=no_stt_callback_since_asr_open sinceOpen=%s threshold=%s chunks=%d recvBytes=%d", deviceNo, now.Sub(asrWaitStartAt), wsInitialNoASRGap, chunkCount, audioBuffer.Len())
 				runStreamCommit("interrupt")
 				continue
 			}
