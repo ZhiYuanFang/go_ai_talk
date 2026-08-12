@@ -12,6 +12,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"hello/internal/services/contracts"
 	voice "hello/internal/services/voice"
 
 	"github.com/gogf/gf/v2/net/ghttp"
@@ -20,8 +21,8 @@ import (
 
 const (
 	wsStreamCommitTimeout  = 8 * time.Second
-	wsInterruptCommitGap   = 1 * time.Second
-	wsInitialNoASRGap      = 2 * time.Second
+	wsInterruptCommitGap   = 1500 * time.Millisecond // 已有回调后再次长静默，视为一句结束，主动 commit。
+	wsInitialNoASRGap      = 10 * time.Second        // 首次回调长期缺失，主动打断并 commit 当前片段。
 	wsInterruptJudgeLogGap = 500 * time.Millisecond
 	wsAutoCommitTimeout    = 4 * time.Second
 	wsNoASRAutoCommitChunk = 10
@@ -179,33 +180,68 @@ func voiceChatWS(r *ghttp.Request) {
 			pErr       error
 		)
 		chatCtx := voice.WithModelPrivilege(voice.WithVoiceWxID(ctx, headerWxID), voice.PrivilegeHardware)
-		ask, answer, exit, finishTalk, pErr = voice.Voice().HandleTranscriptForStreaming(chatCtx, deviceNo, transcript)
-		if pErr == nil && !exit {
-				seq := 0
-				_, pErr = voice.Voice().StreamReplyWithBaiduTTS(ctx, meta, answer, func(chunk []byte, chunkMeta voice.AudioMeta, chunkSeq int) error {
-					seq = chunkSeq
-					glog.Infof(ctx, "[TTS下发] 发送音频分片。deviceNo=%s seq=%d audioBytes=%d sampleRate=%d", deviceNo, chunkSeq, len(chunk), chunkMeta.SampleRate)
+		// 流式意图：全局下发 thinking_delta / answer（无 features 门控）；再走既有 TTS。
+		streamRes, streamErr := voice.Voice().HandleTranscriptForIntentStream(
+			chatCtx,
+			deviceNo,
+			transcript,
+			&contracts.IntentStreamCallback{
+				OnThinking: func(delta string) error {
+					if strings.TrimSpace(delta) == "" {
+						return nil
+					}
 					payload, _ := json.Marshal(map[string]interface{}{
-						"type":       "audio_chunk",
-						"audio":      base64.StdEncoding.EncodeToString(chunk),
-						"sampleRate": chunkMeta.SampleRate,
-						"seq":        chunkSeq,
-						"streaming":  true,
+						"type":  "thinking_delta",
+						"code":  0,
+						"delta": delta,
 					})
 					return safeWriteMessage(1, payload)
+				},
+			},
+		)
+		pErr = streamErr
+		if streamRes != nil {
+			ask = streamRes.Ask
+			answer = streamRes.Reply
+			exit = streamRes.Exit
+			finishTalk = streamRes.FinishTalk
+		}
+		if pErr == nil && !exit {
+			if strings.TrimSpace(answer) != "" {
+				ansPayload, _ := json.Marshal(map[string]interface{}{
+					"type":        "answer",
+					"code":        0,
+					"text":        answer,
+					"ask":         ask,
+					"finish_talk": finishTalk,
 				})
-				if pErr == nil {
-					glog.Infof(ctx, "[TTS下发] 发送音频结束。deviceNo=%s chunks=%d finishTalk=%v", deviceNo, seq, finishTalk)
-					endPayload, _ := json.Marshal(map[string]interface{}{
-						"type":        "audio_end",
-						"code":        0,
-						"exit":        false,
-						"finish_talk": finishTalk,
-						"streaming":   true,
-						"chunks":      seq,
-					})
-					_ = safeWriteMessage(1, endPayload)
-				}
+				_ = safeWriteMessage(1, ansPayload)
+			}
+			seq := 0
+			_, pErr = voice.Voice().StreamReplyWithBaiduTTS(ctx, meta, answer, func(chunk []byte, chunkMeta voice.AudioMeta, chunkSeq int) error {
+				seq = chunkSeq
+				glog.Infof(ctx, "[TTS下发] 发送音频分片。deviceNo=%s seq=%d audioBytes=%d sampleRate=%d", deviceNo, chunkSeq, len(chunk), chunkMeta.SampleRate)
+				payload, _ := json.Marshal(map[string]interface{}{
+					"type":       "audio_chunk",
+					"audio":      base64.StdEncoding.EncodeToString(chunk),
+					"sampleRate": chunkMeta.SampleRate,
+					"seq":        chunkSeq,
+					"streaming":  true,
+				})
+				return safeWriteMessage(1, payload)
+			})
+			if pErr == nil {
+				glog.Infof(ctx, "[TTS下发] 发送音频结束。deviceNo=%s chunks=%d finishTalk=%v", deviceNo, seq, finishTalk)
+				endPayload, _ := json.Marshal(map[string]interface{}{
+					"type":        "audio_end",
+					"code":        0,
+					"exit":        false,
+					"finish_talk": finishTalk,
+					"streaming":   true,
+					"chunks":      seq,
+				})
+				_ = safeWriteMessage(1, endPayload)
+			}
 		}
 		if pErr != nil {
 			var qErr *voice.VoiceAIQuotaError
