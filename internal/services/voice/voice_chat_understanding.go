@@ -124,28 +124,9 @@ func (s *VoiceService) prepareChatPreamble(ctx context.Context, deviceNo, transc
 	events := []entity.Event{}
 	events, _ = DeviceAdmin().ListEvents(ctx)
 
-	// 待选子事件：上一轮命中非叶子父节点后，本轮仅在直接子节点中匹配并落库
-	if pending, ok := s.getPendingChildEvent(deviceNo); ok {
-		reply, exit, finishTalk, pendErr := s.continuePendingChildEvent(ctx, deviceNo, normalizedTranscript, events, pending)
-		if pendErr != nil {
-			return chatPreambleOutcome{
-				Result: chatResult{
-					Reply:      "我暂时没理解清楚，请再说一次",
-					Ask:        normalizedTranscript,
-					FinishTalk: false,
-				},
-				Err: pendErr,
-			}
-		}
-		s.insertQa(ctx, normalizedTranscript, reply)
-		return chatPreambleOutcome{
-			Result: chatResult{
-				Reply:      reply,
-				Ask:        normalizedTranscript,
-				Exit:       exit,
-				FinishTalk: finishTalk,
-			},
-		}
+	// 子事件 pending 已停用：消歧与落库由 Python 意图图完成
+	if _, ok := s.getPendingChildEvent(deviceNo); ok {
+		s.clearPendingChildEvent(deviceNo)
 	}
 
 	return chatPreambleOutcome{
@@ -242,18 +223,10 @@ func mapPythonIntentToLandPlan(intent deepSeekUnifiedIntent, normalizedTranscrip
 	}
 }
 
-// applyUnifiedIntentResult 将已映射的统一意图落地为澄清 / 闲聊 / 动作执行。
-// 供非流式 chatWithResult 与流式 HandleTranscriptForIntentStream 共用，保证行为矩阵单一真源。
-// 业务分支：NeedConfirm → 仅存 conversation_id 并透传自然语言；否则清 cid → 按 Python 两轴映射再 CRUD 或仅回复。
-// Args:
-//   - normalizedTranscript: 已规范化用户文本
-//   - events: 设备事件主档（经 DeviceAdmin）
-//   - intent: 已由 mapPythonRespToIntent 等映射完成的结构
-//
-// Returns: chatResult 与业务错误
-// Side Effects: 可能 set/clear pendingConfirm cid、insertQa、经 handleUnifiedIntentAction 写事件
+// applyUnifiedIntentResult 只透传 Python 结果：确认话术 / content / 退出。
+// 不再按 action 写库、不再二次匹配事件。events 参数保留以兼容调用方。
 func (s *VoiceService) applyUnifiedIntentResult(ctx context.Context, deviceNo, normalizedTranscript string, events []entity.Event, intent deepSeekUnifiedIntent) (chatResult, error) {
-	// NeedConfirm：只保存 conversation_id，透传 Python 自然语言，不落库
+	_ = events
 	if intent.NeedConfirm {
 		pendingConfirmState.set(deviceNo, &pendingConfirmEntry{
 			ConversationID: intent.ConversationID,
@@ -268,48 +241,31 @@ func (s *VoiceService) applyUnifiedIntentResult(ctx context.Context, deviceNo, n
 		if reply == "" {
 			reply = "请确认是否执行该操作？"
 		}
-		glog.Infof(ctx, "[Clarify] need_confirm，透传话术并等待续聊。deviceNo=%s conversation_id=%s", deviceNo, intent.ConversationID)
+		glog.Infof(ctx, "[Clarify] need_confirm，透传话术。deviceNo=%s conversation_id=%s", deviceNo, intent.ConversationID)
 		s.insertQa(ctx, normalizedTranscript, reply)
-		return chatResult{
-			Reply:      reply,
-			Ask:        normalizedTranscript,
-			FinishTalk: false,
-		}, nil
+		return chatResult{Reply: reply, Ask: normalizedTranscript, FinishTalk: false}, nil
 	}
 
-	// 非确认结果：清除本地 cid，再按 Python 两轴落地
 	pendingConfirmState.clear(deviceNo)
-
-	plan := mapPythonIntentToLandPlan(intent, normalizedTranscript)
-	if plan.UnknownDomain {
-		glog.Warningf(ctx, "[IntentLand] 未知 target_type，按 conversation 仅回复。deviceNo=%s target_type=%s action=%s",
-			deviceNo, intent.TargetType, intent.Action)
-	}
-	if plan.ReplyOnly {
+	if strings.EqualFold(strings.TrimSpace(intent.TargetType), "exit") || strings.EqualFold(strings.TrimSpace(intent.Action), "exit") {
 		reply := strings.TrimSpace(intent.Reply)
 		if reply == "" {
-			reply = "我明白了，请再具体一点，我马上帮你处理。"
+			reply = "好的，再见"
 		}
 		s.insertQa(ctx, normalizedTranscript, reply)
-		return chatResult{
-			Reply:      reply,
-			Ask:        normalizedTranscript,
-			FinishTalk: !intent.NeedUserReply,
-		}, nil
+		return chatResult{Reply: reply, Ask: normalizedTranscript, Exit: true, FinishTalk: false}, nil
 	}
 
-	glog.Infof(ctx, "[IntentLand] Python 两轴映射命中动作。deviceNo=%s target_type=%s action=%s go_target=%s name=%s",
-		deviceNo, intent.TargetType, intent.Action, plan.Action.TargetType, plan.Action.Name)
-	finalReply, exit, finishTalk, err := s.handleUnifiedIntentAction(ctx, deviceNo, normalizedTranscript, plan.Action, events, intent)
-	if err == nil {
-		s.insertQa(ctx, normalizedTranscript, finalReply)
+	reply := strings.TrimSpace(intent.Reply)
+	if reply == "" {
+		reply = "我明白了，请再具体一点。"
 	}
+	s.insertQa(ctx, normalizedTranscript, reply)
 	return chatResult{
-		Reply:      finalReply,
+		Reply:      reply,
 		Ask:        normalizedTranscript,
-		Exit:       exit,
-		FinishTalk: finishTalk,
-	}, err
+		FinishTalk: !intent.NeedUserReply,
+	}, nil
 }
 
 // chatWithResult 对话核心流程（非流式意图分析入口）：

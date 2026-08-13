@@ -180,7 +180,7 @@ type WxPageResult struct {
 type DeviceHistoryContract interface {
 	ListHistory(ctx context.Context, deviceNo string) ([]entity.History, error)
 	ListHistoryPage(ctx context.Context, deviceNo string, page int, pageSize int) (HistoryPageResult, error)
-	ListHistoryFilter(ctx context.Context, deviceNo string, eventIds []int64, startTime int64, endTime int64, limit int) ([]entity.History, error)
+	ListHistoryFilter(ctx context.Context, deviceNo string, eventIds []int64, startTime int64, endTime int64, limit int, remark string) ([]entity.History, error)
 	ListHistoryPageV2(ctx context.Context, deviceNo string, page int, pageSize int, startTime int64, endTime int64, limit int) (HistoryPageResult, error)
 	GetLatestHistory(ctx context.Context, deviceNo string) (entity.History, error)
 	// EndLatestHistoryIfMatch 若该设备存在 eventID 对应且未闭合（end_time=0）的历史，则闭合其中 id 最大的一条并更新结束时间；

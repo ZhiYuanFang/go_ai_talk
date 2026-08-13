@@ -23,14 +23,15 @@ type DeviceHistoryListRes struct {
 	PageSize int              `json:"pageSize"`
 }
 
-// DeviceHistoryFilterReq 历史筛选请求，支持按事件ID列表、时间范围、返回条数上限筛选。
+// DeviceHistoryFilterReq 历史筛选请求，支持按事件ID列表、时间范围、备注模糊、返回条数上限筛选。
 type DeviceHistoryFilterReq struct {
 	g.Meta    `path:"/device/history/api/filter" method:"get" tags:"device" summary:"设备历史筛选"`
 	DeviceNo  string `json:"deviceNo"  p:"deviceNo"  dc:"设备号"`
 	EventIds  string `json:"eventIds"  p:"eventIds"  dc:"事件ID列表，逗号分隔，如 1,2,5；空串表示不过滤"`
 	StartTime int64  `json:"startTime" p:"startTime" dc:"开始时间，Unix 秒；0 表示不限制"`
 	EndTime   int64  `json:"endTime"   p:"endTime"   dc:"结束时间，Unix 秒；0 表示不限制"`
-	Limit     int    `json:"limit"     p:"limit"     dc:"返回条数上限，默认 100，上限 500"`
+	Limit     int    `json:"limit"     p:"limit"     dc:"返回条数上限，默认 100，上限 500；仅备注探针时上限 20"`
+	Remark    string `json:"remark"    p:"remark"    dc:"备注模糊关键词；空串表示不按备注过滤。NULL/空备注行不会命中"`
 }
 
 // DeviceHistoryFilterRes 历史筛选结果响应。
@@ -188,6 +189,41 @@ type DeviceHistoryEndLatestReq struct {
 // DeviceHistoryEndLatestRes 条件结束结果。
 type DeviceHistoryEndLatestRes struct {
 	Updated bool `json:"updated"`
+}
+
+// DeviceHistoryEventBatchItem 批量写库的单条操作。
+// op：create|update|delete|end；create 可用 action=start|end|one 区分开始/结束/单次。
+type DeviceHistoryEventBatchItem struct {
+	Op          string `json:"op" dc:"create|update|delete|end"`
+	Action      string `json:"action" dc:"create 时的 start|end|one；end 可与 op=end 等价"`
+	Id          int64  `json:"id" dc:"update/delete 的历史行主键"`
+	EventId     int64  `json:"eventId" dc:"事件ID"`
+	EventName   string `json:"eventName" dc:"事件名"`
+	EventUnit   string `json:"eventUnit" dc:"单位"`
+	EventNumber int    `json:"eventNumber" dc:"数量"`
+	StartTime   int64  `json:"startTime" dc:"开始时间，Unix 秒"`
+	EndTime     int64  `json:"endTime" dc:"结束时间，Unix 秒"`
+	Remark      string `json:"remark" dc:"备注；可空"`
+}
+
+// DeviceHistoryEventBatchReq 意图/语音专用批量写历史；部分成功不整单回滚。
+type DeviceHistoryEventBatchReq struct {
+	g.Meta   `path:"/device/history/api/event/batch" method:"post" tags:"device" summary:"批量增删改历史事件"`
+	DeviceNo string                        `json:"deviceNo" dc:"设备号"`
+	Items    []DeviceHistoryEventBatchItem `json:"items" dc:"操作列表，按顺序执行"`
+}
+
+// DeviceHistoryEventBatchItemRes 单条批量结果。
+type DeviceHistoryEventBatchItemRes struct {
+	Index  int    `json:"index" dc:"items 下标"`
+	Ok     bool   `json:"ok" dc:"是否成功"`
+	Reason string `json:"reason" dc:"失败原因；成功为空"`
+	Id     int64  `json:"id" dc:"create 新行 id，或 update/delete 的目标 id"`
+}
+
+// DeviceHistoryEventBatchRes 批量写结果。
+type DeviceHistoryEventBatchRes struct {
+	Results []DeviceHistoryEventBatchItemRes `json:"results"`
 }
 
 // DeviceHistoryPieceReq 区段内某类事件的历史记录（用于趋势图）。

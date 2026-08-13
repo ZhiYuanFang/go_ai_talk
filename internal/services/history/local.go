@@ -26,8 +26,8 @@ func (s *localService) ListHistoryPage(ctx context.Context, deviceNo string, pag
 	return ListDeviceHistoryPage(ctx, deviceNo, page, pageSize)
 }
 
-func (s *localService) ListHistoryFilter(ctx context.Context, deviceNo string, eventIds []int64, startTime int64, endTime int64, limit int) ([]entity.History, error) {
-	return ListDeviceHistoryFilter(ctx, deviceNo, eventIds, startTime, endTime, limit)
+func (s *localService) ListHistoryFilter(ctx context.Context, deviceNo string, eventIds []int64, startTime int64, endTime int64, limit int, remark string) ([]entity.History, error) {
+	return ListDeviceHistoryFilter(ctx, deviceNo, eventIds, startTime, endTime, limit, remark)
 }
 
 func (s *localService) ListHistoryPageV2(ctx context.Context, deviceNo string, page int, pageSize int, startTime int64, endTime int64, limit int) (contracts.HistoryPageResult, error) {
@@ -384,13 +384,29 @@ func DeleteDeviceHistory(ctx context.Context, id int64, deviceNo string) error {
 	return err
 }
 
+// escapeLikeKeyword 转义 LIKE 通配符，避免用户输入 %/_ 扩大匹配。
+func escapeLikeKeyword(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `%`, `\%`)
+	s = strings.ReplaceAll(s, `_`, `\_`)
+	return s
+}
+
 // ListDeviceHistoryFilter 多条件筛选历史记录。
 // eventIds 非空时按事件ID列表过滤，startTime/endTime > 0 时按时间区间过滤。
+// remark 非空时 AND 备注模糊（排除 NULL/空串）；无 eventIds 时视为探针，limit 上限 20。
 // 返回结果按 id 倒序，limit 默认 100，上限 500。
-func ListDeviceHistoryFilter(ctx context.Context, deviceNo string, eventIds []int64, startTime int64, endTime int64, limit int) ([]entity.History, error) {
+func ListDeviceHistoryFilter(ctx context.Context, deviceNo string, eventIds []int64, startTime int64, endTime int64, limit int, remark string) ([]entity.History, error) {
 	deviceNo = strings.TrimSpace(deviceNo)
 	if deviceNo == "" {
 		return []entity.History{}, nil
+	}
+	remark = strings.TrimSpace(remark)
+	// 仅备注、不定事件：探针路径，强制小 limit，避免扫全表再灌模型。
+	if remark != "" && len(eventIds) == 0 {
+		if limit <= 0 || limit > 20 {
+			limit = 20
+		}
 	}
 	if limit <= 0 {
 		limit = 100
@@ -409,6 +425,11 @@ func ListDeviceHistoryFilter(ctx context.Context, deviceNo string, eventIds []in
 	}
 	if endTime > 0 {
 		m = m.WhereLTE(dao.History.Columns().StartTime, endTime)
+	}
+	// 可空备注不参与模糊命中；LIKE 前转义 % _
+	if remark != "" {
+		col := dao.History.Columns().Remark
+		m = m.WhereNot(col, "").Where(col+" LIKE ?", "%"+escapeLikeKeyword(remark)+"%")
 	}
 	rows, err := m.
 		OrderDesc(dao.History.Columns().Id).

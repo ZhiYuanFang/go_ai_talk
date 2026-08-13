@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	v1 "hello/api/v1"
 	v2 "hello/api/v2"
@@ -97,7 +98,7 @@ func (c *HistoryCtrl) Filter(ctx context.Context, req *v1.DeviceHistoryFilterReq
 			eventIds = append(eventIds, id)
 		}
 	}
-	list, err := c.Svc.ListHistoryFilter(ctx, deviceNo, eventIds, req.StartTime, req.EndTime, req.Limit)
+	list, err := c.Svc.ListHistoryFilter(ctx, deviceNo, eventIds, req.StartTime, req.EndTime, req.Limit, strings.TrimSpace(req.Remark))
 	if err != nil {
 		return nil, err
 	}
@@ -378,4 +379,113 @@ func (c *HistoryCtrl) EventEndLatest(ctx context.Context, req *v1.DeviceHistoryE
 		return nil, err
 	}
 	return &v1.DeviceHistoryEndLatestRes{Updated: updated}, nil
+}
+
+// EventBatch 按顺序执行多条增/改/删/结束；单条失败写入 results，不整单回滚。
+func (c *HistoryCtrl) EventBatch(ctx context.Context, req *v1.DeviceHistoryEventBatchReq) (res *v1.DeviceHistoryEventBatchRes, err error) {
+	deviceNo := strings.TrimSpace(req.DeviceNo)
+	if deviceNo == "" {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "deviceNo 不能为空")
+	}
+	results := make([]v1.DeviceHistoryEventBatchItemRes, 0, len(req.Items))
+	nowUnix := time.Now().Unix()
+	for i, item := range req.Items {
+		one := v1.DeviceHistoryEventBatchItemRes{Index: i}
+		op := strings.ToLower(strings.TrimSpace(item.Op))
+		action := strings.ToLower(strings.TrimSpace(item.Action))
+		// create + action=end 与 op=end 都走结束进行中
+		if op == "create" && action == "end" {
+			op = "end"
+		}
+		switch op {
+		case "create":
+			startTime := item.StartTime
+			if startTime <= 0 {
+				startTime = nowUnix
+			}
+			id, addErr := c.Svc.AddHistory(ctx, entity.History{
+				DeviceNo:    deviceNo,
+				EventId:     item.EventId,
+				EventName:   c.canonicalEventNameForRow(ctx, item.EventId, item.EventName),
+				EventNumber: int64(item.EventNumber),
+				EventUnit:   strings.TrimSpace(item.EventUnit),
+				StartTime:   startTime,
+				EndTime:     item.EndTime,
+				Remark:      strings.TrimSpace(item.Remark),
+			})
+			if addErr != nil {
+				one.Ok = false
+				one.Reason = addErr.Error()
+			} else {
+				one.Ok = true
+				one.Id = id
+			}
+		case "update":
+			if item.Id <= 0 {
+				one.Ok = false
+				one.Reason = "id 无效"
+				results = append(results, one)
+				continue
+			}
+			updErr := c.Svc.UpdateHistory(ctx, entity.History{
+				Id:          item.Id,
+				DeviceNo:    deviceNo,
+				EventId:     item.EventId,
+				EventName:   c.canonicalEventNameForRow(ctx, item.EventId, item.EventName),
+				EventNumber: int64(item.EventNumber),
+				EventUnit:   strings.TrimSpace(item.EventUnit),
+				StartTime:   item.StartTime,
+				EndTime:     item.EndTime,
+				Remark:      strings.TrimSpace(item.Remark),
+			})
+			if updErr != nil {
+				one.Ok = false
+				one.Reason = updErr.Error()
+			} else {
+				one.Ok = true
+				one.Id = item.Id
+			}
+		case "delete":
+			if item.Id <= 0 {
+				one.Ok = false
+				one.Reason = "id 无效"
+				results = append(results, one)
+				continue
+			}
+			delErr := c.Svc.DeleteHistory(ctx, item.Id, deviceNo)
+			if delErr != nil {
+				one.Ok = false
+				one.Reason = delErr.Error()
+			} else {
+				one.Ok = true
+				one.Id = item.Id
+			}
+		case "end":
+			if item.EventId <= 0 {
+				one.Ok = false
+				one.Reason = "eventId 无效"
+				results = append(results, one)
+				continue
+			}
+			endTime := item.EndTime
+			if endTime <= 0 {
+				endTime = nowUnix
+			}
+			updated, endErr := c.Svc.EndLatestHistoryIfMatch(ctx, deviceNo, item.EventId, endTime, strings.TrimSpace(item.Remark))
+			if endErr != nil {
+				one.Ok = false
+				one.Reason = endErr.Error()
+			} else if !updated {
+				one.Ok = false
+				one.Reason = "没有进行中的该事件记录"
+			} else {
+				one.Ok = true
+			}
+		default:
+			one.Ok = false
+			one.Reason = "不支持的 op：" + item.Op
+		}
+		results = append(results, one)
+	}
+	return &v1.DeviceHistoryEventBatchRes{Results: results}, nil
 }

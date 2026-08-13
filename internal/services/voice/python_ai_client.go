@@ -79,6 +79,9 @@ type AnalyzeIntentResponse struct {
 	NeedConfirm    bool          `json:"need_confirm"`           // 是否需要用户澄清（同一 /intent 输入框续聊，非独立 confirm 通道）
 	ConfirmMessage string        `json:"confirm_message"`        // 澄清话术（由 Python 生成，Go 侧原样透传）
 	ConversationID string        `json:"conversation_id"`        // 会话 ID；need_confirm 时返回，下一轮请求带回同一 /intent 续聊
+	Op             string        `json:"op,omitempty"`           // create|read|update|delete
+	RemarkKeyword  string        `json:"remark_keyword,omitempty"`
+	MissingEvents  []string      `json:"missing_events,omitempty"`
 }
 
 // AnalyzeIntent 调用 Python 服务进行意图分析
@@ -115,8 +118,45 @@ func (c *PythonAIClient) AnalyzeIntent(ctx context.Context, req *AnalyzeIntentRe
 		return nil, fmt.Errorf("解析意图分析响应失败: %w", err)
 	}
 
-	glog.Debugf(ctx, "[Python AI] 意图分析完成。deviceNo=%s target_type=%s action=%s conversation_id=%s need_confirm=%v",
-		req.DeviceNo, result.TargetType, result.Action, result.ConversationID, result.NeedConfirm)
+	glog.Debugf(ctx, "[Python AI] 意图分析完成。deviceNo=%s target_type=%s action=%s op=%s conversation_id=%s need_confirm=%v",
+		req.DeviceNo, result.TargetType, result.Action, result.Op, result.ConversationID, result.NeedConfirm)
+	return &result, nil
+}
+
+// ClinicSyncRequest 非流式陪伴，对齐 POST /v1/clinic。
+type ClinicSyncRequest struct {
+	Question string          `json:"question"`
+	DeviceNo string          `json:"device_no"`
+	Model    *PythonModelCfg `json:"model,omitempty"`
+}
+
+// ClinicSyncResponse 非流式陪伴响应。
+type ClinicSyncResponse struct {
+	Answer   string `json:"answer"`
+	AnswerID string `json:"answer_id"`
+}
+
+// Clinic 调用 Python 非流式陪伴（成长建议等）。
+func (c *PythonAIClient) Clinic(ctx context.Context, req *ClinicSyncRequest) (*ClinicSyncResponse, error) {
+	body, _ := json.Marshal(req)
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/v1/clinic", strings.NewReader(string(body)))
+	if err != nil {
+		return nil, fmt.Errorf("创建陪伴请求失败: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("调用 Python 陪伴服务失败: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("Python 陪伴服务返回错误状态码 %d: %s", resp.StatusCode, string(respBody))
+	}
+	var result ClinicSyncResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("解析陪伴响应失败: %w", err)
+	}
 	return &result, nil
 }
 

@@ -72,6 +72,11 @@ func (t HTTPTargets) HistoryEventAddPath() string {
 	return "/device/history/api/event/add"
 }
 
+// HistoryEventBatchPath 意图批量写历史（部分成功）。
+func (t HTTPTargets) HistoryEventBatchPath() string {
+	return "/device/history/api/event/batch"
+}
+
 func (t HTTPTargets) HistoryEventUpdatePath() string {
 	return "/device/history/api/event/update"
 }

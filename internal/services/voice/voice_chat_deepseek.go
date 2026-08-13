@@ -229,13 +229,13 @@ func (s *VoiceService) callDeepSeekGrowthSuggestion(ctx context.Context, deviceN
 		defer rel()
 	}
 	pythonClient := PythonAIClientFromCfg()
-	pythonResp, pythonErr := pythonClient.AnalyzeIntent(ctx, &AnalyzeIntentRequest{
-		Text:     "成长建议",
+	pythonResp, pythonErr := pythonClient.Clinic(ctx, &ClinicSyncRequest{
+		Question: "宝宝最近食量怎么样，给一点成长建议",
 		DeviceNo: deviceNo,
 		Model:    modelCfg,
 	})
-	if pythonErr == nil && pythonResp != nil && pythonResp.Content != "" {
-		reply := strings.TrimSpace(pythonResp.Content)
+	if pythonErr == nil && pythonResp != nil && strings.TrimSpace(pythonResp.Answer) != "" {
+		reply := strings.TrimSpace(pythonResp.Answer)
 		if reply != "" {
 			_, insertErr := dao.Suggest.Ctx(ctx).Data(g.Map{
 				dao.Suggest.Columns().DeviceNo: deviceNo,

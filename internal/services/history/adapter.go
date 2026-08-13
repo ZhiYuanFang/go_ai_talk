@@ -85,7 +85,7 @@ func (r *historyRemoteClient) ListHistoryPage(ctx context.Context, deviceNo stri
 	return contracts.HistoryPageResult{List: resp.List, Total: resp.Total, Page: resp.Page, PageSize: resp.PageSize}, nil
 }
 
-func (r *historyRemoteClient) ListHistoryFilter(ctx context.Context, deviceNo string, eventIds []int64, startTime int64, endTime int64, limit int) ([]entity.History, error) {
+func (r *historyRemoteClient) ListHistoryFilter(ctx context.Context, deviceNo string, eventIds []int64, startTime int64, endTime int64, limit int, remark string) ([]entity.History, error) {
 	if err := r.notReady(); err != nil {
 		return nil, err
 	}
@@ -112,6 +112,9 @@ func (r *historyRemoteClient) ListHistoryFilter(ctx context.Context, deviceNo st
 	}
 	if limit > 0 {
 		query["limit"] = strconv.Itoa(limit)
+	}
+	if strings.TrimSpace(remark) != "" {
+		query["remark"] = strings.TrimSpace(remark)
 	}
 	t := r.targets
 	err := r.doJSON(ctx, http.MethodGet, r.historyBase, t.HistoryFilterPath(), query, nil, &resp)
@@ -453,15 +456,15 @@ func (a *switchAdapter) ListHistoryPage(ctx context.Context, deviceNo string, pa
 	return result, err
 }
 
-func (a *switchAdapter) ListHistoryFilter(ctx context.Context, deviceNo string, eventIds []int64, startTime int64, endTime int64, limit int) ([]entity.History, error) {
+func (a *switchAdapter) ListHistoryFilter(ctx context.Context, deviceNo string, eventIds []int64, startTime int64, endTime int64, limit int, remark string) ([]entity.History, error) {
 	deviceNo = strings.TrimSpace(deviceNo)
 	if !a.shouldUseRemote(deviceNo) {
-		return a.local.ListHistoryFilter(ctx, deviceNo, eventIds, startTime, endTime, limit)
+		return a.local.ListHistoryFilter(ctx, deviceNo, eventIds, startTime, endTime, limit, remark)
 	}
-	items, err := a.remote.ListHistoryFilter(ctx, deviceNo, eventIds, startTime, endTime, limit)
+	items, err := a.remote.ListHistoryFilter(ctx, deviceNo, eventIds, startTime, endTime, limit, remark)
 	if err != nil && a.cfg.failoverToLocal {
 		glog.Warningf(ctx, "history filter degrade source=remote->local deviceNo=%s eventIds=%v err=%v", deviceNo, eventIds, err)
-		return a.local.ListHistoryFilter(ctx, deviceNo, eventIds, startTime, endTime, limit)
+		return a.local.ListHistoryFilter(ctx, deviceNo, eventIds, startTime, endTime, limit, remark)
 	}
 	return items, err
 }
