@@ -224,7 +224,8 @@ func mapPythonIntentToLandPlan(intent deepSeekUnifiedIntent, normalizedTranscrip
 }
 
 // applyUnifiedIntentResult 只透传 Python 结果：确认话术 / content / 退出。
-// 不再按 action 写库、不再二次匹配事件。events 参数保留以兼容调用方。
+// 不再按 action 写库、不再二次匹配事件；落库由 Python batch 完成。
+// events 参数保留以兼容调用方；不解析 intent.Events 子项 op。
 func (s *VoiceService) applyUnifiedIntentResult(ctx context.Context, deviceNo, normalizedTranscript string, events []entity.Event, intent deepSeekUnifiedIntent) (chatResult, error) {
 	_ = events
 	if intent.NeedConfirm {

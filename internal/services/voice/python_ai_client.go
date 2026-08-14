@@ -54,32 +54,35 @@ type PythonModelCfg struct {
 }
 
 // IntentEvent 单个事件结构
-// 用于描述多事件场景中的单个事件
+// 涉事件意图的唯一载体；每项自带 op（create|update|delete|end|read）
 type IntentEvent struct {
-	Action    string `json:"action"`
-	EventName string `json:"event_name"`
-	EventId   string `json:"event_id"`
-	Quantity  *int   `json:"quantity,omitempty"` // 从用户输入中提取的数量值
+	Op            string `json:"op,omitempty"`
+	Action        string `json:"action,omitempty"` // 可选：start|one|end
+	EventName     string `json:"event_name"`
+	EventId       string `json:"event_id"`
+	Quantity      *int   `json:"quantity,omitempty"`
+	RemarkKeyword string `json:"remark_keyword,omitempty"`
+	StartTime     int64  `json:"start_time,omitempty"`
+	EndTime       int64  `json:"end_time,omitempty"`
 }
 
 // AnalyzeIntentResponse 意图分析响应体
-// 与 Python 服务的返回结构对齐
+// 与 Python 服务对齐：信封 + events[]；无顶层 op；顶层 action 仅兼容旧响应（可空）
 type AnalyzeIntentResponse struct {
-	TargetType     string        `json:"target_type"`            // 目标类型：feeding|history|suggest|conversation|exit
-	Action         string        `json:"action"`                 // 动作类型：start|end|one|search|suggestion|reply|exit|multi
-	EventName      string        `json:"event_name"`             // 匹配到的事件名称（喂养场景，单事件时使用）
-	EventId        string        `json:"event_id"`               // 事件ID（单事件时使用）
-	Quantity       *int          `json:"quantity,omitempty"`     // 从用户输入中提取的数量值（Python 前置提取）
-	EventType      string        `json:"event_type,omitempty"`   // 事件类型：number|time|one（新事件时 Python 返回）
-	EventUnit      string        `json:"event_unit,omitempty"`   // 事件单位：ml、次、分钟（新事件时 Python 返回）
-	IsNewEvent     bool          `json:"is_new_event,omitempty"` // 是否为新事件
-	Keywords       []string      `json:"keywords"`               // 匹配到的关键词列表
-	Content        string        `json:"content"`                // 对话场景的回答内容
-	Events         []IntentEvent `json:"events"`                 // 多事件列表（当 action 为 multi 时使用）
-	NeedConfirm    bool          `json:"need_confirm"`           // 是否需要用户澄清（同一 /intent 输入框续聊，非独立 confirm 通道）
-	ConfirmMessage string        `json:"confirm_message"`        // 澄清话术（由 Python 生成，Go 侧原样透传）
-	ConversationID string        `json:"conversation_id"`        // 会话 ID；need_confirm 时返回，下一轮请求带回同一 /intent 续聊
-	Op             string        `json:"op,omitempty"`           // create|read|update|delete
+	TargetType     string        `json:"target_type"`            // feeding|history|suggest|conversation|exit
+	Action         string        `json:"action,omitempty"`       // 已废弃：兼容旧 JSON，权威在 events[].op
+	EventName      string        `json:"event_name"`             // 展示用首事件名（可选）
+	EventId        string        `json:"event_id"`               // 展示用首事件 id（可选）
+	Quantity       *int          `json:"quantity,omitempty"`
+	EventType      string        `json:"event_type,omitempty"`
+	EventUnit      string        `json:"event_unit,omitempty"`
+	IsNewEvent     bool          `json:"is_new_event,omitempty"`
+	Keywords       []string      `json:"keywords"`
+	Content        string        `json:"content"`
+	Events         []IntentEvent `json:"events"` // 涉事件必填；闲聊/退出可空
+	NeedConfirm    bool          `json:"need_confirm"`
+	ConfirmMessage string        `json:"confirm_message"`
+	ConversationID string        `json:"conversation_id"`
 	RemarkKeyword  string        `json:"remark_keyword,omitempty"`
 	MissingEvents  []string      `json:"missing_events,omitempty"`
 }
@@ -118,8 +121,8 @@ func (c *PythonAIClient) AnalyzeIntent(ctx context.Context, req *AnalyzeIntentRe
 		return nil, fmt.Errorf("解析意图分析响应失败: %w", err)
 	}
 
-	glog.Debugf(ctx, "[Python AI] 意图分析完成。deviceNo=%s target_type=%s action=%s op=%s conversation_id=%s need_confirm=%v",
-		req.DeviceNo, result.TargetType, result.Action, result.Op, result.ConversationID, result.NeedConfirm)
+	glog.Debugf(ctx, "[Python AI] 意图分析完成。deviceNo=%s target_type=%s events=%d conversation_id=%s need_confirm=%v",
+		req.DeviceNo, result.TargetType, len(result.Events), result.ConversationID, result.NeedConfirm)
 	return &result, nil
 }
 
@@ -544,7 +547,7 @@ func (c *PythonAIClient) AnalyzeIntentStream(ctx context.Context, req *AnalyzeIn
 		}
 	}
 
-	glog.Debugf(ctx, "[Python AI] 流式意图分析完成。deviceNo=%s target_type=%s action=%s", req.DeviceNo, result.TargetType, result.Action)
+	glog.Debugf(ctx, "[Python AI] 流式意图分析完成。deviceNo=%s target_type=%s events=%d", req.DeviceNo, result.TargetType, len(result.Events))
 	return &AnalyzeIntentStreamResponse{Thinking: thinking, Answer: answer, Result: result}, scanner.Err()
 }
 
