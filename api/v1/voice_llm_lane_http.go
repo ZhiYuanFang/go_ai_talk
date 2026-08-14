@@ -11,7 +11,7 @@ type VoiceAdminLLMLanesGetReq struct {
 	g.Meta `path:"/voice/admin/api/llm-lanes" method:"get" tags:"voice-admin" summary:"读取 LLM lane 配置"`
 }
 
-// VoiceAdminLLMLaneItem 单条 lane 配置（含可选额度不足 free 模型）。
+// VoiceAdminLLMLaneItem 单条 lane 配置（clinic/careAlert 可含额度不足 free；voiceUnderstanding 忽略 free 并持久化空）。
 type VoiceAdminLLMLaneItem struct {
 	Provider     string `json:"provider"`
 	Model        string `json:"model"`

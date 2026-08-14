@@ -23,12 +23,9 @@
 		</div>
 	</header>
 	<div class="card glass hidden" id="mainCard">
-		<p style="font-size:13px;margin:0 0 16px;"><a href="/device/admin/ai-model-admin.html">→ AI 模型与并发</a>（voiceUnderstanding / clinic / careAlert 的 provider、model、maxInFlight、maxWaiters、free）</p>
+		<p style="font-size:13px;margin:0 0 16px;"><a href="/device/admin/ai-model-admin.html">→ AI 模型与并发</a>（voiceUnderstanding 正式模+并发；clinic / careAlert 另含 free）</p>
 		<h4 style="margin:0 0 12px;font-size:15px;">全局默认</h4>
-		<div class="field">
-			<label for="quotaVoiceDefault">喂养 AI 默认次数/月</label>
-			<input id="quotaVoiceDefault" type="number" min="1" step="1" />
-		</div>
+		<!-- 喂养 voiceAi 月度额度 UI 已隐藏；保存时仍回传既有值，API 字段暂留 -->
 		<div class="field">
 			<label for="quotaClinicDefault">胖宝 AI 默认次数/月</label>
 			<input id="quotaClinicDefault" type="number" min="1" step="1" />
@@ -45,13 +42,7 @@
 		<h4 style="margin:0 0 8px;font-size:15px;">用户额度</h4>
 		<p class="quota-hint">
 			改上限会影响当月 check / consume / degraded 阈值（路由不变）。<br />
-			<strong>喂养 AI</strong>（<code>voice_ai</code>）：
-			<code>/voice/chat/ws</code>、
-			<code>POST /voice/internal/api/text/chat</code>、
-			<code>POST /voice/internal/api/text/chat/stream</code>、
-			<code>POST /device/history/api/chat</code>、
-			<code>POST /device/history/api/chat/stream</code>、
-			<code>POST /voice/text/chat</code>。<br />
+			<strong>喂养自然语言对话</strong>仅走 <code>/voice/chat/ws</code>（与 <code>voice_ai</code> 月度额度解耦，本页不再编辑喂养额度）。<br />
 			<strong>胖宝 AI</strong>（<code>clinic_ai</code>）：
 			<code>/voice/clinic/ws</code>、小贴士 TipStream（与 clinic 共享额度）。<br />
 			<strong>护理留意</strong>（<code>care_alert</code>）：日生成护理留意；VIP 不计次；模型/并发见「AI 模型与并发」的 careAlert lane。<br />
@@ -67,8 +58,6 @@
 				<thead>
 					<tr>
 						<th>deviceNo</th>
-						<th>喂养已用</th>
-						<th>喂养上限</th>
 						<th>胖宝已用</th>
 						<th>胖宝上限</th>
 						<th>留意已用</th>
@@ -103,10 +92,12 @@ var quotaPage = 1;
 var quotaPageSize = 20;
 var quotaTotal = 0;
 var quotaDeviceFilter = '';
+// 隐藏喂养额度 UI 后，保存全局默认仍需回传既有 voiceAiMonthlyLimit（API 字段暂留）
+var cachedVoiceAiMonthlyLimit = 5;
 
 async function loadQuotaDefault() {
 	const data = await api('/voice/admin/api/ai-quota/default');
-	document.getElementById('quotaVoiceDefault').value = data.voiceAiMonthlyLimit || 5;
+	cachedVoiceAiMonthlyLimit = data.voiceAiMonthlyLimit || 5;
 	document.getElementById('quotaClinicDefault').value = data.clinicAiMonthlyLimit || 30;
 	document.getElementById('quotaCareAlertDefault').value = data.careAlertMonthlyLimit || 10;
 	const meta = document.getElementById('quotaDefaultMeta');
@@ -131,15 +122,15 @@ async function loadQuotaUsers() {
 	const body = document.getElementById('quotaUserBody');
 	body.innerHTML = '';
 	if (!list.length) {
-		body.innerHTML = '<tr><td colspan="11" style="color:#64748b;">暂无用户</td></tr>';
+		body.innerHTML = '<tr><td colspan="9" style="color:#64748b;">暂无用户</td></tr>';
 	} else {
 		list.forEach(function(row) {
 			const tr = document.createElement('tr');
+			// 行内保留 voiceAi 当前上限，保存时原样回传（UI 不展示/不编辑喂养额度）
+			const voiceLimit = (row.voiceAi && row.voiceAi.limit != null) ? row.voiceAi.limit : cachedVoiceAiMonthlyLimit;
+			tr.dataset.voiceLimit = String(voiceLimit);
 			tr.innerHTML =
 				'<td>' + escapeHtml(row.deviceNo) + '</td>' +
-				'<td>' + (row.voiceAi && row.voiceAi.used != null ? row.voiceAi.used : 0) + '</td>' +
-				'<td><input type="number" min="1" step="1" class="voice-limit" value="' +
-					(row.voiceAi && row.voiceAi.limit != null ? row.voiceAi.limit : '') + '" /></td>' +
 				'<td>' + (row.clinicAi && row.clinicAi.used != null ? row.clinicAi.used : 0) + '</td>' +
 				'<td><input type="number" min="1" step="1" class="clinic-limit" value="' +
 					(row.clinicAi && row.clinicAi.limit != null ? row.clinicAi.limit : '') + '" /></td>' +
@@ -166,11 +157,11 @@ async function loadQuotaUsers() {
 }
 
 async function saveQuotaRow(wxId, tr) {
-	const voiceVal = parseInt(tr.querySelector('.voice-limit').value, 10);
+	const voiceVal = parseInt(tr.dataset.voiceLimit, 10) || cachedVoiceAiMonthlyLimit;
 	const clinicVal = parseInt(tr.querySelector('.clinic-limit').value, 10);
 	const careVal = parseInt(tr.querySelector('.care-alert-limit').value, 10);
 	if (!wxId) throw new Error('wxId 无效');
-	if (!(voiceVal > 0) || !(clinicVal > 0) || !(careVal > 0)) throw new Error('上限须为正整数');
+	if (!(clinicVal > 0) || !(careVal > 0)) throw new Error('上限须为正整数');
 	await api('/voice/admin/api/ai-quota/user', {
 		method: 'PUT',
 		body: JSON.stringify({
@@ -187,7 +178,7 @@ async function saveQuotaRow(wxId, tr) {
 document.getElementById('saveQuotaDefaultBtn').addEventListener('click', async function() {
 	try {
 		await api('/voice/admin/api/ai-quota/default', { method: 'PUT', body: JSON.stringify({
-			voiceAiMonthlyLimit: parseInt(document.getElementById('quotaVoiceDefault').value, 10) || 5,
+			voiceAiMonthlyLimit: cachedVoiceAiMonthlyLimit || 5,
 			clinicAiMonthlyLimit: parseInt(document.getElementById('quotaClinicDefault').value, 10) || 30,
 			careAlertMonthlyLimit: parseInt(document.getElementById('quotaCareAlertDefault').value, 10) || 10
 		})});

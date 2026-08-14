@@ -101,7 +101,7 @@ func NormalizeModel(model string) string {
 }
 
 // LaneProfileDTO Admin API 对外字段。
-// FreeProvider/FreeModel 可空；Sim 域可不填。
+// FreeProvider/FreeModel 可空；Sim 域可不填；voiceUnderstanding 保存时服务层强制清空 free。
 type LaneProfileDTO struct {
 	Provider     string `json:"provider"`
 	Model        string `json:"model"`

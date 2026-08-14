@@ -31,9 +31,11 @@ type CareAlertItemDTO struct {
 }
 
 // DeviceCareAlertDailyReq GET 宝宝日护理留意列表。
+// force=1（或 true）时删除当日 Redis 日缓存后重新生成；仍须 App 鉴权注入 wxId>0。
 type DeviceCareAlertDailyReq struct {
-	g.Meta   `path:"/device/api/care-alert/daily" method:"get" tags:"device" summary:"护理留意日列表"`
+	g.Meta   `path:"/device/api/care-alert/daily" method:"get" tags:"device" summary:"护理留意日列表（可选 force 强刷）"`
 	DeviceNo string `json:"deviceNo" p:"deviceNo" v:"required" dc:"设备号（宝宝维度）"`
+	Force    string `json:"force" p:"force" dc:"强刷：1/true 时清当日缓存后重生"`
 }
 
 // DeviceCareAlertDailyRes 日列表 data（经 MiddlewareHandlerResponse 包为 envelope）。

@@ -28,11 +28,9 @@
 		<p class="hint-box">同一 <code>provider+model</code> 的多条 lane 共享 Redis 并发闸门池。保存时三域 API 并行提交；某域失败不影响其它域已成功的部分（请查看下方分域结果）。</p>
 		<h3 style="margin:0 0 12px;font-size:16px;">Voice（3）</h3>
 		<div class="lane-block" id="blockVu">
-			<h4>voiceUnderstanding（喂养 LLM）</h4>
+			<h4>喂养默认智能体（voiceUnderstanding）</h4>
 			<div class="field"><label>Provider</label><select id="vuProvider"></select></div>
 			<div class="field"><label>Model</label><select id="vuModel"></select></div>
-			<div class="field"><label>额度不足 Provider</label><select id="vuFreeProvider"><option value="">（空=Python自选）</option></select></div>
-			<div class="field"><label>额度不足 Model</label><select id="vuFreeModel"><option value="">（空=Python自选）</option></select></div>
 			<div class="field"><label>maxInFlight</label><input id="vuInFlight" type="number" min="1" step="1" /></div>
 			<div class="field"><label>maxWaiters</label><input id="vuWaiters" type="number" min="0" step="1" /></div>
 		</div>
@@ -193,7 +191,8 @@ async function loadAll() {
 		api('/sim/admin/api/llm-lanes')
 	]);
 	voiceAllowlist = voice.allowlist || {};
-	setLane('vu', voiceAllowlist, voice.voiceUnderstanding || {}, true);
+	// VU 不再配置 free：仅正式模 + 并发
+	setLane('vu', voiceAllowlist, voice.voiceUnderstanding || {}, false);
 	setLane('cl', voiceAllowlist, voice.clinic || {}, true);
 	setLane('ca', voiceAllowlist, voice.careAlert || {}, true);
 	ucgProviderModels = ucg.providerModels || {};
@@ -219,7 +218,8 @@ async function saveAll() {
 	const msgs = [];
 	try {
 		const voiceBody = {
-			voiceUnderstanding: laneBody('vu', true),
+			// VU 保存体不提交 free（laneBody 第二参 false）
+			voiceUnderstanding: laneBody('vu', false),
 			clinic: laneBody('cl', true),
 			careAlert: laneBody('ca', true),
 			updatedBy: 'ai-model-admin.html'

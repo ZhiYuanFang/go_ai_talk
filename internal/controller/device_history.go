@@ -2,7 +2,6 @@ package controller
 
 import (
 	"context"
-	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -11,14 +10,11 @@ import (
 	v2 "hello/api/v2"
 	"hello/internal/model/entity"
 	contracts "hello/internal/services/contracts"
-	"hello/internal/services/gatewayapp"
 	histsvc "hello/internal/services/history"
-	voice "hello/internal/services/voice"
 	"hello/internal/shared/eventlogo"
 
 	"github.com/gogf/gf/v2/errors/gcode"
 	"github.com/gogf/gf/v2/errors/gerror"
-	"github.com/gogf/gf/v2/net/ghttp"
 )
 
 // HistoryCtrl 设备历史 / 建议 / 生日 API。
@@ -185,74 +181,6 @@ func (c *HistoryCtrl) BirthdaySave(ctx context.Context, req *v1.DeviceHistoryBir
 		return nil, err
 	}
 	return &v1.DeviceHistoryBirthdaySaveRes{}, nil
-}
-
-// Chat 文本触发智能对话（不走 STT/TTS）。
-func (c *HistoryCtrl) Chat(ctx context.Context, req *v1.DeviceHistoryChatReq) (res *v1.DeviceHistoryChatRes, err error) {
-	deviceNo := strings.TrimSpace(req.DeviceNo)
-	transcript := strings.TrimSpace(req.Transcript)
-	if deviceNo == "" {
-		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "deviceNo 不能为空")
-	}
-	if transcript == "" {
-		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "transcript 不能为空")
-	}
-	wxID := int64(0)
-	if r := ghttp.RequestFromCtx(ctx); r != nil {
-		wxID = voice.ParseHeaderWxID(r.GetHeader(gatewayapp.HeaderInternalWxId))
-	}
-	reply, err := histsvc.DelegateTextChat(ctx, deviceNo, transcript, wxID)
-	if err != nil {
-		return nil, err
-	}
-	return &v1.DeviceHistoryChatRes{Reply: reply}, nil
-}
-
-// ChatStream 流式文本对话（SSE）：thinking 实时推送，落地后推送业务 Reply 为 answer。
-func (c *HistoryCtrl) ChatStream(ctx context.Context, req *v1.DeviceHistoryChatStreamReq) (res *v1.DeviceHistoryChatStreamRes, err error) {
-	deviceNo := strings.TrimSpace(req.DeviceNo)
-	transcript := strings.TrimSpace(req.Transcript)
-	if deviceNo == "" {
-		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "deviceNo 不能为空")
-	}
-	if transcript == "" {
-		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "transcript 不能为空")
-	}
-	r := ghttp.RequestFromCtx(ctx)
-	if r == nil {
-		return nil, gerror.NewCode(gcode.CodeInternalError, "HTTP 请求上下文缺失")
-	}
-	wxID := int64(0)
-	wxID = voice.ParseHeaderWxID(r.GetHeader(gatewayapp.HeaderInternalWxId))
-	// 1. 设置 SSE 响应头
-	var rw http.ResponseWriter = r.Response.Writer
-	rw.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
-	rw.Header().Set("Cache-Control", "no-cache, no-transform")
-	rw.Header().Set("Connection", "keep-alive")
-	rw.Header().Set("X-Accel-Buffering", "no")
-	rw.WriteHeader(http.StatusOK)
-	if flusher, ok := rw.(http.Flusher); ok {
-		flusher.Flush()
-	}
-	// 2. 委派流式对话到 voice 服务：thinking 实时转发；业务 Reply 在结束后写入 answer
-	reply, streamErr := histsvc.DelegateTextChatStream(ctx, deviceNo, transcript, wxID, &contracts.IntentStreamCallback{
-		OnThinking: func(delta string) error {
-			return writeSSEEvent(rw, "thinking", delta)
-		},
-	})
-	// 3. 错误处理与业务话术
-	if streamErr != nil {
-		_ = writeSSEEvent(rw, "error", "AI服务暂时不可用，请稍后再试")
-	}
-	if strings.TrimSpace(reply) != "" {
-		_ = writeSSEEvent(rw, "answer", reply)
-	}
-	// 4. 结束标记
-	_, _ = rw.Write([]byte("data: [DONE]\n\n"))
-	if flusher, ok := rw.(http.Flusher); ok {
-		flusher.Flush()
-	}
-	return nil, nil
 }
 
 // EventAdd 手动新增历史事件。

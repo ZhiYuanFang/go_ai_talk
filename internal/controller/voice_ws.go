@@ -56,6 +56,9 @@ func voiceChatWS(r *ghttp.Request) {
 	deviceNo := ""
 	started := false
 	meta := voice.AudioMeta{}
+	// 会话 I/O 模态：缺省 audio/audio，与横屏兼容；文模式仍要求 start 带音频占位字段。
+	inputModality := "audio"
+	outputModality := "audio"
 	var streamASR voice.StreamASRSession
 	var audioBuffer bytes.Buffer
 	defer func() {
@@ -118,6 +121,121 @@ func voiceChatWS(r *ghttp.Request) {
 		dropAudioAfterInterrupt = false
 		droppedAudioChunks = 0
 	}
+	// runIntentFromTranscript 硬件特权意图流 + answer；requireWaitEnd 为音入轮次结束后等 end，文入可连续多轮。
+	runIntentFromTranscript := func(transcript string, requireWaitEnd bool) {
+		var (
+			ask        string
+			answer     string
+			exit       bool
+			finishTalk bool
+			pErr       error
+		)
+		chatCtx := voice.WithModelPrivilege(voice.WithVoiceWxID(ctx, headerWxID), voice.PrivilegeHardware)
+		// 流式意图：下发 thinking_delta / answer；outputModality=audio 时再走 TTS，text 时跳过音频帧。
+		streamRes, streamErr := voice.Voice().HandleTranscriptForIntentStream(
+			chatCtx,
+			deviceNo,
+			transcript,
+			&contracts.IntentStreamCallback{
+				OnThinking: func(delta string) error {
+					if strings.TrimSpace(delta) == "" {
+						return nil
+					}
+					payload, _ := json.Marshal(map[string]interface{}{
+						"type":  "thinking_delta",
+						"code":  0,
+						"delta": delta,
+					})
+					return safeWriteMessage(1, payload)
+				},
+			},
+		)
+		pErr = streamErr
+		if streamRes != nil {
+			ask = streamRes.Ask
+			answer = streamRes.Reply
+			exit = streamRes.Exit
+			finishTalk = streamRes.FinishTalk
+		}
+		if pErr == nil && !exit {
+			if strings.TrimSpace(answer) != "" {
+				ansPayload, _ := json.Marshal(map[string]interface{}{
+					"type":        "answer",
+					"code":        0,
+					"text":        answer,
+					"ask":         ask,
+					"finish_talk": finishTalk,
+				})
+				_ = safeWriteMessage(1, ansPayload)
+			}
+			if outputModality == "audio" {
+				seq := 0
+				_, pErr = voice.Voice().StreamReplyWithBaiduTTS(ctx, meta, answer, func(chunk []byte, chunkMeta voice.AudioMeta, chunkSeq int) error {
+					seq = chunkSeq
+					glog.Infof(ctx, "[TTS下发] 发送音频分片。deviceNo=%s seq=%d audioBytes=%d sampleRate=%d", deviceNo, chunkSeq, len(chunk), chunkMeta.SampleRate)
+					payload, _ := json.Marshal(map[string]interface{}{
+						"type":       "audio_chunk",
+						"audio":      base64.StdEncoding.EncodeToString(chunk),
+						"sampleRate": chunkMeta.SampleRate,
+						"seq":        chunkSeq,
+						"streaming":  true,
+					})
+					return safeWriteMessage(1, payload)
+				})
+				if pErr == nil {
+					glog.Infof(ctx, "[TTS下发] 发送音频结束。deviceNo=%s chunks=%d finishTalk=%v", deviceNo, seq, finishTalk)
+					endPayload, _ := json.Marshal(map[string]interface{}{
+						"type":        "audio_end",
+						"code":        0,
+						"exit":        false,
+						"finish_talk": finishTalk,
+						"streaming":   true,
+						"chunks":      seq,
+					})
+					_ = safeWriteMessage(1, endPayload)
+				}
+			} else {
+				glog.Infof(ctx, "[语音WS] outputModality=text，跳过 TTS。deviceNo=%s answerLen=%d", deviceNo, utf8.RuneCountInString(strings.TrimSpace(answer)))
+			}
+		}
+		if pErr != nil {
+			var qErr *voice.VoiceAIQuotaError
+			if errors.As(pErr, &qErr) && qErr != nil {
+				writeWSErrorCode(safeWriteMessage, qErr.Code, qErr.Message)
+			} else {
+				safeWriteWSError("service", pErr.Error())
+			}
+			resetStreamBuffers()
+			resetStreamASRUntilNextValid()
+			resetRealtimeState(true)
+			return
+		}
+		if exit {
+			exitPayload, _ := json.Marshal(map[string]interface{}{
+				"type": "exit",
+				"code": 0,
+				"exit": true,
+			})
+			_ = safeWriteMessage(1, exitPayload)
+			resetStreamBuffers()
+			resetStreamASRUntilNextValid()
+			resetRealtimeState(true)
+			return
+		}
+		if talkErr := voice.DeviceAdmin().UpdateLastTalk(ctx, deviceNo, ask, answer); talkErr != nil {
+			safeWriteWSError("service", talkErr.Error())
+			resetStreamBuffers()
+			resetStreamASRUntilNextValid()
+			resetRealtimeState(true)
+			return
+		}
+		if requireWaitEnd {
+			waitEndAfterCommit = true
+		}
+		resetStreamBuffers()
+		resetStreamASRUntilNextValid()
+		resetRealtimeState(true)
+	}
 	runStreamCommit := func(trigger string) {
 		// commit 统一收口：ASR 提交 -> 对话处理 -> TTS 下发 -> 状态重置。
 		// processStartAt := time.Now()
@@ -174,118 +292,7 @@ func voiceChatWS(r *ghttp.Request) {
 			resetRealtimeState(true)
 			return
 		}
-		var (
-			ask        string
-			answer     string
-			exit       bool
-			finishTalk bool
-			pErr       error
-		)
-		chatCtx := voice.WithModelPrivilege(voice.WithVoiceWxID(ctx, headerWxID), voice.PrivilegeHardware)
-		// 流式意图：全局下发 thinking_delta / answer（无 features 门控）；再走既有 TTS。
-		streamRes, streamErr := voice.Voice().HandleTranscriptForIntentStream(
-			chatCtx,
-			deviceNo,
-			transcript,
-			&contracts.IntentStreamCallback{
-				OnThinking: func(delta string) error {
-					if strings.TrimSpace(delta) == "" {
-						return nil
-					}
-					payload, _ := json.Marshal(map[string]interface{}{
-						"type":  "thinking_delta",
-						"code":  0,
-						"delta": delta,
-					})
-					return safeWriteMessage(1, payload)
-				},
-			},
-		)
-		pErr = streamErr
-		if streamRes != nil {
-			ask = streamRes.Ask
-			answer = streamRes.Reply
-			exit = streamRes.Exit
-			finishTalk = streamRes.FinishTalk
-		}
-		if pErr == nil && !exit {
-			if strings.TrimSpace(answer) != "" {
-				ansPayload, _ := json.Marshal(map[string]interface{}{
-					"type":        "answer",
-					"code":        0,
-					"text":        answer,
-					"ask":         ask,
-					"finish_talk": finishTalk,
-				})
-				_ = safeWriteMessage(1, ansPayload)
-			}
-			seq := 0
-			_, pErr = voice.Voice().StreamReplyWithBaiduTTS(ctx, meta, answer, func(chunk []byte, chunkMeta voice.AudioMeta, chunkSeq int) error {
-				seq = chunkSeq
-				glog.Infof(ctx, "[TTS下发] 发送音频分片。deviceNo=%s seq=%d audioBytes=%d sampleRate=%d", deviceNo, chunkSeq, len(chunk), chunkMeta.SampleRate)
-				payload, _ := json.Marshal(map[string]interface{}{
-					"type":       "audio_chunk",
-					"audio":      base64.StdEncoding.EncodeToString(chunk),
-					"sampleRate": chunkMeta.SampleRate,
-					"seq":        chunkSeq,
-					"streaming":  true,
-				})
-				return safeWriteMessage(1, payload)
-			})
-			if pErr == nil {
-				glog.Infof(ctx, "[TTS下发] 发送音频结束。deviceNo=%s chunks=%d finishTalk=%v", deviceNo, seq, finishTalk)
-				endPayload, _ := json.Marshal(map[string]interface{}{
-					"type":        "audio_end",
-					"code":        0,
-					"exit":        false,
-					"finish_talk": finishTalk,
-					"streaming":   true,
-					"chunks":      seq,
-				})
-				_ = safeWriteMessage(1, endPayload)
-			}
-		}
-		if pErr != nil {
-			var qErr *voice.VoiceAIQuotaError
-			if errors.As(pErr, &qErr) && qErr != nil {
-				writeWSErrorCode(safeWriteMessage, qErr.Code, qErr.Message)
-			} else {
-				safeWriteWSError("service", pErr.Error())
-			}
-			resetStreamBuffers()
-			resetStreamASRUntilNextValid()
-			resetRealtimeState(true)
-			return
-		}
-		if exit {
-			// glog.Infof(ctx, "[语音WS][关键节点] commit命中退出意图。deviceNo=%s", deviceNo)
-			exitPayload, _ := json.Marshal(map[string]interface{}{
-				"type": "exit",
-				"code": 0,
-				"exit": true,
-			})
-			_ = safeWriteMessage(1, exitPayload)
-			resetStreamBuffers()
-			resetStreamASRUntilNextValid()
-			resetRealtimeState(true)
-			return
-		}
-
-		if talkErr := voice.DeviceAdmin().UpdateLastTalk(ctx, deviceNo, ask, answer); talkErr != nil {
-			// glog.Warningf(ctx, "[语音WS] 对话记录落库失败。deviceNo=%s error=%v", deviceNo, talkErr)
-			safeWriteWSError("service", talkErr.Error())
-			resetStreamBuffers()
-			resetStreamASRUntilNextValid()
-			resetRealtimeState(true)
-			return
-		}
-		// glog.Infof(ctx, "[语音WS][关键节点] commit处理完成并已下发音频。deviceNo=%s askLen=%d answerLen=%d ttsBytes=%d cost=%s", deviceNo, utf8.RuneCountInString(strings.TrimSpace(ask)), utf8.RuneCountInString(strings.TrimSpace(answer)), len(audio), time.Since(processStartAt))
-		waitEndAfterCommit = true
-		// 本轮已结束，后续音频需等待前端 end/start 开启下一轮。
-		// glog.Infof(ctx, "[语音WS][关键节点] 已进入等待end状态。deviceNo=%s reason=commit_finished", deviceNo)
-		resetStreamBuffers()
-		resetStreamASRUntilNextValid()
-		resetRealtimeState(true)
+		runIntentFromTranscript(transcript, true)
 	}
 	triggerRealtimeTranslate := func(_ string, text string) {
 		if !streamMode {
@@ -460,6 +467,8 @@ func voiceChatWS(r *ghttp.Request) {
 					voice.VoiceWSManager().Unregister(deviceNo, ws)
 				}
 				deviceNo = startMsg.DeviceNo
+				inputModality = startMsg.InputModality
+				outputModality = startMsg.OutputModality
 				meta = voice.AudioMeta{
 					SampleRate: startMsg.SampleRate,
 					Bits:       startMsg.Bits,
@@ -483,17 +492,20 @@ func voiceChatWS(r *ghttp.Request) {
 				lastNoASRWarnChunk = 0
 				asrWaitStartAt = time.Time{}
 				resetRealtimeState(true)
-				if streamMode {
+				// 文输入不建 ASR；音输入保持原 stream ASR 懒建连。
+				if inputModality == "audio" && streamMode {
 					resetStreamASRUntilNextValid()
-					glog.Infof(ctx, "[语音WS][关键节点] stream会话启动。deviceNo=%s", deviceNo)
+					glog.Infof(ctx, "[语音WS][关键节点] stream会话启动。deviceNo=%s input=%s output=%s", deviceNo, inputModality, outputModality)
 					glog.Infof(ctx, "[语音WS] 流式模式已启动，等待首个有效音频分片后再连接百度ASR。deviceNo=%s sampleRate=%d bits=%d channels=%d", deviceNo, meta.SampleRate, meta.Bits, meta.Channels)
 				} else if streamASR != nil {
 					_ = streamASR.Close()
 					streamASR = nil
 				}
 
-				glog.Infof(ctx, "[语音WS] 已收到 start，开始接收音频。deviceNo=%s sampleRate=%d bits=%d channels=%d declaredLen=%d",
+				glog.Infof(ctx, "[语音WS] 已收到 start。deviceNo=%s input=%s output=%s sampleRate=%d bits=%d channels=%d declaredLen=%d",
 					deviceNo,
+					inputModality,
+					outputModality,
 					meta.SampleRate,
 					meta.Bits,
 					meta.Channels,
@@ -505,16 +517,45 @@ func voiceChatWS(r *ghttp.Request) {
 				if replaced != nil && replaced != ws {
 					_ = replaced.Close()
 				}
-				ack, _ := json.Marshal(map[string]interface{}{"type": "started", "code": 0, "mode": "stream"})
-				if streamMode {
+				ack, _ := json.Marshal(map[string]interface{}{
+					"type":           "started",
+					"code":           0,
+					"mode":           "stream",
+					"inputModality":  inputModality,
+					"outputModality": outputModality,
+				})
+				if inputModality == "audio" && streamMode {
 					glog.Infof(ctx, "[语音WS] 实时翻译配置已生效。deviceNo=%s debounce=%s minRunes=%d", deviceNo, realtimeDebounce, realtimeMinRunes)
 				}
 				_ = safeWriteMessage(1, ack)
 				continue
 
+			case "text":
+				// 文输入：跳过 ASR，直接进意图；须 start 且 inputModality=text。
+				if !started {
+					safeWriteWSError("state", "请先发送 start")
+					continue
+				}
+				if inputModality != "text" {
+					safeWriteWSError("state", "当前会话 inputModality 不是 text，请在 start 中声明")
+					continue
+				}
+				tm, tErr := parseTextMessage(msg)
+				if tErr != nil {
+					safeWriteWSError("validate", tErr.Error())
+					continue
+				}
+				glog.Infof(ctx, "[语音WS][关键节点] 收到 text 帧。deviceNo=%s textLen=%d output=%s", deviceNo, utf8.RuneCountInString(tm.Text), outputModality)
+				runIntentFromTranscript(tm.Text, false)
+				continue
+
 			case "commit":
 				if !started {
 					safeWriteWSError("state", "请先发送 start")
+					continue
+				}
+				if inputModality == "text" {
+					safeWriteWSError("unsupported", "文输入会话请发送 text 帧，勿使用 commit")
 					continue
 				}
 				if !streamMode {
@@ -574,6 +615,10 @@ func voiceChatWS(r *ghttp.Request) {
 		}
 		if !started {
 			safeWriteWSError("state", "请先发送 start，再发送二进制音频")
+			continue
+		}
+		if inputModality == "text" {
+			safeWriteWSError("state", "文输入会话不接受 PCM，请发送 text 帧")
 			continue
 		}
 		if streamMode && waitEndAfterCommit {

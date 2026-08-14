@@ -6,8 +6,6 @@ import (
 	"os"
 	"strings"
 
-	histsvc "hello/internal/services/history"
-
 	"github.com/gogf/gf/v2/os/glog"
 )
 
@@ -64,37 +62,27 @@ func NewChatHandler(deviceNo string) *ChatHandler {
 }
 
 // Handle 执行 chat 工具调用。
-// 流程：
-//  1. 从 arguments 取 transcript 并 trim；
-//  2. 空串直接返回 tool error，不发起下游调用；
-//  3. 调用 histsvc.DelegateTextChat（进程内函数，内部经 HTTP 委派 voice-service）；
-//  4. 成功返回 reply 文本；失败返回 tool error 并记录日志。
-//
-// wxID 固定传 0：MCP 接入点绑定单设备，不参与 wx 维度 AI 额度校验。
+// 流程：校验 transcript → 经 /voice/chat/ws 文模式对话 → 返回 answer。
 func (h *ChatHandler) Handle(ctx context.Context, arguments map[string]any) *ToolsCallResult {
 	transcript := readTranscriptArg(arguments)
 	if transcript == "" {
-		// 参数校验失败：不发起下游调用，直接返回 tool error。
 		return NewErrorCallResult("transcript 不能为空")
 	}
 	glog.Infof(ctx, "小智设备号：%s", arguments["xzDeviceNo"])
-	reply, err := histsvc.DelegateTextChat(ctx, h.deviceNo, transcript, 0)
+	reply, err := ChatViaVoiceWS(ctx, h.deviceNo, transcript)
 	if err != nil {
-		// 下游失败：记录原始错误并返回 tool error，避免暴露内部细节给小智。
-		// 附带本进程 secret 长度与目标 URL 便于排查「内部接口未授权」类问题：
-		// 该错误说明 mcp-service 与 voice-service 的 DEVICE_GATEWAY_INTERNAL_SECRET 不一致，
-		// 或 VOICE_SERVICE_URL 指向了非预期的 voice-service 实例。
-		secretLen := len(strings.TrimSpace(os.Getenv("DEVICE_GATEWAY_INTERNAL_SECRET")))
-		voiceURL := os.Getenv("VOICE_SERVICE_URL")
-		glog.Errorf(ctx, "[mcp-bridge] chat failed deviceNo=%s secretLen=%d voiceURL=%s err=%v",
-			h.deviceNo, secretLen, voiceURL, err)
+		wsURL := os.Getenv("VOICE_CHAT_WS_URL")
+		if strings.TrimSpace(wsURL) == "" {
+			wsURL = os.Getenv("VOICE_SERVICE_URL")
+		}
+		glog.Errorf(ctx, "[mcp-bridge] chat WS failed deviceNo=%s voiceURL=%s err=%v",
+			h.deviceNo, wsURL, err)
 		return NewErrorCallResult(fmt.Sprintf("对话失败：%v", err))
 	}
 	return NewTextCallResult(reply)
 }
 
 // readTranscriptArg 从 arguments 提取 transcript 字符串并 trim。
-// 兼容 number / bool 等类型被错误传入的场景，统一转字符串后 trim。
 func readTranscriptArg(arguments map[string]any) string {
 	if arguments == nil {
 		return ""
@@ -107,13 +95,11 @@ func readTranscriptArg(arguments map[string]any) string {
 	case string:
 		return strings.TrimSpace(v)
 	default:
-		// 非字符串类型尝试 fmt 转字符串后 trim，避免 panic。
 		return strings.TrimSpace(fmt.Sprintf("%v", v))
 	}
 }
 
 // ListTools 返回本服务暴露的工具列表（用于 tools/list 响应）。
-// 当前仅 chat 一个工具。
 func ListTools() []ToolDefinition {
 	return []ToolDefinition{
 		{

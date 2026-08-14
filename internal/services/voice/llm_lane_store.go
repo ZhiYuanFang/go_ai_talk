@@ -244,6 +244,7 @@ type LLMLanesAdminDTO struct {
 }
 
 // GetLLMLanesForAdmin 读取三条 voice lane 当前配置。
+// 业务说明：voiceUnderstanding（喂养默认智能体）对外不再暴露 free 字段，即使库中残留亦清空返回。
 func GetLLMLanesForAdmin(ctx context.Context) (LLMLanesAdminDTO, error) {
 	store := NewVoiceLLMLaneStore()
 	vu, err := store.Load(ctx, aimodel.LaneVoiceUnderstanding)
@@ -258,8 +259,12 @@ func GetLLMLanesForAdmin(ctx context.Context) (LLMLanesAdminDTO, error) {
 	if err != nil {
 		return LLMLanesAdminDTO{}, err
 	}
+	vuDTO := profileToDTO(vu)
+	// 喂养 lane 已取消额度不足 free 模型：Admin GET 强制空串，避免前端误展示
+	vuDTO.FreeProvider = ""
+	vuDTO.FreeModel = ""
 	return LLMLanesAdminDTO{
-		VoiceUnderstanding: profileToDTO(vu),
+		VoiceUnderstanding: vuDTO,
 		Clinic:             profileToDTO(cl),
 		CareAlert:          profileToDTO(ca),
 		Allowlist:          buildProviderAllowlist(),
@@ -287,8 +292,12 @@ func buildProviderAllowlist() map[string][]string {
 	return out
 }
 
-// UpdateLLMLanesForAdmin 校验并持久化 Admin PUT（含 careAlert 与 free）。
+// UpdateLLMLanesForAdmin 校验并持久化 Admin PUT（含 careAlert；clinic/careAlert 可带 free）。
+// 业务说明：voiceUnderstanding 忽略入参中的 freeProvider/freeModel，强制落库为空（喂养仅用正式模）。
 func UpdateLLMLanesForAdmin(ctx context.Context, vu, clinic, careAlert aimodel.LaneProfileDTO, updatedBy string) error {
+	// 喂养默认智能体：忽略客户端 free 入参，持久化前强制清空
+	vu.FreeProvider = ""
+	vu.FreeModel = ""
 	if err := validateLaneDTO(aimodel.LaneVoiceUnderstanding, vu); err != nil {
 		return err
 	}
@@ -320,6 +329,8 @@ func UpdateLLMLanesForAdmin(ctx context.Context, vu, clinic, careAlert aimodel.L
 	return nil
 }
 
+// validateLaneDTO 校验单条 lane 的 provider/model/并发；clinic/careAlert 另校验 free 成对与 allowlist。
+// Args: lane 目标 lane；dto Admin 入参（VU 调用前须已清空 free）。
 func validateLaneDTO(lane aimodel.Lane, dto aimodel.LaneProfileDTO) error {
 	provider := aimodel.Provider(strings.TrimSpace(dto.Provider))
 	if provider == "" {
@@ -328,14 +339,17 @@ func validateLaneDTO(lane aimodel.Lane, dto aimodel.LaneProfileDTO) error {
 	if !aimodel.IsAllowedModel(provider, dto.Model) {
 		return fmt.Errorf("%s: model 不在 allowlist", lane)
 	}
-	fp := strings.TrimSpace(dto.FreeProvider)
-	fm := strings.TrimSpace(dto.FreeModel)
-	if fp != "" || fm != "" {
-		if fp == "" || fm == "" {
-			return fmt.Errorf("%s: freeProvider 与 freeModel 须同时为空或同时非空", lane)
-		}
-		if !aimodel.IsAllowedModel(aimodel.Provider(fp), fm) {
-			return fmt.Errorf("%s: free model 不在 allowlist", lane)
+	// voiceUnderstanding 不接受 free：跳过校验（入参已在 Update 入口强制清空）
+	if lane != aimodel.LaneVoiceUnderstanding {
+		fp := strings.TrimSpace(dto.FreeProvider)
+		fm := strings.TrimSpace(dto.FreeModel)
+		if fp != "" || fm != "" {
+			if fp == "" || fm == "" {
+				return fmt.Errorf("%s: freeProvider 与 freeModel 须同时为空或同时非空", lane)
+			}
+			if !aimodel.IsAllowedModel(aimodel.Provider(fp), fm) {
+				return fmt.Errorf("%s: free model 不在 allowlist", lane)
+			}
 		}
 	}
 	if dto.MaxInFlight < 1 {
@@ -347,13 +361,22 @@ func validateLaneDTO(lane aimodel.Lane, dto aimodel.LaneProfileDTO) error {
 	return nil
 }
 
+// upsertLLMLaneRow 将 lane 配置写入 llm_lane_config（Save 语义：存在则更新）。
+// Side Effects: 写 DB；VU 的 free 列应由调用方保证为空。
 func upsertLLMLaneRow(ctx context.Context, lane aimodel.Lane, dto aimodel.LaneProfileDTO, now int64, updatedBy string) error {
+	freeProvider := strings.TrimSpace(dto.FreeProvider)
+	freeModel := strings.TrimSpace(dto.FreeModel)
+	// 防御性再清一次：喂养 lane 永不持久化 free
+	if lane == aimodel.LaneVoiceUnderstanding {
+		freeProvider = ""
+		freeModel = ""
+	}
 	_, err := g.DB().Model(llmLaneConfigTable).Ctx(ctx).Data(g.Map{
 		"lane":          string(lane),
 		"provider":      strings.TrimSpace(dto.Provider),
 		"model":         strings.TrimSpace(dto.Model),
-		"free_provider": strings.TrimSpace(dto.FreeProvider),
-		"free_model":    strings.TrimSpace(dto.FreeModel),
+		"free_provider": freeProvider,
+		"free_model":    freeModel,
 		"max_in_flight": dto.MaxInFlight,
 		"max_waiters":   dto.MaxWaiters,
 		"updated_at":    now,

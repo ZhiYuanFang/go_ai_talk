@@ -1351,7 +1351,7 @@ docker network create go-ai-talk-test-net 2>/dev/null || true
 
 ## E. mcp-service（小智 MCP 接入服务）
 
-mcp-service 是小智 AI 平台（xiaozhi.me）MCP 接入点桥接进程：作为 MCP Server 通过 WebSocket 主动拨号连接 `wss://api.xiaozhi.me/mcp/?token=<XIAOZHI_MCP_TOKEN>`，向小智暴露 `chat` 工具；小智调用 `chat` 时，本进程经 `histsvc.DelegateTextChat` 以 HTTP 委派 voice-service 完成文本对话并返回回复。
+mcp-service 是小智 AI 平台（xiaozhi.me）MCP 接入点桥接进程：作为 MCP Server 通过 WebSocket 主动拨号连接 `wss://api.xiaozhi.me/mcp/?token=<XIAOZHI_MCP_TOKEN>`，向小智暴露 `baby_feeding_advisor` 工具；小智调用该工具时，本进程连接 voice-service 的 **`/voice/chat/ws` 文模式**（`inputModality=text` / `outputModality=text`）完成一轮喂养对话并返回 `answer`。
 
 **与其他服务的差异**：
 
@@ -1373,8 +1373,10 @@ mcp-service 是小智 AI 平台（xiaozhi.me）MCP 接入点桥接进程：作�
 | `XIAOZHI_MCP_BASE_URL` | 否 | 接入点基址，默认 `wss://api.xiaozhi.me/mcp/` |
 | `XIAOZHI_MCP_RECONNECT_MIN_MS` | 否 | 重连初始退避，默认 2000 |
 | `XIAOZHI_MCP_RECONNECT_MAX_MS` | 否 | 重连退避上限，默认 60000 |
-| `VOICE_SERVICE_URL` | 是 | voice-service 基址（compose 内 `http://voice-service:9802`） |
-| `DEVICE_GATEWAY_INTERNAL_SECRET` | 是 | 内部 HTTP 鉴权密钥，须与 voice-service / history-service 一致 |
+| `VOICE_SERVICE_URL` | 是* | voice-service HTTP 基址；未设 `VOICE_CHAT_WS_URL` 时用于推导 `ws(s)://…/voice/chat/ws`（compose 内 `http://voice-service:9802`） |
+| `VOICE_CHAT_WS_URL` | 否 | 直接指定喂养 chat WS 完整 URL（优先于从 `VOICE_SERVICE_URL` 推导） |
+
+\*喂养对话改经 WS 后，mcp-service **不再**依赖 `DEVICE_GATEWAY_INTERNAL_SECRET` 调 internal text HTTP。
 
 **启动校验**：`XIAOZHI_MCP_TOKEN` 或 `XIAOZHI_MCP_DEVICE_NO` 为空时进程 fail-fast 退出（非 0），不进入重连循环。
 
@@ -1386,10 +1388,10 @@ mcp-service 是小智 AI 平台（xiaozhi.me）MCP 接入点桥接进程：作�
 | `[mcp-bridge] dialing` | 正在拨号连接小智接入点（token 已脱敏） |
 | `[mcp-bridge] connected` | 连接建立，进入读循环 |
 | `[mcp-bridge] reconnect in` | 即将重连，等待时长 |
-| `[mcp-bridge] chat failed` | chat 工具调用下游失败 |
+| `[mcp-bridge] chat WS failed` | 喂养工具经 chat WS 失败 |
 | `[mcp-service] shutdown` | 收到 SIGTERM 优雅退出 |
 
-**本地联调**：mcp-service 不映射宿主机端口，启动后通过 `docker logs go-ai-talk-mcp-service -f` 观察日志；小智控制台配置好 MCP 接入点后，对智能体发起对话即可触发本服务 `chat` 工具。
+**本地联调**：mcp-service 不映射宿主机端口，启动后通过 `docker logs go-ai-talk-mcp-service -f` 观察日志；小智控制台配置好 MCP 接入点后，对智能体发起对话即可触发本服务喂养工具。
 
 ---
 

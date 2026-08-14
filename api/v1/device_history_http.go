@@ -95,28 +95,6 @@ type DeviceHistoryBirthdaySaveReq struct {
 // DeviceHistoryBirthdaySaveRes 保存成功（无额外字段）。
 type DeviceHistoryBirthdaySaveRes struct{}
 
-// DeviceHistoryChatReq 文本对话（不走 STT/TTS）。
-type DeviceHistoryChatReq struct {
-	g.Meta     `path:"/device/history/api/chat" method:"post" tags:"device" summary:"设备文本对话"`
-	DeviceNo   string `json:"deviceNo" dc:"设备号"`
-	Transcript string `json:"transcript" dc:"文本输入"`
-}
-
-// DeviceHistoryChatRes 文本对话结果。
-type DeviceHistoryChatRes struct {
-	Reply string `json:"reply"`
-}
-
-// DeviceHistoryChatStreamReq 流式文本对话请求（SSE 返回 thinking/answer）。
-type DeviceHistoryChatStreamReq struct {
-	g.Meta     `path:"/device/history/api/chat/stream" method:"post" tags:"device" summary:"设备文本对话（流式SSE）"`
-	DeviceNo   string `json:"deviceNo" v:"required" dc:"设备号"`
-	Transcript string `json:"transcript" v:"required" dc:"文本输入"`
-}
-
-// DeviceHistoryChatStreamRes 流式文本对话响应（SSE，无固定 JSON 结构）。
-type DeviceHistoryChatStreamRes struct{}
-
 // DeviceHistoryEventAddReq 手动新增历史事件。
 type DeviceHistoryEventAddReq struct {
 	g.Meta      `path:"/device/history/api/event/add" method:"post" tags:"device" summary:"新增历史事件"`

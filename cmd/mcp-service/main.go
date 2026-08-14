@@ -8,7 +8,7 @@ package main
 //   - 构造 mcpbridge.Bridge 并阻塞运行，直到收到 SIGTERM/SIGINT。
 //
 // 本进程不连 MySQL、不监听 HTTP 端口、不依赖 Redis；仅通过 WebSocket 连接小智接入点，
-// 并经 histsvc.DelegateTextChat 以 HTTP 委派 voice-service 完成文本对话。
+// 并经 /voice/chat/ws 文模式完成文本对话（见 mcpbridge.ChatViaVoiceWS）。
 
 import (
 	"os"

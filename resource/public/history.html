@@ -87,6 +87,52 @@
         </div>
         <div id="suggestWrap" class="scroll-max-20"></div>
     </div>
+
+    <div class="card glass">
+        <div class="section-head">
+            <h3>AI 调试台</h3>
+        </div>
+        <p class="muted" style="margin:0 0 10px;">
+            使用 <strong>App 用户名密码</strong>登录（与 Hub Admin JWT 分钥）。tip / 值得留意走正式 App 接口；文字对话走 <code>/voice/chat/ws</code> 文模式（硬件通道）。登录账号绑定的设备号应与当前页一致。
+        </p>
+        <div class="meta-row" style="flex-wrap:wrap;gap:8px;align-items:center;">
+            <input id="appLoginUser" type="text" placeholder="App 用户名" autocomplete="username" style="max-width:140px;" />
+            <input id="appLoginPass" type="password" placeholder="密码" autocomplete="current-password" style="max-width:140px;" />
+            <button id="appLoginBtn" class="btn-primary" type="button">App 登录</button>
+            <button id="appLogoutBtn" class="btn-secondary" type="button">清除 App 登录</button>
+            <span id="appLoginStatus" class="muted">未登录</span>
+        </div>
+
+        <div style="margin-top:16px;display:grid;gap:14px;">
+            <div>
+                <h4 style="margin:0 0 6px;">文字对话（WS 文模式）</h4>
+                <div class="meta-row" style="gap:8px;">
+                    <input id="wsChatInput" type="text" placeholder="输入自然语言…" style="flex:1;min-width:180px;" />
+                    <button id="wsChatSendBtn" class="btn-primary" type="button">发送</button>
+                    <button id="wsChatDisconnectBtn" class="btn-secondary" type="button">断开</button>
+                </div>
+                <pre id="wsChatLog" class="scroll-max-20" style="margin-top:8px;white-space:pre-wrap;font-size:12px;background:rgba(0,0,0,.04);padding:8px;border-radius:8px;min-height:80px;"></pre>
+            </div>
+            <div>
+                <h4 style="margin:0 0 6px;">小贴士（SSE）</h4>
+                <div class="meta-row" style="gap:8px;">
+                    <input id="tipEventId" type="number" placeholder="eventId 可选" style="max-width:120px;" />
+                    <input id="tipEventName" type="text" placeholder="eventName 可选" style="max-width:160px;" />
+                    <button id="tipGenerateBtn" class="btn-primary" type="button">生成 / 强刷</button>
+                </div>
+                <pre id="tipLog" class="scroll-max-20" style="margin-top:8px;white-space:pre-wrap;font-size:12px;background:rgba(0,0,0,.04);padding:8px;border-radius:8px;min-height:80px;"></pre>
+            </div>
+            <div>
+                <h4 style="margin:0 0 6px;">值得留意（care-alert）</h4>
+                <div class="meta-row" style="gap:8px;">
+                    <button id="careAlertLoadBtn" class="btn-secondary" type="button">拉取当日</button>
+                    <button id="careAlertForceBtn" class="btn-primary" type="button">强刷 force=1</button>
+                </div>
+                <pre id="careAlertLog" class="scroll-max-20" style="margin-top:8px;white-space:pre-wrap;font-size:12px;background:rgba(0,0,0,.04);padding:8px;border-radius:8px;min-height:80px;"></pre>
+            </div>
+        </div>
+    </div>
+
     <div id="historyModal" class="modal">
         <div class="modal-card">
             <h3 id="historyModalTitle">新增历史事件</h3>
@@ -680,9 +726,181 @@
             });
         }
         applyThemeBySex(currentSex);
-        // 供语音WS调试使用：可在控制台把 ws.onmessage 代理到该方法。
-        // 示例：ws.onmessage = (evt) => window.handleVoiceWSMessage(evt.data)
-        window.handleVoiceWSMessage = onVoiceWSMessage;
+
+        // —— AI 调试台：App token 与 Admin JWT 分钥 ——
+        const APP_TOKEN_KEY = 'gatewayAppUserToken';
+        const APP_META_KEY = 'gatewayAppUserMeta';
+        function getAppToken(){ return sessionStorage.getItem(APP_TOKEN_KEY) || ''; }
+        function setAppSession(token, metaObj){
+            if(token){ sessionStorage.setItem(APP_TOKEN_KEY, token); }
+            else { sessionStorage.removeItem(APP_TOKEN_KEY); }
+            if(metaObj){ sessionStorage.setItem(APP_META_KEY, JSON.stringify(metaObj)); }
+            else { sessionStorage.removeItem(APP_META_KEY); }
+            refreshAppLoginStatus();
+        }
+        function refreshAppLoginStatus(){
+            const el = document.getElementById('appLoginStatus');
+            if(!el) return;
+            const tok = getAppToken();
+            if(!tok){ el.textContent = '未登录'; return; }
+            let metaObj = {};
+            try { metaObj = JSON.parse(sessionStorage.getItem(APP_META_KEY) || '{}'); } catch(_){}
+            const bound = (metaObj.deviceNo || '').trim();
+            let tip = '已登录 wxId=' + (metaObj.wxId || '?') + ' deviceNo=' + (bound || '（空）');
+            if(bound && deviceNo && bound !== deviceNo){
+                tip += ' ⚠ 与当前页设备不一致';
+            }
+            el.textContent = tip;
+        }
+        async function appLogin(){
+            const username = (document.getElementById('appLoginUser').value || '').trim();
+            const password = document.getElementById('appLoginPass').value || '';
+            if(!username || !password){ throw new Error('请输入用户名和密码'); }
+            const res = await fetch('/device/app/api/username_login', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({account: username, password: password})
+            });
+            const data = await res.json().catch(() => ({}));
+            if(!res.ok || data.code !== 0){
+                throw new Error(data.message || ('HTTP ' + res.status));
+            }
+            const d = data.data || {};
+            if(!d.accessToken){ throw new Error('登录响应缺少 accessToken'); }
+            setAppSession(d.accessToken, {wxId: d.wxId, deviceNo: d.deviceNo});
+            if(d.deviceNo && deviceNo && String(d.deviceNo).trim() !== deviceNo){
+                alert('登录账号绑定设备 ' + d.deviceNo + ' 与当前页 ' + deviceNo + ' 不一致，调试可能串号');
+            }
+        }
+        function appendLog(el, line){
+            if(!el) return;
+            el.textContent += line + '\n';
+            el.scrollTop = el.scrollHeight;
+        }
+        let feedWs = null;
+        async function ensureFeedWs(){
+            if(feedWs && feedWs.readyState === WebSocket.OPEN) return feedWs;
+            const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const url = proto + '//' + location.host + '/voice/chat/ws';
+            const log = document.getElementById('wsChatLog');
+            feedWs = new WebSocket(url);
+            await new Promise((resolve, reject) => {
+                const t = setTimeout(() => reject(new Error('WS 连接超时')), 15000);
+                feedWs.onopen = () => { clearTimeout(t); resolve(); };
+                feedWs.onerror = () => { clearTimeout(t); reject(new Error('WS 连接失败')); };
+            });
+            feedWs.onmessage = (ev) => {
+                try {
+                    const m = JSON.parse(ev.data);
+                    if(m.type === 'thinking_delta'){
+                        appendLog(log, '[thinking] ' + (m.delta || m.text || ''));
+                    } else if(m.type === 'answer'){
+                        appendLog(log, '[answer] ' + (m.text || ''));
+                    } else if(m.type === 'error'){
+                        appendLog(log, '[error] ' + (m.message || JSON.stringify(m)));
+                    } else if(m.type === 'started'){
+                        appendLog(log, '[started] input=' + (m.inputModality||'') + ' output=' + (m.outputModality||''));
+                    } else {
+                        appendLog(log, '[' + (m.type || '?') + '] ' + JSON.stringify(m));
+                    }
+                } catch(_){
+                    appendLog(log, String(ev.data));
+                }
+            };
+            feedWs.onclose = () => { appendLog(log, '[closed]'); feedWs = null; };
+            feedWs.send(JSON.stringify({
+                type: 'start',
+                deviceNo: deviceNo,
+                sampleRate: 16000,
+                bits: 16,
+                channels: 1,
+                length: 32000,
+                mode: 'stream',
+                inputModality: 'text',
+                outputModality: 'text'
+            }));
+            return feedWs;
+        }
+        const appLoginBtn = document.getElementById('appLoginBtn');
+        if(appLoginBtn){
+            appLoginBtn.addEventListener('click', async () => {
+                try { await appLogin(); } catch(e){ alert(e.message || e); }
+            });
+            document.getElementById('appLogoutBtn').addEventListener('click', () => setAppSession('', null));
+            document.getElementById('wsChatSendBtn').addEventListener('click', async () => {
+                const log = document.getElementById('wsChatLog');
+                const text = (document.getElementById('wsChatInput').value || '').trim();
+                if(!deviceNo){ alert('未指定设备号'); return; }
+                if(!text){ alert('请输入文本'); return; }
+                try {
+                    const ws = await ensureFeedWs();
+                    appendLog(log, '[send] ' + text);
+                    ws.send(JSON.stringify({type: 'text', text: text}));
+                    document.getElementById('wsChatInput').value = '';
+                } catch(e){ appendLog(log, '[fail] ' + (e.message || e)); }
+            });
+            document.getElementById('wsChatDisconnectBtn').addEventListener('click', () => {
+                if(feedWs){ try { feedWs.send(JSON.stringify({type:'end'})); } catch(_){} feedWs.close(); feedWs = null; }
+            });
+            document.getElementById('tipGenerateBtn').addEventListener('click', async () => {
+                const log = document.getElementById('tipLog');
+                const tok = getAppToken();
+                if(!tok){ alert('请先 App 登录'); return; }
+                log.textContent = '';
+                const body = {deviceNo: deviceNo};
+                const eid = Number(document.getElementById('tipEventId').value || 0);
+                const ename = (document.getElementById('tipEventName').value || '').trim();
+                if(eid) body.eventId = eid;
+                if(ename) body.eventName = ename;
+                try {
+                    const res = await fetch('/device/tip/generate', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tok},
+                        body: JSON.stringify(body)
+                    });
+                    if(!res.ok){ throw new Error('HTTP ' + res.status); }
+                    const reader = res.body.getReader();
+                    const dec = new TextDecoder();
+                    let buf = '';
+                    let eventName = '';
+                    while(true){
+                        const {value, done} = await reader.read();
+                        if(done) break;
+                        buf += dec.decode(value, {stream: true});
+                        const parts = buf.split('\n');
+                        buf = parts.pop() || '';
+                        for(const line of parts){
+                            if(line.startsWith('event:')){ eventName = line.slice(6).trim(); continue; }
+                            if(line.startsWith('data:')){
+                                const data = line.slice(5).trim();
+                                if(data === '[DONE]'){ appendLog(log, '[DONE]'); continue; }
+                                appendLog(log, '[' + (eventName || 'data') + '] ' + data);
+                            }
+                        }
+                    }
+                } catch(e){ appendLog(log, '[fail] ' + (e.message || e)); }
+            });
+            async function loadCareAlert(force){
+                const log = document.getElementById('careAlertLog');
+                const tok = getAppToken();
+                if(!tok){ alert('请先 App 登录'); return; }
+                log.textContent = '';
+                let url = '/device/api/care-alert/daily?deviceNo=' + encodeURIComponent(deviceNo);
+                if(force){ url += '&force=1'; }
+                try {
+                    const res = await fetch(url, {headers: {'Authorization': 'Bearer ' + tok}});
+                    const data = await res.json().catch(() => ({}));
+                    if(!res.ok || data.code !== 0){
+                        throw new Error(data.message || ('HTTP ' + res.status));
+                    }
+                    appendLog(log, JSON.stringify(data.data || data, null, 2));
+                } catch(e){ appendLog(log, '[fail] ' + (e.message || e)); }
+            }
+            document.getElementById('careAlertLoadBtn').addEventListener('click', () => loadCareAlert(false));
+            document.getElementById('careAlertForceBtn').addEventListener('click', () => loadCareAlert(true));
+            refreshAppLoginStatus();
+        }
+        window.handleVoiceWSMessage = function(data){ console.log('[voice-ws]', data); };
 
         function syncEventUnitAndNumberReadonly(){
             const selected = fEventSelect.options[fEventSelect.selectedIndex];

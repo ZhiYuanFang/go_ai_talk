@@ -45,10 +45,9 @@ type careAlertFlightWait struct {
 }
 
 // CareAlertDaily 返回宝宝当日护理留意列表：缓存命中直接返回；未命中 single-flight 调 Python 后写入。
+// force=true 时先删除当日日缓存再走生成（用于运维强刷）；仍要求 wxID>0。
 // 选模：VIP∪care_alert 额度 → careAlert 正式模；否则 free/omit；成功仅非 VIP 计次。
-// 不扣 clinic_ai 配额；触发者 VIP（wxId）→DeepSeek，非 VIP / 查失败降级→Zhipu。
-// wxID 必须 >0（由 controller 校验）；禁止用 deviceNo 反查 wx 作为登录旁路。
-func CareAlertDaily(ctx context.Context, deviceNo string, wxID int64) (day string, items []v1.CareAlertItemDTO, err error) {
+func CareAlertDaily(ctx context.Context, deviceNo string, wxID int64, force bool) (day string, items []v1.CareAlertItemDTO, err error) {
 	deviceNo = strings.TrimSpace(deviceNo)
 	if deviceNo == "" {
 		return "", nil, gerror.NewCode(gcode.CodeInvalidParameter, "deviceNo 不能为空")
@@ -60,7 +59,13 @@ func CareAlertDaily(ctx context.Context, deviceNo string, wxID int64) (day strin
 		return "", nil, err
 	}
 	day = shanghaiDayString(time.Now())
-	if cached, ok, cErr := loadCareAlertDailyCache(ctx, deviceNo, day); cErr != nil {
+	if force {
+		if dErr := deleteCareAlertDailyCache(ctx, deviceNo, day); dErr != nil {
+			glog.Warningf(ctx, "[CareAlert] force 删日缓存失败 deviceNoLen=%d day=%s err=%v", len(deviceNo), day, dErr)
+		} else {
+			glog.Infof(ctx, "[CareAlert] force 已清日缓存 day=%s deviceNoLen=%d wxId=%d", day, len(deviceNo), wxID)
+		}
+	} else if cached, ok, cErr := loadCareAlertDailyCache(ctx, deviceNo, day); cErr != nil {
 		glog.Warningf(ctx, "[CareAlert] 读缓存失败 deviceNoLen=%d day=%s err=%v", len(deviceNo), day, cErr)
 	} else if ok {
 		return day, cached, nil
@@ -270,6 +275,15 @@ func loadCareAlertDailyCache(ctx context.Context, deviceNo, day string) ([]v1.Ca
 		payload.Items = []v1.CareAlertItemDTO{}
 	}
 	return payload.Items, true, nil
+}
+
+// deleteCareAlertDailyCache 删除当日日缓存（force 强刷）；键经 cachekit builder。
+func deleteCareAlertDailyCache(ctx context.Context, deviceNo, day string) error {
+	key, err := cachekit.CareAlertDailyKey(deviceNo, day)
+	if err != nil {
+		return err
+	}
+	return careAlertCache.Del(ctx, key)
 }
 
 func storeCareAlertDailyCache(ctx context.Context, deviceNo, day string, items []v1.CareAlertItemDTO) error {

@@ -29,6 +29,28 @@ type wsStartMessage struct {
 	Length          int    `json:"length"`
 	Mode            string `json:"mode"`
 	ProtocolVersion int    `json:"protocolVersion"`
+	// InputModality 输入模态：audio（默认，PCM+ASR）或 text（JSON text 帧）；文模式仍须带齐音频元数据占位字段。
+	InputModality string `json:"inputModality"`
+	// OutputModality 输出模态：audio（默认，TTS）或 text（仅 thinking_delta/answer，不下发音频）。
+	OutputModality string `json:"outputModality"`
+}
+
+// wsTextMessage 文输入上行帧（type=text）。
+type wsTextMessage struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
+}
+
+// normalizeIOModality 规范化 audio|text；空则用 def；非法返回 error。
+func normalizeIOModality(raw, def string) (string, error) {
+	s := strings.ToLower(strings.TrimSpace(raw))
+	if s == "" {
+		s = def
+	}
+	if s != "audio" && s != "text" {
+		return "", fmt.Errorf("模态须为 audio 或 text")
+	}
+	return s, nil
 }
 
 func parseControlType(msg []byte) (string, error) {
@@ -58,10 +80,37 @@ func parseStartMessage(msg []byte) (wsStartMessage, error) {
 	if strings.TrimSpace(start.DeviceNo) == "" {
 		return start, fmt.Errorf("deviceNo 不能为空")
 	}
+	// 文输入亦不放宽：sampleRate/bits/channels 仍必填（客户端可传横屏同款占位值）。
 	if start.SampleRate <= 0 || start.Bits <= 0 || start.Channels <= 0 {
 		return start, fmt.Errorf("start 消息中的音频参数无效")
 	}
+	inMod, err := normalizeIOModality(start.InputModality, "audio")
+	if err != nil {
+		return start, fmt.Errorf("inputModality: %w", err)
+	}
+	outMod, err := normalizeIOModality(start.OutputModality, "audio")
+	if err != nil {
+		return start, fmt.Errorf("outputModality: %w", err)
+	}
+	start.InputModality = inMod
+	start.OutputModality = outMod
 	return start, nil
+}
+
+// parseTextMessage 解析文输入帧；文本 trim 后不能为空。
+func parseTextMessage(msg []byte) (wsTextMessage, error) {
+	var tm wsTextMessage
+	if err := json.Unmarshal(msg, &tm); err != nil {
+		return tm, err
+	}
+	if strings.ToLower(strings.TrimSpace(tm.Type)) != "text" {
+		return tm, fmt.Errorf("invalid text type")
+	}
+	tm.Text = strings.TrimSpace(tm.Text)
+	if tm.Text == "" {
+		return tm, fmt.Errorf("text 不能为空")
+	}
+	return tm, nil
 }
 
 func processVoiceBuffer(ctx context.Context, deviceNo string, meta voice.AudioMeta, audioRaw []byte) ([]byte, voice.AudioMeta, string, string, bool, bool, error) {

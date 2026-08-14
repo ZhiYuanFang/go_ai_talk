@@ -32,12 +32,14 @@ func careAlertRequireWxID(ctx context.Context) (int64, error) {
 }
 
 // Daily GET /device/api/care-alert/daily — 宝宝日缓存列表；未命中 single-flight 阻塞生成。
+// force=1/true 时先删当日日缓存再生成（仍要求 wxId>0，无鉴权旁路）。
 func (c *DeviceCareAlertController) Daily(ctx context.Context, req *v1.DeviceCareAlertDailyReq) (res *v1.DeviceCareAlertDailyRes, err error) {
 	wxID, err := careAlertRequireWxID(ctx)
 	if err != nil {
 		return nil, err
 	}
-	day, items, err := voice.CareAlertDaily(ctx, req.DeviceNo, wxID)
+	force := careAlertForceTruthy(req.Force)
+	day, items, err := voice.CareAlertDaily(ctx, req.DeviceNo, wxID, force)
 	if err != nil {
 		return nil, err
 	}
@@ -45,6 +47,12 @@ func (c *DeviceCareAlertController) Daily(ctx context.Context, req *v1.DeviceCar
 		items = []v1.CareAlertItemDTO{}
 	}
 	return &v1.DeviceCareAlertDailyRes{Day: day, Items: items}, nil
+}
+
+// careAlertForceTruthy 解析 force 查询：1/true/yes（大小写不敏感）为真。
+func careAlertForceTruthy(raw string) bool {
+	s := strings.TrimSpace(strings.ToLower(raw))
+	return s == "1" || s == "true" || s == "yes"
 }
 
 // DailyItemDelete DELETE /device/api/care-alert/daily/item — 仅删当日缓存中该 suggestionId。

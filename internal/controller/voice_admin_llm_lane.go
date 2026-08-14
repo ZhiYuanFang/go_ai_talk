@@ -14,6 +14,7 @@ import (
 )
 
 // VoiceAdminLLMLanesCtrl voice 域 LLM lane Admin API。
+// 业务说明：PUT voiceUnderstanding 时服务层会忽略 free 并落空；clinic/careAlert 仍支持 free。
 type VoiceAdminLLMLanesCtrl struct{}
 
 // NewVoiceAdminLLMLanesCtrl 构造控制器。
