@@ -24,14 +24,16 @@ type DeviceHistoryListRes struct {
 }
 
 // DeviceHistoryFilterReq 历史筛选请求，支持按事件ID列表、时间范围、备注模糊、返回条数上限筛选。
+// ignoreTimeRange 为 additive 可选参数：默认 false 时时间语义与现网一致；为真时强制忽略 startTime/endTime。
 type DeviceHistoryFilterReq struct {
-	g.Meta    `path:"/device/history/api/filter" method:"get" tags:"device" summary:"设备历史筛选"`
-	DeviceNo  string `json:"deviceNo"  p:"deviceNo"  dc:"设备号"`
-	EventIds  string `json:"eventIds"  p:"eventIds"  dc:"事件ID列表，逗号分隔，如 1,2,5；空串表示不过滤"`
-	StartTime int64  `json:"startTime" p:"startTime" dc:"开始时间，Unix 秒；0 表示不限制"`
-	EndTime   int64  `json:"endTime"   p:"endTime"   dc:"结束时间，Unix 秒；0 表示不限制"`
-	Limit     int    `json:"limit"     p:"limit"     dc:"返回条数上限，默认 100，上限 500；仅备注探针时上限 20"`
-	Remark    string `json:"remark"    p:"remark"    dc:"备注模糊关键词；空串表示不按备注过滤。NULL/空备注行不会命中"`
+	g.Meta          `path:"/device/history/api/filter" method:"get" tags:"device" summary:"设备历史筛选"`
+	DeviceNo        string `json:"deviceNo"  p:"deviceNo"  dc:"设备号"`
+	EventIds        string `json:"eventIds"  p:"eventIds"  dc:"事件ID列表，逗号分隔，如 1,2,5；空串表示不过滤"`
+	StartTime       int64  `json:"startTime" p:"startTime" dc:"开始时间，Unix 秒；0 表示不限制"`
+	EndTime         int64  `json:"endTime"   p:"endTime"   dc:"结束时间，Unix 秒；0 表示不限制"`
+	Limit           int    `json:"limit"     p:"limit"     dc:"返回条数上限，默认 100，上限 500；仅备注探针时上限 20"`
+	Remark          string `json:"remark"    p:"remark"    dc:"备注模糊关键词；空串表示不按备注过滤。NULL/空备注行不会命中"`
+	IgnoreTimeRange bool   `json:"ignoreTimeRange" p:"ignoreTimeRange" dc:"为真时完全忽略 startTime/endTime（即使非 0）；默认 false，行为与现网一致"`
 }
 
 // DeviceHistoryFilterRes 历史筛选结果响应。

@@ -26,8 +26,8 @@ func (s *localService) ListHistoryPage(ctx context.Context, deviceNo string, pag
 	return ListDeviceHistoryPage(ctx, deviceNo, page, pageSize)
 }
 
-func (s *localService) ListHistoryFilter(ctx context.Context, deviceNo string, eventIds []int64, startTime int64, endTime int64, limit int, remark string) ([]entity.History, error) {
-	return ListDeviceHistoryFilter(ctx, deviceNo, eventIds, startTime, endTime, limit, remark)
+func (s *localService) ListHistoryFilter(ctx context.Context, deviceNo string, eventIds []int64, startTime int64, endTime int64, limit int, remark string, ignoreTimeRange bool) ([]entity.History, error) {
+	return ListDeviceHistoryFilter(ctx, deviceNo, eventIds, startTime, endTime, limit, remark, ignoreTimeRange)
 }
 
 func (s *localService) ListHistoryPageV2(ctx context.Context, deviceNo string, page int, pageSize int, startTime int64, endTime int64, limit int) (contracts.HistoryPageResult, error) {
@@ -393,10 +393,11 @@ func escapeLikeKeyword(s string) string {
 }
 
 // ListDeviceHistoryFilter 多条件筛选历史记录。
-// eventIds 非空时按事件ID列表过滤，startTime/endTime > 0 时按时间区间过滤。
+// eventIds 非空时按事件ID列表过滤；ignoreTimeRange 为假且 startTime/endTime > 0 时按时间区间过滤。
+// ignoreTimeRange 为真时强制忽略 startTime/endTime（即使非 0），用于时间窗不明确但仍要查「之前发生过什么」。
 // remark 非空时 AND 备注模糊（排除 NULL/空串）；无 eventIds 时视为探针，limit 上限 20。
 // 返回结果按 id 倒序，limit 默认 100，上限 500。
-func ListDeviceHistoryFilter(ctx context.Context, deviceNo string, eventIds []int64, startTime int64, endTime int64, limit int, remark string) ([]entity.History, error) {
+func ListDeviceHistoryFilter(ctx context.Context, deviceNo string, eventIds []int64, startTime int64, endTime int64, limit int, remark string, ignoreTimeRange bool) ([]entity.History, error) {
 	deviceNo = strings.TrimSpace(deviceNo)
 	if deviceNo == "" {
 		return []entity.History{}, nil
@@ -420,11 +421,14 @@ func ListDeviceHistoryFilter(ctx context.Context, deviceNo string, eventIds []in
 	if len(eventIds) > 0 {
 		m = m.WhereIn(dao.History.Columns().EventId, eventIds)
 	}
-	if startTime > 0 {
-		m = m.WhereGTE(dao.History.Columns().StartTime, startTime)
-	}
-	if endTime > 0 {
-		m = m.WhereLTE(dao.History.Columns().StartTime, endTime)
+	// 显式忽略时间窗时不施加任何 start_time 条件，避免调用方猜测区间漏查。
+	if !ignoreTimeRange {
+		if startTime > 0 {
+			m = m.WhereGTE(dao.History.Columns().StartTime, startTime)
+		}
+		if endTime > 0 {
+			m = m.WhereLTE(dao.History.Columns().StartTime, endTime)
+		}
 	}
 	// 可空备注不参与模糊命中；LIKE 前转义 % _
 	if remark != "" {

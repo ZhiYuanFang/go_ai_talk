@@ -85,7 +85,7 @@ func (r *historyRemoteClient) ListHistoryPage(ctx context.Context, deviceNo stri
 	return contracts.HistoryPageResult{List: resp.List, Total: resp.Total, Page: resp.Page, PageSize: resp.PageSize}, nil
 }
 
-func (r *historyRemoteClient) ListHistoryFilter(ctx context.Context, deviceNo string, eventIds []int64, startTime int64, endTime int64, limit int, remark string) ([]entity.History, error) {
+func (r *historyRemoteClient) ListHistoryFilter(ctx context.Context, deviceNo string, eventIds []int64, startTime int64, endTime int64, limit int, remark string, ignoreTimeRange bool) ([]entity.History, error) {
 	if err := r.notReady(); err != nil {
 		return nil, err
 	}
@@ -104,11 +104,16 @@ func (r *historyRemoteClient) ListHistoryFilter(ctx context.Context, deviceNo st
 		"deviceNo": strings.TrimSpace(deviceNo),
 		"eventIds": eventIdsStr,
 	}
-	if startTime > 0 {
-		query["startTime"] = strconv.FormatInt(startTime, 10)
-	}
-	if endTime > 0 {
-		query["endTime"] = strconv.FormatInt(endTime, 10)
+	// 忽略时间窗时仍可透传 start/end（对端会丢弃）；不传可减小噪音，但为真必须带上开关。
+	if ignoreTimeRange {
+		query["ignoreTimeRange"] = "true"
+	} else {
+		if startTime > 0 {
+			query["startTime"] = strconv.FormatInt(startTime, 10)
+		}
+		if endTime > 0 {
+			query["endTime"] = strconv.FormatInt(endTime, 10)
+		}
 	}
 	if limit > 0 {
 		query["limit"] = strconv.Itoa(limit)
@@ -456,15 +461,15 @@ func (a *switchAdapter) ListHistoryPage(ctx context.Context, deviceNo string, pa
 	return result, err
 }
 
-func (a *switchAdapter) ListHistoryFilter(ctx context.Context, deviceNo string, eventIds []int64, startTime int64, endTime int64, limit int, remark string) ([]entity.History, error) {
+func (a *switchAdapter) ListHistoryFilter(ctx context.Context, deviceNo string, eventIds []int64, startTime int64, endTime int64, limit int, remark string, ignoreTimeRange bool) ([]entity.History, error) {
 	deviceNo = strings.TrimSpace(deviceNo)
 	if !a.shouldUseRemote(deviceNo) {
-		return a.local.ListHistoryFilter(ctx, deviceNo, eventIds, startTime, endTime, limit, remark)
+		return a.local.ListHistoryFilter(ctx, deviceNo, eventIds, startTime, endTime, limit, remark, ignoreTimeRange)
 	}
-	items, err := a.remote.ListHistoryFilter(ctx, deviceNo, eventIds, startTime, endTime, limit, remark)
+	items, err := a.remote.ListHistoryFilter(ctx, deviceNo, eventIds, startTime, endTime, limit, remark, ignoreTimeRange)
 	if err != nil && a.cfg.failoverToLocal {
 		glog.Warningf(ctx, "history filter degrade source=remote->local deviceNo=%s eventIds=%v err=%v", deviceNo, eventIds, err)
-		return a.local.ListHistoryFilter(ctx, deviceNo, eventIds, startTime, endTime, limit, remark)
+		return a.local.ListHistoryFilter(ctx, deviceNo, eventIds, startTime, endTime, limit, remark, ignoreTimeRange)
 	}
 	return items, err
 }

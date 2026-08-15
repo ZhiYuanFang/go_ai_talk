@@ -15,6 +15,7 @@ import (
 
 	"github.com/gogf/gf/v2/errors/gcode"
 	"github.com/gogf/gf/v2/errors/gerror"
+	"github.com/gogf/gf/v2/net/ghttp"
 )
 
 // HistoryCtrl 设备历史 / 建议 / 生日 API。
@@ -73,6 +74,7 @@ func (c *HistoryCtrl) List(ctx context.Context, req *v1.DeviceHistoryListReq) (r
 }
 
 // Filter 设备历史筛选，支持按事件ID列表、时间范围、返回条数上限筛选。
+// ignoreTimeRange 为真时完全忽略 startTime/endTime，用于时间不明确但仍要查历史。
 func (c *HistoryCtrl) Filter(ctx context.Context, req *v1.DeviceHistoryFilterReq) (res *v1.DeviceHistoryFilterRes, err error) {
 	deviceNo := strings.TrimSpace(req.DeviceNo)
 	if deviceNo == "" {
@@ -94,11 +96,28 @@ func (c *HistoryCtrl) Filter(ctx context.Context, req *v1.DeviceHistoryFilterReq
 			eventIds = append(eventIds, id)
 		}
 	}
-	list, err := c.Svc.ListHistoryFilter(ctx, deviceNo, eventIds, req.StartTime, req.EndTime, req.Limit, strings.TrimSpace(req.Remark))
+	// GoFrame bool 绑定通常已接受 true/1；再兜底读原始 query，兼容 LLM 填 "1"/"true"/"yes"。
+	ignoreTimeRange := req.IgnoreTimeRange
+	if !ignoreTimeRange {
+		if r := ghttp.RequestFromCtx(ctx); r != nil {
+			ignoreTimeRange = historyFilterIgnoreTimeRangeTruthy(r.Get("ignoreTimeRange").String())
+		}
+	}
+	list, err := c.Svc.ListHistoryFilter(ctx, deviceNo, eventIds, req.StartTime, req.EndTime, req.Limit, strings.TrimSpace(req.Remark), ignoreTimeRange)
 	if err != nil {
 		return nil, err
 	}
 	return &v1.DeviceHistoryFilterRes{List: list}, nil
+}
+
+// historyFilterIgnoreTimeRangeTruthy 解析 ignoreTimeRange 查询：1/true/yes（大小写不敏感）为真。
+func historyFilterIgnoreTimeRangeTruthy(raw string) bool {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "1", "true", "yes":
+		return true
+	default:
+		return false
+	}
 }
 
 // ListV2 设备历史列表 v2，支持时间范围和 limit 参数。
