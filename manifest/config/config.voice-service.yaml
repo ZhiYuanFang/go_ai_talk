@@ -28,8 +28,11 @@ voice:
   admin:
     password: ""
 
-# OpenClaw Gateway（Intent/Clinic/Care 编排上游；可用环境变量覆盖）
+# OpenClaw Gateway（Intent/Clinic/Care 编排上游）。
+# 业务说明：须留空，由进程环境变量注入——OPENCLAW_GATEWAY_URL / OPENCLAW_GATEWAY_TOKEN / PANGBAO_API_TOKEN。
+# GoFrame 不会展开 YAML 中的 ${VAR}；写成占位字面量会盖住 os.Getenv 回落，导致 unsupported protocol scheme。
+# compose 默认 URL：http://python-ai-talk:8000/agent-gate；本地未设 env 时代码回退 127.0.0.1:8000/agent-gate。
 openclaw:
-  gatewayUrl: "${OPENCLAW_GATEWAY_URL}"
-  gatewayToken: "${OPENCLAW_GATEWAY_TOKEN}"
-  apiToken: "${PANGBAO_API_TOKEN}"
+  gatewayUrl: ""
+  gatewayToken: ""
+  apiToken: ""
