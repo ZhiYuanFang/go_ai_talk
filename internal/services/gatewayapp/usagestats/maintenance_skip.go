@@ -23,10 +23,7 @@ var maintenanceExactAPI = map[string]struct{}{
 	"GET /device/history/api/list":          {},
 	// VIP 商品现价/原价：负责人确认匿名读价不计入 usage（vip-price-db）。
 	"GET /cash/app/api/vip/product": {},
-	// clinic/tip 点赞反馈：负责人确认不计入 usage（close-clinic-tip-feedback）；
-	// tip generate（POST /device/tip/generate）统计策略属包 B，不得在此排除。
-	"POST /device/api/clinic/feedback": {},
-	"POST /device/api/tip/feedback":    {},
+	// tip generate / tip feedback / clinic 显式 feedback 已删除。
 }
 
 var maintenancePathPrefixes = []string{

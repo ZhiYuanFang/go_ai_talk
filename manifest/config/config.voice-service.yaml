@@ -27,3 +27,9 @@ aiClinic:
 voice:
   admin:
     password: ""
+
+# OpenClaw Gateway（Intent/Clinic/Care 编排上游；可用环境变量覆盖）
+openclaw:
+  gatewayUrl: "${OPENCLAW_GATEWAY_URL}"
+  gatewayToken: "${OPENCLAW_GATEWAY_TOKEN}"
+  apiToken: "${PANGBAO_API_TOKEN}"

@@ -107,7 +107,9 @@ func CareAlertDeleteItem(ctx context.Context, deviceNo, suggestionID string) (da
 	return day, out, nil
 }
 
-// CareAlertFeedback 固定意图飞轮：本地落日志 + 尽力转发 Python；不扣 clinic 配额、不做 NLP。
+// CareAlertFeedback 日缓存展示层反馈（ignore|follow_up）。
+//
+// 业务逻辑：仅校验并打本地日志；MUST NOT 转发 Python/飞轮（Care 无数据飞轮）。
 func CareAlertFeedback(ctx context.Context, deviceNo, suggestionID, intent string) error {
 	deviceNo = strings.TrimSpace(deviceNo)
 	suggestionID = strings.TrimSpace(suggestionID)
@@ -125,18 +127,8 @@ func CareAlertFeedback(ctx context.Context, deviceNo, suggestionID, intent strin
 		return err
 	}
 	day := shanghaiDayString(time.Now())
-	g.Log().Infof(ctx, "[CareAlert] feedback local deviceNoLen=%d suggestionIdLen=%d intent=%s day=%s",
+	g.Log().Infof(ctx, "[CareAlert] feedback UI-only deviceNoLen=%d suggestionIdLen=%d intent=%s day=%s",
 		len(deviceNo), len(suggestionID), intent, day)
-	pythonClient := PythonAIClientFromCfg()
-	if pyErr := pythonClient.CareAlertFeedback(ctx, &CareAlertFeedbackRequest{
-		DeviceNo:     deviceNo,
-		SuggestionID: suggestionID,
-		Intent:       intent,
-		Day:          day,
-	}); pyErr != nil {
-		// 飞轮为旁路：Python 未就绪时不阻断客户端忽略/追问主路径。
-		glog.Warningf(ctx, "[CareAlert] Python 飞轮失败（已本地确认）intent=%s err=%v", intent, pyErr)
-	}
 	return nil
 }
 
@@ -209,21 +201,23 @@ func careAlertDailyGenerate(ctx context.Context, deviceNo, day string, wxID int6
 	}
 	ageMonths := careAlertAgeMonths(genCtx, deviceNo)
 
-	pythonClient := PythonAIClientFromCfg()
-	// Model 走 JSON「model」对象（非 model_cfg），与兄弟仓 Python 契约一致。
-	pyRes, pyErr := pythonClient.CareAlertAnalyze(genCtx, &CareAlertAnalyzeRequest{
-		DeviceNo:       deviceNo,
-		Day:            day,
-		Model:          modelCfg,
-		AgeMonths:      ageMonths,
-		HistorySummary: map[string]interface{}{},
-		KgContext:      map[string]interface{}{},
-	})
-	if pyErr != nil {
-		return nil, gerror.WrapCode(gcode.CodeInternalError, pyErr, "护理留意分析失败")
+	// Care 经 OpenClaw Gateway；出卡权威为 emit_care_cards tool_calls（或 content JSON 回退）。
+	userPrompt := fmt.Sprintf(
+		"请为设备 %s 生成上海日历日 %s 的护理留意卡片（月龄约 %d）。"+
+			"必须调用 emit_care_cards，items 含 eventId/eventName/summaryLine/followUpPrompt/reasons；"+
+			"不要把卡片只写在自由文本里。",
+		deviceNo, day, ageMonths,
+	)
+	sessionKey := fmt.Sprintf("care:%s:%s", deviceNo, day)
+	ocResp, ocErr := OpenClawFromCfg().Chat(
+		genCtx, "openclaw/care_alert", openClawBackendModel(modelCfg), sessionKey, userPrompt,
+	)
+	if ocErr != nil {
+		return nil, gerror.WrapCode(gcode.CodeInternalError, ocErr, "护理留意分析失败")
 	}
-
-	items := normalizeCareAlertItems(pyRes.Items)
+	rawMaps := ocResp.EmitCareCardsItems()
+	rawItems := careAlertItemsFromMaps(rawMaps)
+	items := normalizeCareAlertItems(rawItems)
 	if err := storeCareAlertDailyCache(ctx, deviceNo, day, items); err != nil {
 		glog.Warningf(ctx, "[CareAlert] 写缓存失败 day=%s err=%v", day, err)
 	}
@@ -349,6 +343,21 @@ func ageMonthsFromBirthdayUnix(birthdayUnix int64, now time.Time) int {
 		return 0
 	}
 	return months
+}
+
+func careAlertItemsFromMaps(raw []map[string]interface{}) []CareAlertAnalyzeItem {
+	if len(raw) == 0 {
+		return nil
+	}
+	b, err := json.Marshal(raw)
+	if err != nil {
+		return nil
+	}
+	var out []CareAlertAnalyzeItem
+	if err := json.Unmarshal(b, &out); err != nil {
+		return nil
+	}
+	return out
 }
 
 func normalizeCareAlertItems(raw []CareAlertAnalyzeItem) []v1.CareAlertItemDTO {

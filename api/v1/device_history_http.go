@@ -98,6 +98,7 @@ type DeviceHistoryBirthdaySaveReq struct {
 type DeviceHistoryBirthdaySaveRes struct{}
 
 // DeviceHistoryEventAddReq 手动新增历史事件。
+// Action 可选：与 batch 子项对齐；start|one 写 add；end 转 end-latest（Agent 四 REST 写路径）。
 type DeviceHistoryEventAddReq struct {
 	g.Meta      `path:"/device/history/api/event/add" method:"post" tags:"device" summary:"新增历史事件"`
 	DeviceNo    string `json:"deviceNo" dc:"设备号"`
@@ -108,6 +109,7 @@ type DeviceHistoryEventAddReq struct {
 	StartTime   int64  `json:"startTime" dc:"开始时间，Unix 秒"`
 	EndTime     int64  `json:"endTime" dc:"结束时间，Unix 秒"`
 	Remark      string `json:"remark" dc:"备注"`
+	Action      string `json:"action" dc:"可选 start|one|end；end 等价 end-latest"`
 }
 
 // DeviceHistoryEventAddRes 新增结果。

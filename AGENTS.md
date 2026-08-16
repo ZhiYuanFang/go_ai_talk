@@ -30,6 +30,16 @@
 ## 测试文件
 - 当前阶段不新增测试文件（包括 `*_test.go`、`*.spec.*`、`*.test.*`）。
 
+## Intent / Agent 写史路径（跨仓约定）
+- Python Intent Agent 写历史 MUST 使用四单动词 REST：
+  - `POST /device/history/api/event/add`（可选 `action=start|one|end`）
+  - `POST /device/history/api/event/update`
+  - `POST /device/history/api/event/delete`
+  - `POST /device/history/api/event/end-latest`
+- `POST /device/history/api/event/batch` 可保留兼容，但 **Agent 写路径不再依赖 batch**。
+- `GET .../event/filter` 主排序 MUST 为 `start_time DESC`（「前 k 次」语义）。
+- tip SSE（`/device/tip/*`）与 tip feedback 已删除；桌面 widget tip 走 Care Alert，不经 tip 路由。
+
 ## gateway-app 对外 App 接口（OpenSpec / 实现强制）
 
 新增经 **gateway-app-server** 对外暴露的 App HTTP 接口（含 `api/v1`、`api/v2` 的 `g.Meta` 路由）时，**MUST** 在 propose/apply 与 PR 自检中逐项确认，避免「仅在领域服务注册、网关未放行」：

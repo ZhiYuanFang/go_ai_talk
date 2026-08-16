@@ -435,8 +435,9 @@ func ListDeviceHistoryFilter(ctx context.Context, deviceNo string, eventIds []in
 		col := dao.History.Columns().Remark
 		m = m.WhereNot(col, "").Where(col+" LIKE ?", "%"+escapeLikeKeyword(remark)+"%")
 	}
+	// filter 按 start_time 降序：与 Python top_k「最近 N 条」语义一致（勿用自增 Id）。
 	rows, err := m.
-		OrderDesc(dao.History.Columns().Id).
+		OrderDesc(dao.History.Columns().StartTime).
 		Limit(limit).
 		All()
 	if err != nil {

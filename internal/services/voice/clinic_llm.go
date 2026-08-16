@@ -2,6 +2,8 @@ package voice
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"strings"
 
@@ -17,30 +19,37 @@ type clinicStreamCallbacks struct {
 	OnDone          func(answerID string) error
 }
 
-// streamClinicLLMHeld 在调用方已持 clinic 闸门槽位时发起流式请求（modelCfg 可为 nil=omit）。
+// streamClinicLLMHeld 在调用方已持 clinic 闸门槽位时经 OpenClaw Clinic agent 流式回复。
 func (s *ClinicService) streamClinicLLMHeld(ctx context.Context, modelCfg *PythonModelCfg, deviceNo, question string, cb clinicStreamCallbacks) (thinking, answer, answerID string, err error) {
 	deviceNo = strings.TrimSpace(deviceNo)
 	if deviceNo == "" {
 		return "", "", "", errors.New("诊疗服务设备号缺失")
 	}
-	pythonClient := PythonAIClientFromCfg()
-	pythonResp, pythonErr := pythonClient.ClinicStream(ctx, &ClinicStreamRequest{
-		Question: question,
-		DeviceNo: deviceNo,
-		Model:    modelCfg,
-	}, &ClinicStreamCallback{
-		OnThinking: cb.OnThinkingDelta,
-		OnAnswer:   cb.OnAnswerDelta,
-		OnDone:     cb.OnDone,
-	})
-	if pythonErr != nil {
-		glog.Warningf(ctx, "[Python AI] 诊疗流式调用失败。deviceNo=%s err=%v", deviceNo, pythonErr)
-		return "", "", "", pythonErr
+	sessionKey := "clinic:" + deviceNo
+	var onDelta func(string) error
+	if cb.OnAnswerDelta != nil {
+		onDelta = cb.OnAnswerDelta
+	} else if cb.OnThinkingDelta != nil {
+		onDelta = cb.OnThinkingDelta
 	}
-	return pythonResp.Thinking, pythonResp.Answer, pythonResp.AnswerID, nil
+	full, streamErr := OpenClawFromCfg().StreamChat(
+		ctx, "openclaw/clinic", openClawBackendModel(modelCfg), sessionKey, question, onDelta,
+	)
+	if streamErr != nil {
+		glog.Warningf(ctx, "[OpenClaw] 诊疗流式失败。deviceNo=%s err=%v", deviceNo, streamErr)
+		return "", "", "", streamErr
+	}
+	answer = strings.TrimSpace(full)
+	answerID = newClinicAnswerID()
+	if cb.OnDone != nil {
+		if doneErr := cb.OnDone(answerID); doneErr != nil {
+			return thinking, answer, answerID, doneErr
+		}
+	}
+	return thinking, answer, answerID, nil
 }
 
-// streamClinicLLM 经统一权益选模后调用上游流式接口。
+// streamClinicLLM 经统一权益选模后调用 Gateway 流式接口。
 func (s *ClinicService) streamClinicLLM(ctx context.Context, wxID int64, deviceNo, question string, cb clinicStreamCallbacks) (thinking, answer, answerID string, err error) {
 	ent, runtime, modelCfg, _ := ResolveLaneModel(ctx, wxID, aimodel.LaneClinic, contracts.AIQuotaClinicAI, PrivilegeAccount)
 	if modelCfg != nil {
@@ -55,4 +64,12 @@ func (s *ClinicService) streamClinicLLM(ctx context.Context, wxID int64, deviceN
 		ConsumeVoiceFeatureIfNeeded(ctx, wxID, contracts.AIQuotaClinicAI, ent)
 	}
 	return thinking, answer, answerID, err
+}
+
+func newClinicAnswerID() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "clinic-local"
+	}
+	return "clinic-" + hex.EncodeToString(b[:])
 }

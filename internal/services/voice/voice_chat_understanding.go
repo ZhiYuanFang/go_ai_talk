@@ -223,8 +223,8 @@ func mapPythonIntentToLandPlan(intent deepSeekUnifiedIntent, normalizedTranscrip
 	}
 }
 
-// applyUnifiedIntentResult 只透传 Python 结果：确认话术 / content / 退出。
-// 不再按 action 写库、不再二次匹配事件；落库由 Python batch 完成。
+// applyUnifiedIntentResult 只透传 Gateway NL reply：确认话术 / content / 退出。
+// 不再按 action 写库、不再二次匹配事件；落库由 Gateway history tools（四 REST）完成。
 // events 参数保留以兼容调用方；不解析 intent.Events 子项 op。
 func (s *VoiceService) applyUnifiedIntentResult(ctx context.Context, deviceNo, normalizedTranscript string, events []entity.Event, intent deepSeekUnifiedIntent) (chatResult, error) {
 	_ = events
@@ -317,7 +317,7 @@ func (s *VoiceService) chatWithResult(ctx context.Context, deviceNo, transcript 
 }
 
 func (s *VoiceService) callDeepSeekUnifiedIntent(ctx context.Context, deviceNo, transcript string) (deepSeekUnifiedIntent, error) {
-	// 调用 Python 微服务进行意图分析；选模经 ResolveLaneModel（VIP∪额度∪硬件）；free 空则 omit。
+	// 经 OpenClaw Gateway Intent agent；Go 只取 NL reply。落库由 Gateway history tools 完成，不解析结构化信封。
 	wxID := VoiceWxIDFromCtx(ctx)
 	if wxID <= 0 {
 		if id, e := VoiceWxIDFromRequest(ctx, deviceNo); e == nil {
@@ -325,34 +325,32 @@ func (s *VoiceService) callDeepSeekUnifiedIntent(ctx context.Context, deviceNo, 
 		}
 	}
 	ent, runtime, modelCfg, _ := resolveVoiceUnderstandingModel(ctx, wxID)
-	var release func()
 	if modelCfg != nil {
 		rel, acqErr := aimodel.Acquire(ctx, runtime)
 		if acqErr != nil {
 			return deepSeekUnifiedIntent{}, acqErr
 		}
-		release = rel
-		defer release()
+		defer rel()
 	}
-	pythonClient := PythonAIClientFromCfg()
-	req := &AnalyzeIntentRequest{
-		Text:           transcript,
-		DeviceNo:       deviceNo,
-		Model:          modelCfg,
-		ConversationID: pendingConversationID(deviceNo),
+	sessionKey := "intent:" + strings.TrimSpace(deviceNo)
+	resp, err := OpenClawFromCfg().Chat(ctx, "openclaw/intent", openClawBackendModel(modelCfg), sessionKey, transcript)
+	if err != nil {
+		glog.Warningf(ctx, "[OpenClaw] 意图调用失败。deviceNo=%s err=%v", deviceNo, err)
+		return deepSeekUnifiedIntent{}, err
 	}
-	pythonResp, pythonErr := pythonClient.AnalyzeIntent(ctx, req)
-	if pythonErr == nil && pythonResp != nil {
-		intent := mapPythonRespToIntent(pythonResp)
-		glog.Debugf(ctx, "[Python AI] 意图分析成功。deviceNo=%s target_type=%s action=%s need_confirm=%v premium=%v vip=%v",
-			deviceNo, intent.TargetType, intent.Action, intent.NeedConfirm, ent.Premium, ent.VIP)
-		return intent, nil
+	reply := sanitizeModelReplyText(resp.ReplyText())
+	if reply == "" {
+		return deepSeekUnifiedIntent{}, errors.New("意图分析无有效回复")
 	}
-	if pythonErr != nil {
-		glog.Warningf(ctx, "[Python AI] 意图分析调用失败。deviceNo=%s err=%v", deviceNo, pythonErr)
-		return deepSeekUnifiedIntent{}, pythonErr
-	}
-	return deepSeekUnifiedIntent{}, errors.New("意图分析无响应")
+	// 澄清续轮靠 x-openclaw-session-key，不再依赖 need_confirm / conversation_id 信封。
+	pendingConfirmState.clear(deviceNo)
+	glog.Debugf(ctx, "[OpenClaw] 意图成功。deviceNo=%s session=%s premium=%v vip=%v replyLen=%d",
+		deviceNo, sessionKey, ent.Premium, ent.VIP, utf8.RuneCountInString(reply))
+	return deepSeekUnifiedIntent{
+		Reply:         reply,
+		NeedUserReply: true,
+		TargetType:    "conversation",
+	}, nil
 }
 
 // mapPythonRespToIntent 将 Python 侧 AnalyzeIntentResponse 映射为 deepSeekUnifiedIntent
@@ -382,8 +380,8 @@ func mapPythonRespToIntent(pythonResp *AnalyzeIntentResponse) deepSeekUnifiedInt
 	return intent
 }
 
-// callDeepSeekUnifiedIntentStream 调用流式 Python 意图分析接口。
-// 仅将 thinking 经对外 cb 推送；answer（意图 JSON）由 Python 客户端内部累积解析，不外泄。
+// callDeepSeekUnifiedIntentStream 流式调用 OpenClaw Intent；增量经 OnThinking 推送。
+// 不再解析结构化意图 JSON；合成 Result.Content 供 applyUnifiedIntentResult 播报。
 func (s *VoiceService) callDeepSeekUnifiedIntentStream(ctx context.Context, deviceNo, transcript string, cb *contracts.IntentStreamCallback) (*AnalyzeIntentStreamResponse, error) {
 	wxID := VoiceWxIDFromCtx(ctx)
 	if wxID <= 0 {
@@ -399,30 +397,33 @@ func (s *VoiceService) callDeepSeekUnifiedIntentStream(ctx context.Context, devi
 		}
 		defer rel()
 	}
-	pythonClient := PythonAIClientFromCfg()
-	streamCb := &AnalyzeIntentStreamCallback{}
+	sessionKey := "intent:" + strings.TrimSpace(deviceNo)
+	var onDelta func(string) error
 	if cb != nil && cb.OnThinking != nil {
-		streamCb.OnThinking = func(delta string) error {
-			return cb.OnThinking(delta)
-		}
+		onDelta = cb.OnThinking
 	}
-	streamRes, streamErr := pythonClient.AnalyzeIntentStream(ctx, &AnalyzeIntentStreamRequest{
-		Text:           transcript,
-		DeviceNo:       deviceNo,
-		Model:          modelCfg,
-		ConversationID: pendingConversationID(deviceNo),
-	}, streamCb)
+	full, streamErr := OpenClawFromCfg().StreamChat(
+		ctx, "openclaw/intent", openClawBackendModel(modelCfg), sessionKey, transcript, onDelta,
+	)
 	if streamErr != nil {
-		glog.Warningf(ctx, "[Python AI] 流式意图分析调用失败。deviceNo=%s err=%v", deviceNo, streamErr)
+		glog.Warningf(ctx, "[OpenClaw] 流式意图失败。deviceNo=%s err=%v", deviceNo, streamErr)
 		return nil, streamErr
 	}
-	if streamRes != nil && streamRes.Result != nil {
-		glog.Debugf(ctx, "[Python AI] 流式意图分析成功。deviceNo=%s target_type=%s action=%s need_confirm=%v premium=%v",
-			deviceNo, streamRes.Result.TargetType, streamRes.Result.Action, streamRes.Result.NeedConfirm, ent.Premium)
-	} else {
-		glog.Warningf(ctx, "[Python AI] 流式意图分析返回空 Result。deviceNo=%s", deviceNo)
+	reply := sanitizeModelReplyText(full)
+	if reply == "" {
+		glog.Warningf(ctx, "[OpenClaw] 流式意图空回复。deviceNo=%s", deviceNo)
+		return &AnalyzeIntentStreamResponse{}, nil
 	}
-	return streamRes, nil
+	pendingConfirmState.clear(deviceNo)
+	glog.Debugf(ctx, "[OpenClaw] 流式意图成功。deviceNo=%s premium=%v replyLen=%d",
+		deviceNo, ent.Premium, utf8.RuneCountInString(reply))
+	return &AnalyzeIntentStreamResponse{
+		Answer: reply,
+		Result: &AnalyzeIntentResponse{
+			Content:    reply,
+			TargetType: "conversation",
+		},
+	}, nil
 }
 
 func (s *VoiceService) handleUnifiedIntentAction(ctx context.Context, deviceNo, normalizedTranscript string, action entity.Action, events []entity.Event, intent deepSeekUnifiedIntent) (finalReply string, exit bool, finishTalk bool, err error) {

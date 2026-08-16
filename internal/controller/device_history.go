@@ -203,10 +203,25 @@ func (c *HistoryCtrl) BirthdaySave(ctx context.Context, req *v1.DeviceHistoryBir
 }
 
 // EventAdd 手动新增历史事件。
+// action=end 时转 EndLatest（与 batch 子项 / Agent 四 REST 语义对齐）；start|one 仍走 AddHistory。
 func (c *HistoryCtrl) EventAdd(ctx context.Context, req *v1.DeviceHistoryEventAddReq) (res *v1.DeviceHistoryEventAddRes, err error) {
 	deviceNo := strings.TrimSpace(req.DeviceNo)
 	if deviceNo == "" {
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "deviceNo 不能为空")
+	}
+	action := strings.ToLower(strings.TrimSpace(req.Action))
+	if action == "end" {
+		if req.EventId <= 0 {
+			return nil, gerror.NewCode(gcode.CodeInvalidParameter, "eventId 无效")
+		}
+		updated, endErr := c.Svc.EndLatestHistoryIfMatch(ctx, deviceNo, req.EventId, req.EndTime, strings.TrimSpace(req.Remark))
+		if endErr != nil {
+			return nil, endErr
+		}
+		if !updated {
+			return nil, gerror.NewCode(gcode.CodeInvalidOperation, "未找到可结束的进行中记录")
+		}
+		return &v1.DeviceHistoryEventAddRes{Id: 0}, nil
 	}
 	id, err := c.Svc.AddHistory(ctx, entity.History{
 		DeviceNo:    deviceNo,

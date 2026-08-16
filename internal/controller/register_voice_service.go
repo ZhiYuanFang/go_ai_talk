@@ -14,17 +14,14 @@ func RegisterVoiceServiceHTTP(s *ghttp.Server) {
 	registerVoiceAsrWS(s)
 	registerVoiceClinicWS(s)
 	s.Group("/", func(group *ghttp.RouterGroup) {
-		// voice-service：小贴士/额度/车道/护理留意等；自然语言喂养仅经 /voice/chat/ws。
+		// voice-service：额度/车道/护理留意等；自然语言喂养仅经 /voice/chat/ws。
 		group.Bind(NewVoiceSuggestInternalCtrl())
 		group.Bind(NewVoiceQaInternalCtrl())
 		group.Bind(NewVoiceAppAIQuotaCtrl())
 		group.Bind(NewVoiceAdminAIQuotaCtrl())
 		group.Bind(NewVoiceAdminLLMLanesCtrl())
-		// 小贴士流式生成宿主为 voice（非 history）：对外 POST /device/tip/generate（SSE）。
-		group.Bind(NewTipCtrl())
-		// clinic/tip 反馈飞轮：POST /device/api/clinic|tip/feedback → Python AI（同宿主 voice）。
-		group.Bind(&DeviceClinicFeedbackController{})
-		// 护理留意日缓存：GET/DELETE/POST /device/api/care-alert/* → 缓存 + Python 分析/飞轮。
+		// clinic 显式 feedback 已删除（仅 Gateway 内隐式采纳飞轮）。
+		// 护理留意日缓存：GET/DELETE/POST /device/api/care-alert/*（feedback 仅为 UI，无飞轮）。
 		group.Bind(&DeviceCareAlertController{})
 	})
 	s.Group("/", func(group *ghttp.RouterGroup) {

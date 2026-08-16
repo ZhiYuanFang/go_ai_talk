@@ -211,8 +211,7 @@ func (s *VoiceService) buildGrowthSuggestPayload(ctx context.Context, deviceNo s
 	}, nil
 }
 
-// callDeepSeekGrowthSuggestion 成长建议：经 LaneVoiceUnderstanding，选模走公共出口。
-// 独立 AnalyzeIntent，不得附带喂养澄清 conversation_id。
+// callDeepSeekGrowthSuggestion 成长建议：经 LaneVoiceUnderstanding 选模后打 OpenClaw Clinic。
 func (s *VoiceService) callDeepSeekGrowthSuggestion(ctx context.Context, deviceNo string) (string, error) {
 	wxID := VoiceWxIDFromCtx(ctx)
 	if wxID <= 0 {
@@ -228,31 +227,28 @@ func (s *VoiceService) callDeepSeekGrowthSuggestion(ctx context.Context, deviceN
 		}
 		defer rel()
 	}
-	pythonClient := PythonAIClientFromCfg()
-	pythonResp, pythonErr := pythonClient.Clinic(ctx, &ClinicSyncRequest{
-		Question: "宝宝最近食量怎么样，给一点成长建议",
-		DeviceNo: deviceNo,
-		Model:    modelCfg,
-	})
-	if pythonErr == nil && pythonResp != nil && strings.TrimSpace(pythonResp.Answer) != "" {
-		reply := strings.TrimSpace(pythonResp.Answer)
-		if reply != "" {
-			_, insertErr := dao.Suggest.Ctx(ctx).Data(g.Map{
-				dao.Suggest.Columns().DeviceNo: deviceNo,
-				dao.Suggest.Columns().Suggest:  reply,
-				dao.Suggest.Columns().Time:     nowUnixSec(),
-			}).Insert()
-			if insertErr != nil {
-				glog.Warningf(ctx, "insert suggest failed: %v", insertErr)
-			}
-			return reply, nil
-		}
+	sessionKey := "clinic:" + strings.TrimSpace(deviceNo)
+	resp, err := OpenClawFromCfg().Chat(
+		ctx, "openclaw/clinic", openClawBackendModel(modelCfg), sessionKey,
+		"宝宝最近食量怎么样，给一点成长建议",
+	)
+	if err != nil {
+		glog.Warningf(ctx, "[OpenClaw] 成长建议失败。deviceNo=%s err=%v", deviceNo, err)
+		return "", err
 	}
-	if pythonErr != nil {
-		glog.Warningf(ctx, "[Python AI] 成长建议调用失败。deviceNo=%s err=%v", deviceNo, pythonErr)
-		return "", pythonErr
+	reply := strings.TrimSpace(resp.ReplyText())
+	if reply == "" {
+		return "", errors.New("成长建议无有效内容")
 	}
-	return "", errors.New("成长建议无有效内容")
+	_, insertErr := dao.Suggest.Ctx(ctx).Data(g.Map{
+		dao.Suggest.Columns().DeviceNo: deviceNo,
+		dao.Suggest.Columns().Suggest:  reply,
+		dao.Suggest.Columns().Time:     nowUnixSec(),
+	}).Insert()
+	if insertErr != nil {
+		glog.Warningf(ctx, "insert suggest failed: %v", insertErr)
+	}
+	return reply, nil
 }
 
 func mapVoiceChatMessages(messages []map[string]string) []aimodel.Message {
@@ -284,7 +280,7 @@ func splitBySentence(input string) []string {
 
 func (s *VoiceService) callDeepSeekHistoryReply(ctx context.Context, deviceNo, transcript string, hours int) (string, error) {
 	_ = hours
-	// 历史问答：独立 AnalyzeIntent；选模经公共出口。
+	// 历史问答：经 OpenClaw Intent（只读 tool + NL）；选模经公共出口。
 	wxID := VoiceWxIDFromCtx(ctx)
 	if wxID <= 0 {
 		if id, e := VoiceWxIDFromRequest(ctx, deviceNo); e == nil {
@@ -299,23 +295,19 @@ func (s *VoiceService) callDeepSeekHistoryReply(ctx context.Context, deviceNo, t
 		}
 		defer rel()
 	}
-	pythonClient := PythonAIClientFromCfg()
-	pythonResp, pythonErr := pythonClient.AnalyzeIntent(ctx, &AnalyzeIntentRequest{
-		Text:     transcript,
-		DeviceNo: deviceNo,
-		Model:    modelCfg,
-	})
-	if pythonErr == nil && pythonResp != nil && pythonResp.Content != "" {
-		reply := strings.TrimSpace(pythonResp.Content)
-		if reply != "" {
-			return reply, nil
-		}
+	sessionKey := "intent:" + strings.TrimSpace(deviceNo)
+	resp, err := OpenClawFromCfg().Chat(
+		ctx, "openclaw/intent", openClawBackendModel(modelCfg), sessionKey, transcript,
+	)
+	if err != nil {
+		glog.Warningf(ctx, "[OpenClaw] 历史问答失败。deviceNo=%s err=%v", deviceNo, err)
+		return "", err
 	}
-	if pythonErr != nil {
-		glog.Warningf(ctx, "[Python AI] 历史问答调用失败。deviceNo=%s err=%v", deviceNo, pythonErr)
-		return "", pythonErr
+	reply := strings.TrimSpace(resp.ReplyText())
+	if reply == "" {
+		return "", errors.New("历史问答无有效内容")
 	}
-	return "", errors.New("历史问答无有效内容")
+	return reply, nil
 }
 
 // pickGrowthSuggestionDisplayText 成长建议：优先取模型 JSON 内的 reply 字段，避免把整段外层 JSON 写入数据库。

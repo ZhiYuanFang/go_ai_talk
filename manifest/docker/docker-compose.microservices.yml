@@ -214,6 +214,11 @@ services:
       VOICE_LLM_CLINIC_PROVIDER: "${VOICE_LLM_CLINIC_PROVIDER:-}"
       VOICE_LLM_CLINIC_MODEL: "${VOICE_LLM_CLINIC_MODEL:-}"
       VOICE_ADMIN_PASSWORD: "${VOICE_ADMIN_PASSWORD:-}"
+      # Intent/Clinic/Care 编排上游 = OpenClaw Gateway（非 Python）
+      OPENCLAW_GATEWAY_URL: "${OPENCLAW_GATEWAY_URL:-http://python-ai-talk:8000/agent-gate}"
+      OPENCLAW_GATEWAY_TOKEN: "${OPENCLAW_GATEWAY_TOKEN:-}"
+      PANGBAO_API_TOKEN: "${PANGBAO_API_TOKEN:-}"
+      # 若仍配置：仅非编排遗留（知识库运维等）；MUST NOT 再作 Intent/Clinic/Care 上游
       PYTHON_AI_TALK_URL: "http://python-ai-talk:8000"
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:9802/api.json > /dev/null || exit 1"]
