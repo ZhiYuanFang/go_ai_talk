@@ -302,7 +302,7 @@ func storeCareAlertDailyCache(ctx context.Context, deviceNo, day string, items [
 }
 
 type careAlertCachePayload struct {
-	Day   string               `json:"day"`
+	Day   string                `json:"day"`
 	Items []v1.CareAlertItemDTO `json:"items"`
 }
 
@@ -327,7 +327,7 @@ func shanghaiLocation() *time.Location {
 }
 
 func shanghaiDayString(t time.Time) string {
-	return t.In(shanghaiLocation()).Format("2006-01-02")
+	return t.In(shanghaiLocation()).Format("2006-01-02 12:00")
 }
 
 func careAlertAgeMonths(ctx context.Context, deviceNo string) int {

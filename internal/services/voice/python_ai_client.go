@@ -553,7 +553,7 @@ func (c *PythonAIClient) AnalyzeIntentStream(ctx context.Context, req *AnalyzeIn
 
 // ---------- 护理留意（care-alert）Go → Python 内部契约 ----------
 
-// CareAlertAnalyzeRequest 护理留意日分析请求（路径见 Python CONTRACT：/v1/care-alert/analyze）。
+// CareAlertAnalyzeRequest 护理留意日分析请求（路径见 Python CONTRACT：/v1）。
 // Model 与 python_ai_talk CareAlertAnalyzeRequest.model 对齐（对象 {provider,name,max_in_flight}）；
 // nil 时 omit，由 Python 走免费保底序。禁止使用已废弃的 model_cfg 字段。
 type CareAlertAnalyzeRequest struct {
