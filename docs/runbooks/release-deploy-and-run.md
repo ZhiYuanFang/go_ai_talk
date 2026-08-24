@@ -163,6 +163,9 @@ systemctl status mysql-local.service
 - **`UCG_OSS_ACCESS_KEY_ID` / `UCG_OSS_ACCESS_KEY_SECRET`**：ucg OSS 直传与 Green 审核（Green 复用 OSS AK）；`config.ucg-service.yaml` 留空，见 `manifest/docker/.env.example`
 - **ucg-service 视频验真/转码（Phase 1 + Phase 2）**：镜像 `Dockerfile.ucg-service` 已含 `ffmpeg`/`ffprobe`；部署 **ucg-service** 须重建镜像。视频 register 仅接受 `transformVersion=v1|v2`。Web `POST /ucg/app/api/media/upload`（`mediaKind=2`）三分支：**A** v1 合规直传 OSS，响应 `transformVersion=v1`、`contentHash` 为原始字节；**B** v1 不合规但 ffprobe 可解码（含视频轨）则服务端 `NormalizeVideo` 转 v2 后 PUT，响应 `transformVersion=v2`、`contentHash` 为转码后字节；**C** 不可解码 4xx、不创建 OSS 对象。Web/Flutter Web register **须**使用响应中的 `transformVersion` 与 `contentHash` 配对。sim T4 经 `POST /ucg/internal/api/media/upload-video` 转码为 v2。建议 **ucg-service 先于或与 sim-user-service、原生 App v2 同期** 上线，避免旧客户端 `sim-raw` 或非合规视频 register 失败。
 - **`UCG_DASHSCOPE_API_KEY`**：ucg AI 润笔（DashScope）；yaml 中 `dashscope_api_key` 留空
+- **`VOICE_DASHSCOPE_API_KEY`**（可选）：voice-service **对话** STT（`/voice/chat/ws`，百炼 `qwen-audio-3.0-asr-flash-streaming`）；空则回退 `UCG_DASHSCOPE_API_KEY`
+- **`DASHSCOPE_WORKSPACE_ID`**（对话 STT 必填）：百炼业务空间 ID，WebSocket 端点 `wss://{id}.cn-beijing.maas.aliyuncs.com/api-ws/v1/inference`；听写 `/voice/asr/ws` 仍用百度 STT，无需此项
+- **回滚对话 STT**：将 `voice-chat.shared.yaml` 的 `sttChat.provider` 改为 `baidu` 并重启 voice-service；听写 `sttDictation` 不受影响
 - **`UCG_APNS_*` / `UCG_HMS_*` / `UCG_MIPUSH_*`**：ucg 启动器角标推送（iOS APNs、华为 HMS、小米 MiPush）；yaml `ucg.push` 留空，见 `manifest/docker/.env.example`；Flutter 客户端见 `flutter_ai_talk/app/README.md`「UCG 启动器角标推送」
 - **`GLM_API_KEY`**：智谱 GLM（voice 喂养/clinic 默认种子、ucg 润笔 zhipu provider）；**生产部署前必须配置**
 - **`DEEPSEEK_API_KEY`**（可选）：覆盖 `voice-chat.shared.yaml` 中 deepseek 段；Admin 切回 deepseek provider 时需配置
@@ -1424,6 +1427,8 @@ mcp-service 是小智 AI 平台（xiaozhi.me）MCP 接入点桥接进程：作�
 | `UCG_OSS_ACCESS_KEY_ID` | ucg OSS AccessKey ID；yaml `ucg.oss.accessKeyId` 留空，Green 审核复用同一 AK |
 | `UCG_OSS_ACCESS_KEY_SECRET` | ucg OSS AccessKey Secret |
 | `UCG_DASHSCOPE_API_KEY` | ucg AI 润笔 DashScope API Key；yaml `ucg.ai.dashscope_api_key` 留空 |
+| `VOICE_DASHSCOPE_API_KEY` | voice 对话 STT 专用 DashScope Key；空则回退 `UCG_DASHSCOPE_API_KEY` |
+| `DASHSCOPE_WORKSPACE_ID` | voice 对话 STT 百炼 Workspace ID（`/voice/chat/ws`） |
 | `UCG_APNS_KEY_ID` | iOS APNs Auth Key Key ID；yaml `ucg.push.apns.keyId` 留空 |
 | `UCG_APNS_TEAM_ID` | Apple Developer Team ID |
 | `UCG_APNS_BUNDLE_ID` | iOS Bundle ID（须与 APNs Key 授权一致） |

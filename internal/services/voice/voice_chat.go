@@ -157,7 +157,7 @@ func NewVoiceService(cfg VoiceChatConfig) *VoiceService {
 			Timeout: 30 * time.Second,
 		},
 		cache:                  cachekit.Default(),
-		sttLimiter:             newLimiter(cfg.STT.MaxConcurrency),
+		sttLimiter:             newLimiter(sttMaxConcurrency(cfg)),
 		pendingQuantity:        make(map[string]pendingQuantityState),
 		pendingChild:           make(map[string]pendingChildEventState),
 		ensureDeviceRegistered: func(ctx context.Context, deviceNo string) error { return nil },
@@ -194,38 +194,7 @@ func applyConfigDefaults(cfg *VoiceChatConfig) {
 	if cfg.Session.CleanupIntervalSeconds <= 0 {
 		cfg.Session.CleanupIntervalSeconds = 60
 	}
-	if cfg.STT.TimeoutSeconds == 0 {
-		cfg.STT.TimeoutSeconds = 20
-	}
-	if cfg.STT.Provider == "" {
-		cfg.STT.Provider = "generic"
-	}
-	if cfg.STT.Format == "" {
-		cfg.STT.Format = "pcm"
-	}
-	if cfg.STT.CUID == "" {
-		cfg.STT.CUID = "voice-client"
-	}
-	if cfg.STT.MaxConcurrency <= 0 {
-		cfg.STT.MaxConcurrency = 2
-	}
-	if cfg.STT.RealtimeDebounceMs <= 0 {
-		cfg.STT.RealtimeDebounceMs = 1200
-	}
-	if cfg.STT.RealtimeMinRunes <= 0 {
-		cfg.STT.RealtimeMinRunes = 4
-	}
-	if cfg.STT.Provider == "baidu" {
-		if cfg.STT.TokenEndpoint == "" {
-			cfg.STT.TokenEndpoint = "https://aip.baidubce.com/oauth/2.0/token"
-		}
-		if cfg.STT.StreamEndpoint == "" {
-			cfg.STT.StreamEndpoint = "wss://vop.baidu.com/realtime_asr"
-		}
-		if cfg.STT.DevPID == 0 {
-			cfg.STT.DevPID = 1537
-		}
-	}
+	applyAllSTTDefaults(cfg)
 	if cfg.DeepSeek.TimeoutSeconds == 0 {
 		cfg.DeepSeek.TimeoutSeconds = 20
 	}
@@ -475,33 +444,48 @@ func (s *VoiceService) TranscribeAudioRaw(ctx context.Context, meta AudioMeta, a
 	return strings.TrimSpace(text), nil
 }
 
-// CreateStreamASRSession 创建“真流式 ASR”会话。
-// 当前仅在 provider=baidu 且 streamEnabled=true 时可用。
-func (s *VoiceService) CreateStreamASRSession(ctx context.Context, meta AudioMeta, onPartial func(text string), onFinal func(text string)) (StreamASRSession, error) {
-	provider := strings.ToLower(strings.TrimSpace(s.cfg.STT.Provider))
-	if provider != "baidu" {
-		glog.Warningf(ctx, "[流式ASR] 创建会话前置检查失败：provider不支持。provider=%s streamEnabled=%v streamEndpoint=%q tokenEndpoint=%q sampleRate=%d bits=%d channels=%d", provider, s.cfg.STT.StreamEnabled, strings.TrimSpace(s.cfg.STT.StreamEndpoint), strings.TrimSpace(s.cfg.STT.TokenEndpoint), meta.SampleRate, meta.Bits, meta.Channels)
-		return nil, StageError{Stage: "stt", Detail: "当前 provider 不支持流式 ASR"}
+// CreateStreamASRSession 创建流式 ASR 会话；profile=chat 走百炼远场，profile=dictation 走百度听写。
+func (s *VoiceService) CreateStreamASRSession(ctx context.Context, profile STTProfile, meta AudioMeta, onPartial func(text string), onFinal func(text string)) (StreamASRSession, error) {
+	sttCfg := s.sttConfigForProfile(profile)
+	provider := strings.ToLower(strings.TrimSpace(sttCfg.Provider))
+	if !sttCfg.StreamEnabled {
+		glog.Warningf(ctx, "[流式ASR] 创建会话前置检查失败：stream未启用。profile=%s provider=%s streamEnabled=%v", profile, provider, sttCfg.StreamEnabled)
+		return nil, StageError{Stage: "stt", Detail: "未启用流式 ASR（streamEnabled=false）"}
 	}
-	if !s.cfg.STT.StreamEnabled {
-		glog.Warningf(ctx, "[流式ASR] 创建会话前置检查失败：stream未启用。provider=%s streamEnabled=%v streamEndpoint=%q tokenEndpoint=%q sampleRate=%d bits=%d channels=%d", provider, s.cfg.STT.StreamEnabled, strings.TrimSpace(s.cfg.STT.StreamEndpoint), strings.TrimSpace(s.cfg.STT.TokenEndpoint), meta.SampleRate, meta.Bits, meta.Channels)
-		return nil, StageError{Stage: "stt", Detail: "未启用流式 ASR（stt.streamEnabled=false）"}
+	glog.Infof(ctx, "[流式ASR] 开始创建会话。profile=%s provider=%s model=%q streamEndpoint=%q sampleRate=%d bits=%d channels=%d", profile, provider, strings.TrimSpace(sttCfg.Model), strings.TrimSpace(sttCfg.StreamEndpoint), meta.SampleRate, meta.Bits, meta.Channels)
+	switch provider {
+	case "dashscope":
+		sess, err := newDashScopeStreamASRSession(ctx, sttCfg, meta, onPartial, onFinal)
+		if err != nil && strings.ToLower(strings.TrimSpace(sttCfg.FallbackProvider)) == "baidu" {
+			glog.Warningf(ctx, "[流式ASR] DashScope建连失败，降级百度。profile=%s err=%v", profile, err)
+			return newBaiduStreamASRSession(ctx, s, s.cfg.STTDictation, meta, onPartial, onFinal)
+		}
+		return sess, err
+	case "baidu":
+		return newBaiduStreamASRSession(ctx, s, sttCfg, meta, onPartial, onFinal)
+	default:
+		glog.Warningf(ctx, "[流式ASR] 创建会话前置检查失败：provider不支持。profile=%s provider=%s", profile, provider)
+		return nil, StageError{Stage: "stt", Detail: "当前 provider 不支持流式 ASR: " + provider}
 	}
-	glog.Infof(ctx, "[流式ASR] 开始创建会话。provider=%s streamEndpoint=%q tokenEndpoint=%q cuid=%q devPid=%d format=%q timeoutSec=%d apiKeySet=%v apiSecretSet=%v sampleRate=%d bits=%d channels=%d", provider, strings.TrimSpace(s.cfg.STT.StreamEndpoint), strings.TrimSpace(s.cfg.STT.TokenEndpoint), strings.TrimSpace(s.cfg.STT.CUID), s.cfg.STT.DevPID, strings.TrimSpace(s.cfg.STT.Format), s.cfg.STT.TimeoutSeconds, strings.TrimSpace(s.cfg.STT.APIKey) != "", strings.TrimSpace(s.cfg.STT.APISecret) != "", meta.SampleRate, meta.Bits, meta.Channels)
-	return newBaiduStreamASRSession(ctx, s, meta, onPartial, onFinal)
 }
 
 func EstimateBase64DecodedLenForDebug(data string) int {
 	return estimateBase64DecodedLen(data)
 }
 
-// StreamRealtimeOptions 返回流式实时翻译的去抖与最小文本长度配置。
+// StreamRealtimeOptions 返回流式实时翻译的去抖与最小文本长度配置（对话 chat 路）。
 func (s *VoiceService) StreamRealtimeOptions() (time.Duration, int) {
-	debounce := s.cfg.STT.RealtimeDebounceMs
+	debounce := s.cfg.STTChat.RealtimeDebounceMs
+	if debounce <= 0 {
+		debounce = s.cfg.STT.RealtimeDebounceMs
+	}
 	if debounce <= 0 {
 		debounce = 1200
 	}
-	minRunes := s.cfg.STT.RealtimeMinRunes
+	minRunes := s.cfg.STTChat.RealtimeMinRunes
+	if minRunes <= 0 {
+		minRunes = s.cfg.STT.RealtimeMinRunes
+	}
 	if minRunes <= 0 {
 		minRunes = 4
 	}
@@ -555,7 +539,7 @@ func (s *VoiceService) validateAudio(meta AudioMeta) error {
 	return nil
 }
 
-// transcribe 根据配置分发到不同 STT 实现。
+// transcribe 根据配置分发到不同 STT 实现（整段非流式；当前仍走 legacy stt 块，听写/回退路径用百度）。
 func (s *VoiceService) transcribe(ctx context.Context, meta AudioMeta, audioBase64 string) (string, error) {
 	release := s.acquireLimiter(s.sttLimiter)
 	defer release()

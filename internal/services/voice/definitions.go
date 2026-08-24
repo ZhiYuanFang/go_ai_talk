@@ -49,6 +49,29 @@ func ActionTargetTypeChinese(t ActionTargetType) string {
 	}
 }
 
+// STTProfileConfig 单路 STT 配置（对话 chat / 听写 dictation 可独立选型）。
+type STTProfileConfig struct {
+	Provider               string  `json:"provider"`
+	Endpoint               string  `json:"endpoint"`
+	StreamEnabled          bool    `json:"streamEnabled"`
+	StreamEndpoint         string  `json:"streamEndpoint"`
+	RealtimeDebounceMs     int     `json:"realtimeDebounceMs"`
+	RealtimeMinRunes       int     `json:"realtimeMinRunes"`
+	SN                     string  `json:"sn"`
+	APIKey                 string  `json:"apiKey"`
+	APISecret              string  `json:"apiSecret"`
+	TokenEndpoint          string  `json:"tokenEndpoint"`
+	Model                  string  `json:"model"`
+	TimeoutSeconds         int     `json:"timeoutSeconds"`
+	CUID                   string  `json:"cuid"`
+	DevPID                 int     `json:"devPid"`
+	Format                 string  `json:"format"`
+	MaxConcurrency         int     `json:"maxConcurrency"`
+	WorkspaceID            string  `json:"workspaceId"`
+	SpeechNoiseThreshold   float64 `json:"speechNoiseThreshold"`
+	FallbackProvider       string  `json:"fallbackProvider"`
+}
+
 // VoiceChatConfig 语音对话相关配置（ASR/LLM/TTS/会话缓存）。
 type VoiceChatConfig struct {
 	DebugLog bool `json:"debugLog"`
@@ -65,24 +88,12 @@ type VoiceChatConfig struct {
 		MaxDeviceSessions      int `json:"maxDeviceSessions"`
 		CleanupIntervalSeconds int `json:"cleanupIntervalSeconds"`
 	} `json:"session"`
-	STT struct {
-		Provider           string `json:"provider"`
-		Endpoint           string `json:"endpoint"`
-		StreamEnabled      bool   `json:"streamEnabled"`
-		StreamEndpoint     string `json:"streamEndpoint"`
-		RealtimeDebounceMs int    `json:"realtimeDebounceMs"`
-		RealtimeMinRunes   int    `json:"realtimeMinRunes"`
-		SN                 string `json:"sn"`
-		APIKey             string `json:"apiKey"`
-		APISecret          string `json:"apiSecret"`
-		TokenEndpoint      string `json:"tokenEndpoint"`
-		Model              string `json:"model"`
-		TimeoutSeconds     int    `json:"timeoutSeconds"`
-		CUID               string `json:"cuid"`
-		DevPID             int    `json:"devPid"`
-		Format             string `json:"format"`
-		MaxConcurrency     int    `json:"maxConcurrency"`
-	} `json:"stt"`
+	// STT 为历史兼容块；听写 profile 未显式配置 sttDictation 时回退至此。
+	STT STTProfileConfig `json:"stt"`
+	// STTChat 对话 WebSocket（/voice/chat/ws）专用 STT，默认百炼远场模型。
+	STTChat STTProfileConfig `json:"sttChat"`
+	// STTDictation 听写 WebSocket（/voice/asr/ws）专用 STT，默认百度近场。
+	STTDictation STTProfileConfig `json:"sttDictation"`
 	DeepSeek struct {
 		Endpoint       string `json:"endpoint"`
 		APIKey         string `json:"apiKey"`

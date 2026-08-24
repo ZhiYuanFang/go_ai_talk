@@ -20,6 +20,7 @@ var errStreamClosedAfterFinish = errors.New("stream closed after finish")
 
 type baiduStreamASRSession struct {
 	svc       *VoiceService
+	sttCfg    STTProfileConfig
 	meta      AudioMeta
 	sn        string
 	conn      *websocket.Conn
@@ -43,7 +44,7 @@ type baiduStreamASRSession struct {
 	errCh             chan error
 }
 
-func newBaiduStreamASRSession(ctx context.Context, svc *VoiceService, meta AudioMeta, onPartial func(text string), onFinal func(text string)) (StreamASRSession, error) {
+func newBaiduStreamASRSession(ctx context.Context, svc *VoiceService, sttCfg STTProfileConfig, meta AudioMeta, onPartial func(text string), onFinal func(text string)) (StreamASRSession, error) {
 	if svc == nil {
 		glog.Warningf(ctx, "[流式ASR] 初始化失败：voice service 为空")
 		return nil, StageError{Stage: "stt", Detail: "voice service 为空"}
@@ -65,14 +66,14 @@ func newBaiduStreamASRSession(ctx context.Context, svc *VoiceService, meta Audio
 		originalMeta.SampleRate,
 		originalMeta.Bits,
 		originalMeta.Channels,
-		strings.TrimSpace(svc.cfg.STT.StreamEndpoint),
-		strings.TrimSpace(svc.cfg.STT.TokenEndpoint),
-		strings.TrimSpace(svc.cfg.STT.CUID),
-		svc.cfg.STT.DevPID,
-		strings.TrimSpace(svc.cfg.STT.Format),
-		svc.cfg.STT.TimeoutSeconds,
-		strings.TrimSpace(svc.cfg.STT.APIKey) != "",
-		strings.TrimSpace(svc.cfg.STT.APISecret) != "",
+		strings.TrimSpace(sttCfg.StreamEndpoint),
+		strings.TrimSpace(sttCfg.TokenEndpoint),
+		strings.TrimSpace(sttCfg.CUID),
+		sttCfg.DevPID,
+		strings.TrimSpace(sttCfg.Format),
+		sttCfg.TimeoutSeconds,
+		strings.TrimSpace(sttCfg.APIKey) != "",
+		strings.TrimSpace(sttCfg.APISecret) != "",
 	)
 	if meta.SampleRate <= 0 || meta.Bits != 16 || meta.Channels <= 0 {
 		glog.Warningf(ctx, "[流式ASR] 初始化失败：音频参数无效。sampleRate=%d bits=%d channels=%d", meta.SampleRate, meta.Bits, meta.Channels)
@@ -82,13 +83,13 @@ func newBaiduStreamASRSession(ctx context.Context, svc *VoiceService, meta Audio
 		glog.Warningf(ctx, "[流式ASR] 音频采样率非常规。sampleRate=%d（建议 8000/16000）", meta.SampleRate)
 	}
 
-	token, err := svc.getBaiduAccessToken(ctx, &svc.sttToken, svc.cfg.STT.APIKey, svc.cfg.STT.APISecret, svc.cfg.STT.TokenEndpoint, svc.cfg.STT.TimeoutSeconds)
+	token, err := svc.getBaiduAccessToken(ctx, &svc.sttToken, sttCfg.APIKey, sttCfg.APISecret, sttCfg.TokenEndpoint, sttCfg.TimeoutSeconds)
 	if err != nil {
-		glog.Warningf(ctx, "[流式ASR] 初始化失败：获取token失败。tokenEndpoint=%q timeoutSec=%d apiKeySet=%v apiSecretSet=%v err=%v", strings.TrimSpace(svc.cfg.STT.TokenEndpoint), svc.cfg.STT.TimeoutSeconds, strings.TrimSpace(svc.cfg.STT.APIKey) != "", strings.TrimSpace(svc.cfg.STT.APISecret) != "", err)
+		glog.Warningf(ctx, "[流式ASR] 初始化失败：获取token失败。tokenEndpoint=%q timeoutSec=%d apiKeySet=%v apiSecretSet=%v err=%v", strings.TrimSpace(sttCfg.TokenEndpoint), sttCfg.TimeoutSeconds, strings.TrimSpace(sttCfg.APIKey) != "", strings.TrimSpace(sttCfg.APISecret) != "", err)
 		return nil, StageError{Stage: "stt", Detail: err.Error()}
 	}
 
-	rawSN := strings.TrimSpace(svc.cfg.STT.SN)
+	rawSN := strings.TrimSpace(sttCfg.SN)
 	sn, snFromConfig := normalizeBaiduStreamSN(rawSN)
 	if !snFromConfig && rawSN != "" {
 		glog.Warningf(ctx, "[流式ASR] 配置sn未通过校验，已改为动态唯一sn。rawSN=%q generatedSN=%q", rawSN, sn)
@@ -97,9 +98,9 @@ func newBaiduStreamASRSession(ctx context.Context, svc *VoiceService, meta Audio
 		glog.Infof(ctx, "[流式ASR] 未配置sn，已使用动态唯一sn。generatedSN=%q", sn)
 	}
 
-	dialURL, err := buildBaiduStreamURL(svc.cfg.STT.StreamEndpoint, token, svc.cfg.STT.CUID, sn, meta.SampleRate, svc.cfg.STT.DevPID)
+	dialURL, err := buildBaiduStreamURL(sttCfg.StreamEndpoint, token, sttCfg.CUID, sn, meta.SampleRate, sttCfg.DevPID)
 	if err != nil {
-		glog.Warningf(ctx, "[流式ASR] 初始化失败：构建WS地址失败。streamEndpoint=%q cuid=%q sampleRate=%d devPid=%d err=%v", strings.TrimSpace(svc.cfg.STT.StreamEndpoint), strings.TrimSpace(svc.cfg.STT.CUID), meta.SampleRate, svc.cfg.STT.DevPID, err)
+		glog.Warningf(ctx, "[流式ASR] 初始化失败：构建WS地址失败。streamEndpoint=%q cuid=%q sampleRate=%d devPid=%d err=%v", strings.TrimSpace(sttCfg.StreamEndpoint), strings.TrimSpace(sttCfg.CUID), meta.SampleRate, sttCfg.DevPID, err)
 		return nil, StageError{Stage: "stt", Detail: err.Error()}
 	}
 	glog.Infof(ctx, "[流式ASR] 正在建立WS连接。sn=%q url=%q", sn, dialURL)
@@ -139,6 +140,7 @@ func newBaiduStreamASRSession(ctx context.Context, svc *VoiceService, meta Audio
 
 	sess := &baiduStreamASRSession{
 		svc:       svc,
+		sttCfg:    sttCfg,
 		meta:      meta,
 		sn:        sn,
 		conn:      conn,
@@ -240,14 +242,14 @@ func (s *baiduStreamASRSession) sendStart(token string) error {
 		"data": map[string]interface{}{
 			"token":        token,
 			"access_token": token,
-			"cuid":         s.svc.cfg.STT.CUID,
-			"format":       s.svc.cfg.STT.Format,
-			"dev_pid":      s.svc.cfg.STT.DevPID,
+			"cuid":         s.sttCfg.CUID,
+			"format":       s.sttCfg.Format,
+			"dev_pid":      s.sttCfg.DevPID,
 			"sample":       s.meta.SampleRate,
 			"sample_rate":  s.meta.SampleRate,
 			"rate":         s.meta.SampleRate,
 			"channel":      s.meta.Channels,
-			"model":        s.svc.cfg.STT.Model,
+			"model":        s.sttCfg.Model,
 		},
 	}
 	if err := s.conn.WriteJSON(payload); err != nil {

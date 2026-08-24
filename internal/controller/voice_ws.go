@@ -320,7 +320,7 @@ func voiceChatWS(r *ghttp.Request) {
 			streamASR = nil
 		}
 		streamASRBroken = false
-		sess, sErr := voice.Voice().CreateStreamASRSession(ctx, meta,
+		sess, sErr := voice.Voice().CreateStreamASRSession(ctx, voice.STTProfileChat, meta,
 			func(text string) {
 				text = strings.TrimSpace(text)
 				if text == "" || text == lastPartialText {

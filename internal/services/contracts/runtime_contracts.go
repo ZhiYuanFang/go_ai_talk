@@ -33,6 +33,14 @@ type StreamASRSession interface {
 	Close() error
 }
 
+// STTProfile 区分对话与听写两路 STT 配置（provider/model 可不同）。
+type STTProfile string
+
+const (
+	STTProfileChat      STTProfile = "chat"
+	STTProfileDictation STTProfile = "dictation"
+)
+
 type StreamTTSSession interface {
 	WriteText(text string) error
 	Finish(ctx context.Context) error
@@ -76,7 +84,7 @@ type VoiceContract interface {
 	HandleTranscriptForStreaming(ctx context.Context, deviceNo, transcript string) (ask string, answer string, exit bool, finishTalk bool, err error)
 	CreateStreamTTSSession(ctx context.Context, meta AudioMeta, onAudioChunk func(audio []byte, meta AudioMeta) error) (StreamTTSSession, error)
 	StreamReplyWithBaiduTTS(ctx context.Context, meta AudioMeta, reply string, onAudioChunk func(audio []byte, meta AudioMeta, seq int) error) (chunks int, err error)
-	CreateStreamASRSession(ctx context.Context, meta AudioMeta, onPartial func(text string), onFinal func(text string)) (StreamASRSession, error)
+	CreateStreamASRSession(ctx context.Context, profile STTProfile, meta AudioMeta, onPartial func(text string), onFinal func(text string)) (StreamASRSession, error)
 	StreamRealtimeOptions() (time.Duration, int)
 	TextChat(ctx context.Context, deviceNo, transcript string) (string, error)
 	// HandleTranscriptForIntentStream 流式意图分析入口（intent_path=stream_land）。

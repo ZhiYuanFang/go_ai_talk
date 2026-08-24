@@ -30,6 +30,33 @@ voiceChat:
     format: "pcm"
     timeoutSeconds: 20
     maxConcurrency: 50
+  sttChat:
+    provider: "dashscope"
+    model: "qwen-audio-3.0-asr-flash-streaming"
+    streamEnabled: true
+    streamEndpoint: ""
+    workspaceId: ""
+    apiKey: ""
+    speechNoiseThreshold: -0.2
+    format: "pcm"
+    timeoutSeconds: 20
+    maxConcurrency: 50
+    realtimeDebounceMs: 1200
+    realtimeMinRunes: 4
+  sttDictation:
+    provider: "baidu"
+    endpoint: "https://vop.baidu.com/server_api"
+    streamEnabled: true
+    streamEndpoint: "wss://vop.baidu.com/realtime_asr"
+    tokenEndpoint: "https://aip.baidubce.com/oauth/2.0/token"
+    apiKey: "iZZApLGcYBhyR5Djqtp7Kc1m"
+    apiSecret: "F8uXBqwGwUkpy3tYp6eMEBqX2s1R5wsm"
+    model: ""
+    cuid: "gofirst-device"
+    devPid: 1537
+    format: "pcm"
+    timeoutSeconds: 20
+    maxConcurrency: 50
   deepseek:
     endpoint: "https://api.deepseek.com/v1/chat/completions"
     apiKey: ""
