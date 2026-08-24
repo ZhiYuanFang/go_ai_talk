@@ -16,6 +16,10 @@ import (
 
 const wsAudioChunkSize = 16 * 1024
 
+// 与 Flutter AppVoiceRecordConfig 对齐（远场小声；真机可运维调参）。
+const pcmEffectiveAvgAbsThreshold = 150
+const pcmEffectivePeakAbsThreshold = 1200
+
 type wsControlMessage struct {
 	Type string `json:"type"`
 }
@@ -240,7 +244,7 @@ func detectEffectiveSpeechPCMWithReason(raw []byte) (bool, pcmSpeechStats, strin
 	if stats.NonZeroRatio < 0.02 {
 		return false, stats, "low_non_zero_ratio"
 	}
-	if stats.AvgAbs < 220 && stats.PeakAbs < 1200 {
+	if stats.AvgAbs < pcmEffectiveAvgAbsThreshold && stats.PeakAbs < pcmEffectivePeakAbsThreshold {
 		return false, stats, "low_energy"
 	}
 	return true, stats, "ok"
@@ -279,7 +283,7 @@ func detectChunkSpeechWithReason(raw []byte) (bool, pcmSpeechStats, string) {
 		}
 		return false, stats, "low_non_zero_ratio"
 	}
-	if stats.AvgAbs < 220 && stats.PeakAbs < 1200 {
+	if stats.AvgAbs < pcmEffectiveAvgAbsThreshold && stats.PeakAbs < pcmEffectivePeakAbsThreshold {
 		if len(raw) < 1600 {
 			return false, stats, "short_low_energy"
 		}
