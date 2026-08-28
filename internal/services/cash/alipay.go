@@ -79,7 +79,8 @@ func HandleAlipayNotify(ctx context.Context, form map[string]string) (string, er
 	if err != nil {
 		return "failure", err
 	}
-	if err := FulfillPaid(ctx, orderNo, ChannelAlipay, txn, amountFen); err != nil {
+	// 共用回调：按 order_no 分流 VIP / 功能订单履约。
+	if err := DispatchFulfillPaid(ctx, orderNo, ChannelAlipay, txn, amountFen); err != nil {
 		glog.Warningf(ctx, "[cash] alipay fulfill fail orderNo=%s err=%v", orderNo, err)
 		return "failure", err
 	}

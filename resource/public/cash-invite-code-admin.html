@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>邀请码管理</title>
+	<link rel="stylesheet" href="/resource/public/pangbao-theme.css" />
+	<link rel="stylesheet" href="/resource/public/admin-pages.css" />
+</head>
+<body>
+<div class="page">
+	<header class="admin-header glass">
+		<div class="logo">INVITE</div>
+		<div>
+			<h1>邀请码管理</h1>
+			<p>创建/停用邀请码 · 兑换明细追踪 · <a href="/device/admin">运维 Hub</a></p>
+		</div>
+	</header>
+	<div class="card glass hidden" id="mainCard">
+		<div class="row" style="flex-wrap:wrap;gap:8px;margin-bottom:12px;">
+			<input id="ownerWx" type="text" inputmode="numeric" placeholder="ownerWxId" style="width:120px;" />
+			<input id="codeIn" placeholder="码（空则自动）" style="width:140px;" />
+			<input id="feats" placeholder="featureIds 逗号分隔" style="width:200px;" value="prediction_unlock" />
+			<input id="maxR" type="number" placeholder="maxRedeem" value="0" style="width:90px;" title="0=不限" />
+			<button id="createBtn" type="button">创建</button>
+			<button id="reloadBtn" type="button" class="secondary">刷新列表</button>
+		</div>
+		<div class="table-wrap">
+			<table>
+				<thead><tr><th>码</th><th>owner</th><th>已兑/上限</th><th>功能</th><th>状态</th><th>操作</th></tr></thead>
+				<tbody id="codeBody"></tbody>
+			</table>
+		</div>
+		<h3 style="margin-top:18px;">兑换明细</h3>
+		<div class="row" style="gap:8px;margin-bottom:8px;">
+			<input id="filterCode" placeholder="按码筛选" style="width:160px;" />
+			<button id="loadRedBtn" type="button" class="secondary">查询明细</button>
+		</div>
+		<div class="table-wrap">
+			<table>
+				<thead><tr><th>码</th><th>兑换人wx</th><th>设备</th><th>功能</th><th>时间</th></tr></thead>
+				<tbody id="redBody"></tbody>
+			</table>
+		</div>
+		<div id="msg" class="msg"></div>
+	</div>
+</div>
+<script src="/resource/public/admin-common.js"></script>
+<script>
+(async function () {
+	const msg = document.getElementById('msg');
+	const show = (t, ok) => { msg.textContent = t; msg.style.color = ok ? '#059669' : '#dc2626'; };
+	try {
+		await AdminCommon.requireAdmin();
+		document.getElementById('mainCard').classList.remove('hidden');
+	} catch (e) { return; }
+
+	async function loadCodes() {
+		const data = await AdminCommon.adminFetch('/cash/admin/api/invite-code/list');
+		const tb = document.getElementById('codeBody');
+		tb.innerHTML = (data.list || []).map(r => {
+			const feats = (r.featureIds||[]).join(',') || '(全部支持邀请码的功能)';
+			const lim = r.maxRedemptions > 0 ? r.maxRedemptions : '∞';
+			return `<tr>
+				<td><code>${r.code}</code></td><td>${r.ownerWxId}</td>
+				<td>${r.redeemedCount}/${lim}</td><td>${feats}</td><td>${r.status}</td>
+				<td><button type="button" class="secondary" data-code="${r.code}" data-st="${r.status===1?0:1}">${r.status===1?'停用':'启用'}</button></td>
+			</tr>`;
+		}).join('') || '<tr><td colspan="6">暂无</td></tr>';
+		tb.querySelectorAll('button[data-code]').forEach(btn => {
+			btn.onclick = async () => {
+				try {
+					await AdminCommon.adminFetch('/cash/admin/api/invite-code/status', {
+						method: 'POST',
+						body: JSON.stringify({ code: btn.dataset.code, status: Number(btn.dataset.st) })
+					});
+					show('状态已更新', true); await loadCodes();
+				} catch (e) { show(e.message||String(e), false); }
+			};
+		});
+	}
+	async function loadRed() {
+		const code = filterCode.value.trim();
+		const q = code ? ('?code=' + encodeURIComponent(code)) : '';
+		const data = await AdminCommon.adminFetch('/cash/admin/api/invite-code/redemptions' + q);
+		const tb = document.getElementById('redBody');
+		tb.innerHTML = (data.list || []).map(r => {
+			const t = r.redeemedAt ? new Date(r.redeemedAt*1000).toLocaleString() : '';
+			return `<tr><td>${r.code}</td><td>${r.redeemerWxId}</td><td>${r.deviceNo||''}</td><td>${r.featureId}</td><td>${t}</td></tr>`;
+		}).join('') || '<tr><td colspan="5">暂无</td></tr>';
+	}
+	document.getElementById('reloadBtn').onclick = () => loadCodes().catch(e => show(e.message||e, false));
+	document.getElementById('loadRedBtn').onclick = () => loadRed().catch(e => show(e.message||e, false));
+	document.getElementById('createBtn').onclick = async () => {
+		try {
+			const feats = feats.value.split(',').map(s => s.trim()).filter(Boolean);
+			const data = await AdminCommon.adminFetch('/cash/admin/api/invite-code', {
+				method: 'POST',
+				body: JSON.stringify({
+					ownerWxId: Number(ownerWx.value), code: codeIn.value.trim(),
+					maxRedemptions: Number(maxR.value)||0, featureIds: feats, status: 1
+				})
+			});
+			show('已创建: ' + (data.code||''), true); await loadCodes();
+		} catch (e) { show(e.message||String(e), false); }
+	};
+	await loadCodes();
+})();
+</script>
+</body>
+</html>

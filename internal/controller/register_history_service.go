@@ -13,5 +13,7 @@ func RegisterHistoryServiceHTTP(s *ghttp.Server) {
 		inner := NewHistoryCtrl(history.DeviceHistory())
 		group.Bind(inner)
 		group.Bind(NewHistoryAdminCtrl(inner))
+		// 内部契约：cash UCG 资格按日聚合（须 DEVICE_GATEWAY_INTERNAL_SECRET）。
+		group.Bind(&HistoryInternalCtrl{})
 	})
 }

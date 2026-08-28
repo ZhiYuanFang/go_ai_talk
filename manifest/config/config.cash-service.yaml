@@ -1,6 +1,7 @@
 # cash-service 专属配置：仅本域库与支付占位；密钥 MUST 用环境变量注入，勿写入仓库明文。
 # MySQL：CASH_DB_LINK → database.default；库名 ai_voice_cash。
 # 监听：CASH_SERVICE_ADDR（默认 :9807）。
+# UCG 资格：HISTORY_SERVICE_URL + DEVICE_GATEWAY_INTERNAL_SECRET（HTTP 契约，禁止配 history DB link）。
 # 支付宝：CASH_ALIPAY_APP_ID / CASH_ALIPAY_PRIVATE_KEY / CASH_ALIPAY_PUBLIC_KEY / CASH_ALIPAY_NOTIFY_URL
 # Apple IAP：CASH_APPLE_BUNDLE_ID / CASH_APPLE_PRODUCT_ID（映射 vip_monthly_19）
 # 开发旁路（仅非生产）：CASH_PAYMENT_DEV_BYPASS=1 时可跳过渠道验签（仍校验订单号/金额/商品）。

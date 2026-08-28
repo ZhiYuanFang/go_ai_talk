@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>开通功能管理</title>
+	<link rel="stylesheet" href="/resource/public/pangbao-theme.css" />
+	<link rel="stylesheet" href="/resource/public/admin-pages.css" />
+</head>
+<body>
+<div class="page">
+	<header class="admin-header glass">
+		<div class="logo">FEATURE</div>
+		<div>
+			<h1>开通功能管理</h1>
+			<p>功能定义与 SKU · 须先在 <a href="/device/admin">运维 Hub</a> 登录</p>
+		</div>
+	</header>
+	<div class="card glass hidden" id="mainCard">
+		<h3>功能定义</h3>
+		<div class="row" style="flex-wrap:wrap;gap:8px;margin-bottom:8px;">
+			<input id="fId" placeholder="featureId" style="width:160px;" />
+			<input id="fTitle" placeholder="标题" style="width:140px;" />
+			<input id="fMethods" placeholder="unlockMethods" value="payment,invite_code,ad" style="width:200px;" />
+			<input id="fStatus" type="number" value="1" style="width:70px;" title="status" />
+			<button id="saveDefBtn" type="button">保存定义</button>
+			<button id="reloadDefBtn" type="button" class="secondary">刷新</button>
+		</div>
+		<div class="table-wrap"><table><thead><tr><th>ID</th><th>标题</th><th>方式</th><th>状态</th></tr></thead><tbody id="defBody"></tbody></table></div>
+		<h3 style="margin-top:20px;">功能 SKU</h3>
+		<div class="row" style="flex-wrap:wrap;gap:8px;margin-bottom:8px;">
+			<input id="pCode" placeholder="productCode" style="width:140px;" />
+			<input id="pFid" placeholder="featureId" style="width:140px;" />
+			<input id="pKind" placeholder="grantKind" value="allowed_count_delta" style="width:160px;" />
+			<input id="pQty" type="number" value="1" style="width:70px;" />
+			<input id="pPrice" type="number" value="0" style="width:90px;" title="priceFen" />
+			<button id="saveProdBtn" type="button">保存 SKU</button>
+			<button id="reloadProdBtn" type="button" class="secondary">刷新</button>
+		</div>
+		<div class="table-wrap"><table><thead><tr><th>SKU</th><th>功能</th><th>授予</th><th>价(分)</th><th>状态</th></tr></thead><tbody id="prodBody"></tbody></table></div>
+		<div id="msg" class="msg"></div>
+	</div>
+</div>
+<script src="/resource/public/admin-common.js"></script>
+<script>
+(async function () {
+	const msg = document.getElementById('msg');
+	const show = (t, ok) => { msg.textContent = t; msg.style.color = ok ? '#059669' : '#dc2626'; };
+	try {
+		await AdminCommon.requireAdmin();
+		document.getElementById('mainCard').classList.remove('hidden');
+	} catch (e) { return; }
+
+	async function loadDefs() {
+		const data = await AdminCommon.adminFetch('/cash/admin/api/feature/defs');
+		const tb = document.getElementById('defBody');
+		tb.innerHTML = (data.list || []).map(r => `<tr><td>${r.featureId}</td><td>${r.title||''}</td><td>${r.unlockMethods||''}</td><td>${r.status}</td></tr>`).join('') || '<tr><td colspan="4">暂无</td></tr>';
+	}
+	async function loadProds() {
+		const data = await AdminCommon.adminFetch('/cash/admin/api/feature/products');
+		const tb = document.getElementById('prodBody');
+		tb.innerHTML = (data.list || []).map(r => `<tr><td>${r.productCode}</td><td>${r.featureId}</td><td>${r.grantKind}×${r.grantQuantity}</td><td>${r.priceFen}</td><td>${r.status}</td></tr>`).join('') || '<tr><td colspan="5">暂无</td></tr>';
+	}
+	document.getElementById('reloadDefBtn').onclick = () => loadDefs().catch(e => show(e.message||e, false));
+	document.getElementById('reloadProdBtn').onclick = () => loadProds().catch(e => show(e.message||e, false));
+	document.getElementById('saveDefBtn').onclick = async () => {
+		try {
+			await AdminCommon.adminFetch('/cash/admin/api/feature/defs', {
+				method: 'POST',
+				body: JSON.stringify({
+					featureId: fId.value.trim(), title: fTitle.value.trim(),
+					unlockMethods: fMethods.value.trim(), status: Number(fStatus.value)||1
+				})
+			});
+			show('定义已保存', true); await loadDefs();
+		} catch (e) { show(e.message||String(e), false); }
+	};
+	document.getElementById('saveProdBtn').onclick = async () => {
+		try {
+			await AdminCommon.adminFetch('/cash/admin/api/feature/products', {
+				method: 'POST',
+				body: JSON.stringify({
+					productCode: pCode.value.trim(), featureId: pFid.value.trim(),
+					grantKind: pKind.value.trim(), grantQuantity: Number(pQty.value)||1,
+					priceFen: Number(pPrice.value)||0, status: 1
+				})
+			});
+			show('SKU 已保存', true); await loadProds();
+		} catch (e) { show(e.message||String(e), false); }
+	};
+	await loadDefs(); await loadProds();
+})();
+</script>
+</body>
+</html>

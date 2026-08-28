@@ -20,7 +20,7 @@ type AppleVerifyInput struct {
 	SignedTransaction   string `json:"signedTransaction"` // JWS，可选；有则解析声明
 }
 
-// VerifyAppleIAP 校验 Apple IAP 并履约开通。
+// VerifyAppleIAP 校验 Apple IAP 并履约开通（VIP 或功能订单共用入口）。
 // 生产应配置真实验签；CASH_PAYMENT_DEV_BYPASS=1 时仅校验 productId 映射与订单归属。
 func VerifyAppleIAP(ctx context.Context, wxID int64, in AppleVerifyInput) error {
 	if wxID <= 0 {
@@ -31,18 +31,6 @@ func VerifyAppleIAP(ctx context.Context, wxID int64, in AppleVerifyInput) error 
 	orderNo := strings.TrimSpace(in.OrderNo)
 	if txn == "" {
 		return gerror.NewCode(gcode.CodeInvalidParameter, "transactionId 不能为空")
-	}
-
-	prod, err := GetActiveProduct(ctx, ProductMonthly19)
-	if err != nil {
-		return err
-	}
-	expectPID := strings.TrimSpace(prod.AppleProductId)
-	if expectPID == "" {
-		expectPID = strings.TrimSpace(os.Getenv("CASH_APPLE_PRODUCT_ID"))
-	}
-	if expectPID == "" {
-		return gerror.NewCode(gcode.CodeInternalError, "未配置 Apple productId（CASH_APPLE_PRODUCT_ID）")
 	}
 
 	if jws := strings.TrimSpace(in.SignedTransaction); jws != "" {
@@ -62,19 +50,55 @@ func VerifyAppleIAP(ctx context.Context, wxID int64, in AppleVerifyInput) error 
 			}
 		}
 		if !paymentDevBypass() {
-			// 完整 JWS 证书链校验依赖 Apple 根证与 App Store Server API；未旁路时要求已提供 JWS 载荷字段一致。
 			glog.Infof(ctx, "[cash] apple verify using JWS payload fields txn=%s product=%s", txn, productID)
 		}
 	} else if !paymentDevBypass() {
 		return gerror.NewCode(gcode.CodeInvalidParameter, "生产环境须提交 signedTransaction（JWS）；开发可设 CASH_PAYMENT_DEV_BYPASS=1")
 	}
 
+	// 功能订单优先：已有 orderNo 属于 feature_order，或 Apple ID 命中功能 SKU。
+	if orderNo != "" {
+		if ok, _ := EnsureFeatureOrderExists(ctx, orderNo); ok {
+			fo, err := loadFeatureOrderByNo(ctx, orderNo)
+			if err != nil {
+				return err
+			}
+			if fo.WxId != wxID && fo.WxId != 0 {
+				return gerror.NewCode(gcode.CodeNotAuthorized, "订单不属于当前账号")
+			}
+			prod, err := GetActiveFeatureProduct(ctx, fo.ProductCode)
+			if err != nil {
+				return err
+			}
+			if expect := strings.TrimSpace(prod.AppleProductId); expect != "" && productID != expect {
+				return gerror.NewCode(gcode.CodeInvalidParameter, "productId 与功能商品不匹配")
+			}
+			return FulfillFeaturePaid(ctx, orderNo, ChannelAppleIAP, txn, prod.PriceFen)
+		}
+	}
+	if fp, err := GetFeatureProductByAppleID(ctx, productID); err == nil && fp != nil {
+		if orderNo == "" {
+			return gerror.NewCode(gcode.CodeInvalidParameter, "功能 Apple 验单须提供 orderNo")
+		}
+		return FulfillFeaturePaid(ctx, orderNo, ChannelAppleIAP, txn, fp.PriceFen)
+	}
+
+	prod, err := GetActiveProduct(ctx, ProductMonthly19)
+	if err != nil {
+		return err
+	}
+	expectPID := strings.TrimSpace(prod.AppleProductId)
+	if expectPID == "" {
+		expectPID = strings.TrimSpace(os.Getenv("CASH_APPLE_PRODUCT_ID"))
+	}
+	if expectPID == "" {
+		return gerror.NewCode(gcode.CodeInternalError, "未配置 Apple productId（CASH_APPLE_PRODUCT_ID）")
+	}
 	if productID != expectPID {
 		return gerror.NewCode(gcode.CodeInvalidParameter, "productId 与一期 VIP 商品不匹配")
 	}
 
 	if orderNo == "" {
-		// 允许仅凭 transaction 建单绑定（防丢单）：创建 apple 渠道订单再履约。
 		created, cErr := CreateOrder(ctx, wxID, ProductMonthly19, ChannelAppleIAP)
 		if cErr != nil {
 			return cErr

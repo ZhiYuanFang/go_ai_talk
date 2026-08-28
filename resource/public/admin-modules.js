@@ -37,6 +37,18 @@ window.ADMIN_MODULES = [
 		showInNav: true
 	},
 	{
+		id: 'cash-feature-admin',
+		title: '开通功能管理',
+		pagePath: '/device/admin/cash-feature-admin.html',
+		showInNav: true
+	},
+	{
+		id: 'cash-invite-code-admin',
+		title: '邀请码管理',
+		pagePath: '/device/admin/cash-invite-code-admin.html',
+		showInNav: true
+	},
+	{
 		id: 'app-status-admin',
 		title: 'App 维护通知',
 		externalUrl: 'https://notify.cuplay.top/admin',

@@ -67,6 +67,8 @@ var (
 		"/device/admin/ai-model-admin.html",
 		"/device/admin/sim-admin.html",
 		"/device/admin/cash-vip-admin.html",
+		"/device/admin/cash-feature-admin.html",
+		"/device/admin/cash-invite-code-admin.html",
 		"/user-agreement.html",
 		"/privacy-policy.html",
 		"/favicon.ico",

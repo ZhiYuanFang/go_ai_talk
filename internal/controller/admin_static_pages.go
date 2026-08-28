@@ -27,6 +27,8 @@ var adminStaticPages = []adminStaticPage{
 	{path: "/device/admin/ai-model-admin.html", file: "resource/public/ai-model-admin.html", noCache: true},
 	{path: "/device/admin/sim-admin.html", file: "resource/public/sim-admin.html", noCache: true},
 	{path: "/device/admin/cash-vip-admin.html", file: "resource/public/cash-vip-admin.html", noCache: true},
+	{path: "/device/admin/cash-feature-admin.html", file: "resource/public/cash-feature-admin.html", noCache: true},
+	{path: "/device/admin/cash-invite-code-admin.html", file: "resource/public/cash-invite-code-admin.html", noCache: true},
 	{path: "/device/admin/history/*deviceNo", file: "resource/public/history.html", noCache: true},
 	{path: "/device/app/version-admin.html", file: "resource/public/gateway-app-version-admin.html", noCache: true},
 }
