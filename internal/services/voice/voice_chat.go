@@ -87,17 +87,6 @@ type eventIntentResult struct {
 	Exit          bool `json:"exit"`
 }
 
-type eventInfo struct {
-	Id        int64  `json:"id"`
-	Name      string `json:"name"`
-	EventType string `json:"eventType"`
-}
-
-// VoiceService 语音服务核心实现：
-// 1) 语音转写（STT）
-// 2) 对话推理（DeepSeek）
-// 3) 语音合成（TTS）
-// 4) 设备级会话与事件记录
 type VoiceService struct {
 	cfg                    VoiceChatConfig
 	httpClient             *http.Client
@@ -107,8 +96,6 @@ type VoiceService struct {
 	sttLimiter             chan struct{}
 	pendingQuantityMu      sync.Mutex
 	pendingQuantity        map[string]pendingQuantityState
-	pendingChildMu         sync.Mutex
-	pendingChild           map[string]pendingChildEventState
 	deviceLocks            sync.Map
 	ensureDeviceRegistered func(ctx context.Context, deviceNo string) error
 	persistTalkRecord      func(ctx context.Context, deviceNo, ask, answer string) error
@@ -159,7 +146,6 @@ func NewVoiceService(cfg VoiceChatConfig) *VoiceService {
 		cache:                  cachekit.Default(),
 		sttLimiter:             newLimiter(sttMaxConcurrency(cfg)),
 		pendingQuantity:        make(map[string]pendingQuantityState),
-		pendingChild:           make(map[string]pendingChildEventState),
 		ensureDeviceRegistered: func(ctx context.Context, deviceNo string) error { return nil },
 		persistTalkRecord:      func(ctx context.Context, deviceNo, ask, answer string) error { return nil },
 	}
@@ -769,7 +755,7 @@ func (s *VoiceService) HandleTranscriptForIntentStream(ctx context.Context, devi
 		return nil, err
 	}
 
-	// 3. 与 chatWithResult 共享 preamble：pending child 可短路；澄清续聊不在此短路，由 Stream 带 cid
+	// 3. 与 chatWithResult 共享 preamble 文本校验；澄清续聊由 Stream 带 cid
 	pre := s.prepareChatPreamble(ctx, deviceNo, transcript)
 	if !pre.Continue {
 		return &contracts.IntentStreamResult{
@@ -781,7 +767,6 @@ func (s *VoiceService) HandleTranscriptForIntentStream(ctx context.Context, devi
 	}
 
 	normalizedTranscript := pre.NormalizedTranscript
-	events := pre.Events
 	glog.Infof(ctx, "问题=%q intent_path=stream_land", normalizedTranscript)
 
 	// 4. 额度：澄清续聊免计；VIP/硬件/额尽不计；有额非 VIP 计次
@@ -825,7 +810,7 @@ func (s *VoiceService) HandleTranscriptForIntentStream(ctx context.Context, devi
 	glog.Infof(ctx, "[IntentStream] intent_path=stream_land deviceNo=%s target_type=%s action=%s need_confirm=%v conversation_id=%s clarify_resume=%v should_consume=%v",
 		deviceNo, intent.TargetType, intent.Action, intent.NeedConfirm, intent.ConversationID, clarifyResume, shouldConsume)
 
-	chatRes, chatErr := s.applyUnifiedIntentResult(ctx, deviceNo, normalizedTranscript, events, intent)
+	chatRes, chatErr := s.applyUnifiedIntentResult(ctx, deviceNo, normalizedTranscript, intent)
 	return &contracts.IntentStreamResult{
 		Ask:        chatRes.Ask,
 		Reply:      chatRes.Reply,

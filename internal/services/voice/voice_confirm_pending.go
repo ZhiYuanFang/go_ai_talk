@@ -16,7 +16,7 @@ type pendingConfirmEntry struct {
 }
 
 // pendingConfirmStateStruct 按设备隔离的 conversation_id 便签
-// 与 pendingChild/pendingQuantity 一致采用内存 map + 读写锁；进程重启后丢失符合预期。
+// 与 pendingQuantity 一致采用内存 map + 读写锁；进程重启后丢失符合预期。
 type pendingConfirmStateStruct struct {
 	mu      sync.RWMutex                    // 读写锁保护并发访问
 	entries map[string]*pendingConfirmEntry // key: deviceNo

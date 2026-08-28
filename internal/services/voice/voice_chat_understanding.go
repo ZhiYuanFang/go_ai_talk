@@ -9,10 +9,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"hello/internal/model/entity"
 	"hello/internal/services/aimodel"
 	contracts "hello/internal/services/contracts"
-	"hello/internal/services/device"
 
 	"github.com/gogf/gf/v2/os/glog"
 )
@@ -33,45 +31,7 @@ type deepSeekUnifiedIntent struct {
 	NeedConfirm    bool          `json:"need_confirm"`    // 是否需要用户澄清（同一 /intent + conversation_id 续聊）
 	ConfirmMessage string        `json:"confirm_message"` // 澄清话术（Python 生成，Go 原样透传）
 	ConversationID string        `json:"conversation_id"` // 会话 ID；need_confirm 时保存，下一轮 intent 请求带回
-	Events         []IntentEvent `json:"events"`          // 多事件列表（当 action 为 multi 时使用）
-}
-
-// historyRowEventName 写入 history.event_name：始终用事件主档标准名；displayHint 为模型/用户说法或 extra 命中词，仅作主档名为空时的回退。
-// mergeDeepSeekEventTypeJSON 从模型 JSON 读取 event_type（蛇形字段），写入 entity.Event。
-func mergeDeepSeekEventTypeJSON(trimmed string, ev *entity.Event) {
-	if ev == nil || trimmed == "" {
-		return
-	}
-	var aux struct {
-		EventType string `json:"event_type"`
-	}
-	if err := json.Unmarshal([]byte(trimmed), &aux); err == nil && strings.TrimSpace(aux.EventType) != "" {
-		ev.EventType = aux.EventType
-	}
-}
-
-func mergeDeepSeekEventUnitJSON(trimmed string, ev *entity.Event) {
-	if ev == nil || trimmed == "" {
-		return
-	}
-	var aux struct {
-		EventUnit string `json:"event_unit"`
-	}
-	if err := json.Unmarshal([]byte(trimmed), &aux); err == nil {
-		ev.Unit = strings.TrimSpace(aux.EventUnit)
-	}
-}
-
-func historyRowEventName(ev entity.Event, displayHint string) string {
-	if n := strings.TrimSpace(ev.Name); n != "" {
-		return n
-	}
-	return strings.TrimSpace(displayHint)
-}
-
-// historyRowEventUnit 写入 history.event_unit 时使用事件主档单位。
-func historyRowEventUnit(ev entity.Event) string {
-	return strings.TrimSpace(ev.Unit)
+	Events         []IntentEvent `json:"events"`          // 多事件列表（Python 返回；Go 不解析子项 op）
 }
 
 type chatResult struct {
@@ -102,132 +62,27 @@ type chatPreambleOutcome struct {
 	Result               chatResult
 	Err                  error
 	NormalizedTranscript string
-	Events               []entity.Event
 }
 
 // prepareChatPreamble 对话前置编排（流式/非流式入口共享）：
 // 1) 文本规范化与长度校验
-// 2) pending child：仅在直接子节点中匹配并落库（Go 本域事件树逻辑）
-// 澄清续聊不再在此短路：conversation_id 由统一 AnalyzeIntent / Stream 携带，自由文本由 Python 解析。
-// Args:
-//   - deviceNo: 设备号（pending child 按设备隔离）
-//   - transcript: 用户本轮原文/转写
-//
-// Returns: Continue=false 时 Result/Err 可直接返回；Continue=true 时携带 NormalizedTranscript 与事件主档。
-// Side Effects: 可能继续子事件落库、insertQa。
+// 澄清续聊不在此短路：conversation_id 由统一 AnalyzeIntent / Stream 携带，自由文本与喂养落库均由 Python 意图图完成。
 func (s *VoiceService) prepareChatPreamble(ctx context.Context, deviceNo, transcript string) chatPreambleOutcome {
+	_ = ctx
+	_ = deviceNo
 	normalizedTranscript, err := s.normalizeAndValidateChatText(transcript)
 	if err != nil {
 		return chatPreambleOutcome{Err: err}
 	}
-
-	events := []entity.Event{}
-	events, _ = DeviceAdmin().ListEvents(ctx)
-
-	// 子事件 pending 已停用：消歧与落库由 Python 意图图完成
-	if _, ok := s.getPendingChildEvent(deviceNo); ok {
-		s.clearPendingChildEvent(deviceNo)
-	}
-
 	return chatPreambleOutcome{
 		Continue:             true,
 		NormalizedTranscript: normalizedTranscript,
-		Events:               events,
-	}
-}
-
-// pythonIntentLandPlan 按 Python IntentResponse 两轴映射后的落地计划。
-// 权威：target_type=feeding|history|suggest|conversation|exit；
-// 喂养 action=start|end|one|multi|disambiguate（与兄弟仓 schema 对齐）。
-type pythonIntentLandPlan struct {
-	ReplyOnly     bool          // true：仅自然语言，不进入 handleUnifiedIntentAction / AddHistory
-	Action        entity.Action // ReplyOnly=false 时传给动作执行器
-	UnknownDomain bool          // target_type 未识别，调用方应打 Warning
-}
-
-// mapPythonIntentToLandPlan 将 Python 意图两轴映射为 Go 落地计划。
-// 业务说明：
-//   - 领域看 target_type，喂养动作看 action；禁止用 ParseActionTargetType(target_type) 驱动 CRUD
-//   - history→search、suggest→suggest、exit→exit；feeding 的 start|end|one|multi 进动作器
-//   - conversation/空/未知领域、feeding+disambiguate/未知喂养 action → 仅回复
-//
-// Args:
-//   - intent: 已映射的统一意图
-//   - normalizedTranscript: 已规范化用户文本（Action.Name 最终回退）
-//
-// Returns: 落地计划（ReplyOnly 或可执行 Action）
-func mapPythonIntentToLandPlan(intent deepSeekUnifiedIntent, normalizedTranscript string) pythonIntentLandPlan {
-	tt := strings.TrimSpace(strings.ToLower(intent.TargetType))
-	act := strings.TrimSpace(strings.ToLower(intent.Action))
-
-	// Action.Name：展示/日志用，与 CRUD 开关（TargetType）分离
-	name := strings.TrimSpace(intent.ActionName)
-	if name == "" {
-		name = strings.TrimSpace(intent.Action)
-	}
-	if name == "" {
-		name = strings.TrimSpace(intent.EventName)
-	}
-	if name == "" {
-		name = normalizedTranscript
-	}
-
-	switch tt {
-	case "feeding":
-		switch act {
-		case "start", "end", "one":
-			// 喂养 CRUD：TargetType 取 action，而非 target_type
-			return pythonIntentLandPlan{
-				Action: entity.Action{
-					Name:       name,
-					TargetType: ParseActionTargetType(act).String(),
-				},
-			}
-		case "multi":
-			// 多事件：handleUnifiedIntentAction 内按 intent.Action==multi 分流；TargetType 占位即可
-			return pythonIntentLandPlan{
-				Action: entity.Action{
-					Name:       name,
-					TargetType: ActionTargetTypeOne.String(),
-				},
-			}
-		default:
-			return pythonIntentLandPlan{ReplyOnly: true}
-		}
-	case "history":
-		return pythonIntentLandPlan{
-			Action: entity.Action{
-				Name:       name,
-				TargetType: ActionTargetTypeSearch.String(),
-			},
-		}
-	case "suggest":
-		// 领域以 target_type=suggest 为准；不依赖 Python action=suggestion 字符串
-		return pythonIntentLandPlan{
-			Action: entity.Action{
-				Name:       name,
-				TargetType: ActionTargetTypeSuggest.String(),
-			},
-		}
-	case "exit":
-		return pythonIntentLandPlan{
-			Action: entity.Action{
-				Name:       name,
-				TargetType: ActionTargetTypeExit.String(),
-			},
-		}
-	case "conversation", "":
-		return pythonIntentLandPlan{ReplyOnly: true}
-	default:
-		return pythonIntentLandPlan{ReplyOnly: true, UnknownDomain: true}
 	}
 }
 
 // applyUnifiedIntentResult 只透传 Python 结果：确认话术 / content / 退出。
-// 不再按 action 写库、不再二次匹配事件；落库由 Python batch 完成。
-// events 参数保留以兼容调用方；不解析 intent.Events 子项 op。
-func (s *VoiceService) applyUnifiedIntentResult(ctx context.Context, deviceNo, normalizedTranscript string, events []entity.Event, intent deepSeekUnifiedIntent) (chatResult, error) {
-	_ = events
+// 喂养 history 写库由 Python 在意图分析阶段经 history event/batch 完成；Go 不再二次写库或匹配事件。
+func (s *VoiceService) applyUnifiedIntentResult(ctx context.Context, deviceNo, normalizedTranscript string, intent deepSeekUnifiedIntent) (chatResult, error) {
 	if intent.NeedConfirm {
 		pendingConfirmState.set(deviceNo, &pendingConfirmEntry{
 			ConversationID: intent.ConversationID,
@@ -270,26 +125,22 @@ func (s *VoiceService) applyUnifiedIntentResult(ctx context.Context, deviceNo, n
 }
 
 // chatWithResult 对话核心流程（非流式意图分析入口）：
-// - 前置：pending child（prepareChatPreamble）；澄清 cid 由本函数内 AnalyzeIntent 携带
-// - 常规：非流式 callDeepSeekUnifiedIntent → applyUnifiedIntentResult 落库/回复
+// - 前置：prepareChatPreamble 文本校验；澄清 cid 由 AnalyzeIntent 携带
+// - 常规：非流式 callDeepSeekUnifiedIntent → applyUnifiedIntentResult 透传回复（落库在 Python）
 // - 额度：澄清续聊免计；冷启动额度内计次；用尽走智谱降速且不计次
-// TTS / HandleTranscriptForStreaming 等仍走本函数；流式入口禁止再调用本函数以免二次 AnalyzeIntent。
 func (s *VoiceService) chatWithResult(ctx context.Context, deviceNo, transcript string) (chatResult, error) {
 	pre := s.prepareChatPreamble(ctx, deviceNo, transcript)
 	if !pre.Continue {
 		return pre.Result, pre.Err
 	}
 	normalizedTranscript := pre.NormalizedTranscript
-	events := pre.Events
 
 	glog.Infof(ctx, "问题=%q", normalizedTranscript)
 
-	// 澄清续聊判定须在意图调用前读取本地 cid（成功落地后可能 clear）
 	clarifyResume := pendingConversationID(deviceNo) != ""
 	var wxID int64
 	var shouldConsume bool
 	if clarifyResume {
-		// 免计：澄清续聊不计次，避免半途卡死
 		glog.Infof(ctx, "[Clarify] 续聊免计 AI 额度。deviceNo=%s conversation_id=%s", deviceNo, pendingConversationID(deviceNo))
 	} else {
 		var qErr error
@@ -308,16 +159,14 @@ func (s *VoiceService) chatWithResult(ctx context.Context, deviceNo, transcript 
 			FinishTalk: false,
 		}, err
 	}
-	// 仅冷启动且权益要求计次时 consume（VIP/硬件/额尽不计）
 	if !clarifyResume && shouldConsume {
 		s.consumeVoiceAIQuotaOnSuccess(ctx, wxID)
 	}
 
-	return s.applyUnifiedIntentResult(ctx, deviceNo, normalizedTranscript, events, intent)
+	return s.applyUnifiedIntentResult(ctx, deviceNo, normalizedTranscript, intent)
 }
 
 func (s *VoiceService) callDeepSeekUnifiedIntent(ctx context.Context, deviceNo, transcript string) (deepSeekUnifiedIntent, error) {
-	// 调用 Python 微服务进行意图分析；选模经 ResolveLaneModel（VIP∪额度∪硬件）；free 空则 omit。
 	wxID := VoiceWxIDFromCtx(ctx)
 	if wxID <= 0 {
 		if id, e := VoiceWxIDFromRequest(ctx, deviceNo); e == nil {
@@ -325,14 +174,12 @@ func (s *VoiceService) callDeepSeekUnifiedIntent(ctx context.Context, deviceNo, 
 		}
 	}
 	ent, runtime, modelCfg, _ := resolveVoiceUnderstandingModel(ctx, wxID)
-	var release func()
 	if modelCfg != nil {
 		rel, acqErr := aimodel.Acquire(ctx, runtime)
 		if acqErr != nil {
 			return deepSeekUnifiedIntent{}, acqErr
 		}
-		release = rel
-		defer release()
+		defer rel()
 	}
 	pythonClient := PythonAIClientFromCfg()
 	req := &AnalyzeIntentRequest{
@@ -355,8 +202,7 @@ func (s *VoiceService) callDeepSeekUnifiedIntent(ctx context.Context, deviceNo, 
 	return deepSeekUnifiedIntent{}, errors.New("意图分析无响应")
 }
 
-// mapPythonRespToIntent 将 Python 侧 AnalyzeIntentResponse 映射为 deepSeekUnifiedIntent
-// 供非流式和流式意图分析复用，避免重复代码
+// mapPythonRespToIntent 将 Python 侧 AnalyzeIntentResponse 映射为 deepSeekUnifiedIntent。
 func mapPythonRespToIntent(pythonResp *AnalyzeIntentResponse) deepSeekUnifiedIntent {
 	intent := deepSeekUnifiedIntent{
 		TargetType:     strings.TrimSpace(strings.ToLower(pythonResp.TargetType)),
@@ -383,7 +229,6 @@ func mapPythonRespToIntent(pythonResp *AnalyzeIntentResponse) deepSeekUnifiedInt
 }
 
 // callDeepSeekUnifiedIntentStream 调用流式 Python 意图分析接口。
-// 仅将 thinking 经对外 cb 推送；answer（意图 JSON）由 Python 客户端内部累积解析，不外泄。
 func (s *VoiceService) callDeepSeekUnifiedIntentStream(ctx context.Context, deviceNo, transcript string, cb *contracts.IntentStreamCallback) (*AnalyzeIntentStreamResponse, error) {
 	wxID := VoiceWxIDFromCtx(ctx)
 	if wxID <= 0 {
@@ -423,161 +268,6 @@ func (s *VoiceService) callDeepSeekUnifiedIntentStream(ctx context.Context, devi
 		glog.Warningf(ctx, "[Python AI] 流式意图分析返回空 Result。deviceNo=%s", deviceNo)
 	}
 	return streamRes, nil
-}
-
-func (s *VoiceService) handleUnifiedIntentAction(ctx context.Context, deviceNo, normalizedTranscript string, action entity.Action, events []entity.Event, intent deepSeekUnifiedIntent) (finalReply string, exit bool, finishTalk bool, err error) {
-	// 统一意图动作执行器：对 suggest/search/exit 直接返回，其余动作落到事件写库流程。
-
-	// 多事件场景：遍历 Events 列表，逐个处理每个事件
-	if intent.Action == "multi" && len(intent.Events) > 0 {
-		return s.handleMultiEventIntent(ctx, deviceNo, normalizedTranscript, events, intent)
-	}
-
-	nowTime := time.Now().Unix()
-	switch action.TargetType {
-	case ActionTargetTypeSuggest.String():
-		reply := strings.TrimSpace(intent.Reply)
-		if reply == "" {
-			reply = "今天建议保持规律作息，按需喂养，关注精神状态与排便情况。"
-		}
-		return strings.TrimSpace(reply), false, true, nil
-	case ActionTargetTypeSearch.String():
-		reply := strings.TrimSpace(intent.Reply)
-		if reply == "" {
-			reply = "我暂时没找到明确的历史记录结论，请你换个问法再试试。"
-		}
-		return strings.TrimSpace(reply), false, true, nil
-	case ActionTargetTypeExit.String():
-		return "好的，再见", true, false, nil
-	}
-
-	event, targetName, pendingReply, ok, err := s.resolveEventForAction(ctx, deviceNo, normalizedTranscript, events, action.TargetType, &intent)
-	if err != nil {
-		return "我听不懂你说的事件,请用具体的名称告诉我", false, false, err
-	}
-	if pendingReply != "" {
-		return pendingReply, false, false, nil
-	}
-	if !ok {
-		return "我听不懂你说的事件,请用具体的名称告诉我", false, false, errors.New("未识别事件")
-	}
-
-	switch action.TargetType {
-	case ActionTargetTypeStart.String():
-		_, err = DeviceHistory().AddHistory(ctx, entity.History{
-			DeviceNo:  deviceNo,
-			EventId:   event.Id,
-			EventName: historyRowEventName(event, targetName),
-			EventUnit: historyRowEventUnit(event),
-			StartTime: nowTime,
-			Remark:    normalizedTranscript,
-		})
-		if err != nil {
-			return "记录失败,请重试", false, true, err
-		}
-		return fmt.Sprintf("好的，已记录%s开始", targetName), false, true, nil
-	case ActionTargetTypeEnd.String():
-		reply, err := applyVoiceEventEndHistory(ctx, deviceNo, event, targetName, normalizedTranscript, nowTime)
-		return reply, false, true, err
-	case ActionTargetTypeOne.String():
-		quantity := intent.Quantity
-		if strings.EqualFold(strings.TrimSpace(intent.EventType), device.EventTypeNumber) && quantity <= 0 {
-			return "请问 " + action.Name + " " + targetName + " 的数量是" + quantityKeyword, false, false, nil
-		}
-		eventNumber := int64(1)
-		if quantity > 0 {
-			eventNumber = int64(quantity)
-		}
-		_, err = DeviceHistory().AddHistory(ctx, entity.History{
-			DeviceNo:    deviceNo,
-			EventId:     event.Id,
-			EventName:   historyRowEventName(event, targetName),
-			EventUnit:   historyRowEventUnit(event),
-			EventNumber: eventNumber,
-			StartTime:   nowTime,
-			EndTime:     nowTime,
-			Remark:      normalizedTranscript,
-		})
-		if err != nil {
-			return "记录事件失败,请重试", false, true, err
-		}
-		if quantity > 0 {
-			return fmt.Sprintf("好的，已记录 %s %d", targetName, quantity), false, true, nil
-		}
-		return fmt.Sprintf("好的，已记录 %s", targetName), false, true, nil
-	default:
-		return "我没有理解你的意思", false, false, nil
-	}
-}
-
-// handleMultiEventIntent 处理多事件场景
-// 遍历 intent.Events，逐个匹配事件并落库
-func (s *VoiceService) handleMultiEventIntent(ctx context.Context, deviceNo, normalizedTranscript string, events []entity.Event, intent deepSeekUnifiedIntent) (finalReply string, exit bool, finishTalk bool, err error) {
-	nowTime := time.Now().Unix()
-	var replies []string
-
-	for _, eventItem := range intent.Events {
-		action := entity.Action{
-			Name:       eventItem.Action,
-			TargetType: ParseActionTargetType(eventItem.Action).String(),
-		}
-		if action.Name == "" {
-			action.Name = eventItem.Action
-		}
-
-		// 根据动作类型处理每个事件
-		switch eventItem.Action {
-		case ActionTargetTypeStart.String():
-			// 查找匹配的事件
-			event, targetName, pendingReply, ok, err := s.resolveEventForAction(ctx, deviceNo, normalizedTranscript, events, action.TargetType, nil)
-			if err != nil || pendingReply != "" || !ok {
-				continue
-			}
-			_, err = DeviceHistory().AddHistory(ctx, entity.History{
-				DeviceNo:  deviceNo,
-				EventId:   event.Id,
-				EventName: historyRowEventName(event, targetName),
-				EventUnit: historyRowEventUnit(event),
-				StartTime: nowTime,
-				Remark:    normalizedTranscript,
-			})
-			if err == nil {
-				replies = append(replies, fmt.Sprintf("已记录%s开始", targetName))
-			}
-		case ActionTargetTypeEnd.String():
-			event, targetName, pendingReply, ok, err := s.resolveEventForAction(ctx, deviceNo, normalizedTranscript, events, action.TargetType, nil)
-			if err != nil || pendingReply != "" || !ok {
-				continue
-			}
-			reply, err := applyVoiceEventEndHistory(ctx, deviceNo, event, targetName, normalizedTranscript, nowTime)
-			if err == nil && reply != "" {
-				replies = append(replies, reply)
-			}
-		case ActionTargetTypeOne.String():
-			event, targetName, pendingReply, ok, err := s.resolveEventForAction(ctx, deviceNo, normalizedTranscript, events, action.TargetType, nil)
-			if err != nil || pendingReply != "" || !ok {
-				continue
-			}
-			_, err = DeviceHistory().AddHistory(ctx, entity.History{
-				DeviceNo:    deviceNo,
-				EventId:     event.Id,
-				EventName:   historyRowEventName(event, targetName),
-				EventUnit:   historyRowEventUnit(event),
-				EventNumber: 1,
-				StartTime:   nowTime,
-				EndTime:     nowTime,
-				Remark:      normalizedTranscript,
-			})
-			if err == nil {
-				replies = append(replies, fmt.Sprintf("已记录%s", targetName))
-			}
-		}
-	}
-
-	if len(replies) > 0 {
-		return fmt.Sprintf("好的，%s", strings.Join(replies, "，")), false, true, nil
-	}
-	return "我听不懂你说的事件,请用具体的名称告诉我", false, false, errors.New("未识别事件")
 }
 
 // parseEventIntentFromReply 从模型回复中提取结构化 JSON 意图。
@@ -633,7 +323,6 @@ func normalizeIntentCandidateText(input string) string {
 		trimmed = strings.TrimPrefix(trimmed, "```")
 		trimmed = strings.TrimSuffix(strings.TrimSpace(trimmed), "```")
 	}
-	// 兼容模型返回包裹格式：{"role":"assistant","content":"{...intent...}"}
 	var wrapper map[string]interface{}
 	if err := json.Unmarshal([]byte(trimmed), &wrapper); err == nil {
 		if content, ok := wrapper["content"].(string); ok {
@@ -646,24 +335,7 @@ func normalizeIntentCandidateText(input string) string {
 	return trimmed
 }
 
-// matchEventByName 使用宽松规则将模型输出事件名映射到库内事件。
-func (s *VoiceService) matchEventByName(events []eventInfo, eventName string) (eventInfo, bool) {
-	needle := strings.TrimSpace(strings.ToLower(eventName))
-	if needle == "" {
-		return eventInfo{}, false
-	}
-	for _, ev := range events {
-		name := strings.TrimSpace(strings.ToLower(ev.Name))
-		if name == needle || strings.Contains(name, needle) || strings.Contains(needle, name) {
-			return ev, true
-		}
-	}
-	return eventInfo{}, false
-}
-
 func (s *VoiceService) setPendingQuantity(deviceNo string, state pendingQuantityState) {
-	// 记录“该设备下一轮需要补充数量”的状态。
-	// 这个状态是内存态，服务重启后会丢失（符合当前设计预期）。
 	s.pendingQuantityMu.Lock()
 	defer s.pendingQuantityMu.Unlock()
 	if strings.TrimSpace(deviceNo) == "" {
@@ -673,16 +345,12 @@ func (s *VoiceService) setPendingQuantity(deviceNo string, state pendingQuantity
 }
 
 func (s *VoiceService) clearPendingQuantity(deviceNo string) {
-	// 清理待补量词状态：
-	// - 已成功补录数量后
-	// - 或当前流程判断不再需要补录时
 	s.pendingQuantityMu.Lock()
 	defer s.pendingQuantityMu.Unlock()
 	delete(s.pendingQuantity, deviceNo)
 }
 
 func (s *VoiceService) getPendingQuantity(deviceNo string) (pendingQuantityState, bool) {
-	// 读取指定设备是否存在待补量词上下文。
 	s.pendingQuantityMu.Lock()
 	defer s.pendingQuantityMu.Unlock()
 	state, ok := s.pendingQuantity[deviceNo]

@@ -219,6 +219,46 @@ func EndLatestDeviceHistoryIfMatch(ctx context.Context, deviceNo string, eventID
 	return true, nil
 }
 
+// errDuplicateOpenHistoryStart 同 eventId 已存在未闭合行时拒绝再次 start（进行中 insert/update）。
+const errDuplicateOpenHistoryStart = "已在进行中"
+
+// hasOpenHistoryForEvent 查询设备下指定 eventId 是否存在未闭合（end_time=0）历史行。
+// excludeID>0 时在查重中排除该行（用于 update 将 end_time 改回 0）。
+// 与 EndLatestDeviceHistoryIfMatch 的匹配维度（device_no + event_id + end_time=0）对称。
+func hasOpenHistoryForEvent(ctx context.Context, deviceNo string, eventID int64, excludeID int64) (bool, error) {
+	deviceNo = strings.TrimSpace(deviceNo)
+	if deviceNo == "" || eventID <= 0 {
+		return false, nil
+	}
+	m := dao.History.Ctx(ctx).
+		Where(dao.History.Columns().DeviceNo, deviceNo).
+		Where(dao.History.Columns().EventId, eventID).
+		Where(dao.History.Columns().EndTime, 0)
+	if excludeID > 0 {
+		m = m.WhereNot(dao.History.Columns().Id, excludeID)
+	}
+	n, err := m.Count()
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
+// guardDuplicateOpenHistoryStart 进行中（endTime=0）写入前校验同 event 是否已有未闭合行。
+func guardDuplicateOpenHistoryStart(ctx context.Context, deviceNo string, eventID int64, endTime int64, excludeID int64) error {
+	if eventID <= 0 || endTime != 0 {
+		return nil
+	}
+	open, err := hasOpenHistoryForEvent(ctx, deviceNo, eventID, excludeID)
+	if err != nil {
+		return err
+	}
+	if open {
+		return fmt.Errorf("%s", errDuplicateOpenHistoryStart)
+	}
+	return nil
+}
+
 func ListDeviceSuggest(ctx context.Context, deviceNo string) ([]entity.Suggest, error) {
 	deviceNo = strings.TrimSpace(deviceNo)
 	if deviceNo == "" {
@@ -297,6 +337,9 @@ func AddDeviceHistory(ctx context.Context, item entity.History) (int64, error) {
 	if item.DeviceNo == "" {
 		return 0, fmt.Errorf("deviceNo 不能为空")
 	}
+	if err := guardDuplicateOpenHistoryStart(ctx, item.DeviceNo, item.EventId, item.EndTime, 0); err != nil {
+		return 0, err
+	}
 	enrichHistoryEventUnit(ctx, &item)
 	var id int64
 	err := g.DB(dao.History.Group()).Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
@@ -344,6 +387,9 @@ func UpdateDeviceHistory(ctx context.Context, item entity.History) error {
 	item.Remark = strings.TrimSpace(item.Remark)
 	if item.DeviceNo == "" {
 		return fmt.Errorf("deviceNo 不能为空")
+	}
+	if err := guardDuplicateOpenHistoryStart(ctx, item.DeviceNo, item.EventId, item.EndTime, item.Id); err != nil {
+		return err
 	}
 	enrichHistoryEventUnit(ctx, &item)
 	err := g.DB(dao.History.Group()).Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
