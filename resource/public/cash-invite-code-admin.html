@@ -6,39 +6,101 @@
 	<title>邀请码管理</title>
 	<link rel="stylesheet" href="/resource/public/pangbao-theme.css" />
 	<link rel="stylesheet" href="/resource/public/admin-pages.css" />
+	<style>
+		.hint { font-size: 12px; color: #64748b; line-height: 1.55; margin: 0 0 14px; }
+		.field-grid { display: flex; flex-wrap: wrap; gap: 10px 12px; align-items: flex-end; margin-bottom: 12px; }
+		.field { display: flex; flex-direction: column; gap: 4px; }
+		.field label { font-size: 12px; color: #334155; font-weight: 600; }
+		.field .sub { font-size: 11px; color: #94a3b8; font-weight: 400; max-width: 220px; line-height: 1.35; }
+		.field input { font-size: 13px; padding: 6px 8px; min-width: 140px; }
+		.badge-on { color: #059669; font-weight: 600; }
+		.badge-off { color: #dc2626; font-weight: 600; }
+	</style>
 </head>
 <body>
 <div class="page">
 	<header class="admin-header glass">
-		<div class="logo">INVITE</div>
+		<div class="logo">邀请码</div>
 		<div>
 			<h1>邀请码管理</h1>
-			<p>创建/停用邀请码 · 兑换明细追踪 · <a href="/device/admin">运维 Hub</a></p>
+			<p>推广/渠道邀请码 · 兑换追踪 · <a href="/device/admin">运维 Hub</a></p>
 		</div>
 	</header>
 	<div class="card glass hidden" id="mainCard">
-		<div class="row" style="flex-wrap:wrap;gap:8px;margin-bottom:12px;">
-			<input id="ownerWx" type="text" inputmode="numeric" placeholder="ownerWxId" style="width:120px;" />
-			<input id="codeIn" placeholder="码（空则自动）" style="width:140px;" />
-			<input id="feats" placeholder="featureIds 逗号分隔" style="width:200px;" value="prediction_unlock" />
-			<input id="maxR" type="number" placeholder="maxRedeem" value="0" style="width:90px;" title="0=不限" />
-			<button id="createBtn" type="button">创建</button>
+		<p class="hint">
+			<strong>用途：</strong>给销售/渠道发邀请码，用户在 App 输入码开通指定功能（可逐个功能兑换，不会一次开完全部）。
+			<strong>规则摘要：</strong>一人只能绑定「一家」持有人的码；不可用自己的码；仅<strong>兑换成功开通某一功能后</strong>才绑定该持有人。
+			<strong>持有人账号 ID</strong>是系统里的 wx 数字主键（不是手机号/微信号文案），一期每个持有人只能有一条邀请码。
+		</p>
+
+		<h3>创建邀请码</h3>
+		<div class="field-grid">
+			<div class="field">
+				<label>持有人账号 ID（owner）</label>
+				<span class="sub">wx 表主键数字；销售/渠道绑这个人</span>
+				<input id="ownerWx" type="text" inputmode="numeric" placeholder="例如 12345" />
+			</div>
+			<div class="field">
+				<label>邀请码内容</label>
+				<span class="sub">发给用户输入；留空则自动生成</span>
+				<input id="codeIn" placeholder="留空自动生成" />
+			</div>
+			<div class="field" style="min-width:260px;">
+				<label>可开通的功能编号</label>
+				<span class="sub">逗号分隔；须与「开通功能管理」里一致。例：prediction_unlock。留空=所有支持邀请码的功能</span>
+				<input id="feats" value="prediction_unlock" style="min-width:240px;" />
+			</div>
+			<div class="field">
+				<label>最多成功兑换次数</label>
+				<span class="sub">按成功开通次数计；0 = 不限制</span>
+				<input id="maxR" type="number" value="0" min="0" style="min-width:100px;" />
+			</div>
+			<div class="field">
+				<label>授予有效天数</label>
+				<span class="sub">0 = 永久（预测条数类通常填 0）</span>
+				<input id="grantDays" type="number" value="0" min="0" style="min-width:100px;" />
+			</div>
+			<button id="createBtn" type="button">创建邀请码</button>
 			<button id="reloadBtn" type="button" class="secondary">刷新列表</button>
 		</div>
+
 		<div class="table-wrap">
 			<table>
-				<thead><tr><th>码</th><th>owner</th><th>已兑/上限</th><th>功能</th><th>状态</th><th>操作</th></tr></thead>
+				<thead>
+					<tr>
+						<th>邀请码</th>
+						<th>持有人账号 ID</th>
+						<th>已成功兑换 / 上限</th>
+						<th>可开功能</th>
+						<th>状态</th>
+						<th>操作</th>
+					</tr>
+				</thead>
 				<tbody id="codeBody"></tbody>
 			</table>
 		</div>
-		<h3 style="margin-top:18px;">兑换明细</h3>
-		<div class="row" style="gap:8px;margin-bottom:8px;">
-			<input id="filterCode" placeholder="按码筛选" style="width:160px;" />
+
+		<h3 style="margin-top:20px;">兑换明细（谁用了这个码）</h3>
+		<p class="hint">用于追踪销售推广：看某码被哪些账号、在哪台设备、开通了哪个功能。</p>
+		<div class="field-grid">
+			<div class="field">
+				<label>按邀请码筛选</label>
+				<span class="sub">留空查最近记录</span>
+				<input id="filterCode" placeholder="粘贴邀请码" />
+			</div>
 			<button id="loadRedBtn" type="button" class="secondary">查询明细</button>
 		</div>
 		<div class="table-wrap">
 			<table>
-				<thead><tr><th>码</th><th>兑换人wx</th><th>设备</th><th>功能</th><th>时间</th></tr></thead>
+				<thead>
+					<tr>
+						<th>邀请码</th>
+						<th>兑换人账号 ID</th>
+						<th>设备号</th>
+						<th>开通功能</th>
+						<th>兑换时间</th>
+					</tr>
+				</thead>
 				<tbody id="redBody"></tbody>
 			</table>
 		</div>
@@ -50,6 +112,10 @@
 (async function () {
 	const msg = document.getElementById('msg');
 	const show = (t, ok) => { msg.textContent = t; msg.style.color = ok ? '#059669' : '#dc2626'; };
+	const statusLabel = (s) => Number(s) === 1
+		? '<span class="badge-on">有效</span>'
+		: '<span class="badge-off">已停用</span>';
+
 	try {
 		await AdminCommon.requireAdmin();
 		document.getElementById('mainCard').classList.remove('hidden');
@@ -59,14 +125,17 @@
 		const data = await AdminCommon.adminFetch('/cash/admin/api/invite-code/list');
 		const tb = document.getElementById('codeBody');
 		tb.innerHTML = (data.list || []).map(r => {
-			const feats = (r.featureIds||[]).join(',') || '(全部支持邀请码的功能)';
-			const lim = r.maxRedemptions > 0 ? r.maxRedemptions : '∞';
+			const feats = (r.featureIds || []).join(', ') || '（全部支持邀请码的功能）';
+			const lim = r.maxRedemptions > 0 ? r.maxRedemptions : '不限';
 			return `<tr>
-				<td><code>${r.code}</code></td><td>${r.ownerWxId}</td>
-				<td>${r.redeemedCount}/${lim}</td><td>${feats}</td><td>${r.status}</td>
-				<td><button type="button" class="secondary" data-code="${r.code}" data-st="${r.status===1?0:1}">${r.status===1?'停用':'启用'}</button></td>
+				<td><code>${r.code}</code></td>
+				<td>${r.ownerWxId}</td>
+				<td>${r.redeemedCount} / ${lim}</td>
+				<td>${feats}</td>
+				<td>${statusLabel(r.status)}</td>
+				<td><button type="button" class="secondary" data-code="${r.code}" data-st="${r.status === 1 ? 0 : 1}">${r.status === 1 ? '停用' : '重新启用'}</button></td>
 			</tr>`;
-		}).join('') || '<tr><td colspan="6">暂无</td></tr>';
+		}).join('') || '<tr><td colspan="6">暂无邀请码</td></tr>';
 		tb.querySelectorAll('button[data-code]').forEach(btn => {
 			btn.onclick = async () => {
 				try {
@@ -74,8 +143,9 @@
 						method: 'POST',
 						body: JSON.stringify({ code: btn.dataset.code, status: Number(btn.dataset.st) })
 					});
-					show('状态已更新', true); await loadCodes();
-				} catch (e) { show(e.message||String(e), false); }
+					show('状态已更新', true);
+					await loadCodes();
+				} catch (e) { show(e.message || String(e), false); }
 			};
 		});
 	}
@@ -85,24 +155,38 @@
 		const data = await AdminCommon.adminFetch('/cash/admin/api/invite-code/redemptions' + q);
 		const tb = document.getElementById('redBody');
 		tb.innerHTML = (data.list || []).map(r => {
-			const t = r.redeemedAt ? new Date(r.redeemedAt*1000).toLocaleString() : '';
-			return `<tr><td>${r.code}</td><td>${r.redeemerWxId}</td><td>${r.deviceNo||''}</td><td>${r.featureId}</td><td>${t}</td></tr>`;
-		}).join('') || '<tr><td colspan="5">暂无</td></tr>';
+			const t = r.redeemedAt ? new Date(r.redeemedAt * 1000).toLocaleString() : '';
+			return `<tr>
+				<td><code>${r.code}</code></td>
+				<td>${r.redeemerWxId}</td>
+				<td>${r.deviceNo || ''}</td>
+				<td><code>${r.featureId}</code></td>
+				<td>${t}</td>
+			</tr>`;
+		}).join('') || '<tr><td colspan="5">暂无兑换记录</td></tr>';
 	}
-	document.getElementById('reloadBtn').onclick = () => loadCodes().catch(e => show(e.message||e, false));
-	document.getElementById('loadRedBtn').onclick = () => loadRed().catch(e => show(e.message||e, false));
+	document.getElementById('reloadBtn').onclick = () => loadCodes().catch(e => show(e.message || e, false));
+	document.getElementById('loadRedBtn').onclick = () => loadRed().catch(e => show(e.message || e, false));
 	document.getElementById('createBtn').onclick = async () => {
 		try {
-			const feats = feats.value.split(',').map(s => s.trim()).filter(Boolean);
+			const ownerWxId = Number(ownerWx.value);
+			if (!ownerWxId) { show('请填写持有人账号 ID（数字）', false); return; }
+			const featureIds = document.getElementById('feats').value.split(',').map(s => s.trim()).filter(Boolean);
 			const data = await AdminCommon.adminFetch('/cash/admin/api/invite-code', {
 				method: 'POST',
 				body: JSON.stringify({
-					ownerWxId: Number(ownerWx.value), code: codeIn.value.trim(),
-					maxRedemptions: Number(maxR.value)||0, featureIds: feats, status: 1
+					ownerWxId,
+					code: codeIn.value.trim(),
+					maxRedemptions: Number(maxR.value) || 0,
+					grantDurationDays: Number(grantDays.value) || 0,
+					featureIds,
+					status: 1
 				})
 			});
-			show('已创建: ' + (data.code||''), true); await loadCodes();
-		} catch (e) { show(e.message||String(e), false); }
+			show('已创建邀请码：' + (data.code || ''), true);
+			codeIn.value = '';
+			await loadCodes();
+		} catch (e) { show(e.message || String(e), false); }
 	};
 	await loadCodes();
 })();
