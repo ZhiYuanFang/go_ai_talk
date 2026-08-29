@@ -2,12 +2,17 @@
 
 ### Requirement: Admin can upload er_code.png to apk storage
 
-The system MUST accept an Admin multipart upload that saves the image as exactly `er_code.png` under the gateway APK storage directory, overwriting any previous file. The system MUST reject uploads that are not a PNG when the implementation chooses reject-non-png. The download MUST remain available at `/device/app/apk/er_code.png` using the existing apk download route.
+The system MUST accept an Admin multipart upload that saves the image as exactly `er_code.png` under the gateway APK storage directory, overwriting any previous file. The system MUST reject uploads that are not a PNG when the implementation chooses reject-non-png. The download MUST remain available at `/device/app/apk/er_code.png` using the existing apk download route. The upload path MUST be classified as a Gateway Admin API path (Admin JWT accepted; not treated as an App user API).
 
 #### Scenario: Overwrite
 
 - **WHEN** Admin uploads a new PNG as the group QR
 - **THEN** the storage path contains only `er_code.png` as the group QR asset (prior content replaced)
+
+#### Scenario: Admin JWT accepted on upload
+
+- **WHEN** Admin calls the group QR upload endpoint with a valid Admin JWT
+- **THEN** the request MUST NOT be rejected as “admin token 不能访问 App 用户接口”
 
 ### Requirement: Admin configures expiry and can preview after expiry
 

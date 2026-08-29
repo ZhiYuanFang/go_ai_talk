@@ -24,7 +24,7 @@
 
 ### D2：职责拆分
 
-- gateway：`POST` Admin 上传（multipart），鉴权同其它 Admin；只写文件，可回传相对 path。
+- gateway：`POST /device/app/api/invite-group-qr/upload` Admin 上传（multipart）；须登记进 `IsGatewayAdminAPIPath`（与 `version/admin` 同理），否则 Admin JWT 会被 Hook 当成「App 用户接口」403；只写文件，可回传相对 path。
 - cash：表 `invite_group_qr`（singleton id=1）：`expires_at`、`updated_at`、`file_name`（恒 `er_code.png`）；Admin GET/POST 有效期；上传成功后 Admin 页再调 cash 刷新 `updated_at`（或 gateway 回调——一期由 Admin 串行：upload → cash touch）。
 
 ### D3：catalog

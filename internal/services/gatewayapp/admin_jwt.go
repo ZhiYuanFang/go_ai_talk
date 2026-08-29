@@ -210,6 +210,10 @@ func IsGatewayAdminAPIPath(path string) bool {
 	if strings.HasPrefix(path, "/device/app/api/version/admin/") {
 		return true
 	}
+	// 群二维码落盘上传挂在 /device/app/api（同 APK 存储），须走 Admin JWT，否则会被当作 App 用户接口 403。
+	if path == "/device/app/api/invite-group-qr/upload" {
+		return true
+	}
 	return false
 }
 

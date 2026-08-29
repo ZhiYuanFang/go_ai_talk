@@ -2,6 +2,7 @@
 
 - [x] 1.1 Admin 上传 API：强制保存为 `ApkStorageDir/er_code.png`（覆盖）；鉴权对齐现有 Admin
 - [x] 1.2 确认 `/device/app/apk/er_code.png` 可匿名下载（复用现路由）
+- [x] 1.3 将 `/device/app/api/invite-group-qr/upload` 加入 `IsGatewayAdminAPIPath`（修复 Admin JWT 403）
 
 ## 2. cash 元数据与 catalog
 
