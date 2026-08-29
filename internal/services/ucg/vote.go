@@ -84,9 +84,10 @@ func VotePost(ctx context.Context, wxID int64, postID uint64, side string) error
 			g.Log().Warningf(ctx, "[ucg-vote] backfill after patch failed post=%d err=%v", postID, bfErr)
 		}
 	}
+	// 作者自投：原力在 ucg 本域 +1 并写流水（不再经 device.wx）。
 	if int64(post.AuthorWxId) == wxID {
-		if incErr := Device().IncrementForceValue(ctx, wxID); incErr != nil {
-			g.Log().Warningf(ctx, "[ucg-vote] increment force_value failed wxId=%d post=%d err=%v", wxID, postID, incErr)
+		if incErr := AddDebateSelfVoteForce(ctx, wxID, int64(postID)); incErr != nil {
+			g.Log().Warningf(ctx, "[ucg-vote] add force failed wxId=%d post=%d err=%v", wxID, postID, incErr)
 		}
 	}
 	if int64(post.AuthorWxId) != wxID {

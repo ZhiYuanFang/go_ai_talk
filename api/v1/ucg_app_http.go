@@ -111,6 +111,28 @@ type UcgProfileRes struct {
 	ForceTier      string `json:"forceTier,omitempty"`
 }
 
+// UcgForceLedgerReq GET 当前用户积分流水。
+type UcgForceLedgerReq struct {
+	g.Meta `path:"/ucg/app/api/force/ledger" method:"get" tags:"ucg" summary:"原力积分流水"`
+	Limit  int `json:"limit" in:"query" d:"50"`
+	Offset int `json:"offset" in:"query" d:"0"`
+}
+
+// UcgForceLedgerItem 流水项。
+type UcgForceLedgerItem struct {
+	Id        int64  `json:"id"`
+	Reason    string `json:"reason"`
+	Delta     int    `json:"delta"`
+	Ref       string `json:"ref,omitempty"`
+	CreatedAt int64  `json:"createdAt"`
+}
+
+// UcgForceLedgerRes 流水列表。
+type UcgForceLedgerRes struct {
+	ForceValue int                  `json:"forceValue"`
+	List       []UcgForceLedgerItem `json:"list"`
+}
+
 type UcgPostCreateReq struct {
 	g.Meta       `path:"/ucg/app/api/posts" method:"post" tags:"ucg" summary:"创建帖子"`
 	Content      string              `json:"content"`

@@ -27,8 +27,8 @@ wechat:
 
 ## 部署顺序
 
-1. 执行 `hack/ddl_wx_force_value.sql`（device DB）
-2. 执行 `docs/migrations/ucg_post_debate.sql`、`docs/migrations/ucg_post_vote.sql`（ucg DB）
+1. 执行 `docs/migrations/ucg_post_debate.sql`、`docs/migrations/ucg_post_vote.sql`（ucg DB）
+2. `ucg-service` 启动时 `EnsureForceSchema` 会创建 `ucg_user_force` / `ucg_force_ledger`（原力已迁出 device.`wx.force_value`）
 3. `make dao.sync` 后部署 device-service 与 ucg-service
 4. 配置小程序 secret 并发布 runbook 给运维
 

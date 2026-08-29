@@ -120,13 +120,6 @@ func (c *DeviceClient) BatchWx(ctx context.Context, wxIDs []int64) (map[int64]de
 	return out, nil
 }
 
-// IncrementForceValue 作者投票成功后原力 +1。
-func (c *DeviceClient) IncrementForceValue(ctx context.Context, wxID int64) error {
-	return c.doJSON(ctx, http.MethodPost, "/device/internal/api/ucg/wx/force/increment", nil, map[string]interface{}{
-		"wxId": wxID,
-	}, nil)
-}
-
 func (c *DeviceClient) doJSON(ctx context.Context, method, path string, query map[string]string, body interface{}, out interface{}) error {
 	if c.base == "" {
 		return deviceClientErr("DEVICE_SERVICE_URL 未配置")

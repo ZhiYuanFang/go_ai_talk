@@ -28,7 +28,6 @@ type DeviceUcgWxBatchItem struct {
 	BabyName    string `json:"babyName"`
 	IpLocation  string `json:"ipLocation,omitempty"`
 	IsSimulated bool   `json:"isSimulated"`
-	ForceValue  int    `json:"forceValue,omitempty"`
 }
 
 // DeviceUcgWxIpLocationPutReq 更新 wx IP 属地（网关解析后由 ucg-service 写入）。
@@ -53,11 +52,3 @@ type DeviceUcgWxBabyNameReq struct {
 type DeviceUcgWxBabyNameRes struct {
 	BabyName string `json:"babyName"`
 }
-
-// DeviceUcgWxForceIncrementReq 原力值 +1（作者投票）。
-type DeviceUcgWxForceIncrementReq struct {
-	g.Meta `path:"/device/internal/api/ucg/wx/force/increment" method:"post" tags:"device" summary:"内部-UCG 原力值+1"`
-	WxId   int64 `json:"wxId" v:"required|min:1"`
-}
-
-type DeviceUcgWxForceIncrementRes struct{}

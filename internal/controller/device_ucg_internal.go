@@ -50,7 +50,6 @@ func (c *DeviceUcgInternalCtrl) WxBatch(ctx context.Context, req *v1.DeviceUcgWx
 			BabyName:    row.BabyName,
 			IpLocation:  row.IpLocation,
 			IsSimulated: row.IsSimulated,
-			ForceValue:  row.ForceValue,
 		})
 	}
 	return &v1.DeviceUcgWxBatchRes{List: items}, nil
@@ -77,17 +76,6 @@ func (c *DeviceUcgInternalCtrl) WxBabyName(ctx context.Context, req *v1.DeviceUc
 		return nil, err
 	}
 	return &v1.DeviceUcgWxBabyNameRes{BabyName: name}, nil
-}
-
-func (c *DeviceUcgInternalCtrl) WxForceIncrement(ctx context.Context, req *v1.DeviceUcgWxForceIncrementReq) (res *v1.DeviceUcgWxForceIncrementRes, err error) {
-	_ = c
-	if err = device.UcgWxIncrementForceValue(ctx, req.WxId); err != nil {
-		if err == device.ErrUcgWxIDInvalid {
-			return nil, gerror.NewCode(gcode.CodeInvalidParameter, err.Error())
-		}
-		return nil, err
-	}
-	return &v1.DeviceUcgWxForceIncrementRes{}, nil
 }
 
 // deviceUcgInternalSecretMiddleware 校验 X-Device-Gateway-Internal-Secret（兼容 X-Gateway-Internal-Secret）。

@@ -86,6 +86,7 @@ func (c *CashFeatureController) Catalog(ctx context.Context, _ *v1.CashFeatureCa
 			FeatureId: it.FeatureId, Title: it.Title, Description: it.Description,
 			UnlockMethods: it.UnlockMethods, Unlocked: it.Unlocked,
 			UnlockMethod: it.UnlockMethod, ExpiresAt: it.ExpiresAt, AllowedCount: it.AllowedCount,
+			TotalActivatableCount: it.TotalActivatableCount,
 			Products: make([]v1.CashFeatureCatalogProductItem, 0, len(it.Products)),
 		}
 		for _, p := range it.Products {
@@ -132,6 +133,38 @@ func (c *CashFeatureController) InviteCodesRedeem(ctx context.Context, req *v1.C
 		return nil, err
 	}
 	return &v1.CashFeatureInviteRedeemRes{}, nil
+}
+
+// InviteMine GET /cash/app/api/invite/mine
+func (c *CashFeatureController) InviteMine(ctx context.Context, _ *v1.CashInviteMineReq) (*v1.CashInviteMineRes, error) {
+	wxID, err := cashWxIDFromHeader(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out, err := cash.GetInviteMine(ctx, wxID)
+	if err != nil {
+		return nil, err
+	}
+	return &v1.CashInviteMineRes{Code: out.Code, RedeemedCount: out.RedeemedCount}, nil
+}
+
+// InviteInvitees GET /cash/app/api/invite/invitees
+func (c *CashFeatureController) InviteInvitees(ctx context.Context, _ *v1.CashInviteInviteesReq) (*v1.CashInviteInviteesRes, error) {
+	wxID, err := cashWxIDFromHeader(ctx)
+	if err != nil {
+		return nil, err
+	}
+	list, err := cash.ListInviteInvitees(ctx, wxID)
+	if err != nil {
+		return nil, err
+	}
+	res := &v1.CashInviteInviteesRes{List: make([]v1.CashInviteInviteeItem, 0, len(list))}
+	for _, it := range list {
+		res.List = append(res.List, v1.CashInviteInviteeItem{
+			WxId: it.WxId, Nickname: it.Nickname, RedeemedAt: it.RedeemedAt,
+		})
+	}
+	return res, nil
 }
 
 // AdComplete POST /cash/app/api/feature/ad/complete
@@ -214,69 +247,6 @@ func (c *CashFeatureController) AdminFeatureProductsUpsert(ctx context.Context, 
 		return nil, err
 	}
 	return &v1.CashAdminFeatureProductUpsertRes{ProductCode: prod.ProductCode}, nil
-}
-
-// AdminInviteCodesList GET
-func (c *CashFeatureController) AdminInviteCodesList(ctx context.Context, _ *v1.CashAdminInviteCodesListReq) (*v1.CashAdminInviteCodesListRes, error) {
-	if err := requireCashAdmin(ctx); err != nil {
-		return nil, err
-	}
-	list, err := cash.AdminListInviteCodes(ctx)
-	if err != nil {
-		return nil, err
-	}
-	res := &v1.CashAdminInviteCodesListRes{List: make([]v1.CashAdminInviteCodeItem, 0, len(list))}
-	for _, it := range list {
-		res.List = append(res.List, v1.CashAdminInviteCodeItem{
-			Code: it.Code, OwnerWxId: it.OwnerWxId, ExpiresAt: it.ExpiresAt,
-			MaxRedemptions: it.MaxRedemptions, RedeemedCount: it.RedeemedCount,
-			GrantDurationDays: it.GrantDurationDays, Status: it.Status,
-			FeatureIds: it.FeatureIds, CreatedAt: it.CreatedAt,
-		})
-	}
-	return res, nil
-}
-
-// AdminInviteCodeCreate POST
-func (c *CashFeatureController) AdminInviteCodeCreate(ctx context.Context, req *v1.CashAdminInviteCodeCreateReq) (*v1.CashAdminInviteCodeCreateRes, error) {
-	if err := requireCashAdmin(ctx); err != nil {
-		return nil, err
-	}
-	code, err := cash.AdminCreateInviteCode(ctx, req.OwnerWxId, req.Code, req.ExpiresAt, req.MaxRedemptions, req.GrantDurationDays, req.Status, req.FeatureIds)
-	if err != nil {
-		return nil, err
-	}
-	return &v1.CashAdminInviteCodeCreateRes{Code: code}, nil
-}
-
-// AdminInviteCodeStatus POST
-func (c *CashFeatureController) AdminInviteCodeStatus(ctx context.Context, req *v1.CashAdminInviteCodeStatusReq) (*v1.CashAdminInviteCodeStatusRes, error) {
-	if err := requireCashAdmin(ctx); err != nil {
-		return nil, err
-	}
-	if err := cash.AdminUpdateInviteCodeStatus(ctx, req.Code, req.Status); err != nil {
-		return nil, err
-	}
-	return &v1.CashAdminInviteCodeStatusRes{}, nil
-}
-
-// AdminInviteRedemptions GET
-func (c *CashFeatureController) AdminInviteRedemptions(ctx context.Context, req *v1.CashAdminInviteRedemptionsReq) (*v1.CashAdminInviteRedemptionsRes, error) {
-	if err := requireCashAdmin(ctx); err != nil {
-		return nil, err
-	}
-	list, err := cash.AdminListInviteRedemptions(ctx, req.Code, req.Limit)
-	if err != nil {
-		return nil, err
-	}
-	res := &v1.CashAdminInviteRedemptionsRes{List: make([]v1.CashAdminInviteRedemptionItem, 0, len(list))}
-	for _, it := range list {
-		res.List = append(res.List, v1.CashAdminInviteRedemptionItem{
-			Code: it.Code, OwnerWxId: it.OwnerWxId, RedeemerWxId: it.RedeemerWxId,
-			DeviceNo: it.DeviceNo, FeatureId: it.FeatureId, RedeemedAt: it.RedeemedAt,
-		})
-	}
-	return res, nil
 }
 
 // AdminFeedingEligibilityScenes GET

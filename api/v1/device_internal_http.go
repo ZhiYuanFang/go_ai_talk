@@ -15,3 +15,13 @@ type DeviceInternalEventOptionsReq struct {
 type DeviceInternalEventOptionsRes struct {
 	List []entity.Event `json:"list"`
 }
+
+// DeviceInternalEventNonLeafCountReq 内部：非叶子事件计数（供 cash catalog 聚合）。
+type DeviceInternalEventNonLeafCountReq struct {
+	g.Meta `path:"/device/internal/api/event/non-leaf-count" method:"get" tags:"device" summary:"内部-非叶子事件数"`
+}
+
+// DeviceInternalEventNonLeafCountRes 非叶子事件计数响应。
+type DeviceInternalEventNonLeafCountRes struct {
+	Count int `json:"count"`
+}

@@ -68,7 +68,6 @@ var (
 		"/device/admin/sim-admin.html",
 		"/device/admin/cash-vip-admin.html",
 		"/device/admin/cash-feature-admin.html",
-		"/device/admin/cash-invite-code-admin.html",
 		"/device/admin/cash-feeding-eligibility-admin.html",
 		"/user-agreement.html",
 		"/privacy-policy.html",

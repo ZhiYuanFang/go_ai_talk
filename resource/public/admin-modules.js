@@ -43,12 +43,6 @@ window.ADMIN_MODULES = [
 		showInNav: true
 	},
 	{
-		id: 'cash-invite-code-admin',
-		title: '邀请码管理',
-		pagePath: '/device/admin/cash-invite-code-admin.html',
-		showInNav: true
-	},
-	{
 		id: 'cash-feeding-eligibility-admin',
 		title: '喂养资格门槛',
 		pagePath: '/device/admin/cash-feeding-eligibility-admin.html',

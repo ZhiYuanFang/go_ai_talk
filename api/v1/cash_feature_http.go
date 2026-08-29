@@ -49,17 +49,18 @@ type CashFeatureCatalogProductItem struct {
 }
 
 // CashFeatureCatalogItem 目录项（开通态 + 可售 products）。
-// AllowedCount：预测类有效可看条数；-1 表示临时/永久全开（哨兵，客户端须识别）。
+// AllowedCount：预测永久可激活条数（defaultFree+delta）；TotalActivatableCount：非叶子事件天花板。
 type CashFeatureCatalogItem struct {
-	FeatureId     string                         `json:"featureId"`
-	Title         string                         `json:"title"`
-	Description   string                         `json:"description"`
-	UnlockMethods string                         `json:"unlockMethods"`
-	Unlocked      bool                           `json:"unlocked"`
-	UnlockMethod  string                         `json:"unlockMethod,omitempty"`
-	ExpiresAt     int64                          `json:"expiresAt,omitempty"`
-	AllowedCount  *int                           `json:"allowedCount,omitempty"`
-	Products      []CashFeatureCatalogProductItem `json:"products"`
+	FeatureId             string                         `json:"featureId"`
+	Title                 string                         `json:"title"`
+	Description           string                         `json:"description"`
+	UnlockMethods         string                         `json:"unlockMethods"`
+	Unlocked              bool                           `json:"unlocked"`
+	UnlockMethod          string                         `json:"unlockMethod,omitempty"`
+	ExpiresAt             int64                          `json:"expiresAt,omitempty"`
+	AllowedCount          *int                           `json:"allowedCount,omitempty"`
+	TotalActivatableCount *int                           `json:"totalActivatableCount,omitempty"`
+	Products              []CashFeatureCatalogProductItem `json:"products"`
 }
 
 // CashFeatureCatalogRes 目录 data。
@@ -94,6 +95,34 @@ type CashFeatureInviteRedeemReq struct {
 
 // CashFeatureInviteRedeemRes 兑换结果。
 type CashFeatureInviteRedeemRes struct{}
+
+// CashInviteMineReq GET 我的邀请码（懒 Ensure）。
+type CashInviteMineReq struct {
+	g.Meta `path:"/cash/app/api/invite/mine" method:"get" tags:"cash" summary:"我的邀请码与获客数"`
+}
+
+// CashInviteMineRes 我的邀请码。
+type CashInviteMineRes struct {
+	Code          string `json:"code"`
+	RedeemedCount int    `json:"redeemedCount"`
+}
+
+// CashInviteInviteesReq GET 成功使用我码的用户。
+type CashInviteInviteesReq struct {
+	g.Meta `path:"/cash/app/api/invite/invitees" method:"get" tags:"cash" summary:"我的邀请列表"`
+}
+
+// CashInviteInviteeItem 邀请人行。
+type CashInviteInviteeItem struct {
+	WxId       int64  `json:"wxId"`
+	Nickname   string `json:"nickname"`
+	RedeemedAt int64  `json:"redeemedAt"`
+}
+
+// CashInviteInviteesRes 邀请列表。
+type CashInviteInviteesRes struct {
+	List []CashInviteInviteeItem `json:"list"`
+}
 
 // CashFeatureAdCompleteReq POST 广告完成开通。
 type CashFeatureAdCompleteReq struct {
@@ -185,80 +214,6 @@ type CashAdminFeatureProductUpsertReq struct {
 // CashAdminFeatureProductUpsertRes 创建/更新结果（含最终商品编码）。
 type CashAdminFeatureProductUpsertRes struct {
 	ProductCode string `json:"productCode"`
-}
-
-// —— Admin：邀请码 ——
-
-// CashAdminInviteCodesListReq GET 邀请码列表。
-type CashAdminInviteCodesListReq struct {
-	g.Meta `path:"/cash/admin/api/invite-code/list" method:"get" tags:"cash-admin" summary:"管理端邀请码列表"`
-}
-
-// CashAdminInviteCodeItem 邀请码项。
-type CashAdminInviteCodeItem struct {
-	Code              string   `json:"code"`
-	OwnerWxId         int64    `json:"ownerWxId"`
-	ExpiresAt         int64    `json:"expiresAt"`
-	MaxRedemptions    int      `json:"maxRedemptions"`
-	RedeemedCount     int      `json:"redeemedCount"`
-	GrantDurationDays int      `json:"grantDurationDays"`
-	Status            int      `json:"status"`
-	FeatureIds        []string `json:"featureIds"`
-	CreatedAt         int64    `json:"createdAt"`
-}
-
-// CashAdminInviteCodesListRes 列表。
-type CashAdminInviteCodesListRes struct {
-	List []CashAdminInviteCodeItem `json:"list"`
-}
-
-// CashAdminInviteCodeCreateReq POST 创建邀请码。
-type CashAdminInviteCodeCreateReq struct {
-	g.Meta            `path:"/cash/admin/api/invite-code" method:"post" tags:"cash-admin" summary:"管理端创建邀请码"`
-	OwnerWxId         int64    `json:"ownerWxId" v:"required"`
-	Code              string   `json:"code" dc:"空则自动生成"`
-	ExpiresAt         int64    `json:"expiresAt"`
-	MaxRedemptions    int      `json:"maxRedemptions"`
-	GrantDurationDays int      `json:"grantDurationDays"`
-	FeatureIds        []string `json:"featureIds"`
-	Status            int      `json:"status" d:"1"`
-}
-
-// CashAdminInviteCodeCreateRes 创建结果。
-type CashAdminInviteCodeCreateRes struct {
-	Code string `json:"code"`
-}
-
-// CashAdminInviteCodeStatusReq POST 停用/启用。
-type CashAdminInviteCodeStatusReq struct {
-	g.Meta `path:"/cash/admin/api/invite-code/status" method:"post" tags:"cash-admin" summary:"管理端停用或启用邀请码"`
-	Code   string `json:"code" v:"required"`
-	Status int    `json:"status" v:"required"`
-}
-
-// CashAdminInviteCodeStatusRes 空。
-type CashAdminInviteCodeStatusRes struct{}
-
-// CashAdminInviteRedemptionsReq GET 兑换明细。
-type CashAdminInviteRedemptionsReq struct {
-	g.Meta `path:"/cash/admin/api/invite-code/redemptions" method:"get" tags:"cash-admin" summary:"管理端邀请码兑换明细"`
-	Code   string `json:"code" in:"query"`
-	Limit  int    `json:"limit" in:"query" d:"100"`
-}
-
-// CashAdminInviteRedemptionItem 明细行。
-type CashAdminInviteRedemptionItem struct {
-	Code         string `json:"code"`
-	OwnerWxId    int64  `json:"ownerWxId"`
-	RedeemerWxId int64  `json:"redeemerWxId"`
-	DeviceNo     string `json:"deviceNo"`
-	FeatureId    string `json:"featureId"`
-	RedeemedAt   int64  `json:"redeemedAt"`
-}
-
-// CashAdminInviteRedemptionsRes 明细。
-type CashAdminInviteRedemptionsRes struct {
-	List []CashAdminInviteRedemptionItem `json:"list"`
 }
 
 // —— Admin：喂养资格场景 ——

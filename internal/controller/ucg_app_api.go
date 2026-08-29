@@ -165,6 +165,30 @@ func (c *UcgAppCtrl) ProfileMeGet(ctx context.Context, req *v1.UcgProfileMeGetRe
 	return profileDTOToRes(p), nil
 }
 
+// ForceLedger GET /ucg/app/api/force/ledger 当前用户原力流水。
+func (c *UcgAppCtrl) ForceLedger(ctx context.Context, req *v1.UcgForceLedgerReq) (res *v1.UcgForceLedgerRes, err error) {
+	_ = c
+	wxID, err := wxIDFromUcgHeader(ghttp.RequestFromCtx(ctx))
+	if err != nil {
+		return nil, err
+	}
+	fv, err := ucgsvc.GetForceValue(ctx, wxID)
+	if err != nil {
+		return nil, err
+	}
+	list, err := ucgsvc.ListForceLedger(ctx, wxID, req.Limit, req.Offset)
+	if err != nil {
+		return nil, err
+	}
+	res = &v1.UcgForceLedgerRes{ForceValue: fv, List: make([]v1.UcgForceLedgerItem, 0, len(list))}
+	for _, it := range list {
+		res.List = append(res.List, v1.UcgForceLedgerItem{
+			Id: it.Id, Reason: it.Reason, Delta: it.Delta, Ref: it.Ref, CreatedAt: it.CreatedAt,
+		})
+	}
+	return res, nil
+}
+
 // ProfileMePut PUT /ucg/app/api/profile/me 更新我的资料
 func (c *UcgAppCtrl) ProfileMePut(ctx context.Context, req *v1.UcgProfileMePutReq) (res *v1.UcgProfileRes, err error) {
 	_ = c

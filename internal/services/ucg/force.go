@@ -6,7 +6,8 @@ import (
 	"github.com/gogf/gf/v2/frame/g"
 )
 
-// ForceTierFromValue 原力档位：[0,500) none；[500,1000) bronze；之后每 +500 一档至 diamond。
+// ForceTierFromValue 原力档位（仅展示兜底；客户端以 forceValue 本地阈值为准）。
+// [0,500) none；[500,1000) bronze；之后每 +500 一档至 diamond。
 func ForceTierFromValue(v int) string {
 	if v < 500 {
 		return ""
@@ -43,7 +44,7 @@ func enrichProfileForceValuesMap(ctx context.Context, dtos map[uint64]*ProfileDT
 	for id := range dtos {
 		wxIDs = append(wxIDs, int64(id))
 	}
-	batch, err := Device().BatchWx(ctx, wxIDs)
+	vals, err := BatchForceValues(ctx, wxIDs)
 	if err != nil {
 		g.Log().Warningf(ctx, "[ucg-force] batch force_value failed err=%v", err)
 		return
@@ -52,10 +53,9 @@ func enrichProfileForceValuesMap(ctx context.Context, dtos map[uint64]*ProfileDT
 		if dto == nil {
 			continue
 		}
-		if item, ok := batch[int64(id)]; ok && item.Exists {
-			dto.ForceValue = item.ForceValue
-			dto.ForceTier = ForceTierFromValue(item.ForceValue)
-		}
+		v := vals[int64(id)]
+		dto.ForceValue = v
+		dto.ForceTier = ForceTierFromValue(v)
 	}
 }
 

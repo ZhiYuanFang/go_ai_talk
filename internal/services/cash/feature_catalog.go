@@ -36,15 +36,16 @@ type FeatureCatalogProduct struct {
 
 // FeatureCatalogItem 合成目录项（含设备开通态与可售 SKU）。
 type FeatureCatalogItem struct {
-	FeatureId     string                  `json:"featureId"`
-	Title         string                  `json:"title"`
-	Description   string                  `json:"description"`
-	UnlockMethods string                  `json:"unlockMethods"`
-	Unlocked      bool                    `json:"unlocked"`
-	UnlockMethod  string                  `json:"unlockMethod,omitempty"`
-	ExpiresAt     int64                   `json:"expiresAt,omitempty"`
-	AllowedCount  *int                    `json:"allowedCount,omitempty"`
-	Products      []FeatureCatalogProduct `json:"products"`
+	FeatureId              string                  `json:"featureId"`
+	Title                  string                  `json:"title"`
+	Description            string                  `json:"description"`
+	UnlockMethods          string                  `json:"unlockMethods"`
+	Unlocked               bool                    `json:"unlocked"`
+	UnlockMethod           string                  `json:"unlockMethod,omitempty"`
+	ExpiresAt              int64                   `json:"expiresAt,omitempty"`
+	AllowedCount           *int                    `json:"allowedCount,omitempty"`
+	TotalActivatableCount  *int                    `json:"totalActivatableCount,omitempty"`
+	Products               []FeatureCatalogProduct `json:"products"`
 }
 
 type featureDefDB struct {
@@ -127,6 +128,14 @@ func GetFeatureCatalog(ctx context.Context, deviceNo string) ([]FeatureCatalogIt
 		return nil, err
 	}
 
+	// 非叶子事件天花板：失败则不写入正数，避免误显示「已全部激活」。
+	var totalActivatable *int
+	if n, nErr := FetchNonLeafEventCount(ctx); nErr != nil {
+		g.Log().Warningf(ctx, "[cash-catalog] non-leaf count failed err=%v", nErr)
+	} else if n > 0 {
+		totalActivatable = &n
+	}
+
 	out := make([]FeatureCatalogItem, 0, len(defs))
 	for _, d := range defs {
 		item := FeatureCatalogItem{
@@ -138,14 +147,14 @@ func GetFeatureCatalog(ctx context.Context, deviceNo string) ([]FeatureCatalogIt
 			item.Products = []FeatureCatalogProduct{}
 		}
 		if d.FeatureId == FeatureIDPredictionUnlock {
-			// 有效条数 = 默认 + 永久累加；临时全开哨兵 -1。
-			ac, exp, unlocked := EffectivePredictionAllowedCount(d.DefaultAllowedCount, allowedSt, now)
-			item.AllowedCount = &ac
-			item.Unlocked = unlocked
-			if ac == AllowedCountFullAccessSentinel {
-				item.UnlockMethod = UnlockMethodInviteCode
-				item.ExpiresAt = exp
+			// 永久合成条数（defaultFree+delta）；不再因邀请写全开哨兵；VIP 不改写本字段。
+			ac := d.DefaultAllowedCount + allowedSt.PermanentDelta
+			if ac < 0 {
+				ac = 0
 			}
+			item.AllowedCount = &ac
+			item.Unlocked = ac > 0
+			item.TotalActivatableCount = totalActivatable
 		}
 		if e, ok := entMap[d.FeatureId]; ok {
 			item.Unlocked = true

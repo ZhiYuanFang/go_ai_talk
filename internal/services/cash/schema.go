@@ -122,7 +122,7 @@ func EnsureSchema(ctx context.Context) error {
   code            VARCHAR(64) NOT NULL DEFAULT '',
   device_no       VARCHAR(64) NOT NULL DEFAULT '',
   redeemed_at     BIGINT      NOT NULL DEFAULT 0,
-  PRIMARY KEY (redeemer_wx_id, feature_id)
+  PRIMARY KEY (redeemer_wx_id, code, feature_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 		`CREATE TABLE IF NOT EXISTS feature_invite_redemption (
   id               BIGINT      NOT NULL AUTO_INCREMENT,
@@ -203,6 +203,15 @@ func EnsureSchema(ctx context.Context) error {
 			if !strings.Contains(msg, "Duplicate column") && !strings.Contains(msg, "1060") {
 				return err
 			}
+		}
+	}
+	// 邀请去重键升级为人×码×功能（未发布环境可接受失败重试）。
+	if _, err := db.Exec(ctx, `ALTER TABLE feature_invite_feature_grant DROP PRIMARY KEY, ADD PRIMARY KEY (redeemer_wx_id, code, feature_id)`); err != nil {
+		msg := err.Error()
+		if !strings.Contains(msg, "Multiple primary key") && !strings.Contains(msg, "1068") &&
+			!strings.Contains(msg, "Duplicate") && !strings.Contains(msg, "already exists") {
+			// 已是新主键或表空时部分环境报错信息不同：仅记录，不阻断若已含 code 的复合主键。
+			g.Log().Warningf(ctx, "[cash-schema] invite grant PK migrate: %v", err)
 		}
 	}
 	applePID := strings.TrimSpace(os.Getenv("CASH_APPLE_PRODUCT_ID"))
