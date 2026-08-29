@@ -93,10 +93,16 @@ func ListActiveFeatureDefs(ctx context.Context) ([]FeatureDefRow, error) {
 	return rows, nil
 }
 
+// FeatureCatalogResult App 目录合成结果（含页级群二维码 URL）。
+type FeatureCatalogResult struct {
+	List              []FeatureCatalogItem `json:"list"`
+	InviteGroupQrUrl  string               `json:"inviteGroupQrUrl,omitempty"`
+}
+
 // GetFeatureCatalog 合成目录：定义 ⊕ 设备权益 ⊕ allowedCount ⊕ 可售 SKU；不含 UCG。
 //
 // 业务：客户端一次读齐开通态与支付展示；建单仍只信服务端 productCode 对应价。
-func GetFeatureCatalog(ctx context.Context, deviceNo string) ([]FeatureCatalogItem, error) {
+func GetFeatureCatalog(ctx context.Context, deviceNo string) (*FeatureCatalogResult, error) {
 	deviceNo = strings.TrimSpace(deviceNo)
 	defs, err := ListActiveFeatureDefs(ctx)
 	if err != nil {
@@ -163,7 +169,8 @@ func GetFeatureCatalog(ctx context.Context, deviceNo string) ([]FeatureCatalogIt
 		}
 		out = append(out, item)
 	}
-	return out, nil
+	qrURL, _ := ResolveInviteGroupQrURLForApp(ctx)
+	return &FeatureCatalogResult{List: out, InviteGroupQrUrl: qrURL}, nil
 }
 
 // listActiveProductsByFeature 返回 feature_id → 启用中 SKU 列表。

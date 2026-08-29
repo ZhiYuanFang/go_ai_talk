@@ -106,6 +106,33 @@
 			</table>
 		</div>
 
+		<h3 style="margin-top:22px;">一（附）、微信群二维码（加群获取邀请码）</h3>
+		<p class="hint">上传强制保存为 <code>er_code.png</code>（覆盖唯一一张）。有效期内 App 开通中心展示；过期后 App 不返回链接，本页仍可预览。</p>
+		<div class="form-stack">
+			<div class="field">
+				<label>上传 PNG</label>
+				<input id="qrFile" type="file" accept="image/png,.png" />
+			</div>
+			<div class="field">
+				<label>有效期截止（本地时间）</label>
+				<span class="sub">清空并保存 = 对 App 立即失效（expiresAt=0）</span>
+				<input id="qrExpiresLocal" type="datetime-local" />
+			</div>
+			<div class="field">
+				<label>App 是否可见</label>
+				<span id="qrAppVisible" class="sub">—</span>
+			</div>
+			<div class="field">
+				<label>预览</label>
+				<img id="qrPreview" alt="群二维码预览" style="max-width:220px;max-height:220px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;" />
+			</div>
+			<div class="btn-row">
+				<button id="qrUploadBtn" type="button">上传并刷新</button>
+				<button id="qrSaveExpBtn" type="button" class="secondary">仅保存有效期</button>
+				<button id="qrReloadBtn" type="button" class="secondary">刷新状态</button>
+			</div>
+		</div>
+
 		<h3 style="margin-top:22px;">二、售卖套餐（SKU / 商品）</h3>
 		<p class="hint">新建时商品编码可留空由服务端生成；所属功能从已有定义下拉选择。</p>
 		<div class="form-stack">
@@ -349,8 +376,64 @@
 			await loadProds();
 		} catch (e) { show(e.message || String(e), false); }
 	};
+	async function loadQrMeta() {
+		const data = await AdminCommon.adminFetch('/cash/admin/api/invite-group-qr');
+		const exp = Number(data.expiresAt) || 0;
+		const inp = document.getElementById('qrExpiresLocal');
+		if (exp > 0) {
+			const d = new Date(exp * 1000);
+			const pad = n => String(n).padStart(2, '0');
+			inp.value = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) +
+				'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+		} else {
+			inp.value = '';
+		}
+		const vis = document.getElementById('qrAppVisible');
+		vis.textContent = data.appVisible ? '是（catalog 会返回链接）' : '否（已过期或未设置）';
+		vis.className = data.appVisible ? 'badge-on' : 'badge-off';
+		const img = document.getElementById('qrPreview');
+		const path = data.previewPath || ('/device/app/apk/er_code.png?v=' + (data.updatedAt || Date.now()));
+		img.src = path + (path.indexOf('?') >= 0 ? '&' : '?') + '_=' + Date.now();
+		img.onerror = () => { img.removeAttribute('src'); img.alt = '尚未上传或文件不可读'; };
+	}
+
+	document.getElementById('qrReloadBtn').onclick = () => loadQrMeta().catch(e => show(e.message || e, false));
+	document.getElementById('qrUploadBtn').onclick = async () => {
+		try {
+			const f = document.getElementById('qrFile').files[0];
+			if (!f) { show('请选择 PNG 文件', false); return; }
+			const fd = new FormData();
+			fd.append('file', f);
+			await AdminCommon.adminFetchForm('/device/app/api/invite-group-qr/upload', fd);
+			const body = { touchUpdated: true };
+			const local = document.getElementById('qrExpiresLocal').value;
+			if (local) {
+				body.expiresAt = Math.floor(new Date(local).getTime() / 1000);
+			}
+			await AdminCommon.adminFetch('/cash/admin/api/invite-group-qr', {
+				method: 'POST',
+				body: JSON.stringify(body)
+			});
+			show('二维码已上传', true);
+			await loadQrMeta();
+		} catch (e) { show(e.message || String(e), false); }
+	};
+	document.getElementById('qrSaveExpBtn').onclick = async () => {
+		try {
+			const local = document.getElementById('qrExpiresLocal').value;
+			const expiresAt = local ? Math.floor(new Date(local).getTime() / 1000) : 0;
+			await AdminCommon.adminFetch('/cash/admin/api/invite-group-qr', {
+				method: 'POST',
+				body: JSON.stringify({ expiresAt })
+			});
+			show('有效期已保存', true);
+			await loadQrMeta();
+		} catch (e) { show(e.message || String(e), false); }
+	};
+
 	await loadDefs();
 	await loadProds();
+	await loadQrMeta().catch(() => {});
 })();
 </script>
 </body>

@@ -184,6 +184,14 @@ func EnsureSchema(ctx context.Context) error {
   updated_at            BIGINT      NOT NULL DEFAULT 0,
   PRIMARY KEY (scene_key)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+		// 微信群二维码有效期（文件 er_code.png 在 gateway apk 目录）。
+		`CREATE TABLE IF NOT EXISTS invite_group_qr (
+  id          INT         NOT NULL,
+  file_name   VARCHAR(64) NOT NULL DEFAULT 'er_code.png',
+  expires_at  BIGINT      NOT NULL DEFAULT 0,
+  updated_at  BIGINT      NOT NULL DEFAULT 0,
+  PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 	}
 	for _, sql := range stmts {
 		if _, err := db.Exec(ctx, sql); err != nil {

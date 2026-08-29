@@ -76,12 +76,15 @@ func (c *CashFeatureController) Catalog(ctx context.Context, _ *v1.CashFeatureCa
 	if err != nil {
 		return nil, err
 	}
-	list, err := cash.GetFeatureCatalog(ctx, dn)
+	cat, err := cash.GetFeatureCatalog(ctx, dn)
 	if err != nil {
 		return nil, err
 	}
-	res := &v1.CashFeatureCatalogRes{List: make([]v1.CashFeatureCatalogItem, 0, len(list))}
-	for _, it := range list {
+	res := &v1.CashFeatureCatalogRes{
+		List:             make([]v1.CashFeatureCatalogItem, 0, len(cat.List)),
+		InviteGroupQrUrl: cat.InviteGroupQrUrl,
+	}
+	for _, it := range cat.List {
 		item := v1.CashFeatureCatalogItem{
 			FeatureId: it.FeatureId, Title: it.Title, Description: it.Description,
 			UnlockMethods: it.UnlockMethods, Unlocked: it.Unlocked,
@@ -277,4 +280,44 @@ func (c *CashFeatureController) AdminFeedingEligibilityScenesUpdate(ctx context.
 		return nil, err
 	}
 	return &v1.CashAdminFeedingEligibilitySceneUpdateRes{}, nil
+}
+
+// AdminInviteGroupQrGet GET /cash/admin/api/invite-group-qr
+func (c *CashFeatureController) AdminInviteGroupQrGet(ctx context.Context, _ *v1.CashAdminInviteGroupQrGetReq) (*v1.CashAdminInviteGroupQrGetRes, error) {
+	if err := requireCashAdmin(ctx); err != nil {
+		return nil, err
+	}
+	out, err := cash.GetInviteGroupQrAdmin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &v1.CashAdminInviteGroupQrGetRes{
+		FileName: out.FileName, ExpiresAt: out.ExpiresAt, UpdatedAt: out.UpdatedAt,
+		PreviewPath: out.PreviewPath, AppVisible: out.AppVisible,
+	}, nil
+}
+
+// AdminInviteGroupQrPut POST /cash/admin/api/invite-group-qr
+func (c *CashFeatureController) AdminInviteGroupQrPut(ctx context.Context, req *v1.CashAdminInviteGroupQrPutReq) (*v1.CashAdminInviteGroupQrPutRes, error) {
+	if err := requireCashAdmin(ctx); err != nil {
+		return nil, err
+	}
+	if req.TouchUpdated {
+		if err := cash.TouchInviteGroupQrUpdated(ctx); err != nil {
+			return nil, err
+		}
+	}
+	if req.ExpiresAt != nil {
+		if err := cash.SetInviteGroupQrExpires(ctx, *req.ExpiresAt); err != nil {
+			return nil, err
+		}
+	}
+	out, err := cash.GetInviteGroupQrAdmin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &v1.CashAdminInviteGroupQrPutRes{
+		FileName: out.FileName, ExpiresAt: out.ExpiresAt, UpdatedAt: out.UpdatedAt,
+		PreviewPath: out.PreviewPath, AppVisible: out.AppVisible,
+	}, nil
 }

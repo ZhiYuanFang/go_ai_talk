@@ -476,7 +476,10 @@ func gatewayAppApkDownload(r *ghttp.Request) {
 		r.Response.WriteStatusExit(http.StatusBadRequest)
 		return
 	}
-	if !strings.HasSuffix(strings.ToLower(name), ".apk") {
+	lower := strings.ToLower(name)
+	isApk := strings.HasSuffix(lower, ".apk")
+	isInviteQr := name == inviteGroupQrFileName
+	if !isApk && !isInviteQr {
 		r.Response.WriteStatusExit(http.StatusBadRequest)
 		return
 	}
@@ -497,8 +500,13 @@ func gatewayAppApkDownload(r *ghttp.Request) {
 		r.Response.WriteStatusExit(http.StatusNotFound)
 		return
 	}
-	r.Response.Header().Set("Content-Type", "application/vnd.android.package-archive")
-	r.Response.Header().Set("Content-Disposition", `attachment; filename="`+strings.ReplaceAll(name, `"`, ``)+`"`)
+	if isInviteQr {
+		r.Response.Header().Set("Content-Type", "image/png")
+		r.Response.Header().Set("Cache-Control", "public, max-age=60")
+	} else {
+		r.Response.Header().Set("Content-Type", "application/vnd.android.package-archive")
+		r.Response.Header().Set("Content-Disposition", `attachment; filename="`+strings.ReplaceAll(name, `"`, ``)+`"`)
+	}
 	if r.Method == http.MethodHead {
 		if fi, err := os.Stat(abs); err == nil {
 			r.Response.Header().Set("Content-Length", fmt.Sprintf("%d", fi.Size()))

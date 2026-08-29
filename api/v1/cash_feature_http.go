@@ -65,7 +65,8 @@ type CashFeatureCatalogItem struct {
 
 // CashFeatureCatalogRes 目录 data。
 type CashFeatureCatalogRes struct {
-	List []CashFeatureCatalogItem `json:"list"`
+	List             []CashFeatureCatalogItem `json:"list"`
+	InviteGroupQrUrl string                   `json:"inviteGroupQrUrl,omitempty"`
 }
 
 // CashFeatureCreateOrderReq POST 功能建单。
@@ -246,4 +247,36 @@ type CashAdminFeedingEligibilitySceneUpdateReq struct {
 
 // CashAdminFeedingEligibilitySceneUpdateRes 空。
 type CashAdminFeedingEligibilitySceneUpdateRes struct{}
+
+// —— Admin：微信群二维码有效期 ——
+
+// CashAdminInviteGroupQrGetReq GET 群二维码元数据（含过期预览）。
+type CashAdminInviteGroupQrGetReq struct {
+	g.Meta `path:"/cash/admin/api/invite-group-qr" method:"get" tags:"cash-admin" summary:"管理端群二维码配置"`
+}
+
+// CashAdminInviteGroupQrGetRes 配置。
+type CashAdminInviteGroupQrGetRes struct {
+	FileName    string `json:"fileName"`
+	ExpiresAt   int64  `json:"expiresAt"`
+	UpdatedAt   int64  `json:"updatedAt"`
+	PreviewPath string `json:"previewPath"`
+	AppVisible  bool   `json:"appVisible"`
+}
+
+// CashAdminInviteGroupQrPutReq POST 更新有效期或 touch 上传时间。
+type CashAdminInviteGroupQrPutReq struct {
+	g.Meta       `path:"/cash/admin/api/invite-group-qr" method:"post" tags:"cash-admin" summary:"管理端更新群二维码有效期或刷新上传时间"`
+	ExpiresAt    *int64 `json:"expiresAt" dc:"unix 秒；0 对 App 立即失效；省略则不改"`
+	TouchUpdated bool   `json:"touchUpdated" dc:"true=上传成功后刷新 updated_at"`
+}
+
+// CashAdminInviteGroupQrPutRes 更新后配置。
+type CashAdminInviteGroupQrPutRes struct {
+	FileName    string `json:"fileName"`
+	ExpiresAt   int64  `json:"expiresAt"`
+	UpdatedAt   int64  `json:"updatedAt"`
+	PreviewPath string `json:"previewPath"`
+	AppVisible  bool   `json:"appVisible"`
+}
 

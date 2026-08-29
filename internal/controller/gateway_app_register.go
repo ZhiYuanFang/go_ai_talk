@@ -36,6 +36,7 @@ func RegisterGatewayAppHTTP(s *ghttp.Server) {
 	s.BindHandler("/device/app/api/version/admin/get", gatewayAppVersionAdminGet)
 	s.BindHandler("/device/app/api/version/admin/update", gatewayAppVersionAdminUpdate)
 	s.BindHandler("/device/app/api/version/admin/delete", gatewayAppVersionAdminDelete)
+	s.BindHandler("/device/app/api/invite-group-qr/upload", gatewayAppInviteGroupQrUpload)
 	s.BindHandler("/device/app/apk/*filename", gatewayAppApkDownload)
 
 	installGatewayAppCORSMiddleware(s)
