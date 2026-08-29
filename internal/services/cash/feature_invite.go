@@ -107,12 +107,16 @@ func RedeemInviteCode(ctx context.Context, redeemerWxID int64, deviceNo, code, f
 		}
 
 		duration := codeRow.GrantDurationDays
-		grantKind := GrantKindEntitlement
+		// 预测：T1 临时全开（不累加永久条数）；其它功能：权益。
 		if featureID == FeatureIDPredictionUnlock {
-			grantKind = GrantKindAllowedCountDelta
-		}
-		if err := GrantEntitlementOrCount(ctx, deviceNo, featureID, UnlockMethodInviteCode, grantKind, grantQty, duration, code); err != nil {
-			return err
+			if err := GrantPredictionFullAccess(ctx, deviceNo, duration, code); err != nil {
+				return err
+			}
+		} else {
+			_ = grantQty
+			if err := GrantEntitlementOrCount(ctx, deviceNo, featureID, UnlockMethodInviteCode, GrantKindEntitlement, grantQty, duration, code); err != nil {
+				return err
+			}
 		}
 
 		_, err = tx.Model("feature_invite_feature_grant").Ctx(ctx).Data(g.Map{

@@ -17,7 +17,7 @@ func CashFeatureDefCatalogKey() string {
 	return "cash:feature:def:catalog"
 }
 
-// CashFeatureAllowedCountKey 设备预测开通数量热读；履约/Admin 变更 MUST 失效或写穿；权威在 MySQL。
+// CashFeatureAllowedCountKey 设备预测开通状态热读（JSON：永久累加+临时全开）；履约/Admin 变更 MUST 失效；权威在 MySQL。
 func CashFeatureAllowedCountKey(deviceNo string) string {
 	return fmt.Sprintf("cash:feature:allowed:%s", deviceNo)
 }

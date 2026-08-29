@@ -13,13 +13,14 @@ import (
 
 // FeatureDefRow 功能定义行。
 type FeatureDefRow struct {
-	FeatureId     string `json:"featureId"`
-	Title         string `json:"title"`
-	Description   string `json:"description"`
-	UnlockMethods string `json:"unlockMethods"`
-	DurationDays  int    `json:"durationDays"`
-	Status        int    `json:"status"`
-	SortOrder     int    `json:"sortOrder"`
+	FeatureId           string `json:"featureId"`
+	Title               string `json:"title"`
+	Description         string `json:"description"`
+	UnlockMethods       string `json:"unlockMethods"`
+	DurationDays        int    `json:"durationDays"`
+	DefaultAllowedCount int    `json:"defaultAllowedCount"`
+	Status              int    `json:"status"`
+	SortOrder           int    `json:"sortOrder"`
 }
 
 // FeatureCatalogProduct 目录项内嵌可售 SKU（仅 status=1）。
@@ -47,13 +48,14 @@ type FeatureCatalogItem struct {
 }
 
 type featureDefDB struct {
-	FeatureId     string `json:"feature_id"`
-	Title         string `json:"title"`
-	Description   string `json:"description"`
-	UnlockMethods string `json:"unlock_methods"`
-	DurationDays  int    `json:"duration_days"`
-	Status        int    `json:"status"`
-	SortOrder     int    `json:"sort_order"`
+	FeatureId           string `json:"feature_id"`
+	Title               string `json:"title"`
+	Description         string `json:"description"`
+	UnlockMethods       string `json:"unlock_methods"`
+	DurationDays        int    `json:"duration_days"`
+	DefaultAllowedCount int    `json:"default_allowed_count"`
+	Status              int    `json:"status"`
+	SortOrder           int    `json:"sort_order"`
 }
 
 // ListActiveFeatureDefs 启用功能定义（全站 Redis 热读）。
@@ -68,7 +70,7 @@ func ListActiveFeatureDefs(ctx context.Context) ([]FeatureDefRow, error) {
 	}
 	var rawRows []featureDefDB
 	err := g.DB().Model("feature_def").Ctx(ctx).
-		Fields("feature_id,title,description,unlock_methods,duration_days,status,sort_order").
+		Fields("feature_id,title,description,unlock_methods,duration_days,default_allowed_count,status,sort_order").
 		Where("status", 1).
 		OrderAsc("sort_order").OrderAsc("feature_id").
 		Scan(&rawRows)
@@ -80,6 +82,7 @@ func ListActiveFeatureDefs(ctx context.Context) ([]FeatureDefRow, error) {
 		rows = append(rows, FeatureDefRow{
 			FeatureId: r.FeatureId, Title: r.Title, Description: r.Description,
 			UnlockMethods: r.UnlockMethods, DurationDays: r.DurationDays,
+			DefaultAllowedCount: r.DefaultAllowedCount,
 			Status: r.Status, SortOrder: r.SortOrder,
 		})
 	}
@@ -116,7 +119,7 @@ func GetFeatureCatalog(ctx context.Context, deviceNo string) ([]FeatureCatalogIt
 		}
 		entMap[e.FeatureId] = e
 	}
-	allowed, _ := GetAllowedCount(ctx, deviceNo)
+	allowedSt, _ := GetDeviceAllowedCountState(ctx, deviceNo)
 
 	// 一次拉取全部启用 SKU，按 feature_id 分组（字典小，避免 N+1）。
 	prodByFeature, err := listActiveProductsByFeature(ctx)
@@ -135,9 +138,14 @@ func GetFeatureCatalog(ctx context.Context, deviceNo string) ([]FeatureCatalogIt
 			item.Products = []FeatureCatalogProduct{}
 		}
 		if d.FeatureId == FeatureIDPredictionUnlock {
-			ac := allowed
+			// 有效条数 = 默认 + 永久累加；临时全开哨兵 -1。
+			ac, exp, unlocked := EffectivePredictionAllowedCount(d.DefaultAllowedCount, allowedSt, now)
 			item.AllowedCount = &ac
-			item.Unlocked = ac > 0
+			item.Unlocked = unlocked
+			if ac == AllowedCountFullAccessSentinel {
+				item.UnlockMethod = UnlockMethodInviteCode
+				item.ExpiresAt = exp
+			}
 		}
 		if e, ok := entMap[d.FeatureId]; ok {
 			item.Unlocked = true

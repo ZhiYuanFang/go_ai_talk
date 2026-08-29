@@ -35,6 +35,7 @@ type CashFeatureCatalogProductItem struct {
 }
 
 // CashFeatureCatalogItem 目录项（开通态 + 可售 products）。
+// AllowedCount：预测类有效可看条数；-1 表示临时/永久全开（哨兵，客户端须识别）。
 type CashFeatureCatalogItem struct {
 	FeatureId     string                         `json:"featureId"`
 	Title         string                         `json:"title"`
@@ -104,25 +105,27 @@ type CashAdminFeatureDefsListRes struct {
 
 // CashAdminFeatureDefItem 功能定义项。
 type CashAdminFeatureDefItem struct {
-	FeatureId     string `json:"featureId"`
-	Title         string `json:"title"`
-	Description   string `json:"description"`
-	UnlockMethods string `json:"unlockMethods"`
-	DurationDays  int    `json:"durationDays"`
-	Status        int    `json:"status"`
-	SortOrder     int    `json:"sortOrder"`
+	FeatureId           string `json:"featureId"`
+	Title               string `json:"title"`
+	Description         string `json:"description"`
+	UnlockMethods       string `json:"unlockMethods"`
+	DurationDays        int    `json:"durationDays"`
+	DefaultAllowedCount int    `json:"defaultAllowedCount"`
+	Status              int    `json:"status"`
+	SortOrder           int    `json:"sortOrder"`
 }
 
-// CashAdminFeatureDefUpsertReq POST 创建/更新功能定义。
+// CashAdminFeatureDefUpsertReq POST 更新功能定义（禁止新建未知 featureId）。
 type CashAdminFeatureDefUpsertReq struct {
-	g.Meta        `path:"/cash/admin/api/feature/defs" method:"post" tags:"cash-admin" summary:"管理端创建或更新功能定义"`
-	FeatureId     string `json:"featureId" v:"required"`
-	Title         string `json:"title"`
-	Description   string `json:"description"`
-	UnlockMethods string `json:"unlockMethods"`
-	DurationDays  int    `json:"durationDays"`
-	Status        int    `json:"status" d:"1"`
-	SortOrder     int    `json:"sortOrder"`
+	g.Meta              `path:"/cash/admin/api/feature/defs" method:"post" tags:"cash-admin" summary:"管理端更新功能定义（编号只读）"`
+	FeatureId           string `json:"featureId" v:"required"`
+	Title               string `json:"title"`
+	Description         string `json:"description"`
+	UnlockMethods       string `json:"unlockMethods"`
+	DurationDays        int    `json:"durationDays"`
+	DefaultAllowedCount int    `json:"defaultAllowedCount"`
+	Status              int    `json:"status" d:"1"`
+	SortOrder           int    `json:"sortOrder"`
 }
 
 // CashAdminFeatureDefUpsertRes 空。
@@ -151,10 +154,10 @@ type CashAdminFeatureProductsListRes struct {
 	List []CashAdminFeatureProductItem `json:"list"`
 }
 
-// CashAdminFeatureProductUpsertReq POST SKU。
+// CashAdminFeatureProductUpsertReq POST SKU（新建 productCode 可空，服务端自动生成）。
 type CashAdminFeatureProductUpsertReq struct {
 	g.Meta           `path:"/cash/admin/api/feature/products" method:"post" tags:"cash-admin" summary:"管理端创建或更新功能 SKU"`
-	ProductCode      string `json:"productCode" v:"required"`
+	ProductCode      string `json:"productCode" dc:"空则自动生成；更新时必填已有编码"`
 	FeatureId        string `json:"featureId" v:"required"`
 	GrantKind        string `json:"grantKind"`
 	GrantQuantity    int    `json:"grantQuantity" d:"1"`
@@ -165,8 +168,10 @@ type CashAdminFeatureProductUpsertReq struct {
 	Status           int    `json:"status" d:"1"`
 }
 
-// CashAdminFeatureProductUpsertRes 空。
-type CashAdminFeatureProductUpsertRes struct{}
+// CashAdminFeatureProductUpsertRes 创建/更新结果（含最终商品编码）。
+type CashAdminFeatureProductUpsertRes struct {
+	ProductCode string `json:"productCode"`
+}
 
 // —— Admin：邀请码 ——
 

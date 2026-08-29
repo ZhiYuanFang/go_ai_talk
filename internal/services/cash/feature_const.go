@@ -12,4 +12,7 @@ const (
 	UnlockMethodPayment    = "payment"
 	UnlockMethodInviteCode = "invite_code"
 	UnlockMethodAd         = "ad"
+
+	// AllowedCountFullAccessSentinel catalog 预测项临时/永久全开哨兵（客户端约定：-1=全部可看）。
+	AllowedCountFullAccessSentinel = -1
 )

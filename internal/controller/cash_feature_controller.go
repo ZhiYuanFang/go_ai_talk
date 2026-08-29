@@ -146,6 +146,7 @@ func (c *CashFeatureController) AdminFeatureDefs(ctx context.Context, _ *v1.Cash
 		res.List = append(res.List, v1.CashAdminFeatureDefItem{
 			FeatureId: it.FeatureId, Title: it.Title, Description: it.Description,
 			UnlockMethods: it.UnlockMethods, DurationDays: it.DurationDays,
+			DefaultAllowedCount: it.DefaultAllowedCount,
 			Status: it.Status, SortOrder: it.SortOrder,
 		})
 	}
@@ -157,7 +158,7 @@ func (c *CashFeatureController) AdminFeatureDefsUpsert(ctx context.Context, req 
 	if err := requireCashAdmin(ctx); err != nil {
 		return nil, err
 	}
-	if err := cash.AdminUpsertFeatureDef(ctx, req.FeatureId, req.Title, req.Description, req.UnlockMethods, req.DurationDays, req.Status, req.SortOrder); err != nil {
+	if err := cash.AdminUpdateFeatureDef(ctx, req.FeatureId, req.Title, req.Description, req.UnlockMethods, req.DurationDays, req.Status, req.SortOrder, req.DefaultAllowedCount); err != nil {
 		return nil, err
 	}
 	return &v1.CashAdminFeatureDefUpsertRes{}, nil
@@ -188,15 +189,15 @@ func (c *CashFeatureController) AdminFeatureProductsUpsert(ctx context.Context, 
 	if err := requireCashAdmin(ctx); err != nil {
 		return nil, err
 	}
-	err := cash.AdminUpsertFeatureProduct(ctx, &cash.FeatureProduct{
+	prod := &cash.FeatureProduct{
 		ProductCode: req.ProductCode, FeatureId: req.FeatureId, GrantKind: req.GrantKind,
 		GrantQuantity: req.GrantQuantity, PriceFen: req.PriceFen, OriginalPriceFen: req.OriginalPriceFen,
 		DurationDays: req.DurationDays, AppleProductId: req.AppleProductId, Status: req.Status,
-	})
-	if err != nil {
+	}
+	if err := cash.AdminUpsertFeatureProduct(ctx, prod); err != nil {
 		return nil, err
 	}
-	return &v1.CashAdminFeatureProductUpsertRes{}, nil
+	return &v1.CashAdminFeatureProductUpsertRes{ProductCode: prod.ProductCode}, nil
 }
 
 // AdminInviteCodesList GET

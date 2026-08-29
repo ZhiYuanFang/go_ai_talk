@@ -8,11 +8,15 @@
 	<link rel="stylesheet" href="/resource/public/admin-pages.css" />
 	<style>
 		.hint { font-size: 12px; color: #64748b; line-height: 1.55; margin: 0 0 14px; }
-		.field-grid { display: flex; flex-wrap: wrap; gap: 10px 12px; align-items: flex-end; margin-bottom: 12px; }
+		.form-stack { display: flex; flex-direction: column; gap: 12px; max-width: 720px; margin-bottom: 14px; }
 		.field { display: flex; flex-direction: column; gap: 4px; }
 		.field label { font-size: 12px; color: #334155; font-weight: 600; }
-		.field .sub { font-size: 11px; color: #94a3b8; font-weight: 400; max-width: 220px; line-height: 1.35; }
-		.field input { font-size: 13px; padding: 6px 8px; min-width: 140px; }
+		.field .sub { font-size: 11px; color: #94a3b8; font-weight: 400; line-height: 1.35; }
+		.field input { font-size: 13px; padding: 6px 8px; max-width: 420px; }
+		.checks { display: flex; flex-direction: column; gap: 8px; padding: 4px 0; }
+		.checks label { font-weight: 500; font-size: 13px; display: flex; align-items: center; gap: 6px; }
+		.btn-row { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-top: 4px; }
+		.btn-row button { min-width: 160px; }
 		.badge-on { color: #059669; font-weight: 600; }
 		.badge-off { color: #dc2626; font-weight: 600; }
 	</style>
@@ -28,40 +32,41 @@
 	</header>
 	<div class="card glass hidden" id="mainCard">
 		<p class="hint">
-			<strong>用途：</strong>给销售/渠道发邀请码，用户在 App 输入码开通指定功能（可逐个功能兑换，不会一次开完全部）。
-			<strong>规则摘要：</strong>一人只能绑定「一家」持有人的码；不可用自己的码；仅<strong>兑换成功开通某一功能后</strong>才绑定该持有人。
-			<strong>持有人账号 ID</strong>是系统里的 wx 数字主键（不是手机号/微信号文案），一期每个持有人只能有一条邀请码。
+			<strong>用途：</strong>给销售/渠道发邀请码。预测功能兑换后在授予天数内为<strong>临时全开</strong>（catalog <code>allowedCount=-1</code>），到期回落为「默认+永久累加」。
+			若本页与说明不符请<strong>强制刷新</strong>（Ctrl+F5）。
 		</p>
 
 		<h3>创建邀请码</h3>
-		<div class="field-grid">
+		<div class="form-stack">
 			<div class="field">
 				<label>持有人账号 ID（owner）</label>
-				<span class="sub">wx 表主键数字；销售/渠道绑这个人</span>
+				<span class="sub">wx 表主键数字；一期每人一码</span>
 				<input id="ownerWx" type="text" inputmode="numeric" placeholder="例如 12345" />
 			</div>
 			<div class="field">
 				<label>邀请码内容</label>
-				<span class="sub">发给用户输入；留空则自动生成</span>
+				<span class="sub">留空则自动生成</span>
 				<input id="codeIn" placeholder="留空自动生成" />
 			</div>
-			<div class="field" style="min-width:260px;">
-				<label>可开通的功能编号</label>
-				<span class="sub">逗号分隔；须与「开通功能管理」里一致。例：prediction_unlock。留空=所有支持邀请码的功能</span>
-				<input id="feats" value="prediction_unlock" style="min-width:240px;" />
+			<div class="field">
+				<label>可开通的功能</label>
+				<span class="sub">勾选；不选=所有支持邀请码的功能。预测兑换为临时全开</span>
+				<div class="checks" id="featChecks"></div>
 			</div>
 			<div class="field">
 				<label>最多成功兑换次数</label>
-				<span class="sub">按成功开通次数计；0 = 不限制</span>
-				<input id="maxR" type="number" value="0" min="0" style="min-width:100px;" />
+				<span class="sub">0 = 不限制</span>
+				<input id="maxR" type="number" value="0" min="0" />
 			</div>
 			<div class="field">
 				<label>授予有效天数</label>
-				<span class="sub">0 = 永久（预测条数类通常填 0）</span>
-				<input id="grantDays" type="number" value="0" min="0" style="min-width:100px;" />
+				<span class="sub">预测 = 临时全开期限；0 = 永久全开。其它功能 = 权益有效天数</span>
+				<input id="grantDays" type="number" value="30" min="0" />
 			</div>
-			<button id="createBtn" type="button">创建邀请码</button>
-			<button id="reloadBtn" type="button" class="secondary">刷新列表</button>
+			<div class="btn-row">
+				<button id="createBtn" type="button">创建邀请码</button>
+				<button id="reloadBtn" type="button" class="secondary">刷新列表</button>
+			</div>
 		</div>
 
 		<div class="table-wrap">
@@ -72,6 +77,7 @@
 						<th>持有人账号 ID</th>
 						<th>已成功兑换 / 上限</th>
 						<th>可开功能</th>
+						<th>授予天数</th>
 						<th>状态</th>
 						<th>操作</th>
 					</tr>
@@ -80,15 +86,15 @@
 			</table>
 		</div>
 
-		<h3 style="margin-top:20px;">兑换明细（谁用了这个码）</h3>
-		<p class="hint">用于追踪销售推广：看某码被哪些账号、在哪台设备、开通了哪个功能。</p>
-		<div class="field-grid">
+		<h3 style="margin-top:20px;">兑换明细</h3>
+		<div class="form-stack">
 			<div class="field">
 				<label>按邀请码筛选</label>
-				<span class="sub">留空查最近记录</span>
 				<input id="filterCode" placeholder="粘贴邀请码" />
 			</div>
-			<button id="loadRedBtn" type="button" class="secondary">查询明细</button>
+			<div class="btn-row">
+				<button id="loadRedBtn" type="button" class="secondary">查询明细</button>
+			</div>
 		</div>
 		<div class="table-wrap">
 			<table>
@@ -115,11 +121,23 @@
 	const statusLabel = (s) => Number(s) === 1
 		? '<span class="badge-on">有效</span>'
 		: '<span class="badge-off">已停用</span>';
+	const esc = (s) => String(s == null ? '' : s)
+		.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 	try {
 		await AdminCommon.requireAdmin();
 		document.getElementById('mainCard').classList.remove('hidden');
 	} catch (e) { return; }
+
+	async function loadFeatChecks() {
+		const data = await AdminCommon.adminFetch('/cash/admin/api/feature/defs');
+		const box = document.getElementById('featChecks');
+		const list = (data.list || []).filter(r => Number(r.status) === 1);
+		box.innerHTML = list.map(r =>
+			`<label><input type="checkbox" value="${esc(r.featureId)}" ${r.featureId === 'prediction_unlock' ? 'checked' : ''} />
+			<code>${esc(r.featureId)}</code> · ${esc(r.title || '')}</label>`
+		).join('') || '<span class="sub">暂无上架功能</span>';
+	}
 
 	async function loadCodes() {
 		const data = await AdminCommon.adminFetch('/cash/admin/api/invite-code/list');
@@ -128,14 +146,15 @@
 			const feats = (r.featureIds || []).join(', ') || '（全部支持邀请码的功能）';
 			const lim = r.maxRedemptions > 0 ? r.maxRedemptions : '不限';
 			return `<tr>
-				<td><code>${r.code}</code></td>
+				<td><code>${esc(r.code)}</code></td>
 				<td>${r.ownerWxId}</td>
 				<td>${r.redeemedCount} / ${lim}</td>
-				<td>${feats}</td>
+				<td>${esc(feats)}</td>
+				<td>${r.grantDurationDays != null ? r.grantDurationDays : 0}</td>
 				<td>${statusLabel(r.status)}</td>
-				<td><button type="button" class="secondary" data-code="${r.code}" data-st="${r.status === 1 ? 0 : 1}">${r.status === 1 ? '停用' : '重新启用'}</button></td>
+				<td><button type="button" class="secondary" data-code="${esc(r.code)}" data-st="${r.status === 1 ? 0 : 1}">${r.status === 1 ? '停用' : '重新启用'}</button></td>
 			</tr>`;
-		}).join('') || '<tr><td colspan="6">暂无邀请码</td></tr>';
+		}).join('') || '<tr><td colspan="7">暂无邀请码</td></tr>';
 		tb.querySelectorAll('button[data-code]').forEach(btn => {
 			btn.onclick = async () => {
 				try {
@@ -157,10 +176,10 @@
 		tb.innerHTML = (data.list || []).map(r => {
 			const t = r.redeemedAt ? new Date(r.redeemedAt * 1000).toLocaleString() : '';
 			return `<tr>
-				<td><code>${r.code}</code></td>
+				<td><code>${esc(r.code)}</code></td>
 				<td>${r.redeemerWxId}</td>
-				<td>${r.deviceNo || ''}</td>
-				<td><code>${r.featureId}</code></td>
+				<td>${esc(r.deviceNo || '')}</td>
+				<td><code>${esc(r.featureId)}</code></td>
 				<td>${t}</td>
 			</tr>`;
 		}).join('') || '<tr><td colspan="5">暂无兑换记录</td></tr>';
@@ -171,7 +190,7 @@
 		try {
 			const ownerWxId = Number(ownerWx.value);
 			if (!ownerWxId) { show('请填写持有人账号 ID（数字）', false); return; }
-			const featureIds = document.getElementById('feats').value.split(',').map(s => s.trim()).filter(Boolean);
+			const featureIds = Array.from(document.querySelectorAll('#featChecks input:checked')).map(el => el.value);
 			const data = await AdminCommon.adminFetch('/cash/admin/api/invite-code', {
 				method: 'POST',
 				body: JSON.stringify({
@@ -188,6 +207,7 @@
 			await loadCodes();
 		} catch (e) { show(e.message || String(e), false); }
 	};
+	await loadFeatChecks();
 	await loadCodes();
 })();
 </script>

@@ -8,14 +8,22 @@
 	<link rel="stylesheet" href="/resource/public/admin-pages.css" />
 	<style>
 		.hint { font-size: 12px; color: #64748b; line-height: 1.55; margin: 0 0 14px; }
-		.field-grid { display: flex; flex-wrap: wrap; gap: 10px 12px; align-items: flex-end; margin-bottom: 10px; }
+		.form-stack { display: flex; flex-direction: column; gap: 12px; max-width: 720px; margin-bottom: 14px; }
 		.field { display: flex; flex-direction: column; gap: 4px; }
 		.field label { font-size: 12px; color: #334155; font-weight: 600; }
-		.field .sub { font-size: 11px; color: #94a3b8; font-weight: 400; max-width: 220px; line-height: 1.35; }
-		.field input, .field select { font-size: 13px; padding: 6px 8px; min-width: 140px; }
+		.field .sub { font-size: 11px; color: #94a3b8; font-weight: 400; line-height: 1.35; }
+		.field input, .field select, .field textarea { font-size: 13px; padding: 6px 8px; max-width: 420px; }
+		.field textarea { min-height: 64px; resize: vertical; }
+		.field-readonly input { background: #f1f5f9; color: #64748b; }
+		.checks { display: flex; flex-wrap: wrap; gap: 10px 16px; padding: 4px 0; }
+		.checks label { font-weight: 500; font-size: 13px; display: flex; align-items: center; gap: 6px; }
+		.btn-row { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-top: 4px; }
+		.btn-row button { min-width: 160px; }
 		.badge-on { color: #059669; font-weight: 600; }
 		.badge-off { color: #dc2626; font-weight: 600; }
 		.price-preview { font-size: 12px; color: #0f766e; margin-left: 4px; }
+		.clickable { cursor: pointer; }
+		.clickable:hover { background: #f8fafc; }
 	</style>
 </head>
 <body>
@@ -29,44 +37,58 @@
 	</header>
 	<div class="card glass hidden" id="mainCard">
 		<p class="hint">
-			<strong>怎么用：</strong>先建「功能定义」（App 列表里的一项能力），再为该功能建「售卖套餐 / SKU」（用户付钱时选的商品）。
-			浏览器只带 Admin JWT，<strong>不</strong>发送 <code>X-Admin-Password</code>。
-			价格单位一律为<strong>分</strong>（6 元请填 <code>600</code>）。预测可看条数功能编号固定为 <code>prediction_unlock</code>（种子已有，一般只需加套餐）。
+			<strong>怎么用：</strong>编辑已有「功能定义」（编号与客户端约定，不可新建/改号），再为该功能建「售卖套餐」。
+			价格单位为<strong>分</strong>。若本页样式/字段与说明不符，请对浏览器做<strong>强制刷新</strong>（Ctrl+F5）清静态缓存。
 		</p>
 
 		<h3>一、功能定义（App 目录项）</h3>
-		<p class="hint">定义「有哪些功能、允许用什么方式开通」。改编号会影响已上线客户端，勿随意改已有 ID。</p>
-		<div class="field-grid">
-			<div class="field">
+		<p class="hint">点击列表行载入编辑。功能编号只读；标题/简介由服务端返回给客户端直接展示。</p>
+		<div class="form-stack">
+			<div class="field field-readonly">
 				<label>功能编号</label>
-				<span class="sub">系统稳定 ID，英文/下划线。例：prediction_unlock</span>
-				<input id="fId" placeholder="prediction_unlock" />
+				<span class="sub">与客户端约定，不可修改；从下方列表点选载入</span>
+				<input id="fId" readonly placeholder="请从列表选择" />
 			</div>
 			<div class="field">
-				<label>显示名称</label>
-				<span class="sub">用户在 App 里看到的标题</span>
+				<label>显示名称（标题）</label>
+				<span class="sub">App 开通中心直接展示</span>
 				<input id="fTitle" placeholder="预测事项开通数量" />
 			</div>
-			<div class="field" style="min-width:240px;">
+			<div class="field">
+				<label>简介</label>
+				<span class="sub">App 开通中心直接展示</span>
+				<textarea id="fDesc" placeholder="功能说明文案"></textarea>
+			</div>
+			<div class="field">
 				<label>允许的开通方式</label>
-				<span class="sub">逗号分隔：payment=付费，invite_code=邀请码，ad=广告</span>
-				<input id="fMethods" value="payment,invite_code,ad" style="min-width:220px;" />
+				<span class="sub">多选；落库为逗号串以兼容 App</span>
+				<div class="checks" id="fMethods">
+					<label><input type="checkbox" value="payment" /> 付费 payment</label>
+					<label><input type="checkbox" value="invite_code" /> 邀请码 invite_code</label>
+					<label><input type="checkbox" value="ad" /> 广告 ad</label>
+				</div>
+			</div>
+			<div class="field">
+				<label>默认开通条数</label>
+				<span class="sub">仅预测类有意义；有效条数 = 默认 + 永久累加；邀请码临时全开为 -1</span>
+				<input id="fDefault" type="number" value="0" min="0" />
 			</div>
 			<div class="field">
 				<label>是否上架</label>
-				<span class="sub">上架后出现在 App 功能列表</span>
 				<select id="fStatus">
-					<option value="1" selected>1 · 上架</option>
-					<option value="0">0 · 下架</option>
+					<option value="1" selected>上架</option>
+					<option value="0">下架</option>
 				</select>
 			</div>
 			<div class="field">
 				<label>排序</label>
 				<span class="sub">数字越小越靠前</span>
-				<input id="fSort" type="number" value="10" style="min-width:80px;" />
+				<input id="fSort" type="number" value="10" />
 			</div>
-			<button id="saveDefBtn" type="button">保存功能定义</button>
-			<button id="reloadDefBtn" type="button" class="secondary">刷新列表</button>
+			<div class="btn-row">
+				<button id="saveDefBtn" type="button">保存功能定义</button>
+				<button id="reloadDefBtn" type="button" class="secondary">刷新列表</button>
+			</div>
 		</div>
 		<div class="table-wrap">
 			<table>
@@ -74,7 +96,9 @@
 					<tr>
 						<th>功能编号</th>
 						<th>显示名称</th>
+						<th>简介</th>
 						<th>开通方式</th>
+						<th>默认条数</th>
 						<th>上架</th>
 					</tr>
 				</thead>
@@ -83,24 +107,19 @@
 		</div>
 
 		<h3 style="margin-top:22px;">二、售卖套餐（SKU / 商品）</h3>
-		<p class="hint">
-			每个套餐对应一次可购买的「商品编码」。App 从功能列表的 <code>products</code> 里展示价格，建单时提交本页的<strong>商品编码</strong>。
-			<strong>开通类型</strong>：增加预测条数请选「增加可看数量」；开通某功能权益选「功能权益」。
-		</p>
-		<div class="field-grid">
-			<div class="field">
+		<p class="hint">新建时商品编码可留空由服务端生成；所属功能从已有定义下拉选择。</p>
+		<div class="form-stack">
+			<div class="field field-readonly">
 				<label>商品编码</label>
-				<span class="sub">全局唯一，建单用。例：pred_count_5</span>
-				<input id="pCode" placeholder="pred_count_5" />
+				<span class="sub">新建留空自动生成；编辑已有套餐时只读</span>
+				<input id="pCode" readonly placeholder="保存后自动生成" />
 			</div>
 			<div class="field">
-				<label>所属功能编号</label>
-				<span class="sub">必须填上面已有的功能编号</span>
-				<input id="pFid" placeholder="prediction_unlock" />
+				<label>所属功能</label>
+				<select id="pFid"></select>
 			</div>
 			<div class="field">
 				<label>开通类型</label>
-				<span class="sub">预测条数用「增加可看数量」</span>
 				<select id="pKind">
 					<option value="allowed_count_delta" selected>allowed_count_delta · 增加可看数量</option>
 					<option value="entitlement">entitlement · 功能权益</option>
@@ -109,37 +128,38 @@
 			<div class="field">
 				<label>授予数量</label>
 				<span class="sub">增加几条 / 权益一般填 1</span>
-				<input id="pQty" type="number" value="1" min="1" style="min-width:80px;" />
+				<input id="pQty" type="number" value="1" min="1" />
 			</div>
 			<div class="field">
 				<label>价格（分）</label>
-				<span class="sub">单位「分」：6 元 = 600<span id="pricePreview" class="price-preview"></span></span>
-				<input id="pPrice" type="number" value="600" min="0" style="min-width:100px;" />
+				<span class="sub">6 元 = 600<span id="pricePreview" class="price-preview"></span></span>
+				<input id="pPrice" type="number" value="600" min="0" />
 			</div>
 			<div class="field">
 				<label>划线原价（分）</label>
-				<span class="sub">0 表示不展示划线价</span>
-				<input id="pOrig" type="number" value="0" min="0" style="min-width:100px;" />
+				<input id="pOrig" type="number" value="0" min="0" />
 			</div>
 			<div class="field">
 				<label>有效天数</label>
-				<span class="sub">0 = 永久；权益类才常用</span>
-				<input id="pDays" type="number" value="0" min="0" style="min-width:80px;" />
+				<span class="sub">0 = 永久；权益类常用</span>
+				<input id="pDays" type="number" value="0" min="0" />
 			</div>
 			<div class="field">
 				<label>Apple 商品 ID</label>
-				<span class="sub">IAP 用；没有可留空</span>
 				<input id="pApple" placeholder="可选" />
 			</div>
 			<div class="field">
 				<label>是否上架</label>
 				<select id="pStatus">
-					<option value="1" selected>1 · 上架</option>
-					<option value="0">0 · 下架</option>
+					<option value="1" selected>上架</option>
+					<option value="0">下架</option>
 				</select>
 			</div>
-			<button id="saveProdBtn" type="button">保存套餐</button>
-			<button id="reloadProdBtn" type="button" class="secondary">刷新列表</button>
+			<div class="btn-row">
+				<button id="saveProdBtn" type="button">保存套餐</button>
+				<button id="newProdBtn" type="button" class="secondary">新建套餐（清空编码）</button>
+				<button id="reloadProdBtn" type="button" class="secondary">刷新列表</button>
+			</div>
 		</div>
 		<div class="table-wrap">
 			<table>
@@ -175,56 +195,129 @@
 		if (k === 'entitlement') return '功能权益';
 		return k || '';
 	};
-	const syncPricePreview = () => {
+	const esc = (s) => String(s == null ? '' : s)
+		.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+	const getMethods = () => Array.from(document.querySelectorAll('#fMethods input:checked')).map(el => el.value).join(',');
+	const setMethods = (s) => {
+		const set = new Set(String(s || '').split(',').map(x => x.trim()).filter(Boolean));
+		document.querySelectorAll('#fMethods input').forEach(el => { el.checked = set.has(el.value); });
+	};
+
+	document.getElementById('pPrice').addEventListener('input', () => {
 		const el = document.getElementById('pricePreview');
 		const n = Number(document.getElementById('pPrice').value) || 0;
 		el.textContent = n > 0 ? '（约 ¥' + (n / 100).toFixed(2) + '）' : '';
-	};
-	document.getElementById('pPrice').addEventListener('input', syncPricePreview);
-	syncPricePreview();
+	});
 
 	try {
 		await AdminCommon.requireAdmin();
 		document.getElementById('mainCard').classList.remove('hidden');
 	} catch (e) { return; }
 
+	let defList = [];
+
+	function fillFeatureSelect() {
+		const sel = document.getElementById('pFid');
+		const cur = sel.value;
+		sel.innerHTML = defList.map(r =>
+			`<option value="${esc(r.featureId)}">${esc(r.featureId)} · ${esc(r.title || '')}</option>`
+		).join('') || '<option value="">暂无功能</option>';
+		if (cur) sel.value = cur;
+	}
+
+	function loadDefIntoForm(r) {
+		fId.value = r.featureId || '';
+		fTitle.value = r.title || '';
+		fDesc.value = r.description || '';
+		setMethods(r.unlockMethods);
+		fDefault.value = r.defaultAllowedCount != null ? r.defaultAllowedCount : 0;
+		fStatus.value = String(r.status != null ? r.status : 1);
+		fSort.value = r.sortOrder != null ? r.sortOrder : 10;
+	}
+
 	async function loadDefs() {
 		const data = await AdminCommon.adminFetch('/cash/admin/api/feature/defs');
+		defList = data.list || [];
+		fillFeatureSelect();
 		const tb = document.getElementById('defBody');
-		tb.innerHTML = (data.list || []).map(r =>
-			`<tr>
-				<td><code>${r.featureId}</code></td>
-				<td>${r.title || ''}</td>
-				<td>${r.unlockMethods || ''}</td>
+		tb.innerHTML = defList.map(r =>
+			`<tr class="clickable" data-fid="${esc(r.featureId)}">
+				<td><code>${esc(r.featureId)}</code></td>
+				<td>${esc(r.title || '')}</td>
+				<td>${esc((r.description || '').slice(0, 40))}</td>
+				<td>${esc(r.unlockMethods || '')}</td>
+				<td>${r.defaultAllowedCount != null ? r.defaultAllowedCount : 0}</td>
 				<td>${statusLabel(r.status)}</td>
 			</tr>`
-		).join('') || '<tr><td colspan="4">暂无，请先保存一条功能定义</td></tr>';
+		).join('') || '<tr><td colspan="6">暂无功能定义（须种子/发版写入）</td></tr>';
+		tb.querySelectorAll('tr[data-fid]').forEach(tr => {
+			tr.onclick = () => {
+				const r = defList.find(x => x.featureId === tr.dataset.fid);
+				if (r) loadDefIntoForm(r);
+			};
+		});
+		if (!fId.value && defList.length) loadDefIntoForm(defList[0]);
 	}
+
 	async function loadProds() {
 		const data = await AdminCommon.adminFetch('/cash/admin/api/feature/products');
 		const tb = document.getElementById('prodBody');
-		tb.innerHTML = (data.list || []).map(r =>
-			`<tr>
-				<td><code>${r.productCode}</code></td>
-				<td><code>${r.featureId}</code></td>
+		const list = data.list || [];
+		tb.innerHTML = list.map(r =>
+			`<tr class="clickable" data-code="${esc(r.productCode)}">
+				<td><code>${esc(r.productCode)}</code></td>
+				<td><code>${esc(r.featureId)}</code></td>
 				<td>${kindLabel(r.grantKind)} × ${r.grantQuantity}</td>
 				<td>${fenLabel(r.priceFen)}</td>
 				<td>${statusLabel(r.status)}</td>
 			</tr>`
 		).join('') || '<tr><td colspan="5">暂无套餐</td></tr>';
+		tb.querySelectorAll('tr[data-code]').forEach(tr => {
+			tr.onclick = () => {
+				const r = list.find(x => x.productCode === tr.dataset.code);
+				if (!r) return;
+				pCode.value = r.productCode;
+				pFid.value = r.featureId;
+				pKind.value = r.grantKind || 'allowed_count_delta';
+				pQty.value = r.grantQuantity || 1;
+				pPrice.value = r.priceFen || 0;
+				pOrig.value = r.originalPriceFen || 0;
+				pDays.value = r.durationDays || 0;
+				pApple.value = r.appleProductId || '';
+				pStatus.value = String(r.status != null ? r.status : 1);
+				document.getElementById('pPrice').dispatchEvent(new Event('input'));
+			};
+		});
 	}
+
 	document.getElementById('reloadDefBtn').onclick = () => loadDefs().catch(e => show(e.message || e, false));
 	document.getElementById('reloadProdBtn').onclick = () => loadProds().catch(e => show(e.message || e, false));
+	document.getElementById('newProdBtn').onclick = () => {
+		pCode.value = '';
+		pQty.value = 1;
+		pPrice.value = 600;
+		pOrig.value = 0;
+		pDays.value = 0;
+		pApple.value = '';
+		pStatus.value = '1';
+		document.getElementById('pPrice').dispatchEvent(new Event('input'));
+		show('已清空编码，保存将自动生成', true);
+	};
 	document.getElementById('saveDefBtn').onclick = async () => {
 		try {
 			const featureId = fId.value.trim();
-			if (!featureId) { show('请填写功能编号', false); return; }
+			if (!featureId) { show('请先从列表选择功能', false); return; }
+			const unlockMethods = getMethods();
+			if (!unlockMethods) { show('请至少选择一种开通方式', false); return; }
 			await AdminCommon.adminFetch('/cash/admin/api/feature/defs', {
 				method: 'POST',
 				body: JSON.stringify({
 					featureId,
 					title: fTitle.value.trim(),
-					unlockMethods: fMethods.value.trim(),
+					description: fDesc.value.trim(),
+					unlockMethods,
+					defaultAllowedCount: Number(fDefault.value) || 0,
 					status: Number(fStatus.value),
 					sortOrder: Number(fSort.value) || 0
 				})
@@ -235,13 +328,12 @@
 	};
 	document.getElementById('saveProdBtn').onclick = async () => {
 		try {
-			const productCode = pCode.value.trim();
 			const featureId = pFid.value.trim();
-			if (!productCode || !featureId) { show('请填写商品编码与所属功能编号', false); return; }
-			await AdminCommon.adminFetch('/cash/admin/api/feature/products', {
+			if (!featureId) { show('请选择所属功能', false); return; }
+			const data = await AdminCommon.adminFetch('/cash/admin/api/feature/products', {
 				method: 'POST',
 				body: JSON.stringify({
-					productCode,
+					productCode: pCode.value.trim(),
 					featureId,
 					grantKind: pKind.value.trim(),
 					grantQuantity: Number(pQty.value) || 1,
@@ -252,7 +344,8 @@
 					status: Number(pStatus.value)
 				})
 			});
-			show('售卖套餐已保存（App catalog 的 products 会包含该商品编码）', true);
+			if (data && data.productCode) pCode.value = data.productCode;
+			show('售卖套餐已保存：' + (data.productCode || pCode.value), true);
 			await loadProds();
 		} catch (e) { show(e.message || String(e), false); }
 	};
