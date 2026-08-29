@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>喂养资格门槛</title>
+	<link rel="stylesheet" href="/resource/public/pangbao-theme.css" />
+	<link rel="stylesheet" href="/resource/public/admin-pages.css" />
+	<style>
+		.hint { font-size: 12px; color: #64748b; line-height: 1.55; margin: 0 0 14px; }
+		.form-stack { display: flex; flex-direction: column; gap: 12px; max-width: 640px; margin-bottom: 14px; }
+		.field { display: flex; flex-direction: column; gap: 4px; }
+		.field label { font-size: 12px; color: #334155; font-weight: 600; }
+		.field .sub { font-size: 11px; color: #94a3b8; line-height: 1.35; }
+		.field input, .field select { font-size: 13px; padding: 6px 8px; max-width: 320px; }
+		.btn-row { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+		.btn-row button { min-width: 160px; }
+		.clickable { cursor: pointer; }
+		.clickable:hover { background: #f8fafc; }
+	</style>
+</head>
+<body>
+<div class="page">
+	<header class="admin-header glass">
+		<div class="logo">资格</div>
+		<div>
+			<h1>喂养资格门槛</h1>
+			<p>UCG 入场 / 值得留意 · 连续有效喂养日 · <a href="/device/admin">运维 Hub</a></p>
+		</div>
+	</header>
+	<div class="card glass hidden" id="mainCard">
+		<p class="hint">
+			资格判断在 <strong>cash-service</strong>：有效日 = 当日 history 条数 ≥「日条数门槛」；从今天往回连续满「所需天数」则合格。
+			两场景门槛互不影响。改完后新请求立即按新配置（缓存键含版本）。静态页若样式不对请 <strong>Ctrl+F5</strong>。
+		</p>
+		<div class="form-stack">
+			<div class="field">
+				<label>场景</label>
+				<span class="sub">与客户端约定，不可新建</span>
+				<select id="sceneKey"></select>
+			</div>
+			<div class="field">
+				<label>所需连续有效天数</label>
+				<input id="reqDays" type="number" min="1" value="7" />
+			</div>
+			<div class="field">
+				<label>日条数门槛（minRecordsPerDay）</label>
+				<span class="sub">该场景独立配置</span>
+				<input id="minRec" type="number" min="1" value="10" />
+			</div>
+			<div class="btn-row">
+				<button id="saveBtn" type="button">保存</button>
+				<button id="reloadBtn" type="button" class="secondary">刷新列表</button>
+			</div>
+		</div>
+		<div class="table-wrap">
+			<table>
+				<thead>
+					<tr>
+						<th>场景</th>
+						<th>所需天数</th>
+						<th>日条数门槛</th>
+						<th>更新时间</th>
+					</tr>
+				</thead>
+				<tbody id="body"></tbody>
+			</table>
+		</div>
+		<div id="msg" class="msg"></div>
+	</div>
+</div>
+<script src="/resource/public/admin-common.js"></script>
+<script>
+(async function () {
+	const msg = document.getElementById('msg');
+	const show = (t, ok) => { msg.textContent = t; msg.style.color = ok ? '#059669' : '#dc2626'; };
+	const label = (k) => {
+		if (k === 'ucg_entry') return 'UCG 入场 (ucg_entry)';
+		if (k === 'care_alert_entry') return '值得留意 (care_alert_entry)';
+		return k;
+	};
+	try {
+		await AdminCommon.requireAdmin();
+		document.getElementById('mainCard').classList.remove('hidden');
+	} catch (e) { return; }
+
+	let list = [];
+	function fillSelect() {
+		const sel = document.getElementById('sceneKey');
+		sel.innerHTML = list.map(r =>
+			`<option value="${r.sceneKey}">${label(r.sceneKey)}</option>`
+		).join('');
+	}
+	function loadForm(r) {
+		if (!r) return;
+		sceneKey.value = r.sceneKey;
+		reqDays.value = r.requiredDays;
+		minRec.value = r.minRecordsPerDay;
+	}
+	async function load() {
+		const data = await AdminCommon.adminFetch('/cash/admin/api/feeding-eligibility/scenes');
+		list = data.list || [];
+		fillSelect();
+		const tb = document.getElementById('body');
+		tb.innerHTML = list.map(r => {
+			const t = r.updatedAt ? new Date(r.updatedAt * 1000).toLocaleString() : '';
+			return `<tr class="clickable" data-k="${r.sceneKey}">
+				<td>${label(r.sceneKey)}</td>
+				<td>${r.requiredDays}</td>
+				<td>${r.minRecordsPerDay}</td>
+				<td>${t}</td>
+			</tr>`;
+		}).join('') || '<tr><td colspan="4">暂无（重启 cash 应种子两行）</td></tr>';
+		tb.querySelectorAll('tr[data-k]').forEach(tr => {
+			tr.onclick = () => loadForm(list.find(x => x.sceneKey === tr.dataset.k));
+		});
+		if (list.length) loadForm(list[0]);
+	}
+	document.getElementById('sceneKey').onchange = () => {
+		loadForm(list.find(x => x.sceneKey === sceneKey.value));
+	};
+	document.getElementById('reloadBtn').onclick = () => load().catch(e => show(e.message || e, false));
+	document.getElementById('saveBtn').onclick = async () => {
+		try {
+			await AdminCommon.adminFetch('/cash/admin/api/feeding-eligibility/scenes', {
+				method: 'POST',
+				body: JSON.stringify({
+					sceneKey: sceneKey.value,
+					requiredDays: Number(reqDays.value) || 1,
+					minRecordsPerDay: Number(minRec.value) || 1
+				})
+			});
+			show('已保存', true);
+			await load();
+		} catch (e) { show(e.message || String(e), false); }
+	};
+	await load();
+})();
+</script>
+</body>
+</html>

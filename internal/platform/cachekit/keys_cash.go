@@ -6,10 +6,20 @@ import (
 
 // —— cash 商业功能 / UCG 资格缓存键（跨 gateway 与 cash-service 共享语义时须走本 builder）——
 
-// CashUCGEligibilityKey UCG 入场资格按日结果；TTL 建议至当日结束+缓冲或固定 36h；不落 MySQL。
-// 同 device+上海日重复请求 MUST 命中缓存；跨日换日期段自动隔离。
+// CashUCGEligibilityKey 兼容旧 UCG 资格键（新路径请用 CashFeedingEligibilityKey）。
 func CashUCGEligibilityKey(deviceNo, yyyyMMdd string) string {
 	return fmt.Sprintf("cash:ucg:eligibility:%s:%s", deviceNo, yyyyMMdd)
+}
+
+// CashFeedingEligibilityKey 喂养资格按场景+设备+上海日+配置版本；TTL 建议 36h；不落 MySQL。
+// cfgUpdatedAt 变更后旧键自然失效，避免 Admin 改阈值后脏读。
+func CashFeedingEligibilityKey(sceneKey, deviceNo, yyyyMMdd string, cfgUpdatedAt int64) string {
+	return fmt.Sprintf("cash:feeding:elig:%s:%s:%s:%d", sceneKey, deviceNo, yyyyMMdd, cfgUpdatedAt)
+}
+
+// CashFeedingEligibilitySceneKey 场景阈值热读；Admin 写 MUST DEL；TTL 建议 5–15min。
+func CashFeedingEligibilitySceneKey(sceneKey string) string {
+	return fmt.Sprintf("cash:feeding:elig:scene:%s", sceneKey)
 }
 
 // CashFeatureDefCatalogKey 全站启用功能定义字典热读；Admin 写路径 MUST DEL；TTL 建议 5–15min。

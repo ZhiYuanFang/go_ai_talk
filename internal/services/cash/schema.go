@@ -176,6 +176,14 @@ func EnsureSchema(ctx context.Context) error {
   KEY idx_device_created (device_no, created_at),
   KEY idx_channel_txn (channel, channel_txn_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+		// 喂养资格场景阈值（UCG / 值得留意）；Admin 可改，禁止随意新建 scene_key。
+		`CREATE TABLE IF NOT EXISTS feeding_eligibility_scene (
+  scene_key             VARCHAR(64) NOT NULL,
+  required_days         INT         NOT NULL DEFAULT 1,
+  min_records_per_day   INT         NOT NULL DEFAULT 10,
+  updated_at            BIGINT      NOT NULL DEFAULT 0,
+  PRIMARY KEY (scene_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 	}
 	for _, sql := range stmts {
 		if _, err := db.Exec(ctx, sql); err != nil {
@@ -225,5 +233,13 @@ INSERT INTO feature_def (feature_id, title, description, unlock_methods, duratio
 VALUES (?, '预测事项开通数量', '增加可展示的预测事项数量', 'payment,invite_code,ad', 0, 0, 1, 10, ?)
 ON DUPLICATE KEY UPDATE updated_at=VALUES(updated_at)`,
 		FeatureIDPredictionUnlock, now)
+	if err != nil {
+		return err
+	}
+	// 喂养资格场景种子：仅 INSERT 忽略已存在，不覆盖运维已改阈值。
+	_, err = db.Exec(ctx, `
+INSERT IGNORE INTO feeding_eligibility_scene (scene_key, required_days, min_records_per_day, updated_at)
+VALUES (?, 7, 10, ?), (?, 2, 10, ?)`,
+		SceneKeyUCGEntry, now, SceneKeyCareAlertEntry, now)
 	return err
 }

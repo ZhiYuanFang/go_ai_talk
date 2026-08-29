@@ -18,6 +18,20 @@ type CashUCGEligibilityRes struct {
 	Message       string `json:"message,omitempty"`
 }
 
+// CashCareAlertEligibilityReq GET 值得留意喂养资格（cash 合成）。
+type CashCareAlertEligibilityReq struct {
+	g.Meta `path:"/cash/app/api/care-alert/eligibility" method:"get" tags:"cash" summary:"值得留意喂养资格（连续有效喂养日）"`
+}
+
+// CashCareAlertEligibilityRes 与 UCG 资格字段同构。
+type CashCareAlertEligibilityRes struct {
+	Qualified     bool   `json:"qualified"`
+	RequiredDays  int    `json:"requiredDays"`
+	EffectiveDays int    `json:"effectiveDays"`
+	RemainingDays int    `json:"remainingDays"`
+	Message       string `json:"message,omitempty"`
+}
+
 // CashFeatureCatalogReq GET 合成功能目录。
 type CashFeatureCatalogReq struct {
 	g.Meta `path:"/cash/app/api/feature/catalog" method:"get" tags:"cash" summary:"功能目录（含是否已开通与可售 SKU）"`
@@ -246,3 +260,35 @@ type CashAdminInviteRedemptionItem struct {
 type CashAdminInviteRedemptionsRes struct {
 	List []CashAdminInviteRedemptionItem `json:"list"`
 }
+
+// —— Admin：喂养资格场景 ——
+
+// CashAdminFeedingEligibilityScenesListReq GET 场景阈值列表。
+type CashAdminFeedingEligibilityScenesListReq struct {
+	g.Meta `path:"/cash/admin/api/feeding-eligibility/scenes" method:"get" tags:"cash-admin" summary:"管理端喂养资格场景列表"`
+}
+
+// CashAdminFeedingEligibilitySceneItem 场景项。
+type CashAdminFeedingEligibilitySceneItem struct {
+	SceneKey         string `json:"sceneKey"`
+	RequiredDays     int    `json:"requiredDays"`
+	MinRecordsPerDay int    `json:"minRecordsPerDay"`
+	UpdatedAt        int64  `json:"updatedAt"`
+}
+
+// CashAdminFeedingEligibilityScenesListRes 列表。
+type CashAdminFeedingEligibilityScenesListRes struct {
+	List []CashAdminFeedingEligibilitySceneItem `json:"list"`
+}
+
+// CashAdminFeedingEligibilitySceneUpdateReq POST 更新已有场景。
+type CashAdminFeedingEligibilitySceneUpdateReq struct {
+	g.Meta           `path:"/cash/admin/api/feeding-eligibility/scenes" method:"post" tags:"cash-admin" summary:"管理端更新喂养资格场景阈值"`
+	SceneKey         string `json:"sceneKey" v:"required"`
+	RequiredDays     int    `json:"requiredDays" v:"required|min:1"`
+	MinRecordsPerDay int    `json:"minRecordsPerDay" v:"required|min:1"`
+}
+
+// CashAdminFeedingEligibilitySceneUpdateRes 空。
+type CashAdminFeedingEligibilitySceneUpdateRes struct{}
+

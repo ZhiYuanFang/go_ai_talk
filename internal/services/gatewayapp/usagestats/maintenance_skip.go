@@ -26,6 +26,8 @@ var maintenanceExactAPI = map[string]struct{}{
 	// 商业功能：负责人确认查询链路不计入 usage；开通意图 POST 仍统计（commercial-feature-entitlement）。
 	"GET /cash/app/api/ucg/eligibility":  {},
 	"GET /cash/app/api/feature/catalog": {},
+	// 值得留意喂养资格：与 UCG eligibility 同属资格查询读路径；按商业资格查询不计入策略对齐（feeding-eligibility-admin-scenes）。
+	"GET /cash/app/api/care-alert/eligibility": {},
 	// clinic/tip 点赞反馈：负责人确认不计入 usage（close-clinic-tip-feedback）；
 	// tip generate（POST /device/tip/generate）统计策略属包 B，不得在此排除。
 	"POST /device/api/clinic/feedback": {},

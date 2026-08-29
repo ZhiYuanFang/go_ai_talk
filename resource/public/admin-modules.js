@@ -49,6 +49,12 @@ window.ADMIN_MODULES = [
 		showInNav: true
 	},
 	{
+		id: 'cash-feeding-eligibility-admin',
+		title: '喂养资格门槛',
+		pagePath: '/device/admin/cash-feeding-eligibility-admin.html',
+		showInNav: true
+	},
+	{
 		id: 'app-status-admin',
 		title: 'App 维护通知',
 		externalUrl: 'https://notify.cuplay.top/admin',

@@ -49,7 +49,7 @@ func FetchFeedingDayStats(ctx context.Context, deviceNo string, days int) (*hist
 		return nil, gerror.NewCode(gcode.CodeInternalError, "未配置 DEVICE_GATEWAY_INTERNAL_SECRET")
 	}
 	if days <= 0 {
-		days = 14
+		days = 7
 	}
 	u, err := url.Parse(base + "/history/internal/api/feeding-day-stats")
 	if err != nil {

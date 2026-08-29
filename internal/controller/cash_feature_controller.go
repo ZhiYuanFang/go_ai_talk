@@ -54,6 +54,22 @@ func (c *CashFeatureController) UCGEligibility(ctx context.Context, _ *v1.CashUC
 	}, nil
 }
 
+// CareAlertEligibility GET /cash/app/api/care-alert/eligibility
+func (c *CashFeatureController) CareAlertEligibility(ctx context.Context, _ *v1.CashCareAlertEligibilityReq) (*v1.CashCareAlertEligibilityRes, error) {
+	dn, err := cashDeviceNoFromHeader(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out, err := cash.GetCareAlertFeedingEligibility(ctx, dn)
+	if err != nil {
+		return nil, err
+	}
+	return &v1.CashCareAlertEligibilityRes{
+		Qualified: out.Qualified, RequiredDays: out.RequiredDays,
+		EffectiveDays: out.EffectiveDays, RemainingDays: out.RemainingDays, Message: out.Message,
+	}, nil
+}
+
 // Catalog GET /cash/app/api/feature/catalog
 func (c *CashFeatureController) Catalog(ctx context.Context, _ *v1.CashFeatureCatalogReq) (*v1.CashFeatureCatalogRes, error) {
 	dn, err := cashDeviceNoFromHeader(ctx)
@@ -261,4 +277,34 @@ func (c *CashFeatureController) AdminInviteRedemptions(ctx context.Context, req 
 		})
 	}
 	return res, nil
+}
+
+// AdminFeedingEligibilityScenes GET
+func (c *CashFeatureController) AdminFeedingEligibilityScenes(ctx context.Context, _ *v1.CashAdminFeedingEligibilityScenesListReq) (*v1.CashAdminFeedingEligibilityScenesListRes, error) {
+	if err := requireCashAdmin(ctx); err != nil {
+		return nil, err
+	}
+	list, err := cash.AdminListFeedingEligibilityScenes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	res := &v1.CashAdminFeedingEligibilityScenesListRes{List: make([]v1.CashAdminFeedingEligibilitySceneItem, 0, len(list))}
+	for _, it := range list {
+		res.List = append(res.List, v1.CashAdminFeedingEligibilitySceneItem{
+			SceneKey: it.SceneKey, RequiredDays: it.RequiredDays,
+			MinRecordsPerDay: it.MinRecordsPerDay, UpdatedAt: it.UpdatedAt,
+		})
+	}
+	return res, nil
+}
+
+// AdminFeedingEligibilityScenesUpdate POST
+func (c *CashFeatureController) AdminFeedingEligibilityScenesUpdate(ctx context.Context, req *v1.CashAdminFeedingEligibilitySceneUpdateReq) (*v1.CashAdminFeedingEligibilitySceneUpdateRes, error) {
+	if err := requireCashAdmin(ctx); err != nil {
+		return nil, err
+	}
+	if err := cash.AdminUpdateFeedingEligibilityScene(ctx, req.SceneKey, req.RequiredDays, req.MinRecordsPerDay); err != nil {
+		return nil, err
+	}
+	return &v1.CashAdminFeedingEligibilitySceneUpdateRes{}, nil
 }
