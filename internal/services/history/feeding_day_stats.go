@@ -23,14 +23,17 @@ type FeedingDayStats struct {
 	Days     []FeedingDayCount `json:"days"`
 }
 
-// shanghaiDayExpr 将 unix start_time 转为上海日历日的 SQL 表达式（固定东八，不依赖会话时区语义漂移）。
-const shanghaiDayExpr = "DATE(CONVERT_TZ(FROM_UNIXTIME(`start_time`), @@session.time_zone, '+08:00'))"
+// shanghaiDayExpr 将 unix start_time 转为 Asia/Shanghai 日历日（yyyy-MM-dd）。
+//
+// 不用 CONVERT_TZ：未加载 mysql 时区表时 CONVERT_TZ 返回 NULL，GROUP BY 对不上 Go 预填日期，count 全为 0。
+// 口径：epoch 秒 + 28800 后按 86400 整除得到东八自然日序号，再加到 1970-01-01（上海无夏令时，偏移固定）。
+const shanghaiDayExpr = "DATE_ADD('1970-01-01', INTERVAL ((`start_time` + 28800) DIV 86400) DAY)"
 
 // GetFeedingDayStats 按 device_no 统计近 days 个上海已闭合日历日每日 history 行数。
 //
 // 业务：供 cash 喂养资格（UCG / 值得留意）取数；口径为该设备全部 history，按 start_time 落入上海日。
 // 窗口：自上海昨日起往前共 days 天，半开区间 [windowStart, todayStart)，今日不计入。
-// 实现：DB 按上海日 GROUP BY + COUNT，零条日由本函数补 0。
+// 实现：DB 按上海日 GROUP BY + COUNT（东八 epoch 算术，不依赖 mysql 时区表），零条日由本函数补 0。
 //
 // Args: deviceNo 设备号；days 天数（建议等于场景 requiredDays，上限 31）。
 // Returns: Days[0]=昨天 … 向过去；Side Effects: 仅读 history 表聚合，不拉全量行。

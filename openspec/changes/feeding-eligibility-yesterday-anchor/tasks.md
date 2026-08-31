@@ -3,6 +3,7 @@
 - [x] 1.1 改写 `GetFeedingDayStats`：时间窗为上海 `[yesterdayStart-(days-1), todayStart)`，返回 `days[0]=昨天` 向过去，零条日补 0
 - [x] 1.2 查询改为 DB 按上海日 `GROUP BY` + `COUNT(*)`（时区固定东八），不再 Scan 全量 `start_time` 列表
 - [x] 1.3 更新 `feeding_day_stats.go` / 内部 API 注释与 summary，标明「已闭合日、不含今日」
+- [x] 1.4 修复 COUNT 切日：去掉 `CONVERT_TZ`，改用 `(start_time+28800) DIV 86400` 东八算术，避免未装时区表时 count 全 0
 
 ## 2. cash 资格契约对齐
 

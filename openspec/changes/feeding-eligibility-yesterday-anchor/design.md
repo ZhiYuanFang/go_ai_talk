@@ -37,9 +37,13 @@ cash：`CountConsecutiveEffectiveDays` 仍从前向后扫，遇无效 break；�
 
 ### D2 — SQL 按日 COUNT
 
-使用 `device_no` + `start_time` 范围（命中 `idx_history_device_start`），`GROUP BY` 上海日历日，`COUNT(*)`。时区：`CONVERT_TZ(FROM_UNIXTIME(start_time), @@session.time_zone, '+08:00')` 的 `DATE`，或与运维确认会话时区后等价写法。零条日由 Go 补全。
+使用 `device_no` + `start_time` 范围（命中 `idx_history_device_start`），`GROUP BY` 上海日历日，`COUNT(*)`。时区：**禁止依赖 `CONVERT_TZ` / mysql 时区表**（未装表时返回 NULL → 全 0 有效日）。改用固定东八算术：
 
-**备选**：继续拉 `start_time` 列表 → 否决（本变更目标之一）。
+`DATE_ADD('1970-01-01', INTERVAL ((start_time + 28800) DIV 86400) DAY)`
+
+（上海无夏令时；与 Go `Asia/Shanghai` 切窗一致。）零条日由 Go 补全。
+
+**备选**：`CONVERT_TZ(..., '+08:00')` → 否决（依赖时区表）。继续拉 `start_time` 列表 → 否决（本变更目标之一）。
 
 ### D3 — 跨日立即合格与缓存
 
@@ -58,8 +62,8 @@ cash：`CountConsecutiveEffectiveDays` 仍从前向后扫，遇无效 break；�
 ## Risks / Trade-offs
 
 - [相对旧算法当日进度不可用] → 用户须等自然日闭合；与日缓存一致，属有意取舍。
-- [MySQL 时区/CONVERT_TZ 配置差异] → 设计写死 +08:00；上线前用固定设备抽检按日 count。
-- [已缓存旧语义结果] → 发版后依赖新上海日键或 Admin 改配置 bump `updated_at`；必要时发版说明短窗内旧缓存可能残留至日切。
+- [MySQL 时区表缺失] → 已改 epoch+28800 算术，不依赖 CONVERT_TZ。
+- [已缓存 effectiveDays=0] → 发版后依赖新上海日键或 Admin 改场景 bump `updated_at` 使资格键失效；否则当日可能仍命中旧 0。
 - [BREAKING 资格时点] → App 仅展示字段，无协议字段变更；运营需知解锁可能推迟到「满额日的次日 0 点后」。
 
 ## Migration Plan
