@@ -134,10 +134,11 @@ func GetFeatureCatalog(ctx context.Context, deviceNo string) (*FeatureCatalogRes
 		return nil, err
 	}
 
-	// 非叶子事件天花板：失败则不写入正数，避免误显示「已全部激活」。
+	// 一级根事件天花板（parent_id=0，含无子根）：失败则不写入正数，避免误显示「已全部激活」。
+	// 与 voice「非叶子须追问」无关；历史调用名 FetchNonLeafEventCount。
 	var totalActivatable *int
 	if n, nErr := FetchNonLeafEventCount(ctx); nErr != nil {
-		g.Log().Warningf(ctx, "[cash-catalog] non-leaf count failed err=%v", nErr)
+		g.Log().Warningf(ctx, "[cash-catalog] root-count failed err=%v", nErr)
 	} else if n > 0 {
 		totalActivatable = &n
 	}

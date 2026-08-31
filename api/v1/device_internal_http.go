@@ -16,12 +16,13 @@ type DeviceInternalEventOptionsRes struct {
 	List []entity.Event `json:"list"`
 }
 
-// DeviceInternalEventNonLeafCountReq 内部：非叶子事件计数（供 cash catalog 聚合）。
+// DeviceInternalEventNonLeafCountReq 内部：一级根事件计数（供 cash catalog 聚合 totalActivatableCount）。
+// 路径名保留 non-leaf-count（历史）；语义为 parent_id=0 的一级根数，含无子根。
 type DeviceInternalEventNonLeafCountReq struct {
-	g.Meta `path:"/device/internal/api/event/non-leaf-count" method:"get" tags:"device" summary:"内部-非叶子事件数"`
+	g.Meta `path:"/device/internal/api/event/non-leaf-count" method:"get" tags:"device" summary:"内部-一级根事件数（历史路径 non-leaf-count）"`
 }
 
-// DeviceInternalEventNonLeafCountRes 非叶子事件计数响应。
+// DeviceInternalEventNonLeafCountRes 一级根事件计数响应。
 type DeviceInternalEventNonLeafCountRes struct {
-	Count int `json:"count"`
+	Count int `json:"count" dc:"一级根数量（parent_id=0，含无子根）"`
 }

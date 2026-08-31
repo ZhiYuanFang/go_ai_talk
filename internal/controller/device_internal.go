@@ -26,10 +26,10 @@ func (c *DeviceInternalCtrl) EventOptions(ctx context.Context, req *v1.DeviceInt
 	return &v1.DeviceInternalEventOptionsRes{List: eventlogo.MapEventsLogoCdn(ctx, items)}, nil
 }
 
-// EventNonLeafCount 返回事件字典非叶子节点数（至少有一个子事件）。
+// EventNonLeafCount 返回事件字典一级根数量（parent_id=0，含无子根；历史路由名 non-leaf-count）。
 func (c *DeviceInternalCtrl) EventNonLeafCount(ctx context.Context, req *v1.DeviceInternalEventNonLeafCountReq) (res *v1.DeviceInternalEventNonLeafCountRes, err error) {
 	_ = req
-	n, err := device.DeviceAdmin().CountNonLeafEvents(ctx)
+	n, err := device.DeviceAdmin().CountRootEvents(ctx)
 	if err != nil {
 		return nil, err
 	}

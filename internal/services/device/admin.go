@@ -395,21 +395,17 @@ func (s *service) ListEvents(ctx context.Context) ([]entity.Event, error) {
 	return rows, err
 }
 
-// CountNonLeafEvents 统计事件字典中非叶子节点数（至少有一个子事件 parent_id 指向该节点）。
-// 业务：供 cash catalog 聚合 totalActivatableCount；parent_id=0 为根，不计入「被指向」集合的父键。
-// Returns: 非叶子事件个数；Side Effects: 无写库。
+// CountRootEvents 统计事件字典一级根数量（parent_id=0，含无子根如「洗澡」）。
+// 业务：供 cash catalog 聚合 totalActivatableCount（预测可激活天花板）。
+// Returns: 一级根个数；Side Effects: 无写库。
+func (s *service) CountRootEvents(ctx context.Context) (int, error) {
+	return dao.Event.Ctx(ctx).Where(dao.Event.Columns().ParentId, 0).Count()
+}
+
+// CountNonLeafEvents 历史方法名：语义已改为一级根计数，委托 CountRootEvents。
+// 保留以免调用方符号中断；与 voice「非叶子须追问」无关。
 func (s *service) CountNonLeafEvents(ctx context.Context) (int, error) {
-	v, err := dao.Event.Ctx(ctx).
-		WhereGT(dao.Event.Columns().ParentId, 0).
-		Fields("COUNT(DISTINCT `" + dao.Event.Columns().ParentId + "`)").
-		Value()
-	if err != nil {
-		return 0, err
-	}
-	if v == nil || v.IsNil() {
-		return 0, nil
-	}
-	return v.Int(), nil
+	return s.CountRootEvents(ctx)
 }
 
 // UpdateEvent 更新事件字典；parentID 非 nil 时同时修改 parent_id（0 表示升为根）。

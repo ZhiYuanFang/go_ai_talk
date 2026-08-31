@@ -49,7 +49,7 @@ type CashFeatureCatalogProductItem struct {
 }
 
 // CashFeatureCatalogItem 目录项（开通态 + 可售 products）。
-// AllowedCount：预测永久可激活条数（defaultFree+delta）；TotalActivatableCount：非叶子事件天花板。
+// AllowedCount：预测永久可激活条数（defaultFree+delta）；TotalActivatableCount：一级根事件天花板（含无子根）。
 type CashFeatureCatalogItem struct {
 	FeatureId             string                         `json:"featureId"`
 	Title                 string                         `json:"title"`
