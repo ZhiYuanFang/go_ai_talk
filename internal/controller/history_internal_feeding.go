@@ -13,11 +13,11 @@ import (
 	"github.com/gogf/gf/v2/net/ghttp"
 )
 
-// HistoryInternalFeedingDayStatsReq GET 内部按日 history 条数（供 cash UCG 资格）。
+// HistoryInternalFeedingDayStatsReq GET 内部按日 history 条数（供 cash 喂养资格；已闭合日、不含今日）。
 type HistoryInternalFeedingDayStatsReq struct {
-	g.Meta   `path:"/history/internal/api/feeding-day-stats" method:"get" tags:"history-internal" summary:"内部：设备近 N 上海日每日 history 条数"`
+	g.Meta   `path:"/history/internal/api/feeding-day-stats" method:"get" tags:"history-internal" summary:"内部：设备近 N 个上海已闭合日每日 history 条数（昨天起、不含今日）"`
 	DeviceNo string `json:"deviceNo" in:"query" v:"required"`
-	Days     int    `json:"days" in:"query" d:"14" dc:"统计天数，默认 14，最大 31"`
+	Days     int    `json:"days" in:"query" d:"14" dc:"已闭合日天数（昨天起往前），默认 14，最大 31；days[0]=昨天"`
 }
 
 // HistoryInternalFeedingDayStatsRes 内部按日统计 data。

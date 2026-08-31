@@ -47,8 +47,8 @@ var AllowedProviders = []string{
 
 // RuntimeAIConfig polish 运行时配置（含 provider 与闸门参数）。
 type RuntimeAIConfig struct {
-	FreeProvider string
-	FreeModel    string
+	FreeProvider        string
+	FreeModel           string
 	Provider            string
 	VisionModel         string
 	MaxImagesPerRequest int

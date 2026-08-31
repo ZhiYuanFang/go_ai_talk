@@ -22,6 +22,7 @@ type historyFeedingDayCount struct {
 	Count int    `json:"count"`
 }
 
+// historyFeedingDayStatsData Days[0]=上海昨天，向过去，不含今日；长度=请求 days。
 type historyFeedingDayStatsData struct {
 	DeviceNo string                   `json:"deviceNo"`
 	Days     []historyFeedingDayCount `json:"days"`
@@ -33,7 +34,9 @@ type historyEnvelope struct {
 	Data    historyFeedingDayStatsData `json:"data"`
 }
 
-// FetchFeedingDayStats 经 HISTORY_SERVICE_URL 拉取按日 history 条数；失败 fail-closed。
+// FetchFeedingDayStats 经 HISTORY_SERVICE_URL 拉取近 days 个上海已闭合日每日条数；失败 fail-closed。
+//
+// days 等于场景 requiredDays（窗口长度不变；锚点已由 history 平移至昨天起）。
 // Side Effects: 出站 HTTP；禁止直查 history 库。
 func FetchFeedingDayStats(ctx context.Context, deviceNo string, days int) (*historyFeedingDayStatsData, error) {
 	deviceNo = strings.TrimSpace(deviceNo)

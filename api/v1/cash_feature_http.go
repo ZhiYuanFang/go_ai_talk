@@ -6,7 +6,7 @@ import "github.com/gogf/gf/v2/frame/g"
 
 // CashUCGEligibilityReq GET UCG 入场资格。
 type CashUCGEligibilityReq struct {
-	g.Meta `path:"/cash/app/api/ucg/eligibility" method:"get" tags:"cash" summary:"UCG 入场资格（连续有效喂养日）"`
+	g.Meta `path:"/cash/app/api/ucg/eligibility" method:"get" tags:"cash" summary:"UCG 入场资格（自昨天起连续有效喂养日）"`
 }
 
 // CashUCGEligibilityRes 资格 data。
@@ -20,7 +20,7 @@ type CashUCGEligibilityRes struct {
 
 // CashCareAlertEligibilityReq GET 值得留意喂养资格（cash 合成）。
 type CashCareAlertEligibilityReq struct {
-	g.Meta `path:"/cash/app/api/care-alert/eligibility" method:"get" tags:"cash" summary:"值得留意喂养资格（连续有效喂养日）"`
+	g.Meta `path:"/cash/app/api/care-alert/eligibility" method:"get" tags:"cash" summary:"值得留意喂养资格（自昨天起连续有效喂养日）"`
 }
 
 // CashCareAlertEligibilityRes 与 UCG 资格字段同构。

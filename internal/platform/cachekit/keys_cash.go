@@ -11,8 +11,8 @@ func CashUCGEligibilityKey(deviceNo, yyyyMMdd string) string {
 	return fmt.Sprintf("cash:ucg:eligibility:%s:%s", deviceNo, yyyyMMdd)
 }
 
-// CashFeedingEligibilityKey 喂养资格按场景+设备+上海日+配置版本；TTL 建议 36h；不落 MySQL。
-// cfgUpdatedAt 变更后旧键自然失效，避免 Admin 改阈值后脏读。
+// CashFeedingEligibilityKey 喂养资格按场景+设备+上海「请求日」+配置版本；TTL 建议 36h；不落 MySQL。
+// 跨日新键 miss 后重算：已闭合日满额即可立即合格（无 ticker）。cfgUpdatedAt 变更后旧键自然失效。
 func CashFeedingEligibilityKey(sceneKey, deviceNo, yyyyMMdd string, cfgUpdatedAt int64) string {
 	return fmt.Sprintf("cash:feeding:elig:%s:%s:%s:%d", sceneKey, deviceNo, yyyyMMdd, cfgUpdatedAt)
 }

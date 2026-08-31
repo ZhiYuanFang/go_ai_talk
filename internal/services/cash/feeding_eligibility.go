@@ -21,10 +21,10 @@ const (
 
 // FeedingEligibilityScene 场景阈值行。
 type FeedingEligibilityScene struct {
-	SceneKey          string `json:"sceneKey"`
-	RequiredDays      int    `json:"requiredDays"`
-	MinRecordsPerDay  int    `json:"minRecordsPerDay"`
-	UpdatedAt         int64  `json:"updatedAt"`
+	SceneKey         string `json:"sceneKey"`
+	RequiredDays     int    `json:"requiredDays"`
+	MinRecordsPerDay int    `json:"minRecordsPerDay"`
+	UpdatedAt        int64  `json:"updatedAt"`
 }
 
 // FeedingEligibilityResult 场景资格结果（UCG / 值得留意同构）。
@@ -97,9 +97,9 @@ func normalizeScene(sc FeedingEligibilityScene) FeedingEligibilityScene {
 	return sc
 }
 
-// CountConsecutiveEffectiveDays 从今日起向前连续有效日数（days[0]=今日）。
+// CountConsecutiveEffectiveDays 从昨天起向前连续有效日数（days[0]=昨天；今日不在序列中）。
 //
-// 业务：独立于场景；门槛由调用方传入。
+// 业务：独立于场景；门槛由调用方传入；遇无效日中断。
 func CountConsecutiveEffectiveDays(days []historyFeedingDayCount, minRecordsPerDay int) int {
 	if minRecordsPerDay <= 0 {
 		minRecordsPerDay = 1
@@ -116,6 +116,9 @@ func CountConsecutiveEffectiveDays(days []historyFeedingDayCount, minRecordsPerD
 }
 
 // SynthesizeFeedingEligibility 按场景阈值合成资格（不拉数、不缓存）。
+//
+// days 契约：由 history feeding-day-stats 提供，days[0]=上海昨天，向过去，不含今日。
+// message 为激励文案，非客户端进度数字权威（进度由 effectiveDays 等字段拼）。
 func SynthesizeFeedingEligibility(scene FeedingEligibilityScene, days []historyFeedingDayCount, qualifiedMsg, pendingMsg string) *FeedingEligibilityResult {
 	scene = normalizeScene(scene)
 	effective := CountConsecutiveEffectiveDays(days, scene.MinRecordsPerDay)
@@ -137,9 +140,10 @@ func SynthesizeFeedingEligibility(scene FeedingEligibilityScene, days []historyF
 	return out
 }
 
-// GetFeedingEligibilityByScene 读配置 → 拉 history（窗口=requiredDays）→ 合成 → 按日缓存。
+// GetFeedingEligibilityByScene 读配置 → 拉 history（窗口=requiredDays 个已闭合日）→ 合成 → 按请求日缓存。
 //
-// 宿主：仅 cash-service。
+// 宿主：仅 cash-service。history 返回 days[0]=昨天；今日不计入 streak。
+// 缓存键含上海「请求日」：跨日 0 点后新键 miss 重算，已闭合满额即可立即合格（无 ticker）。
 func GetFeedingEligibilityByScene(ctx context.Context, deviceNo, sceneKey string) (*FeedingEligibilityResult, error) {
 	deviceNo = strings.TrimSpace(deviceNo)
 	sceneKey = strings.TrimSpace(sceneKey)
@@ -173,7 +177,8 @@ func GetFeedingEligibilityByScene(ctx context.Context, deviceNo, sceneKey string
 	pendingMsg := "继续保持每日有效喂养记录"
 	switch sceneKey {
 	case SceneKeyUCGEntry:
-		pendingMsg = "继续保持每日有效喂养记录以解锁 UCG"
+		// 还需要连续喂养x天才能解锁广场,拥有个人邀请码
+		pendingMsg = "继续保持每日有效喂养记录以解锁广场,拥有个人邀请码"
 	case SceneKeyCareAlertEntry:
 		qualifiedMsg = "已满足值得留意喂养资格"
 		pendingMsg = "继续累计有效喂养日以激活值得留意"

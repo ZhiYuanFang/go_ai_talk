@@ -30,7 +30,8 @@
 	</header>
 	<div class="card glass hidden" id="mainCard">
 		<p class="hint">
-			资格判断在 <strong>cash-service</strong>：有效日 = 当日 history 条数 ≥「日条数门槛」；从今天往回连续满「所需天数」则合格。
+			资格判断在 <strong>cash-service</strong>：有效日 = 上海<strong>已闭合</strong>自然日 history 条数 ≥「日条数门槛」；
+			从<strong>昨天</strong>往回连续满「所需天数」则合格（今日不计入）。跨日 0 点后按新请求日缓存键重算，满额即合格。
 			两场景门槛互不影响。改完后新请求立即按新配置（缓存键含版本）。静态页若样式不对请 <strong>Ctrl+F5</strong>。
 		</p>
 		<div class="form-stack">
