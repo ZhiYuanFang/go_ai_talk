@@ -128,8 +128,10 @@ func ListInviteInvitees(ctx context.Context, ownerWxID int64) ([]InviteeRow, err
 
 // RedeemInviteCode 邀请码兑换单功能。
 //
-// 规则：不可自用；人×码×功能仅一次；多好友码可兑；预测永久 +1；非预测 entitlement；
+// 规则：不可自用；不可使用同一宝宝（同 device_no）下其他账号的码；人×码×功能仅一次；
+// 多好友码可兑（不同设备）；预测永久 +1；非预测 entitlement；
 // 码级有效期/功能子表/一家锁定不再校验；开通能力仅看 feature_def.unlock_methods。
+// 主人设备号经 device 契约查询：失败 fail-closed；主人未绑机（空 device_no）不因同设备规则拒绝。
 func RedeemInviteCode(ctx context.Context, redeemerWxID int64, deviceNo, code, featureID string) error {
 	code = strings.TrimSpace(code)
 	featureID = strings.TrimSpace(featureID)
@@ -139,6 +141,28 @@ func RedeemInviteCode(ctx context.Context, redeemerWxID int64, deviceNo, code, f
 	}
 	if deviceNo == "" || code == "" || featureID == "" {
 		return gerror.NewCode(gcode.CodeInvalidParameter, "deviceNo/code/featureId 不能为空")
+	}
+
+	// 事务前窥视码主人，便于同设备校验时不持行锁打 HTTP。
+	var peek struct {
+		Code      string `json:"code"`
+		OwnerWxId int64  `json:"owner_wx_id"`
+		Status    int    `json:"status"`
+	}
+	_ = g.DB().Model("feature_invite_code").Ctx(ctx).Where("code", code).Scan(&peek)
+	if peek.Code == "" || peek.Status != 1 {
+		return gerror.NewCode(gcode.CodeInvalidParameter, "邀请码无效或已停用")
+	}
+	if peek.OwnerWxId == redeemerWxID {
+		return gerror.NewCode(gcode.CodeInvalidParameter, "不可使用自己的邀请码")
+	}
+	ownerDeviceNo, dErr := FetchDeviceNoByWxID(ctx, peek.OwnerWxId)
+	if dErr != nil {
+		glog.Warningf(ctx, "[cash-invite] owner device lookup failed owner=%d err=%v", peek.OwnerWxId, dErr)
+		return gerror.WrapCode(gcode.CodeInternalError, dErr, "暂时无法校验邀请码，请稍后重试")
+	}
+	if ownerDeviceNo != "" && ownerDeviceNo == deviceNo {
+		return gerror.NewCode(gcode.CodeInvalidParameter, "不可使用同一宝宝下其他账号的邀请码")
 	}
 
 	now := time.Now().Unix()

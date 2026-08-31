@@ -3,6 +3,7 @@ package cash
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -57,4 +58,53 @@ func FetchNonLeafEventCount(ctx context.Context) (int, error) {
 		return 0, gerror.NewCode(gcode.CodeInternalError, "device 一级根计数失败: "+env.Message)
 	}
 	return env.Data.Count, nil
+}
+
+// FetchDeviceNoByWxID 经 DEVICE_SERVICE_URL 按 wx 主键取当前绑定 device_no（内部密钥）。
+// 业务：邀请码兑码比对码主人与兑换者是否同一宝宝；空串表示未绑机。
+// Side Effects: 出站 HTTP；失败由调用方 fail-closed。
+func FetchDeviceNoByWxID(ctx context.Context, wxID int64) (string, error) {
+	if wxID <= 0 {
+		return "", gerror.NewCode(gcode.CodeInvalidParameter, "wxId 无效")
+	}
+	base := strings.TrimRight(strings.TrimSpace(os.Getenv("DEVICE_SERVICE_URL")), "/")
+	if base == "" {
+		return "", gerror.NewCode(gcode.CodeInternalError, "未配置 DEVICE_SERVICE_URL")
+	}
+	secret := strings.TrimSpace(os.Getenv("DEVICE_GATEWAY_INTERNAL_SECRET"))
+	if secret == "" {
+		return "", gerror.NewCode(gcode.CodeInternalError, "未配置 DEVICE_GATEWAY_INTERNAL_SECRET")
+	}
+	url := fmt.Sprintf("%s/device/app/api/user/internal/device-no-by-wx-id?wxId=%d", base, wxID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set(HeaderInternalSecret, secret)
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		glog.Warningf(ctx, "[cash] device device-no-by-wx-id 调用失败 wxId=%d err=%v", wxID, err)
+		return "", gerror.WrapCode(gcode.CodeInternalError, err, "查询码主人设备失败")
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode != http.StatusOK {
+		glog.Warningf(ctx, "[cash] device device-no-by-wx-id HTTP=%d body=%s", resp.StatusCode, string(body))
+		return "", gerror.NewCode(gcode.CodeInternalError, "查询码主人设备失败")
+	}
+	var env struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+		Data    struct {
+			DeviceNo string `json:"deviceNo"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &env); err != nil {
+		return "", gerror.WrapCode(gcode.CodeInternalError, err, "device 响应解析失败")
+	}
+	if env.Code != 0 {
+		return "", gerror.NewCode(gcode.CodeInternalError, "查询码主人设备失败: "+env.Message)
+	}
+	return strings.TrimSpace(env.Data.DeviceNo), nil
 }
