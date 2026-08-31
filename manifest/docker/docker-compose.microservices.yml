@@ -243,6 +243,7 @@ services:
       MYSQL_TCP_HOST: "${MYSQL_TCP_HOST:-}"
       CASH_SERVICE_ADDR: ":9807"
       DEVICE_SERVICE_URL: "http://device-service:9803"
+      UCG_SERVICE_URL: "http://ucg-service:9804"
       HISTORY_SERVICE_URL: "${HISTORY_SERVICE_URL:-http://history-service:9801}"
       DEVICE_GATEWAY_INTERNAL_SECRET: "${DEVICE_GATEWAY_INTERNAL_SECRET:-gateway-internal-change-me}"
       CASH_ALIPAY_APP_ID: "${CASH_ALIPAY_APP_ID:-}"
