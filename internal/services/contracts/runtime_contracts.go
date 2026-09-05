@@ -63,20 +63,6 @@ type IntentStreamResult struct {
 	FinishTalk bool   // 是否结束本轮对话
 }
 
-// TipStreamCallback 小贴士流式回调
-type TipStreamCallback struct {
-	OnThinking func(delta string) error   // 收到思考过程片段时的回调
-	OnAnswer   func(delta string) error   // 收到回答内容片段时的回调
-	OnDone     func(answerID string) error // 收到完成事件时的回调（包含 answer_id 用于反馈）
-}
-
-// TipStreamResponse 小贴士流式响应结果
-type TipStreamResponse struct {
-	Thinking  string // 完整的思考过程
-	Answer    string // 完整的回答内容
-	AnswerID  string // 回答 ID（用于提交反馈）
-}
-
 type VoiceContract interface {
 	HandleWithDialogue(ctx context.Context, deviceNo string, meta AudioMeta, audioBase64 string) ([]byte, AudioMeta, string, string, bool, bool, error)
 	HandleWithTranscript(ctx context.Context, deviceNo string, meta AudioMeta, transcript string) ([]byte, AudioMeta, string, string, bool, bool, error)
@@ -91,10 +77,6 @@ type VoiceContract interface {
 	// 流式过程仅经 cb.OnThinking 推送思考话术；意图 JSON 内部解析并落地后，
 	// 返回 Ask/Reply/Exit/FinishTalk。TTS 语音场景继续使用 HandleTranscriptForStreaming（非流式）。
 	HandleTranscriptForIntentStream(ctx context.Context, deviceNo, transcript string, cb *IntentStreamCallback) (*IntentStreamResult, error)
-	// TipStream 流式小贴士生成入口
-	// 以流式方式接收思考过程与建议文案，内部调用 PythonAIClient.TipStream。
-	// 月龄与当前时间由 Python 派生，调用方无需传入。
-	TipStream(ctx context.Context, deviceNo string, eventID int64, eventName string, cb *TipStreamCallback) (*TipStreamResponse, error)
 }
 
 type DeviceAdminContract interface {

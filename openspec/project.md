@@ -28,6 +28,7 @@
 - 微服务架构遵循“一服务一数据库”原则；各业务服务配置文件仅维护本域库，一般以 `database.default` 为主。**例外**：`gateway-app-server` 仅允许配置 **`database.app`**（`ai_voice_app`，用于版本等只读场景），**不得**用其 `default` 直连他域库。
 - 当服务需要他域数据时，必须通过跨服务 API 获取，禁止跨库直查。
 - 跨服务数据访问必须走服务契约（HTTP/RPC/事件），禁止在服务内直接访问他域 DAO/数据表。
+- **源码包边界（强制）**：`internal/services/{cash,voice,device,history,ucg,gatewayapp,simuser,mcpbridge,appstatus}` 禁止互相 import 业务实现；跨域 HTTP 出站 MUST 经 `internal/clients/{被调服务}`；头常量/密钥校验/ParseHeaderWxID/ConstantTimeEqual 等 MUST 经 `internal/platform/httpmeta`（或其它 platform）；允许 `contracts`/`aimodel`/`platform`/`clients`。controller 按进程分包于 `internal/controller/{cash,voice,device,history,ucg,gatewayapp,simuser,notify}`。门禁：`hack/check-service-import.sh` / `.ps1`。排除项见 `internal/clients/README.md`。
 - 若迁移期保留 `local|remote|canary` 双路径，必须显式配置 failover 语义并记录命中日志，避免隐式跨库回流。
 - Redis KV 访问 MUST 经 `internal/platform/cachekit` 且 MUST 使用 `cachekit.WithObserver(...)`（或 `cachekit.Default()`）；Redis Pub/Sub MUST 经 `internal/platform/redismsgkit` 且 MUST 使用 `WithObserver` / `DefaultPublisher()`。业务与 controller 层禁止直接 `g.Redis()`。
 - Redis 键/频道 MUST 经 platform builder（`cachekit/keys_*.go`、`redismsgkit/channels.go`）构造，禁止业务层键字面量（策略 A：builder 返回值与线上一致，本变更不重命名键空间）。

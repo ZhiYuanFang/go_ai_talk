@@ -31,11 +31,7 @@ var maintenanceExactAPI = map[string]struct{}{
 	// 邀请码/原力：非开通意图的查询不计入；redeem 仍统计（invite-peer-force-ucg）。
 	"GET /cash/app/api/invite/mine":     {},
 	"GET /cash/app/api/invite/invitees": {},
-	"GET /ucg/app/api/force/ledger":     {},
-	// clinic/tip 点赞反馈：负责人确认不计入 usage（close-clinic-tip-feedback）；
-	// tip generate（POST /device/tip/generate）统计策略属包 B，不得在此排除。
-	"POST /device/api/clinic/feedback": {},
-	"POST /device/api/tip/feedback":    {},
+	"GET /ucg/app/api/force/ledger": {},
 }
 
 var maintenancePathPrefixes = []string{

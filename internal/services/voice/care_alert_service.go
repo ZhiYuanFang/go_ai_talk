@@ -13,7 +13,7 @@ import (
 	v1 "hello/api/v1"
 	"hello/internal/platform/cachekit"
 	"hello/internal/services/aimodel"
-	"hello/internal/services/cash"
+	"hello/internal/clients/cash"
 	"hello/internal/services/contracts"
 
 	"github.com/gogf/gf/v2/errors/gcode"

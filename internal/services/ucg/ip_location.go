@@ -5,8 +5,9 @@ import (
 	"strings"
 	"time"
 
+	deviceclient "hello/internal/clients/device"
 	"hello/internal/platform/cachekit"
-	"hello/internal/services/gatewayapp"
+	"hello/internal/platform/httpmeta"
 
 	"github.com/gogf/gf/v2/net/ghttp"
 	"github.com/gogf/gf/v2/os/glog"
@@ -19,7 +20,7 @@ func ClientIPFromRequest(r *ghttp.Request) string {
 	if r == nil {
 		return ""
 	}
-	return strings.TrimSpace(r.GetHeader(gatewayapp.HeaderInternalClientIP))
+	return strings.TrimSpace(r.GetHeader(httpmeta.HeaderInternalClientIP))
 }
 
 // MaybeUpdateWxIpLocation 解析 clientIP → 属地，节流后写入 device wx 行；返回当前展示属地。
@@ -37,7 +38,7 @@ func MaybeUpdateWxIpLocation(ctx context.Context, wxID int64, clientIP string) (
 	if err == nil && throttled {
 		return loadWxIpLocation(ctx, wxID)
 	}
-	if err := Device().UpdateIpLocation(ctx, wxID, location); err != nil {
+	if err := deviceclient.UcgAPI().UpdateIpLocation(ctx, wxID, location); err != nil {
 		glog.Warningf(ctx, "[ucg-ip-location] 更新 wx IP 属地失败 wxId=%d err=%v", wxID, err)
 		return loadWxIpLocation(ctx, wxID)
 	}
@@ -46,7 +47,7 @@ func MaybeUpdateWxIpLocation(ctx context.Context, wxID int64, clientIP string) (
 }
 
 func loadWxIpLocation(ctx context.Context, wxID int64) (string, error) {
-	batch, err := Device().BatchWx(ctx, []int64{wxID})
+	batch, err := deviceclient.UcgAPI().BatchWx(ctx, []int64{wxID})
 	if err != nil {
 		return "", err
 	}
@@ -62,7 +63,7 @@ func IpLocationForWxIDs(ctx context.Context, wxIDs []int64) (map[int64]string, e
 	if len(wxIDs) == 0 {
 		return out, nil
 	}
-	batch, err := Device().BatchWx(ctx, wxIDs)
+	batch, err := deviceclient.UcgAPI().BatchWx(ctx, wxIDs)
 	if err != nil {
 		return nil, err
 	}

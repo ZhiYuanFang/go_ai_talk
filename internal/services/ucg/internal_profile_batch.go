@@ -1,6 +1,7 @@
 package ucg
 
 import (
+	deviceclient "hello/internal/clients/device"
 	"context"
 
 	"github.com/gogf/gf/v2/frame/g"
@@ -8,7 +9,7 @@ import (
 
 // displayNicknameForWxWithoutProfile 无 ucg_profile 行时推导展示昵称（不写库）。
 func displayNicknameForWxWithoutProfile(ctx context.Context, wxID int64) string {
-	_, babyName, err := Device().ValidateWx(ctx, wxID)
+	_, babyName, err := deviceclient.UcgAPI().ValidateWx(ctx, wxID)
 	if err != nil {
 		g.Log().Warningf(ctx, "[ucg-profile] 推导昵称失败 wxId=%d err=%v", wxID, err)
 		return defaultNickname("")

@@ -1,34 +1,29 @@
 package controller
 
 import (
+	devicectrl "hello/internal/controller/device"
+	voicectrl "hello/internal/controller/voice"
+
 	"github.com/gogf/gf/v2/net/ghttp"
 )
 
 // RegisterVoiceServiceHTTP 注册 voice-service 独立进程所需路由。
 func RegisterVoiceServiceHTTP(s *ghttp.Server) {
-	// 统一响应包装，保持与 gateway 暴露层的返回结构一致。
 	s.Use(ghttp.MiddlewareHandlerResponse)
-	// 语音会话仍通过 WS 通道承载，避免文本接口和流式接口割裂。
-	registerVoiceChatWS(s)
-	// 实时听写专用 WS，与对话 WS 分离（无 TTS/LLM/单设备连接互踢）。
-	registerVoiceAsrWS(s)
-	registerVoiceClinicWS(s)
+	voicectrl.RegisterVoiceChatWS(s)
+	voicectrl.RegisterVoiceAsrWS(s)
+	voicectrl.RegisterVoiceClinicWS(s)
 	s.Group("/", func(group *ghttp.RouterGroup) {
-		// voice-service：小贴士/额度/车道/护理留意等；自然语言喂养仅经 /voice/chat/ws。
-		group.Bind(NewVoiceSuggestInternalCtrl())
-		group.Bind(NewVoiceQaInternalCtrl())
-		group.Bind(NewVoiceAppAIQuotaCtrl())
-		group.Bind(NewVoiceAdminAIQuotaCtrl())
-		group.Bind(NewVoiceAdminLLMLanesCtrl())
-		// 小贴士流式生成宿主为 voice（非 history）：对外 POST /device/tip/generate（SSE）。
-		group.Bind(NewTipCtrl())
-		// clinic/tip 反馈飞轮：POST /device/api/clinic|tip/feedback → Python AI（同宿主 voice）。
-		group.Bind(&DeviceClinicFeedbackController{})
-		// 护理留意日缓存：GET/DELETE/POST /device/api/care-alert/* → 缓存 + Python 分析/飞轮。
-		group.Bind(&DeviceCareAlertController{})
+		group.Bind(voicectrl.NewVoiceSuggestInternalCtrl())
+		group.Bind(voicectrl.NewVoiceQaInternalCtrl())
+		group.Bind(voicectrl.NewVoiceAppAIQuotaCtrl())
+		group.Bind(voicectrl.NewVoiceAdminAIQuotaCtrl())
+		group.Bind(voicectrl.NewVoiceAdminLLMLanesCtrl())
+		// tip SSE / clinic|tip HTTP 飞轮已下线（remove-tip-and-clinic-feedback）；care-alert 飞轮保留。
+		group.Bind(&voicectrl.DeviceCareAlertController{})
 	})
 	s.Group("/", func(group *ghttp.RouterGroup) {
-		group.Middleware(deviceUcgInternalSecretMiddleware)
-		group.Bind(NewVoiceAIQuotaInternalCtrl())
+		group.Middleware(devicectrl.InternalSecretMiddleware)
+		group.Bind(voicectrl.NewVoiceAIQuotaInternalCtrl())
 	})
 }

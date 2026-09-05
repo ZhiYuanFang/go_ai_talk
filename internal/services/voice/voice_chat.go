@@ -24,7 +24,6 @@ import (
 	"hello/internal/dao"
 	"hello/internal/model/entity"
 	"hello/internal/platform/cachekit"
-	"hello/internal/services/aimodel"
 	contracts "hello/internal/services/contracts"
 
 	"github.com/gogf/gf/v2/encoding/gjson"
@@ -817,35 +816,6 @@ func (s *VoiceService) HandleTranscriptForIntentStream(ctx context.Context, devi
 		Exit:       chatRes.Exit,
 		FinishTalk: chatRes.FinishTalk,
 	}, chatErr
-}
-
-// TipStream 流式小贴士生成入口。
-// 挂靠 clinic_ai + LaneClinic（含 free）；VIP∪额度共同策略；成功非 VIP 计次。
-func (s *VoiceService) TipStream(ctx context.Context, deviceNo string, eventID int64, eventName string, cb *contracts.TipStreamCallback) (*contracts.TipStreamResponse, error) {
-	if err := s.ensureDeviceRegistered(ctx, deviceNo); err != nil {
-		return nil, err
-	}
-	wxID, _ := VoiceWxIDFromRequest(ctx, deviceNo)
-	ent, runtime, modelCfg, _ := ResolveLaneModel(ctx, wxID, aimodel.LaneClinic, contracts.AIQuotaClinicAI, PrivilegeAccount)
-	if modelCfg != nil {
-		rel, acqErr := aimodel.Acquire(ctx, runtime)
-		if acqErr != nil {
-			glog.Warningf(ctx, "[TipStream] 闸门失败 deviceNo=%s err=%v", deviceNo, acqErr)
-			return nil, errors.New("AI服务暂时不可用，请稍后再试")
-		}
-		defer rel()
-	}
-	pythonClient := PythonAIClientFromCfg()
-	res, err := pythonClient.TipStream(ctx, &TipStreamRequest{
-		EventID:   eventID,
-		EventName: eventName,
-		DeviceNo:  deviceNo,
-		Model:     modelCfg,
-	}, cb)
-	if err == nil {
-		ConsumeVoiceFeatureIfNeeded(ctx, wxID, contracts.AIQuotaClinicAI, ent)
-	}
-	return res, err
 }
 
 func (s *VoiceService) StreamReplyWithBaiduTTS(

@@ -1,6 +1,7 @@
 package ucg
 
 import (
+	deviceclient "hello/internal/clients/device"
 	"context"
 	"strings"
 	"time"
@@ -23,7 +24,7 @@ func Follow(ctx context.Context, followerWxID, followeeWxID int64) error {
 	if followerWxID == followeeWxID {
 		return gerror.NewCode(gcode.CodeInvalidParameter, "不能关注自己")
 	}
-	exists, _, err := Device().ValidateWx(ctx, followeeWxID)
+	exists, _, err := deviceclient.UcgAPI().ValidateWx(ctx, followeeWxID)
 	if err != nil {
 		return err
 	}

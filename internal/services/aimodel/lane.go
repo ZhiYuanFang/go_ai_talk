@@ -6,7 +6,7 @@ type Lane string
 const (
 	// LaneVoiceUnderstanding 喂养语音全部 LLM（意图、闲聊流式、成长建议等）。
 	LaneVoiceUnderstanding Lane = "voiceUnderstanding"
-	// LaneClinic 胖宝诊疗 LLM（tip 小贴士挂靠本 lane）。
+	// LaneClinic 胖宝诊疗 LLM（/voice/clinic/ws）。
 	LaneClinic Lane = "clinic"
 	// LaneCareAlert 护理留意日生成 LLM。
 	LaneCareAlert Lane = "careAlert"

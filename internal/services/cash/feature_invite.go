@@ -1,6 +1,8 @@
 package cash
 
 import (
+	deviceclient "hello/internal/clients/device"
+	ucgclient "hello/internal/clients/ucg"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -114,7 +116,7 @@ func ListInviteInvitees(ctx context.Context, ownerWxID int64) ([]InviteeRow, err
 		ids = append(ids, r.RedeemerWxId)
 		ordered = append(ordered, r)
 	}
-	nicks, _ := FetchUcgNicknames(ctx, ids)
+	nicks, _ := ucgclient.FetchUcgNicknames(ctx, ids)
 	out := make([]InviteeRow, 0, len(ordered))
 	for _, r := range ordered {
 		nick := nicks[r.RedeemerWxId]
@@ -157,7 +159,7 @@ func RedeemInviteCode(ctx context.Context, redeemerWxID int64, deviceNo, code, f
 	if peek.OwnerWxId == redeemerWxID {
 		return gerror.NewCode(gcode.CodeInvalidParameter, "不可使用自己的邀请码")
 	}
-	ownerDeviceNo, dErr := FetchDeviceNoByWxID(ctx, peek.OwnerWxId)
+	ownerDeviceNo, dErr := deviceclient.FetchDeviceNoByWxID(ctx, peek.OwnerWxId)
 	if dErr != nil {
 		glog.Warningf(ctx, "[cash-invite] owner device lookup failed owner=%d err=%v", peek.OwnerWxId, dErr)
 		return gerror.WrapCode(gcode.CodeInternalError, dErr, "暂时无法校验邀请码，请稍后重试")
@@ -271,7 +273,7 @@ func RedeemInviteCode(ctx context.Context, redeemerWxID int64, deviceNo, code, f
 	}
 	// 获客原力：兑码成功后尽力加分，失败不回滚开通。
 	if ownerWxID > 0 {
-		if ferr := NotifyUcgInviteAcquisition(ctx, ownerWxID, code); ferr != nil {
+		if ferr := ucgclient.NotifyUcgInviteAcquisition(ctx, ownerWxID, code); ferr != nil {
 			glog.Warningf(ctx, "[cash-invite] ucg force acquire failed owner=%d code=%s err=%v", ownerWxID, code, ferr)
 		}
 	}

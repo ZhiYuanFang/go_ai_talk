@@ -1,6 +1,7 @@
 package ucg
 
 import (
+	deviceclient "hello/internal/clients/device"
 	"context"
 	"strings"
 	"time"
@@ -36,7 +37,7 @@ func GetOrCreateDirectConversation(ctx context.Context, wxID, targetWxID int64) 
 	if wxID <= 0 || targetWxID <= 0 || wxID == targetWxID {
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "targetWxId 无效")
 	}
-	exists, _, err := Device().ValidateWx(ctx, targetWxID)
+	exists, _, err := deviceclient.UcgAPI().ValidateWx(ctx, targetWxID)
 	if err != nil {
 		return nil, err
 	}
@@ -207,7 +208,7 @@ func fillConversationPeerDisplay(ctx context.Context, dto *ConversationDTO, tole
 		return
 	}
 	if tolerateMissingPeer {
-		exists, _, vErr := Device().ValidateWx(ctx, int64(dto.PeerWxId))
+		exists, _, vErr := deviceclient.UcgAPI().ValidateWx(ctx, int64(dto.PeerWxId))
 		if vErr != nil || !exists {
 			return
 		}

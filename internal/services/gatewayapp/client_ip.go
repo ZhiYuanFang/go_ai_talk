@@ -4,11 +4,13 @@ import (
 	"net"
 	"strings"
 
+	"hello/internal/platform/httpmeta"
+
 	"github.com/gogf/gf/v2/net/ghttp"
 )
 
-// HeaderInternalClientIP 网关解析的真实客户端 IP，供下游 ucg-service 做属地解析（客户端不可伪造）。
-const HeaderInternalClientIP = "X-Internal-Client-IP"
+// HeaderInternalClientIP 网关解析的真实客户端 IP（别名 httpmeta）。
+const HeaderInternalClientIP = httpmeta.HeaderInternalClientIP
 
 // internalHeaders 仅允许网关注入、须剥离客户端伪造值的内部头。
 var internalHeaders = []string{

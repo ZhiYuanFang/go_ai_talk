@@ -1,6 +1,7 @@
 package ucg
 
 import (
+	deviceclient "hello/internal/clients/device"
 	"context"
 	"fmt"
 	"strings"
@@ -40,7 +41,7 @@ func GetOrCreateMyProfile(ctx context.Context, wxID int64, clientIP string) (*Pr
 	if wxID <= 0 {
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "wxId 无效")
 	}
-	exists, babyName, err := Device().ValidateWx(ctx, wxID)
+	exists, babyName, err := deviceclient.UcgAPI().ValidateWx(ctx, wxID)
 	if err != nil {
 		return nil, err
 	}
@@ -274,7 +275,7 @@ func refreshDefaultNicknameIfNeeded(ctx context.Context, wxID int64, p *entity.U
 	if p == nil || wxID <= 0 || !isStoredDefaultNickname(p.Nickname) {
 		return nil
 	}
-	_, babyName, err := Device().ValidateWx(ctx, wxID)
+	_, babyName, err := deviceclient.UcgAPI().ValidateWx(ctx, wxID)
 	if err != nil {
 		return err
 	}

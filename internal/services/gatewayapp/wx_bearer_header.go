@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"strings"
 
+	"hello/internal/platform/httpmeta"
+
 	"github.com/gogf/gf/v2/net/ghttp"
 )
 
@@ -14,11 +16,11 @@ var (
 	ErrGatewayBearerInvalid = errors.New("access_token 无效或已过期")
 )
 
-// HeaderInternalWxId 下游 device 识别 wx 行（主键），由网关注入。
-const HeaderInternalWxId = "X-Internal-Wx-Id"
+// HeaderInternalWxId 下游识别 wx 行（主键），由网关注入（别名 httpmeta）。
+const HeaderInternalWxId = httpmeta.HeaderInternalWxId
 
-// HeaderInternalDeviceNo 下游识别当前会话绑定设备号，由网关注入（来自 JWT device_no claim）。
-const HeaderInternalDeviceNo = "X-Internal-Device-No"
+// HeaderInternalDeviceNo 下游识别当前会话绑定设备号（别名 httpmeta）。
+const HeaderInternalDeviceNo = httpmeta.HeaderInternalDeviceNo
 
 // InjectAccessHeadersFromBearer 解析 Authorization Bearer JWT，写入 X-Internal-Wx-Id 与可选 X-Internal-Device-No。
 // 不再调用 device internal/by-id 做 id→unionid；unionid 仅保留在 device 登录换票写库路径。

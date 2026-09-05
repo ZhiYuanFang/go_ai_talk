@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"hello/internal/services/aimodel"
-	"hello/internal/services/cash"
+	"hello/internal/clients/cash"
 	"hello/internal/services/contracts"
 
 	"github.com/gogf/gf/v2/os/glog"

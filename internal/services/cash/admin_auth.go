@@ -9,7 +9,7 @@ import (
 	"os"
 	"strings"
 
-	"hello/internal/services/gatewayapp"
+	"hello/internal/platform/httpmeta"
 )
 
 // HeaderAdminPassword 与 gateway-app InjectAdminDownstreamPassword 写入的头一致。
@@ -40,5 +40,5 @@ func VerifyCashAdminPassword(password string) bool {
 	if expected == "" {
 		return false
 	}
-	return gatewayapp.ConstantTimeEqual(strings.TrimSpace(password), expected)
+	return httpmeta.ConstantTimeEqual(strings.TrimSpace(password), expected)
 }

@@ -6,19 +6,19 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"os"
 	"strings"
 	"time"
 
 	"hello/internal/dao"
 	"hello/internal/model/entity"
 	"hello/internal/platform/cachekit"
+	"hello/internal/platform/httpmeta"
 
 	"github.com/gogf/gf/v2/frame/g"
 )
 
 const (
-	headerInternalWxId       = "X-Internal-Wx-Id"
+	headerInternalWxId       = httpmeta.HeaderInternalWxId
 	envGatewayInternalSecret = "DEVICE_GATEWAY_INTERNAL_SECRET"
 	cacheTTLWxLookup         = 120 * time.Second
 	maxRandomDeviceAttempts  = 15
@@ -291,13 +291,9 @@ func WxUnionIDByID(ctx context.Context, id int64) (string, error) {
 	return u, nil
 }
 
-// ValidateGatewayInternalSecret 校验网关调用内部接口时携带的共享密钥。
+// ValidateGatewayInternalSecret 校验网关调用内部接口时携带的共享密钥（委托 httpmeta）。
 func ValidateGatewayInternalSecret(headerVal string) bool {
-	sec := strings.TrimSpace(os.Getenv(envGatewayInternalSecret))
-	if sec == "" {
-		return false
-	}
-	return strings.TrimSpace(headerVal) == sec
+	return httpmeta.ValidateInternalSecret(headerVal)
 }
 
 func wxRowByWxID(ctx context.Context, wxID int64) (*entity.Wx, error) {

@@ -4,12 +4,11 @@ import (
 	"context"
 	"errors"
 	"os"
-	"strconv"
 	"strings"
 
+	"hello/internal/clients/device"
+	"hello/internal/platform/httpmeta"
 	"hello/internal/services/contracts"
-	"hello/internal/services/device"
-	"hello/internal/services/gatewayapp"
 
 	"github.com/gogf/gf/v2/frame/g"
 )
@@ -145,19 +144,11 @@ func VoiceWxIDFromRequest(ctx context.Context, deviceNo string) (int64, error) {
 }
 
 // HeaderInternalWxID 与 gateway 注入头一致（供 controller 引用常量）。
-const HeaderInternalWxID = gatewayapp.HeaderInternalWxId
+const HeaderInternalWxID = httpmeta.HeaderInternalWxId
 
-// ParseHeaderWxID 解析 X-Internal-Wx-Id。
+// ParseHeaderWxID 解析 X-Internal-Wx-Id（委托 httpmeta）。
 func ParseHeaderWxID(header string) int64 {
-	s := strings.TrimSpace(header)
-	if s == "" {
-		return 0
-	}
-	wxID, err := strconv.ParseInt(s, 10, 64)
-	if err != nil || wxID <= 0 {
-		return 0
-	}
-	return wxID
+	return httpmeta.ParseHeaderWxID(header)
 }
 
 // VoiceAdminPassword 读取 voice admin 口令（env 优先）。
@@ -178,5 +169,5 @@ func VerifyVoiceAdminPassword(ctx context.Context, password string) bool {
 	if expected == "" {
 		return false
 	}
-	return gatewayapp.ConstantTimeEqual(strings.TrimSpace(password), expected)
+	return httpmeta.ConstantTimeEqual(strings.TrimSpace(password), expected)
 }

@@ -1,6 +1,7 @@
 package cash
 
 import (
+	historyclient "hello/internal/clients/history"
 	"context"
 	"encoding/json"
 	"strings"
@@ -100,7 +101,7 @@ func normalizeScene(sc FeedingEligibilityScene) FeedingEligibilityScene {
 // CountConsecutiveEffectiveDays 从昨天起向前连续有效日数（days[0]=昨天；今日不在序列中）。
 //
 // 业务：独立于场景；门槛由调用方传入；遇无效日中断。
-func CountConsecutiveEffectiveDays(days []historyFeedingDayCount, minRecordsPerDay int) int {
+func CountConsecutiveEffectiveDays(days []historyclient.FeedingDayCount, minRecordsPerDay int) int {
 	if minRecordsPerDay <= 0 {
 		minRecordsPerDay = 1
 	}
@@ -119,7 +120,7 @@ func CountConsecutiveEffectiveDays(days []historyFeedingDayCount, minRecordsPerD
 //
 // days 契约：由 history feeding-day-stats 提供，days[0]=上海昨天，向过去，不含今日。
 // message 为激励文案，非客户端进度数字权威（进度由 effectiveDays 等字段拼）。
-func SynthesizeFeedingEligibility(scene FeedingEligibilityScene, days []historyFeedingDayCount, qualifiedMsg, pendingMsg string) *FeedingEligibilityResult {
+func SynthesizeFeedingEligibility(scene FeedingEligibilityScene, days []historyclient.FeedingDayCount, qualifiedMsg, pendingMsg string) *FeedingEligibilityResult {
 	scene = normalizeScene(scene)
 	effective := CountConsecutiveEffectiveDays(days, scene.MinRecordsPerDay)
 	remaining := scene.RequiredDays - effective
@@ -169,7 +170,7 @@ func GetFeedingEligibilityByScene(ctx context.Context, deviceNo, sceneKey string
 		}
 	}
 
-	stats, err := FetchFeedingDayStats(ctx, deviceNo, scene.RequiredDays)
+	stats, err := historyclient.FetchFeedingDayStats(ctx, deviceNo, scene.RequiredDays)
 	if err != nil {
 		return nil, err
 	}

@@ -1,6 +1,7 @@
 package cash
 
 import (
+	deviceclient "hello/internal/clients/device"
 	"context"
 	"encoding/json"
 	"strings"
@@ -137,7 +138,7 @@ func GetFeatureCatalog(ctx context.Context, deviceNo string) (*FeatureCatalogRes
 	// 一级根事件天花板（parent_id=0，含无子根）：失败则不写入正数，避免误显示「已全部激活」。
 	// 与 voice「非叶子须追问」无关；历史调用名 FetchNonLeafEventCount。
 	var totalActivatable *int
-	if n, nErr := FetchNonLeafEventCount(ctx); nErr != nil {
+	if n, nErr := deviceclient.FetchNonLeafEventCount(ctx); nErr != nil {
 		g.Log().Warningf(ctx, "[cash-catalog] root-count failed err=%v", nErr)
 	} else if n > 0 {
 		totalActivatable = &n

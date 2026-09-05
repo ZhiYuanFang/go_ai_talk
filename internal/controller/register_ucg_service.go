@@ -1,8 +1,7 @@
 package controller
 
 import (
-	"net/http"
-	"net/http/httputil"
+	ucgctrl "hello/internal/controller/ucg"
 
 	"github.com/gogf/gf/v2/net/ghttp"
 )
@@ -11,31 +10,16 @@ import (
 func RegisterUcgServiceHTTP(s *ghttp.Server) {
 	s.Use(ghttp.MiddlewareHandlerResponse)
 	s.Group("/", func(group *ghttp.RouterGroup) {
-		group.Bind(NewUcgAppCtrl())                                          // 绑定 App API 控制器（包含 WS 升级接口）；内部 API 在 controller/ucg_internal.go 注册。
-		group.Bind(NewUcgAdminCtrl())                                        // 绑定 Admin API 控制器, 给运维使用。
-		group.POST("/ucg/app/api/media/upload", ucgMediaUpload)              // 给 Web 前端提供的媒体上传接口（同域代理，规避 OSS CORS）；内部 API 在 controller/ucg_internal.go 注册。
-		group.POST("/ucg/internal/api/media/upload", ucgInternalMediaUpload) // 给 device 管理端提供的媒体上传接口（内部接口，鉴权更严格）；内部 API 在 controller/ucg_internal.go 注册。
-		group.POST("/ucg/internal/api/media/upload-video", ucgInternalMediaUploadVideo) // sim T4 等：转码为 v2 canonical 后上传 OSS。
-		group.POST("/ucg/internal/api/chat/send", ucgInternalChatSend)       // 内部 API，在 controller/ucg_internal.go 注册。
-		group.POST("/ucg/internal/api/posts/sample", ucgInternalPostsSample) // 内部 API，在 controller/ucg_internal.go 注册。
-		group.POST("/ucg/internal/api/chat/sim-unread-sample", ucgInternalChatSimUnreadSample)
-		group.POST("/ucg/internal/api/profiles/batch", ucgInternalProfilesBatch)
-		group.POST("/ucg/internal/api/force/acquire", ucgInternalForceAcquire)
+		group.Bind(ucgctrl.NewUcgAppCtrl())
+		group.Bind(ucgctrl.NewUcgAdminCtrl())
+		group.POST("/ucg/app/api/media/upload", ucgctrl.MediaUpload)
+		group.POST("/ucg/internal/api/media/upload", ucgctrl.InternalMediaUpload)
+		group.POST("/ucg/internal/api/media/upload-video", ucgctrl.InternalMediaUploadVideo)
+		group.POST("/ucg/internal/api/chat/send", ucgctrl.InternalChatSend)
+		group.POST("/ucg/internal/api/posts/sample", ucgctrl.InternalPostsSample)
+		group.POST("/ucg/internal/api/chat/sim-unread-sample", ucgctrl.InternalChatSimUnreadSample)
+		group.POST("/ucg/internal/api/profiles/batch", ucgctrl.InternalProfilesBatch)
+		group.POST("/ucg/internal/api/force/acquire", ucgctrl.InternalForceAcquire)
 	})
-	registerUcgChatWS(s)
-}
-
-// ucgChatWSUpgradeProxyDirector 将 gateway 对外路径 /ucg/app/ws/chat 改写为 ucg-service 内部 /ws/chat。
-func ucgChatWSUpgradeProxyDirector(proxy *httputil.ReverseProxy) {
-	if proxy == nil {
-		return
-	}
-	orig := proxy.Director
-	proxy.Director = func(req *http.Request) {
-		if orig != nil {
-			orig(req)
-		}
-		req.URL.Path = "/ws/chat"
-		req.URL.RawPath = "/ws/chat"
-	}
+	ucgctrl.RegisterUcgChatWS(s)
 }

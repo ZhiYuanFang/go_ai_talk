@@ -15,6 +15,13 @@ import (
 	"hello/internal/services/contracts"
 )
 
+// gfEnvelope GoFrame 标准 JSON 响应外壳（voice QA HTTP 客户端解析用）。
+type gfEnvelope struct {
+	Code    int             `json:"code"`
+	Message string          `json:"message"`
+	Data    json.RawMessage `json:"data"`
+}
+
 // fetchQaPageFromVoiceHTTP device 域分页拉取问答库（qa 表仅在 voice 库）。
 func fetchQaPageFromVoiceHTTP(ctx context.Context, page, pageSize int) (contracts.QaPageResult, error) {
 	t := contracts.ResolveHTTPTargets()

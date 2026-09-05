@@ -1,6 +1,7 @@
 package controller
 
 import (
+	historyctrl "hello/internal/controller/history"
 	history "hello/internal/services/history"
 
 	"github.com/gogf/gf/v2/net/ghttp"
@@ -10,10 +11,9 @@ import (
 func RegisterHistoryServiceHTTP(s *ghttp.Server) {
 	s.Use(ghttp.MiddlewareHandlerResponse)
 	s.Group("/", func(group *ghttp.RouterGroup) {
-		inner := NewHistoryCtrl(history.DeviceHistory())
+		inner := historyctrl.NewHistoryCtrl(history.DeviceHistory())
 		group.Bind(inner)
-		group.Bind(NewHistoryAdminCtrl(inner))
-		// 内部契约：cash UCG 资格按日聚合（须 DEVICE_GATEWAY_INTERNAL_SECRET）。
-		group.Bind(&HistoryInternalCtrl{})
+		group.Bind(historyctrl.NewHistoryAdminCtrl(inner))
+		group.Bind(&historyctrl.HistoryInternalCtrl{})
 	})
 }

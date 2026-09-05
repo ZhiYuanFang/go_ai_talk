@@ -18,7 +18,7 @@
 - 迁移期若使用 `local|remote|canary` 双路径，必须保留显式配置与 failover 语义，并输出可观测日志。
 - 代码评审时需显式检查：是否出现跨库直查、是否补齐契约路径与错误语义。
 - `internal/services/history` 不得 import 或调用 `dao.User`、`dao.Event`、`dao.Suggest` 等他域表；history/device 读模型缓存由写路径同步 patch + 读 miss 回源 MySQL 保证，禁止跨库直查他域表。
-- `internal/services/voice` 不得 import `hello/internal/dao` 中 **user/event/action** 等他域表 DAO；设备域访问 MUST 经 `voice.DeviceAdmin()`（HTTP 实现）或经批准的契约，禁止在 voice 进程内直连 device 库表。评审可检索：`grep -r \"internal/dao\" internal/services/voice`（应仅出现 suggest/qa 等本域表）。
+- `internal/services/voice` 不得 import `hello/internal/dao` 中 **user/event/action** 等他域表 DAO；设备域访问 MUST 经 `clients/device`（或 `voice.DeviceAdmin()` 薄封装）HTTP 契约，禁止在 voice 进程内直连 device 库表。评审可检索：`grep -r \"internal/dao\" internal/services/voice`（应仅出现 suggest/qa 等本域表）。
 - 服务默认配置必须按进程独立（`gateway`/`voice-service`/`device-service`/`history-service`），禁止回退到共享主配置承载他域业务项。
 - `manifest/config/config.yaml` 仅允许保留网关与全局公共配置；评审时必须检查是否有 voice/device/history 专属字段回流。
 - `voiceChat`（ASR/LLM/TTS/会话）必须维护在 `manifest/config/voice-chat.shared.yaml`，供 `voice-service` 与 `history-service` 共用；禁止在 `config.voice-service.yaml` 与 `config.history-service.yaml` 中重复整段 `voiceChat`（迁移期可仅依赖 `GF_GCFG` 中的 `voiceChat` 作兜底，不作为长期双源）。
@@ -26,6 +26,14 @@
 - 评审时必须检查 import 路径，确保 `cmd`/`controller` 不再依赖 `hello/internal/service` 旧路径。
 - 已有接口版本（v1、v2、v3…）永远不可修改结构；任何新增字段或逻辑变更，必须创建更高版本（v+1）接口，原版本代码保持完全不变，保证历史前端接口请求不受影响。
 - 新增需求必须以最少的db操作来考虑实现方案。
+
+## 源码包边界（强制）
+- `internal/services/{cash,voice,device,history,ucg,gatewayapp,simuser,mcpbridge,appstatus}` **禁止**互相 import 业务实现包。
+- 跨域出站 HTTP 客户端 MUST 放在 `internal/clients/{被调服务}`；调用方 import `clients`，**禁止**再 import 被调方 `services/{X}` 仅为拿 `Remote*`。
+- 无业务共享工具（内部密钥头、`ParseHeaderWxID`、`ConstantTimeEqual` 等）MUST 落在 `internal/platform/httpmeta`（或其它 `platform/*`），禁止为常量/校验互相 import 业务包。
+- 允许跨进程 import 的共享基础设施：`internal/services/contracts`、`internal/services/aimodel`、`internal/platform/**`、`internal/clients/**`。
+- `controller` 按进程分包：`internal/controller/{cash,voice,device,history,ucg,gatewayapp,simuser,notify}`；`controller/{X}` 不得仅为解析头/密钥而 import 他域 `services/{Y}`。
+- 评审门禁：`hack/check-service-import.sh` 或 `hack/check-service-import.ps1`（失败即退出）；Python/Green/aimodel 客户端不迁入域名 `clients`（见 `internal/clients/README.md`）。
 
 ## 测试文件
 - 当前阶段不新增测试文件（包括 `*_test.go`、`*.spec.*`、`*.test.*`）。
@@ -38,7 +46,7 @@
 |--------|-------------|
 | **领域服务路由** | 对应 `*-service` 的 `controller` + `api/v*` 的 `g.Meta`（path/method/summary） |
 | **gateway 反代** | `installUcgProxyMiddleware` / `installDeviceProxyMiddleware` 等；UCG App 路径 `/ucg/app/api/*` 已 fuzzy 覆盖 v2 子路径，**无需**为 v2 单独 Bind，但 **MUST** 确认 path 前缀落在已绑定模式内 |
-| **Bearer 白名单** | `internal/controller/gateway_app_auth_exempt.go`：若 v1 同语义接口可匿名访问，**v2 MUST 同步**添加精确 path（如 v1 `feed/recommend` ↔ v2 `v2/feed/recommend`） |
+| **Bearer 白名单** | `internal/controller/gatewayapp/gateway_app_auth_exempt.go`：若 v1 同语义接口可匿名访问，**v2 MUST 同步**添加精确 path（如 v1 `feed/recommend` ↔ v2 `v2/feed/recommend`） |
 | **usage 统计** | 见下节；维护型排除见 `usagestats/maintenance_skip.go` |
 | **apiregistry** | `api/v2` 路由须含 `g.Meta`，由 `apiregistry.Init` 自动加载 summary |
 

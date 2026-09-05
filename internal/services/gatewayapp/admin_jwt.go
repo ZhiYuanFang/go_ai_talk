@@ -2,12 +2,12 @@ package gatewayapp
 
 import (
 	"context"
-	"crypto/subtle"
 	"fmt"
 	"os"
 	"strings"
 	"time"
 
+	"hello/internal/platform/httpmeta"
 	"hello/internal/platform/jwtcfg"
 
 	"github.com/gogf/gf/v2/frame/g"
@@ -167,14 +167,9 @@ func AdminLoginEnabled() bool {
 	return AdminPassword() != ""
 }
 
-// ConstantTimeEqual 常量时间字符串比较，用于登录口令校验。
+// ConstantTimeEqual 常量时间字符串比较（委托 httpmeta），用于登录口令校验。
 func ConstantTimeEqual(a, b string) bool {
-	if len(a) != len(b) {
-		dummy := strings.Repeat("\x00", 64)
-		_ = subtle.ConstantTimeCompare([]byte(dummy), []byte(dummy))
-		return false
-	}
-	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
+	return httpmeta.ConstantTimeEqual(a, b)
 }
 
 // VerifyAdminLogin 校验 Hub 账号密码。
