@@ -285,7 +285,7 @@ curl -s http://127.0.0.1:9805/api.json   # sim-user-service
 
 1. **建库**：MySQL 创建 `ai_voice_cash`，配置 `CASH_DB_LINK`（进程启动 `EnsureSchema` 建表并种子 `vip_monthly_19`；亦可手工执行 `hack/ddl_cash_vip.sql`）。**禁止**再执行已废弃的 `ddl_wx_is_vip.sql`。
 2. **端口**：`cash-service` 默认 `:9807`（`:9806` 为 notify-service）。
-3. **部署顺序**：`cash-service` → `gateway-app`（`CASH_SERVICE_URL`、反代 `/cash/app/api/*` 与 `/cash/admin/api/*`、支付宝 notify 白名单）→ `voice-service`（`CASH_SERVICE_URL` + 内部密钥，care-alert 读 VIP）。
+3. **部署顺序**：`cash-service` → `gateway-app`（`CASH_SERVICE_URL`、反代 `/cash/app/api/*` 与 `/cash/admin/api/*`、支付宝 notify 白名单）→ `voice-service`（`CASH_SERVICE_URL` + 内部密钥：care-alert 读 VIP 与 **值得留意 access 双门禁** `/cash/internal/api/care-alert/access`）。
 4. **支付配置**：`CASH_ALIPAY_*`、`CASH_APPLE_PRODUCT_ID`（ASC 沙箱商品映射一期 19 元月会员）；非生产可临时 `CASH_PAYMENT_DEV_BYPASS=1`。
 5. **验收**：支付成功后 `GET /cash/app/api/vip/status` 为 VIP；care-alert 当日 miss 时 VIP→DeepSeek，非 VIP/cash 不可达→Zhipu；缺 `X-Internal-Wx-Id` 拒绝。
 6. **运维 Hub「VIP 权益」**：登录 `/device/admin` → 模块「VIP 权益」→ `/device/admin/cash-vip-admin.html`。列表走 `GET /cash/admin/api/vip/entitlements`（含已过期；激活金额=最近 paid `amount_fen`）。口令：gateway 注入 `X-Admin-Password`（优先 `CASH_ADMIN_PASSWORD`，否则 `GATEWAY_APP_ADMIN_PASSWORD`）；`cash-service` 须能读到相同口令（compose 已注入二者）。Admin API **不计入** App usage；**禁止** device 直查 `ai_voice_cash`。

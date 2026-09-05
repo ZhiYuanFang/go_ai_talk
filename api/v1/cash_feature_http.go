@@ -32,6 +32,24 @@ type CashCareAlertEligibilityRes struct {
 	Message       string `json:"message,omitempty"`
 }
 
+// CashInternalCareAlertAccessReq 内部：值得留意可看合成（喂养 ∧ 开通∨VIP）。
+type CashInternalCareAlertAccessReq struct {
+	g.Meta   `path:"/cash/internal/api/care-alert/access" method:"get" tags:"cash" summary:"内部值得留意可看合成"`
+	DeviceNo string `json:"deviceNo" p:"deviceNo" dc:"设备号"`
+	WxId     int64  `json:"wxId" p:"wxId" dc:"触发者 wx 主键"`
+}
+
+// CashInternalCareAlertAccessRes 内部可看 data。
+type CashInternalCareAlertAccessRes struct {
+	Allowed bool `json:"allowed"`
+	// 喂养资格
+	FeedingQualified bool `json:"feedingQualified"`
+	// 功能资格
+	FeatureActive bool `json:"featureActive"`
+	// 资格过期时间，空时不反悔
+	EntitlementExpiresAt int64 `json:"entitlementExpiresAt,omitempty"`
+}
+
 // CashFeatureCatalogReq GET 合成功能目录。
 type CashFeatureCatalogReq struct {
 	g.Meta `path:"/cash/app/api/feature/catalog" method:"get" tags:"cash" summary:"功能目录（含是否已开通与可售 SKU）"`
@@ -51,15 +69,15 @@ type CashFeatureCatalogProductItem struct {
 // CashFeatureCatalogItem 目录项（开通态 + 可售 products）。
 // AllowedCount：预测永久可激活条数（defaultFree+delta）；TotalActivatableCount：一级根事件天花板（含无子根）。
 type CashFeatureCatalogItem struct {
-	FeatureId             string                         `json:"featureId"`
-	Title                 string                         `json:"title"`
-	Description           string                         `json:"description"`
-	UnlockMethods         string                         `json:"unlockMethods"`
-	Unlocked              bool                           `json:"unlocked"`
-	UnlockMethod          string                         `json:"unlockMethod,omitempty"`
-	ExpiresAt             int64                          `json:"expiresAt,omitempty"`
-	AllowedCount          *int                           `json:"allowedCount,omitempty"`
-	TotalActivatableCount *int                           `json:"totalActivatableCount,omitempty"`
+	FeatureId             string                          `json:"featureId"`
+	Title                 string                          `json:"title"`
+	Description           string                          `json:"description"`
+	UnlockMethods         string                          `json:"unlockMethods"`
+	Unlocked              bool                            `json:"unlocked"`
+	UnlockMethod          string                          `json:"unlockMethod,omitempty"`
+	ExpiresAt             int64                           `json:"expiresAt,omitempty"`
+	AllowedCount          *int                            `json:"allowedCount,omitempty"`
+	TotalActivatableCount *int                            `json:"totalActivatableCount,omitempty"`
 	Products              []CashFeatureCatalogProductItem `json:"products"`
 }
 
@@ -127,8 +145,8 @@ type CashInviteInviteesRes struct {
 
 // CashFeatureAdCompleteReq POST 广告完成开通。
 type CashFeatureAdCompleteReq struct {
-	g.Meta       `path:"/cash/app/api/feature/ad/complete" method:"post" tags:"cash" summary:"广告完成开通功能（MVP）"`
-	FeatureId    string `json:"featureId" v:"required"`
+	g.Meta         `path:"/cash/app/api/feature/ad/complete" method:"post" tags:"cash" summary:"广告完成开通功能（MVP）"`
+	FeatureId      string `json:"featureId" v:"required"`
 	IdempotencyKey string `json:"idempotencyKey" dc:"短窗幂等键"`
 }
 
@@ -279,4 +297,3 @@ type CashAdminInviteGroupQrPutRes struct {
 	PreviewPath string `json:"previewPath"`
 	AppVisible  bool   `json:"appVisible"`
 }
-

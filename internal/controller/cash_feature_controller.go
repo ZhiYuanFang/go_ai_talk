@@ -70,6 +70,30 @@ func (c *CashFeatureController) CareAlertEligibility(ctx context.Context, _ *v1.
 	}, nil
 }
 
+// InternalCareAlertAccess GET /cash/internal/api/care-alert/access
+// 供 voice 双门禁：喂养资格 ∧（设备开通 ∨ VIP）；须内部密钥。
+func (c *CashFeatureController) InternalCareAlertAccess(ctx context.Context, req *v1.CashInternalCareAlertAccessReq) (*v1.CashInternalCareAlertAccessRes, error) {
+	r := ghttp.RequestFromCtx(ctx)
+	if !cash.ValidateInternalSecret(cash.InternalSecretFromRequest(r)) {
+		return nil, gerror.NewCode(gcode.CodeNotAuthorized, "内部接口未授权")
+	}
+	dn := strings.TrimSpace(req.DeviceNo)
+	if dn == "" {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "deviceNo 不能为空")
+	}
+	if req.WxId <= 0 {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "wxId 无效")
+	}
+	out, err := cash.GetCareAlertAccess(ctx, dn, req.WxId)
+	if err != nil {
+		return nil, err
+	}
+	return &v1.CashInternalCareAlertAccessRes{
+		Allowed: out.Allowed, FeedingQualified: out.FeedingQualified,
+		FeatureActive: out.FeatureActive, EntitlementExpiresAt: out.EntitlementExpiresAt,
+	}, nil
+}
+
 // Catalog GET /cash/app/api/feature/catalog
 func (c *CashFeatureController) Catalog(ctx context.Context, _ *v1.CashFeatureCatalogReq) (*v1.CashFeatureCatalogRes, error) {
 	dn, err := cashDeviceNoFromHeader(ctx)

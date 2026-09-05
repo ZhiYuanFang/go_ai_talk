@@ -13,6 +13,7 @@ import (
 	v1 "hello/api/v1"
 	"hello/internal/platform/cachekit"
 	"hello/internal/services/aimodel"
+	"hello/internal/services/cash"
 	"hello/internal/services/contracts"
 
 	"github.com/gogf/gf/v2/errors/gcode"
@@ -44,9 +45,29 @@ type careAlertFlightWait struct {
 	err   error
 }
 
+// requireCareAlertAccess 经 cash internal 校验喂养资格 ∧（开通∨VIP）；失败 fail-closed。
+func requireCareAlertAccess(ctx context.Context, deviceNo string, wxID int64) error {
+	acc, err := cash.RemoteCareAlertAccess(ctx, deviceNo, wxID)
+	if err != nil {
+		glog.Warningf(ctx, "[CareAlert] access 调用失败 deviceNoLen=%d wxId=%d err=%v", len(deviceNo), wxID, err)
+		return gerror.WrapCode(gcode.CodeOperationFailed, err, "暂时无法校验值得留意开通状态")
+	}
+	if acc == nil || !acc.Allowed {
+		reason := "未满足值得留意查看条件"
+		if acc != nil && !acc.FeedingQualified {
+			reason = "未满足值得留意喂养资格"
+		} else if acc != nil && !acc.FeatureActive {
+			reason = "未开通值得留意智能提醒"
+		}
+		return gerror.NewCode(gcode.CodeInvalidOperation, reason)
+	}
+	return nil
+}
+
 // CareAlertDaily 返回宝宝当日护理留意列表：缓存命中直接返回；未命中 single-flight 调 Python 后写入。
 // force=true 时先删除当日日缓存再走生成（用于运维强刷）；仍要求 wxID>0。
 // 选模：VIP∪care_alert 额度 → careAlert 正式模；否则 free/omit；成功仅非 VIP 计次。
+// 门禁：每次请求（含缓存命中）须经 cash access（喂养合格 ∧ 开通∨VIP）；cash 故障 fail-closed。
 func CareAlertDaily(ctx context.Context, deviceNo string, wxID int64, force bool) (day string, items []v1.CareAlertItemDTO, err error) {
 	deviceNo = strings.TrimSpace(deviceNo)
 	if deviceNo == "" {
@@ -54,6 +75,9 @@ func CareAlertDaily(ctx context.Context, deviceNo string, wxID int64, force bool
 	}
 	if wxID <= 0 {
 		return "", nil, gerror.NewCode(gcode.CodeInvalidParameter, "缺少 X-Internal-Wx-Id")
+	}
+	if err := requireCareAlertAccess(ctx, deviceNo, wxID); err != nil {
+		return "", nil, err
 	}
 	if err := DeviceAdmin().EnsureRegistered(ctx, deviceNo); err != nil {
 		return "", nil, err
@@ -74,7 +98,8 @@ func CareAlertDaily(ctx context.Context, deviceNo string, wxID int64, force bool
 }
 
 // CareAlertDeleteItem 仅从当日缓存移除 suggestionId；无缓存时返回空列表。
-func CareAlertDeleteItem(ctx context.Context, deviceNo, suggestionID string) (day string, items []v1.CareAlertItemDTO, err error) {
+// 须经 cash access 门禁（与 Daily 一致，防止过期后改缓存）。
+func CareAlertDeleteItem(ctx context.Context, deviceNo, suggestionID string, wxID int64) (day string, items []v1.CareAlertItemDTO, err error) {
 	deviceNo = strings.TrimSpace(deviceNo)
 	suggestionID = strings.TrimSpace(suggestionID)
 	if deviceNo == "" {
@@ -82,6 +107,12 @@ func CareAlertDeleteItem(ctx context.Context, deviceNo, suggestionID string) (da
 	}
 	if suggestionID == "" {
 		return "", nil, gerror.NewCode(gcode.CodeInvalidParameter, "suggestionId 不能为空")
+	}
+	if wxID <= 0 {
+		return "", nil, gerror.NewCode(gcode.CodeInvalidParameter, "缺少 X-Internal-Wx-Id")
+	}
+	if err := requireCareAlertAccess(ctx, deviceNo, wxID); err != nil {
+		return "", nil, err
 	}
 	if err := DeviceAdmin().EnsureRegistered(ctx, deviceNo); err != nil {
 		return "", nil, err
@@ -108,7 +139,8 @@ func CareAlertDeleteItem(ctx context.Context, deviceNo, suggestionID string) (da
 }
 
 // CareAlertFeedback 固定意图飞轮：本地落日志 + 尽力转发 Python；不扣 clinic 配额、不做 NLP。
-func CareAlertFeedback(ctx context.Context, deviceNo, suggestionID, intent string) error {
+// 须经 cash access 门禁。
+func CareAlertFeedback(ctx context.Context, deviceNo, suggestionID, intent string, wxID int64) error {
 	deviceNo = strings.TrimSpace(deviceNo)
 	suggestionID = strings.TrimSpace(suggestionID)
 	intent = strings.TrimSpace(intent)
@@ -120,6 +152,12 @@ func CareAlertFeedback(ctx context.Context, deviceNo, suggestionID, intent strin
 	}
 	if intent != "ignore" && intent != "follow_up" {
 		return gerror.NewCode(gcode.CodeInvalidParameter, "intent 必须为 ignore 或 follow_up")
+	}
+	if wxID <= 0 {
+		return gerror.NewCode(gcode.CodeInvalidParameter, "缺少 X-Internal-Wx-Id")
+	}
+	if err := requireCareAlertAccess(ctx, deviceNo, wxID); err != nil {
+		return err
 	}
 	if err := DeviceAdmin().EnsureRegistered(ctx, deviceNo); err != nil {
 		return err

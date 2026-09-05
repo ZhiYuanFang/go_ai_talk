@@ -57,10 +57,11 @@ func careAlertForceTruthy(raw string) bool {
 
 // DailyItemDelete DELETE /device/api/care-alert/daily/item — 仅删当日缓存中该 suggestionId。
 func (c *DeviceCareAlertController) DailyItemDelete(ctx context.Context, req *v1.DeviceCareAlertDailyItemDeleteReq) (res *v1.DeviceCareAlertDailyItemDeleteRes, err error) {
-	if _, err := careAlertRequireWxID(ctx); err != nil {
+	wxID, err := careAlertRequireWxID(ctx)
+	if err != nil {
 		return nil, err
 	}
-	day, items, err := voice.CareAlertDeleteItem(ctx, req.DeviceNo, req.SuggestionId)
+	day, items, err := voice.CareAlertDeleteItem(ctx, req.DeviceNo, req.SuggestionId, wxID)
 	if err != nil {
 		return nil, err
 	}
@@ -72,14 +73,15 @@ func (c *DeviceCareAlertController) DailyItemDelete(ctx context.Context, req *v1
 
 // Feedback POST /device/api/care-alert/feedback — 固定意图 ignore|follow_up，无 NLP。
 func (c *DeviceCareAlertController) Feedback(ctx context.Context, req *v1.DeviceCareAlertFeedbackReq) (res *v1.DeviceCareAlertFeedbackRes, err error) {
-	if _, err := careAlertRequireWxID(ctx); err != nil {
+	wxID, err := careAlertRequireWxID(ctx)
+	if err != nil {
 		return nil, err
 	}
 	intent := strings.TrimSpace(req.Intent)
 	if intent != "ignore" && intent != "follow_up" {
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "intent 必须为 ignore 或 follow_up")
 	}
-	if err := voice.CareAlertFeedback(ctx, req.DeviceNo, req.SuggestionId, intent); err != nil {
+	if err := voice.CareAlertFeedback(ctx, req.DeviceNo, req.SuggestionId, intent, wxID); err != nil {
 		return nil, err
 	}
 	return &v1.DeviceCareAlertFeedbackRes{}, nil

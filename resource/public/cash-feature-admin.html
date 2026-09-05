@@ -69,6 +69,11 @@
 				</div>
 			</div>
 			<div class="field">
+				<label>邀请/广告授予天数</label>
+				<span class="sub">invite_code 与 ad 共用；0=永久；付费看下方套餐 duration；预测条数类忽略本字段</span>
+				<input id="fDuration" type="number" value="0" min="0" />
+			</div>
+			<div class="field">
 				<label>默认开通条数</label>
 				<span class="sub">仅预测类有意义；有效条数 = 默认 + 永久累加；邀请码临时全开为 -1</span>
 				<input id="fDefault" type="number" value="0" min="0" />
@@ -98,6 +103,7 @@
 						<th>显示名称</th>
 						<th>简介</th>
 						<th>开通方式</th>
+						<th>邀请/广告天数</th>
 						<th>默认条数</th>
 						<th>上架</th>
 					</tr>
@@ -258,6 +264,7 @@
 		fTitle.value = r.title || '';
 		fDesc.value = r.description || '';
 		setMethods(r.unlockMethods);
+		fDuration.value = r.durationDays != null ? r.durationDays : 0;
 		fDefault.value = r.defaultAllowedCount != null ? r.defaultAllowedCount : 0;
 		fStatus.value = String(r.status != null ? r.status : 1);
 		fSort.value = r.sortOrder != null ? r.sortOrder : 10;
@@ -274,10 +281,11 @@
 				<td>${esc(r.title || '')}</td>
 				<td>${esc((r.description || '').slice(0, 40))}</td>
 				<td>${esc(r.unlockMethods || '')}</td>
+				<td>${r.durationDays != null ? r.durationDays : 0}</td>
 				<td>${r.defaultAllowedCount != null ? r.defaultAllowedCount : 0}</td>
 				<td>${statusLabel(r.status)}</td>
 			</tr>`
-		).join('') || '<tr><td colspan="6">暂无功能定义（须种子/发版写入）</td></tr>';
+		).join('') || '<tr><td colspan="7">暂无功能定义（须种子/发版写入）</td></tr>';
 		tb.querySelectorAll('tr[data-fid]').forEach(tr => {
 			tr.onclick = () => {
 				const r = defList.find(x => x.featureId === tr.dataset.fid);
@@ -344,6 +352,7 @@
 					title: fTitle.value.trim(),
 					description: fDesc.value.trim(),
 					unlockMethods,
+					durationDays: Number(fDuration.value) || 0,
 					defaultAllowedCount: Number(fDefault.value) || 0,
 					status: Number(fStatus.value),
 					sortOrder: Number(fSort.value) || 0

@@ -250,7 +250,17 @@ func FulfillFeaturePaid(ctx context.Context, orderNo, channel, channelTxnID stri
 			grantKind = GrantKindEntitlement
 		}
 	}
-	return GrantEntitlementOrCount(ctx, order.DeviceNo, prod.FeatureId, UnlockMethodPayment, grantKind, prod.GrantQuantity, prod.DurationDays, order.OrderNo)
+	return ActivateFeature(ctx, ActivateFeatureRequest{
+		FeatureID:    prod.FeatureId,
+		SubjectType:  ActivationSubjectDevice,
+		SubjectKey:   order.DeviceNo,
+		Channel:      UnlockMethodPayment,
+		ChannelRef:   order.OrderNo,
+		ActorWxID:    order.WxId,
+		GrantKind:    grantKind,
+		GrantQty:     prod.GrantQuantity,
+		DurationDays: prod.DurationDays,
+	})
 }
 
 // DispatchFulfillPaid 按订单号分流 VIP / 功能履约（共用支付回调入口）。

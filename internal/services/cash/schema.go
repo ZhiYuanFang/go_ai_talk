@@ -136,6 +136,16 @@ func EnsureSchema(ctx context.Context) error {
   KEY idx_code_time (code, redeemed_at),
   KEY idx_redeemer (redeemer_wx_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+		// 设备维邀请去重：仅 InviteOncePerDevice 功能（如值得留意）写入；预测不得使用。
+		// 原力流水仍记用户；本表只拦「同设备再次邀请开通该功能」。
+		`CREATE TABLE IF NOT EXISTS feature_invite_device_grant (
+  device_no    VARCHAR(64) NOT NULL,
+  feature_id   VARCHAR(64) NOT NULL,
+  code         VARCHAR(64) NOT NULL DEFAULT '',
+  redeemer_wx_id BIGINT    NOT NULL DEFAULT 0,
+  redeemed_at  BIGINT      NOT NULL DEFAULT 0,
+  PRIMARY KEY (device_no, feature_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 		`CREATE TABLE IF NOT EXISTS feature_entitlement (
   id              BIGINT      NOT NULL AUTO_INCREMENT,
   device_no       VARCHAR(64) NOT NULL,
@@ -250,6 +260,23 @@ INSERT INTO feature_def (feature_id, title, description, unlock_methods, duratio
 VALUES (?, '预测事项开通数量', '增加可展示的预测事项数量', 'payment,invite_code,ad', 0, 0, 1, 10, ?)
 ON DUPLICATE KEY UPDATE updated_at=VALUES(updated_at)`,
 		FeatureIDPredictionUnlock, now)
+	if err != nil {
+		return err
+	}
+	// 种子值得留意智能提醒：邀请/广告默认 7 天；不覆盖运维已改 duration_days/文案。
+	_, err = db.Exec(ctx, `
+INSERT INTO feature_def (feature_id, title, description, unlock_methods, duration_days, default_allowed_count, status, sort_order, updated_at)
+VALUES (?, '值得留意智能提醒', '开通后可查看值得留意智能提醒', 'payment,invite_code,ad', 7, 0, 1, 20, ?)
+ON DUPLICATE KEY UPDATE updated_at=VALUES(updated_at)`,
+		FeatureIDCareAlertSmartRemind, now)
+	if err != nil {
+		return err
+	}
+	// 值得留意付费永久 SKU；INSERT IGNORE 不覆盖运维改价。
+	_, err = db.Exec(ctx, `
+INSERT IGNORE INTO feature_product (product_code, feature_id, grant_kind, grant_quantity, price_fen, original_price_fen, duration_days, apple_product_id, status, updated_at)
+VALUES (?, ?, 'entitlement', 1, 990, 0, 0, '', 1, ?)`,
+		CareAlertSmartRemindProductCode, FeatureIDCareAlertSmartRemind, now)
 	if err != nil {
 		return err
 	}
