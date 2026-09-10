@@ -15,6 +15,9 @@ services:
   voice-service:
     mem_limit: 512m
     cpus: "0.8"
+  cash-service:
+    mem_limit: 512m
+    cpus: "0.8"
   device-service:
     mem_limit: 128m
     cpus: "0.15"

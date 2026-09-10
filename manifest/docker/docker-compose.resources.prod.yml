@@ -48,6 +48,10 @@ services:
     mem_limit: 640m
     cpus: "1.0"
     <<: *go-gomemlimit-voice
+  cash-service:
+    mem_limit: 512m
+    cpus: "0.8"
+    <<: *go-gomemlimit-voice
   device-service:
     mem_limit: 192m
     cpus: "0.25"
