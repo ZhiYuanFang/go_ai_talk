@@ -162,6 +162,21 @@ func EnsureSchema(ctx context.Context) error {
   UNIQUE KEY uk_device_feature (device_no, feature_id),
   KEY idx_device (device_no)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+		// 账号维权益：activation_subject=user 的功能写入本表（如成长轨迹）；与设备表并行，不改写旧唯一键。
+		`CREATE TABLE IF NOT EXISTS feature_user_entitlement (
+  id              BIGINT      NOT NULL AUTO_INCREMENT,
+  wx_id           BIGINT      NOT NULL,
+  feature_id      VARCHAR(64) NOT NULL,
+  unlock_method   VARCHAR(32) NOT NULL DEFAULT '',
+  expires_at      BIGINT      NOT NULL DEFAULT 0,
+  quantity        INT         NOT NULL DEFAULT 0,
+  source_ref      VARCHAR(128) NOT NULL DEFAULT '',
+  created_at      BIGINT      NOT NULL DEFAULT 0,
+  updated_at      BIGINT      NOT NULL DEFAULT 0,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_wx_feature (wx_id, feature_id),
+  KEY idx_wx (wx_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 		`CREATE TABLE IF NOT EXISTS feature_allowed_count (
   device_no                VARCHAR(64) NOT NULL,
   allowed_count            INT         NOT NULL DEFAULT 0,
@@ -254,6 +269,21 @@ func EnsureSchema(ctx context.Context) error {
 			return err
 		}
 	}
+	// 开通主体：device=对机全家共享；user=对人一人一份。首次加列回填 device，并将成长轨迹定为 user。
+	subjectColAdded := false
+	if _, err := db.Exec(ctx, `ALTER TABLE feature_def ADD COLUMN activation_subject VARCHAR(16) NOT NULL DEFAULT 'device'`); err != nil {
+		msg := err.Error()
+		if !strings.Contains(msg, "Duplicate column") && !strings.Contains(msg, "1060") {
+			return err
+		}
+	} else {
+		subjectColAdded = true
+	}
+	if subjectColAdded {
+		if _, err := db.Exec(ctx, `UPDATE feature_def SET activation_subject='user' WHERE feature_id=?`, FeatureIDGrowthTrajectoryPredict); err != nil {
+			return err
+		}
+	}
 	// 邀请去重键升级为人×码×功能（未发布环境可接受失败重试）。
 	if _, err := db.Exec(ctx, `ALTER TABLE feature_invite_feature_grant DROP PRIMARY KEY, ADD PRIMARY KEY (redeemer_wx_id, code, feature_id)`); err != nil {
 		msg := err.Error()
@@ -308,6 +338,23 @@ ON DUPLICATE KEY UPDATE updated_at=VALUES(updated_at)`,
 INSERT IGNORE INTO feature_product (product_code, feature_id, grant_kind, grant_quantity, price_fen, original_price_fen, duration_days, apple_product_id, status, updated_at)
 VALUES (?, ?, 'entitlement', 1, 990, 0, 0, '', 1, ?)`,
 		CareAlertSmartRemindProductCode, FeatureIDCareAlertSmartRemind, now)
+	if err != nil {
+		return err
+	}
+	// 种子成长轨迹预测：账号维开通；邀请/广告默认 7 天；不覆盖运维已改授予天数/文案。
+	_, err = db.Exec(ctx, `
+INSERT INTO feature_def (feature_id, title, description, unlock_methods, duration_days, invite_duration_days, ad_duration_days, default_allowed_count, activation_subject, status, sort_order, updated_at)
+VALUES (?, '成长轨迹预测', '开通后可使用成长轨迹预测', 'payment,invite_code,ad', 7, 7, 7, 0, 'user', 1, 30, ?)
+ON DUPLICATE KEY UPDATE updated_at=VALUES(updated_at)`,
+		FeatureIDGrowthTrajectoryPredict, now)
+	if err != nil {
+		return err
+	}
+	// 成长轨迹付费 30 天 SKU（1900 分）；INSERT IGNORE 不覆盖运维改价；无永久 SKU。
+	_, err = db.Exec(ctx, `
+INSERT IGNORE INTO feature_product (product_code, feature_id, grant_kind, grant_quantity, price_fen, original_price_fen, duration_days, apple_product_id, status, updated_at)
+VALUES (?, ?, 'entitlement', 1, 1900, 0, 30, '', 1, ?)`,
+		GrowthTrajectoryPredictProductCode, FeatureIDGrowthTrajectoryPredict, now)
 	if err != nil {
 		return err
 	}

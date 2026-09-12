@@ -20,7 +20,8 @@ import (
 // Args: durationDays 旧字段，仍写入；invite/ad 为邀请与广告授予天数（0=永久）。
 //
 //	defaultAllowedCount 预测类默认免费开通条数（其它功能可 0）。
-func AdminUpdateFeatureDef(ctx context.Context, featureID, title, desc, unlockMethods string, durationDays, inviteDurationDays, adDurationDays, status, sortOrder, defaultAllowedCount int) error {
+//	activationSubject 可选：nil 保持原值；非 nil 须为 device|user；预测类禁止改为 user。
+func AdminUpdateFeatureDef(ctx context.Context, featureID, title, desc, unlockMethods string, durationDays, inviteDurationDays, adDurationDays, status, sortOrder, defaultAllowedCount int, activationSubject *string) error {
 	featureID = strings.TrimSpace(featureID)
 	if featureID == "" {
 		return gerror.NewCode(gcode.CodeInvalidParameter, "featureId 不能为空")
@@ -36,27 +37,39 @@ func AdminUpdateFeatureDef(ctx context.Context, featureID, title, desc, unlockMe
 	if r.IsEmpty() {
 		return gerror.NewCode(gcode.CodeInvalidParameter, "功能编号不存在（须与客户端约定，禁止管理页新建）")
 	}
-	_, err = g.DB().Model("feature_def").Ctx(ctx).Where("feature_id", featureID).Data(g.Map{
+	data := g.Map{
 		"title": title, "description": desc, "unlock_methods": unlockMethods,
 		"duration_days": durationDays,
 		"invite_duration_days": inviteDurationDays, "ad_duration_days": adDurationDays,
 		"default_allowed_count": defaultAllowedCount,
 		"status": status, "sort_order": sortOrder, "updated_at": now,
-	}).Update()
+	}
+	if activationSubject != nil {
+		raw := strings.TrimSpace(*activationSubject)
+		if raw != "" && raw != ActivationSubjectDevice && raw != ActivationSubjectUser {
+			return gerror.NewCode(gcode.CodeInvalidParameter, "activationSubject 须为 device 或 user")
+		}
+		subj := NormalizeActivationSubject(raw)
+		if featureID == FeatureIDPredictionUnlock && subj == ActivationSubjectUser {
+			return gerror.NewCode(gcode.CodeInvalidParameter, "预测条数功能仅支持对机（device）主体")
+		}
+		data["activation_subject"] = subj
+	}
+	_, err = g.DB().Model("feature_def").Ctx(ctx).Where("feature_id", featureID).Data(data).Update()
 	invalidateFeatureDefCache(ctx)
 	return err
 }
 
 // AdminUpsertFeatureDef 兼容旧名：仅更新已存在定义（邀请/广告天数与 durationDays 双写）。
 func AdminUpsertFeatureDef(ctx context.Context, featureID, title, desc, unlockMethods string, durationDays, status, sortOrder int) error {
-	return AdminUpdateFeatureDef(ctx, featureID, title, desc, unlockMethods, durationDays, durationDays, durationDays, status, sortOrder, 0)
+	return AdminUpdateFeatureDef(ctx, featureID, title, desc, unlockMethods, durationDays, durationDays, durationDays, status, sortOrder, 0, nil)
 }
 
 // AdminListFeatureDefs 管理端功能列表（含停用）。
 func AdminListFeatureDefs(ctx context.Context) ([]FeatureDefRow, error) {
 	var raw []featureDefDB
 	err := g.DB().Model("feature_def").Ctx(ctx).
-		Fields("feature_id,title,description,unlock_methods,duration_days,invite_duration_days,ad_duration_days,default_allowed_count,status,sort_order").
+		Fields("feature_id,title,description,unlock_methods,duration_days,invite_duration_days,ad_duration_days,default_allowed_count,activation_subject,status,sort_order").
 		OrderAsc("sort_order").Scan(&raw)
 	if err != nil {
 		return nil, err
@@ -68,6 +81,7 @@ func AdminListFeatureDefs(ctx context.Context) ([]FeatureDefRow, error) {
 			UnlockMethods: r.UnlockMethods, DurationDays: r.DurationDays,
 			InviteDurationDays: r.InviteDurationDays, AdDurationDays: r.AdDurationDays,
 			DefaultAllowedCount: r.DefaultAllowedCount,
+			ActivationSubject:    NormalizeActivationSubject(r.ActivationSubject),
 			Status: r.Status, SortOrder: r.SortOrder,
 		})
 	}

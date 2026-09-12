@@ -52,3 +52,9 @@ func CareAlertDailyLockKey(deviceNo, dayYYYYMMDD string) (string, error) {
 	id := strings.TrimSpace(deviceNo) + ":" + strings.TrimSpace(dayYYYYMMDD)
 	return Key(DomainVoice, "carealert", "lock", id)
 }
+
+// GrowthTrajectoryDailyUsageKey 成长轨迹按用户日限计数；identifier = wxId:yyyyMMdd（Asia/Shanghai）。
+func GrowthTrajectoryDailyUsageKey(wxID int64, dayYYYYMMDD string) (string, error) {
+	id := fmt.Sprintf("%d:%s", wxID, strings.TrimSpace(dayYYYYMMDD))
+	return Key(DomainVoice, "growthtraj", "daily", id)
+}

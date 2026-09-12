@@ -79,6 +79,14 @@
 				<input id="fDefault" type="number" value="0" min="0" />
 			</div>
 			<div class="field">
+				<label>开放主体（对人 / 对机）</label>
+				<span class="sub">对机=device 全家共享；对人=user 跟登录账号。预测条数类禁止对人。</span>
+				<select id="fSubject">
+					<option value="device">对机（device）</option>
+					<option value="user">对人（user）</option>
+				</select>
+			</div>
+			<div class="field">
 				<label>是否上架</label>
 				<select id="fStatus">
 					<option value="1" selected>上架</option>
@@ -101,6 +109,7 @@
 					<tr>
 						<th>功能编号</th>
 						<th>显示名称</th>
+						<th>开放主体</th>
 						<th>简介</th>
 						<th>开通方式</th>
 						<th>邀请/广告天数</th>
@@ -259,6 +268,12 @@
 		if (cur) sel.value = cur;
 	}
 
+	const subjectLabel = (s) => {
+		const v = String(s || 'device');
+		if (v === 'user') return '<span class="badge-on">对人</span>';
+		return '<span class="badge-off">对机</span>';
+	};
+
 	function loadDefIntoForm(r) {
 		fId.value = r.featureId || '';
 		fTitle.value = r.title || '';
@@ -266,6 +281,7 @@
 		setMethods(r.unlockMethods);
 		fDuration.value = r.durationDays != null ? r.durationDays : 0;
 		fDefault.value = r.defaultAllowedCount != null ? r.defaultAllowedCount : 0;
+		fSubject.value = (r.activationSubject === 'user') ? 'user' : 'device';
 		fStatus.value = String(r.status != null ? r.status : 1);
 		fSort.value = r.sortOrder != null ? r.sortOrder : 10;
 	}
@@ -279,13 +295,14 @@
 			`<tr class="clickable" data-fid="${esc(r.featureId)}">
 				<td><code>${esc(r.featureId)}</code></td>
 				<td>${esc(r.title || '')}</td>
+				<td>${subjectLabel(r.activationSubject)}</td>
 				<td>${esc((r.description || '').slice(0, 40))}</td>
 				<td>${esc(r.unlockMethods || '')}</td>
 				<td>${r.durationDays != null ? r.durationDays : 0}</td>
 				<td>${r.defaultAllowedCount != null ? r.defaultAllowedCount : 0}</td>
 				<td>${statusLabel(r.status)}</td>
 			</tr>`
-		).join('') || '<tr><td colspan="7">暂无功能定义（须种子/发版写入）</td></tr>';
+		).join('') || '<tr><td colspan="8">暂无功能定义（须种子/发版写入）</td></tr>';
 		tb.querySelectorAll('tr[data-fid]').forEach(tr => {
 			tr.onclick = () => {
 				const r = defList.find(x => x.featureId === tr.dataset.fid);
@@ -354,6 +371,7 @@
 					unlockMethods,
 					durationDays: Number(fDuration.value) || 0,
 					defaultAllowedCount: Number(fDefault.value) || 0,
+					activationSubject: fSubject.value === 'user' ? 'user' : 'device',
 					status: Number(fStatus.value),
 					sortOrder: Number(fSort.value) || 0
 				})

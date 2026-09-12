@@ -50,6 +50,20 @@ type CashInternalCareAlertAccessRes struct {
 	EntitlementExpiresAt int64 `json:"entitlementExpiresAt,omitempty"`
 }
 
+// CashInternalGrowthTrajectoryAccessReq 内部：成长轨迹可看合成（账号开通∨VIP；无喂养门闸）。
+type CashInternalGrowthTrajectoryAccessReq struct {
+	g.Meta   `path:"/cash/internal/api/growth-trajectory/access" method:"get" tags:"cash" summary:"内部成长轨迹可看合成"`
+	DeviceNo string `json:"deviceNo" p:"deviceNo" dc:"设备号（兼容校验非空；开通不依赖设备）"`
+	WxId     int64  `json:"wxId" p:"wxId" dc:"触发者 wx 主键"`
+}
+
+// CashInternalGrowthTrajectoryAccessRes 内部可看 data。
+type CashInternalGrowthTrajectoryAccessRes struct {
+	Allowed              bool  `json:"allowed"`
+	FeatureActive        bool  `json:"featureActive"`
+	EntitlementExpiresAt int64 `json:"entitlementExpiresAt,omitempty"`
+}
+
 // CashFeatureCatalogReq GET 合成功能目录。
 type CashFeatureCatalogReq struct {
 	g.Meta `path:"/cash/app/api/feature/catalog" method:"get" tags:"cash" summary:"功能目录（含是否已开通与可售 SKU）"`
@@ -180,24 +194,27 @@ type CashAdminFeatureDefItem struct {
 	InviteDurationDays  int    `json:"inviteDurationDays"`
 	AdDurationDays      int    `json:"adDurationDays"`
 	DefaultAllowedCount int    `json:"defaultAllowedCount"`
+	ActivationSubject   string `json:"activationSubject" dc:"device=对机；user=对人"`
 	Status              int    `json:"status"`
 	SortOrder           int    `json:"sortOrder"`
 }
 
 // CashAdminFeatureDefUpsertReq POST 更新功能定义（禁止新建未知 featureId）。
 // InviteDurationDays / AdDurationDays 可空：旧管理端只传 durationDays 时双写到两新列。
+// ActivationSubject 可空：未传则保持库中原值。
 type CashAdminFeatureDefUpsertReq struct {
 	g.Meta              `path:"/cash/admin/api/feature/defs" method:"post" tags:"cash-admin" summary:"管理端更新功能定义（编号只读）"`
-	FeatureId           string `json:"featureId" v:"required"`
-	Title               string `json:"title"`
-	Description         string `json:"description"`
-	UnlockMethods       string `json:"unlockMethods"`
-	DurationDays        int    `json:"durationDays"`
-	InviteDurationDays  *int   `json:"inviteDurationDays"`
-	AdDurationDays      *int   `json:"adDurationDays"`
-	DefaultAllowedCount int    `json:"defaultAllowedCount"`
-	Status              int    `json:"status" d:"1"`
-	SortOrder           int    `json:"sortOrder"`
+	FeatureId           string  `json:"featureId" v:"required"`
+	Title               string  `json:"title"`
+	Description         string  `json:"description"`
+	UnlockMethods       string  `json:"unlockMethods"`
+	DurationDays        int     `json:"durationDays"`
+	InviteDurationDays  *int    `json:"inviteDurationDays"`
+	AdDurationDays      *int    `json:"adDurationDays"`
+	DefaultAllowedCount int     `json:"defaultAllowedCount"`
+	ActivationSubject   *string `json:"activationSubject" dc:"device|user；空则不改"`
+	Status              int     `json:"status" d:"1"`
+	SortOrder           int     `json:"sortOrder"`
 }
 
 // CashAdminFeatureDefUpsertRes 空。

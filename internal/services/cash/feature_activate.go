@@ -2,6 +2,7 @@ package cash
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"time"
 
@@ -12,12 +13,12 @@ import (
 
 // ActivateFeatureRequest 功能开通原子入参（支付/邀请/广告共用）。
 //
-// 业务：按主体与通道解析授予效果；一期仅支持 Subject=device。
-// ActorWxID 供审计；权益主体为 SubjectKey（device_no）。
+// 业务：按主体与通道解析授予效果；支持 Subject=device|user（由 feature_def.activation_subject 驱动）。
+// ActorWxID 供审计；权益主体为 SubjectKey（device_no 或 wx_id 字符串）。
 type ActivateFeatureRequest struct {
 	FeatureID   string
 	SubjectType string // device | user
-	SubjectKey  string // device_no（device）
+	SubjectKey  string // device_no（device）或 wxId 十进制（user）
 	Channel     string // payment | invite_code | ad
 	ChannelRef  string
 	ActorWxID   int64
@@ -27,7 +28,7 @@ type ActivateFeatureRequest struct {
 	DurationDays int
 }
 
-// ActivateFeature 共用开通原子入口：写入权益或预测条数并失效缓存。
+// ActivateFeature 共用开通原子入口：写入设备/账号权益或预测条数并失效缓存。
 //
 // 效果解析：
 //   - payment：grant_kind/quantity/duration 来自入参（SKU）；
@@ -36,21 +37,14 @@ type ActivateFeatureRequest struct {
 //
 // Args: req 见 ActivateFeatureRequest。
 // Returns: 参数/主体错误或写库错误。
-// Side Effects: 写 feature_entitlement 或 feature_allowed_count，Del 设备功能缓存。
+// Side Effects: 写 feature_entitlement / feature_user_entitlement 或 feature_allowed_count，Del 相关缓存。
 func ActivateFeature(ctx context.Context, req ActivateFeatureRequest) error {
 	featureID := strings.TrimSpace(req.FeatureID)
-	subjectType := strings.TrimSpace(req.SubjectType)
+	subjectType := NormalizeActivationSubject(req.SubjectType)
 	subjectKey := strings.TrimSpace(req.SubjectKey)
 	channel := strings.TrimSpace(req.Channel)
 	if featureID == "" || subjectKey == "" {
 		return gerror.NewCode(gcode.CodeInvalidParameter, "featureId/subjectKey 不能为空")
-	}
-	if subjectType == "" {
-		subjectType = ActivationSubjectDevice
-	}
-	// 一期仅落地设备维权益；user 主体预留枚举。
-	if subjectType != ActivationSubjectDevice {
-		return gerror.NewCode(gcode.CodeInvalidParameter, "暂不支持账号维功能开通")
 	}
 	switch channel {
 	case UnlockMethodPayment, UnlockMethodInviteCode, UnlockMethodAd:
@@ -65,8 +59,11 @@ func ActivateFeature(ctx context.Context, req ActivateFeatureRequest) error {
 	grantKind := strings.TrimSpace(req.GrantKind)
 	durationDays := req.DurationDays
 
-	// 预测：三通道均为永久条数增量；忽略定义天数。
+	// 预测：三通道均为永久条数增量；忽略定义天数；仅允许设备主体。
 	if featureID == FeatureIDPredictionUnlock {
+		if subjectType != ActivationSubjectDevice {
+			return gerror.NewCode(gcode.CodeInvalidParameter, "预测条数开通仅支持设备主体")
+		}
 		return GrantEntitlementOrCount(ctx, subjectKey, featureID, channel, GrantKindAllowedCountDelta, grantQty, 0, req.ChannelRef)
 	}
 
@@ -92,7 +89,59 @@ func ActivateFeature(ctx context.Context, req ActivateFeatureRequest) error {
 	if grantKind == "" {
 		grantKind = GrantKindEntitlement
 	}
+	if grantKind == GrantKindAllowedCountDelta {
+		if subjectType != ActivationSubjectDevice {
+			return gerror.NewCode(gcode.CodeInvalidParameter, "条数增量仅支持设备主体")
+		}
+		return GrantEntitlementOrCount(ctx, subjectKey, featureID, channel, grantKind, grantQty, durationDays, req.ChannelRef)
+	}
+
+	if subjectType == ActivationSubjectUser {
+		wxID, err := strconv.ParseInt(subjectKey, 10, 64)
+		if err != nil || wxID <= 0 {
+			return gerror.NewCode(gcode.CodeInvalidParameter, "账号维开通须提供有效 wxId")
+		}
+		return GrantUserEntitlement(ctx, wxID, featureID, channel, grantQty, durationDays, req.ChannelRef)
+	}
 	return GrantEntitlementOrCount(ctx, subjectKey, featureID, channel, grantKind, grantQty, durationDays, req.ChannelRef)
+}
+
+// GetFeatureActivationSubject 读取功能开通主体（缺省 device）。
+func GetFeatureActivationSubject(ctx context.Context, featureID string) (string, error) {
+	featureID = strings.TrimSpace(featureID)
+	if featureID == "" {
+		return ActivationSubjectDevice, nil
+	}
+	r, err := g.DB().Model("feature_def").Ctx(ctx).Fields("activation_subject").Where("feature_id", featureID).One()
+	if err != nil {
+		return "", err
+	}
+	if r.IsEmpty() {
+		return ActivationSubjectDevice, nil
+	}
+	return NormalizeActivationSubject(r["activation_subject"].String()), nil
+}
+
+// ResolveActivateSubject 按功能定义解析支付/邀请/广告应使用的 SubjectType 与 SubjectKey。
+//
+// Args: featureID；deviceNo 与 wxID 由通道提供（user 主体必须 wxID>0）。
+// Returns: subjectType、subjectKey、错误。
+func ResolveActivateSubject(ctx context.Context, featureID, deviceNo string, wxID int64) (subjectType, subjectKey string, err error) {
+	subj, err := GetFeatureActivationSubject(ctx, featureID)
+	if err != nil {
+		return "", "", err
+	}
+	if subj == ActivationSubjectUser {
+		if wxID <= 0 {
+			return "", "", gerror.NewCode(gcode.CodeInvalidParameter, "该功能按账号开通，须登录")
+		}
+		return ActivationSubjectUser, strconv.FormatInt(wxID, 10), nil
+	}
+	deviceNo = strings.TrimSpace(deviceNo)
+	if deviceNo == "" {
+		return "", "", gerror.NewCode(gcode.CodeInvalidParameter, "该功能按设备开通，deviceNo 不能为空")
+	}
+	return ActivationSubjectDevice, deviceNo, nil
 }
 
 // HasActiveFeatureEntitlement 设备某功能权益是否未过期（expires_at=0 为永久）。
@@ -105,6 +154,32 @@ func HasActiveFeatureEntitlement(ctx context.Context, deviceNo, featureID string
 	r, err := g.DB().Model("feature_entitlement").Ctx(ctx).
 		Fields("expires_at").
 		Where("device_no", deviceNo).Where("feature_id", featureID).
+		One()
+	if err != nil {
+		return false, 0, err
+	}
+	if r.IsEmpty() {
+		return false, 0, nil
+	}
+	exp := r["expires_at"].Int64()
+	if exp == 0 {
+		return true, 0, nil
+	}
+	if exp > time.Now().Unix() {
+		return true, exp, nil
+	}
+	return false, exp, nil
+}
+
+// HasActiveUserFeatureEntitlement 账号某功能权益是否未过期（expires_at=0 为永久）。
+func HasActiveUserFeatureEntitlement(ctx context.Context, wxID int64, featureID string) (active bool, expiresAt int64, err error) {
+	featureID = strings.TrimSpace(featureID)
+	if wxID <= 0 || featureID == "" {
+		return false, 0, nil
+	}
+	r, err := g.DB().Model("feature_user_entitlement").Ctx(ctx).
+		Fields("expires_at").
+		Where("wx_id", wxID).Where("feature_id", featureID).
 		One()
 	if err != nil {
 		return false, 0, err

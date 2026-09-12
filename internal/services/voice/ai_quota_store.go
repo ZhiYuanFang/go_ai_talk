@@ -49,11 +49,12 @@ func validateVoiceQuotaFeature(feature contracts.AIQuotaFeature) error {
 	}
 }
 
-// EnsureVoiceAIQuotaSchema 幂等补齐 care_alert 额度列。
+// EnsureVoiceAIQuotaSchema 幂等补齐 care_alert / growth_trajectory 额度列与最新结果表。
 func EnsureVoiceAIQuotaSchema(ctx context.Context) error {
 	alters := []string{
 		`ALTER TABLE ai_quota_default ADD COLUMN care_alert_monthly_limit INT NOT NULL DEFAULT 10`,
 		`ALTER TABLE ai_quota_user_override ADD COLUMN care_alert_monthly_limit INT NULL`,
+		`ALTER TABLE ai_quota_default ADD COLUMN growth_trajectory_daily_limit INT NOT NULL DEFAULT 5`,
 	}
 	for _, sql := range alters {
 		if _, err := g.DB().Exec(ctx, sql); err != nil {
@@ -63,7 +64,17 @@ func EnsureVoiceAIQuotaSchema(ctx context.Context) error {
 			}
 		}
 	}
-	return nil
+	// 成长轨迹最新结果表（按 device_no 存 Markdown + 反馈）。
+	_, err := g.DB().Exec(ctx, `
+CREATE TABLE IF NOT EXISTS growth_trajectory_latest (
+  device_no       VARCHAR(128) NOT NULL,
+  result_markdown MEDIUMTEXT   NULL,
+  feedback_json   MEDIUMTEXT   NULL,
+  session_id      VARCHAR(128) NOT NULL DEFAULT '',
+  updated_at      BIGINT       NOT NULL DEFAULT 0,
+  PRIMARY KEY (device_no)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`)
+	return err
 }
 
 func validateWxIDForAI(wxID int64) error {
@@ -87,20 +98,22 @@ func EnsureVoiceAIQuotaDefaultRow(ctx context.Context) error {
 	}
 	now := time.Now().Unix()
 	_, err = g.DB().Model("ai_quota_default").Ctx(ctx).Data(g.Map{
-		"id":                        aiQuotaDefaultSingletonID,
-		"voice_ai_monthly_limit":    5,
-		"clinic_ai_monthly_limit":   30,
-		"care_alert_monthly_limit":  10,
-		"updated_at":                now,
+		"id":                             aiQuotaDefaultSingletonID,
+		"voice_ai_monthly_limit":         5,
+		"clinic_ai_monthly_limit":        30,
+		"care_alert_monthly_limit":       10,
+		"growth_trajectory_daily_limit":  5,
+		"updated_at":                     now,
 	}).Insert()
 	return err
 }
 
 type voiceQuotaDefaultRow struct {
-	VoiceAiMonthlyLimit   int   `json:"voiceAiMonthlyLimit"`
-	ClinicAiMonthlyLimit  int   `json:"clinicAiMonthlyLimit"`
-	CareAlertMonthlyLimit int   `json:"careAlertMonthlyLimit"`
-	UpdatedAt             int64 `json:"updatedAt"`
+	VoiceAiMonthlyLimit          int   `json:"voiceAiMonthlyLimit"`
+	ClinicAiMonthlyLimit         int   `json:"clinicAiMonthlyLimit"`
+	CareAlertMonthlyLimit        int   `json:"careAlertMonthlyLimit"`
+	GrowthTrajectoryDailyLimit   int   `json:"growthTrajectoryDailyLimit"`
+	UpdatedAt                    int64 `json:"updatedAt"`
 }
 
 func loadVoiceAIQuotaDefault(ctx context.Context) (voiceQuotaDefaultRow, error) {
@@ -120,7 +133,22 @@ func loadVoiceAIQuotaDefault(ctx context.Context) (voiceQuotaDefaultRow, error) 
 	if row.CareAlertMonthlyLimit <= 0 {
 		row.CareAlertMonthlyLimit = 10
 	}
+	if row.GrowthTrajectoryDailyLimit <= 0 {
+		row.GrowthTrajectoryDailyLimit = 5
+	}
 	return row, nil
+}
+
+// GetGrowthTrajectoryDailyLimit 读取成长轨迹每日次数上限（默认 5；运维可改 ai_quota_default 列）。
+func GetGrowthTrajectoryDailyLimit(ctx context.Context) (int, error) {
+	row, err := loadVoiceAIQuotaDefault(ctx)
+	if err != nil {
+		return 5, err
+	}
+	if row.GrowthTrajectoryDailyLimit <= 0 {
+		return 5, nil
+	}
+	return row.GrowthTrajectoryDailyLimit, nil
 }
 
 type voiceQuotaOverrideRow struct {

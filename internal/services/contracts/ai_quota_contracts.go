@@ -11,6 +11,10 @@ const (
 	CodeAINotLoggedIn = 40301
 	// CodeAIQuotaExhausted 当月额度已用尽。
 	CodeAIQuotaExhausted = 40302
+	// CodeGrowthTrajectoryDailyLimit 成长轨迹当日次数已用尽。
+	CodeGrowthTrajectoryDailyLimit = 40303
+	// BizCodeGrowthTrajectoryDailyLimit 成长轨迹日限业务码（契约字符串）。
+	BizCodeGrowthTrajectoryDailyLimit = "GROWTH_TRAJECTORY_DAILY_LIMIT"
 )
 
 var (
@@ -18,6 +22,8 @@ var (
 	ErrAINotLoggedIn = errors.New("请先登录账号")
 	// ErrAIQuotaExhausted 本月 AI 额度已用尽。
 	ErrAIQuotaExhausted = errors.New("本月额度已用完")
+	// ErrGrowthTrajectoryDailyLimit 今日成长轨迹预测次数已用完。
+	ErrGrowthTrajectoryDailyLimit = errors.New("今日成长轨迹预测次数已用完，请明日再来")
 )
 
 // GCodeAINotLoggedIn 供 controller 返回稳定业务码。
@@ -28,6 +34,12 @@ func GCodeAINotLoggedIn() gcode.Code {
 // GCodeAIQuotaExhausted 供 controller 返回稳定业务码。
 func GCodeAIQuotaExhausted() gcode.Code {
 	return gcode.New(CodeAIQuotaExhausted, ErrAIQuotaExhausted.Error(), nil)
+}
+
+// GCodeGrowthTrajectoryDailyLimit 供 controller 返回成长轨迹日限业务码。
+// Code.Message 为契约字符串 GROWTH_TRAJECTORY_DAILY_LIMIT；对外 Toast 用 NewCode 第二参中文文案。
+func GCodeGrowthTrajectoryDailyLimit() gcode.Code {
+	return gcode.New(CodeGrowthTrajectoryDailyLimit, BizCodeGrowthTrajectoryDailyLimit, nil)
 }
 
 // AIQuotaFeature 额度维度。

@@ -250,10 +250,15 @@ func FulfillFeaturePaid(ctx context.Context, orderNo, channel, channelTxnID stri
 			grantKind = GrantKindEntitlement
 		}
 	}
+	// 按功能定义选择设备或账号主体（成长轨迹等 user 功能写付款人 wx）。
+	subjType, subjKey, sErr := ResolveActivateSubject(ctx, prod.FeatureId, order.DeviceNo, order.WxId)
+	if sErr != nil {
+		return sErr
+	}
 	return ActivateFeature(ctx, ActivateFeatureRequest{
 		FeatureID:    prod.FeatureId,
-		SubjectType:  ActivationSubjectDevice,
-		SubjectKey:   order.DeviceNo,
+		SubjectType:  subjType,
+		SubjectKey:   subjKey,
 		Channel:      UnlockMethodPayment,
 		ChannelRef:   order.OrderNo,
 		ActorWxID:    order.WxId,

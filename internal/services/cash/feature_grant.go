@@ -207,6 +207,67 @@ func upsertFeatureEntitlement(ctx context.Context, deviceNo, featureID, unlockMe
 	return err
 }
 
+// GrantUserEntitlement 向 wx 授予/续期功能权益（账号维）。
+//
+// Args: durationDays=0 表示永久。
+// Side Effects: 写 feature_user_entitlement；失效功能定义缓存。
+func GrantUserEntitlement(ctx context.Context, wxID int64, featureID, unlockMethod string, grantQty, durationDays int, sourceRef string) error {
+	featureID = strings.TrimSpace(featureID)
+	unlockMethod = strings.TrimSpace(unlockMethod)
+	if wxID <= 0 || featureID == "" {
+		return gerror.NewCode(gcode.CodeInvalidParameter, "wxId/featureId 不能为空")
+	}
+	if grantQty <= 0 {
+		grantQty = 1
+	}
+	now := time.Now().Unix()
+	if err := upsertFeatureUserEntitlement(ctx, wxID, featureID, unlockMethod, durationDays, grantQty, sourceRef, now); err != nil {
+		return err
+	}
+	invalidateFeatureDefCache(ctx)
+	return nil
+}
+
+func upsertFeatureUserEntitlement(ctx context.Context, wxID int64, featureID, unlockMethod string, durationDays, quantity int, sourceRef string, now int64) error {
+	db := g.DB()
+	exist, err := db.Model("feature_user_entitlement").Ctx(ctx).
+		Where("wx_id", wxID).Where("feature_id", featureID).One()
+	if err != nil {
+		return err
+	}
+	var newExp int64
+	if durationDays <= 0 {
+		newExp = 0
+	} else if exist.IsEmpty() {
+		newExp = now + int64(durationDays)*86400
+	} else {
+		base := now
+		if cur := exist["expires_at"].Int64(); cur > base {
+			base = cur
+		}
+		if exist["expires_at"].Int64() == 0 && exist["updated_at"].Int64() > 0 {
+			newExp = 0
+		} else {
+			newExp = base + int64(durationDays)*86400
+		}
+	}
+	if exist.IsEmpty() {
+		_, err = db.Model("feature_user_entitlement").Ctx(ctx).Data(g.Map{
+			"wx_id": wxID, "feature_id": featureID, "unlock_method": unlockMethod,
+			"expires_at": newExp, "quantity": quantity, "source_ref": sourceRef,
+			"created_at": now, "updated_at": now,
+		}).Insert()
+		return err
+	}
+	_, err = db.Model("feature_user_entitlement").Ctx(ctx).
+		Where("wx_id", wxID).Where("feature_id", featureID).
+		Data(g.Map{
+			"unlock_method": unlockMethod, "expires_at": newExp,
+			"quantity": quantity, "source_ref": sourceRef, "updated_at": now,
+		}).Update()
+	return err
+}
+
 func invalidateDeviceFeatureCaches(ctx context.Context, deviceNo string) {
 	c := cachekit.Default()
 	_ = c.Del(ctx, cachekit.CashFeatureAllowedCountKey(deviceNo))

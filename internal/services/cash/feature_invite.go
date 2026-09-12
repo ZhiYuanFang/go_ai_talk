@@ -132,7 +132,8 @@ func ListInviteInvitees(ctx context.Context, ownerWxID int64) ([]InviteeRow, err
 //
 // 规则：不可自用；不可使用同一宝宝（同 device_no）下其他账号的码；人×码×功能仅一次；
 // 多好友码可兑（不同设备）；预测永久 +1；非预测经 ActivateFeature（邀请天数读 feature_def）；
-// 值得留意等 InviteOncePerDevice：device×feature 邀请仅一次；原力仍记码主人用户。
+// InviteOncePerDevice：device×feature 邀请仅一次；InviteOncePerUser（成长轨迹）：人×feature 任意码仅一次；
+// 原力仍记码主人用户。开通主体按 feature_def.activation_subject（device|user）。
 // 码级有效期/功能子表/一家锁定不再校验；开通能力仅看 feature_def.unlock_methods。
 // 主人设备号经 device 契约查询：失败 fail-closed；主人未绑机（空 device_no）不因同设备规则拒绝。
 func RedeemInviteCode(ctx context.Context, redeemerWxID int64, deviceNo, code, featureID string) error {
@@ -211,7 +212,7 @@ func RedeemInviteCode(ctx context.Context, redeemerWxID int64, deviceNo, code, f
 			return gerror.NewCode(gcode.CodeInvalidParameter, "功能不支持邀请码开通")
 		}
 
-		// 值得留意等：同一 device_no 对本功能仅能邀请开通一次（全家共享防刷）。
+		// 值得留意 / 成长轨迹等：同一 device_no 对本功能仅能邀请开通一次。
 		if InviteOncePerDevice(featureID) {
 			dn, err := tx.Model("feature_invite_device_grant").Ctx(ctx).
 				Where("device_no", deviceNo).Where("feature_id", featureID).Count()
@@ -223,11 +224,28 @@ func RedeemInviteCode(ctx context.Context, redeemerWxID int64, deviceNo, code, f
 			}
 		}
 
-		// 经原子入口授予：预测 +1；其它读 feature_def 邀请/广告分列天数。
+		// 成长轨迹等：同一人对本功能邀请仅一次（跨任意邀请码）。
+		if InviteOncePerUser(featureID) {
+			un, err := tx.Model("feature_invite_feature_grant").Ctx(ctx).
+				Where("redeemer_wx_id", redeemerWxID).
+				Where("feature_id", featureID).Count()
+			if err != nil {
+				return err
+			}
+			if un > 0 {
+				return gerror.NewCode(gcode.CodeInvalidParameter, "该账号已使用过邀请码开通此功能")
+			}
+		}
+
+		subjType, subjKey, sErr := ResolveActivateSubject(ctx, featureID, deviceNo, redeemerWxID)
+		if sErr != nil {
+			return sErr
+		}
+		// 经原子入口授予：预测 +1；其它读 feature_def 邀请/广告分列天数；主体按 activation_subject。
 		if err := ActivateFeature(ctx, ActivateFeatureRequest{
 			FeatureID:   featureID,
-			SubjectType: ActivationSubjectDevice,
-			SubjectKey:  deviceNo,
+			SubjectType: subjType,
+			SubjectKey:  subjKey,
 			Channel:     UnlockMethodInviteCode,
 			ChannelRef:  code,
 			ActorWxID:   redeemerWxID,

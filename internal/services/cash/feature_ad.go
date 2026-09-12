@@ -16,7 +16,9 @@ import (
 const adDailyLimit = 5
 
 // CompleteFeatureAd MVP：信任客户端广告完成申报并授予。
-func CompleteFeatureAd(ctx context.Context, deviceNo, featureID, idemKey string, grantQty, durationDays int) error {
+//
+// 业务：幂等与日限仍按 device 防刷；权益主体按 feature_def.activation_subject（user 时须 wxId>0）。
+func CompleteFeatureAd(ctx context.Context, deviceNo, featureID, idemKey string, grantQty, durationDays int, wxID int64) error {
 	deviceNo = strings.TrimSpace(deviceNo)
 	featureID = strings.TrimSpace(featureID)
 	if deviceNo == "" || featureID == "" {
@@ -68,13 +70,17 @@ func CompleteFeatureAd(ctx context.Context, deviceNo, featureID, idemKey string,
 	// 广告与邀请分列效果：经 ActivateFeature（预测 +1；权益型读 def.ad_duration_days）。
 	// 客户端传入 durationDays 忽略，避免与邀请分叉。
 	_ = durationDays
+	subjType, subjKey, sErr := ResolveActivateSubject(ctx, featureID, deviceNo, wxID)
+	if sErr != nil {
+		return sErr
+	}
 	return ActivateFeature(ctx, ActivateFeatureRequest{
 		FeatureID:   featureID,
-		SubjectType: ActivationSubjectDevice,
-		SubjectKey:  deviceNo,
+		SubjectType: subjType,
+		SubjectKey:  subjKey,
 		Channel:     UnlockMethodAd,
 		ChannelRef:  "ad:" + idemKey,
-		ActorWxID:   0,
+		ActorWxID:   wxID,
 		GrantQty:    grantQty,
 	})
 }

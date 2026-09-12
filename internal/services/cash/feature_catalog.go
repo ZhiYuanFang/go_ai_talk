@@ -22,6 +22,7 @@ type FeatureDefRow struct {
 	InviteDurationDays  int    `json:"inviteDurationDays"`
 	AdDurationDays      int    `json:"adDurationDays"`
 	DefaultAllowedCount int    `json:"defaultAllowedCount"`
+	ActivationSubject   string `json:"activationSubject"` // device|user
 	Status              int    `json:"status"`
 	SortOrder           int    `json:"sortOrder"`
 }
@@ -63,6 +64,7 @@ type featureDefDB struct {
 	InviteDurationDays  int    `json:"invite_duration_days"`
 	AdDurationDays      int    `json:"ad_duration_days"`
 	DefaultAllowedCount int    `json:"default_allowed_count"`
+	ActivationSubject   string `json:"activation_subject"`
 	Status              int    `json:"status"`
 	SortOrder           int    `json:"sort_order"`
 }
@@ -79,7 +81,7 @@ func ListActiveFeatureDefs(ctx context.Context) ([]FeatureDefRow, error) {
 	}
 	var rawRows []featureDefDB
 	err := g.DB().Model("feature_def").Ctx(ctx).
-		Fields("feature_id,title,description,unlock_methods,duration_days,invite_duration_days,ad_duration_days,default_allowed_count,status,sort_order").
+		Fields("feature_id,title,description,unlock_methods,duration_days,invite_duration_days,ad_duration_days,default_allowed_count,activation_subject,status,sort_order").
 		Where("status", 1).
 		OrderAsc("sort_order").OrderAsc("feature_id").
 		Scan(&rawRows)
@@ -93,6 +95,7 @@ func ListActiveFeatureDefs(ctx context.Context) ([]FeatureDefRow, error) {
 			UnlockMethods: r.UnlockMethods, DurationDays: r.DurationDays,
 			InviteDurationDays: r.InviteDurationDays, AdDurationDays: r.AdDurationDays,
 			DefaultAllowedCount: r.DefaultAllowedCount,
+			ActivationSubject:    NormalizeActivationSubject(r.ActivationSubject),
 			Status: r.Status, SortOrder: r.SortOrder,
 		})
 	}
@@ -108,10 +111,11 @@ type FeatureCatalogResult struct {
 	InviteGroupQrUrl  string               `json:"inviteGroupQrUrl,omitempty"`
 }
 
-// GetFeatureCatalog 合成目录：定义 ⊕ 设备权益 ⊕ allowedCount ⊕ 可售 SKU；不含 UCG。
+// GetFeatureCatalog 合成目录：定义 ⊕ 设备/账号权益 ⊕ allowedCount ⊕ 可售 SKU；不含 UCG。
 //
 // 业务：客户端一次读齐开通态与支付展示；建单仍只信服务端 productCode 对应价。
-func GetFeatureCatalog(ctx context.Context, deviceNo string) (*FeatureCatalogResult, error) {
+// wxID：user 主体功能用账号权益；<=0 时 user 类视为未解锁（不得用设备权益冒充）。
+func GetFeatureCatalog(ctx context.Context, deviceNo string, wxID int64) (*FeatureCatalogResult, error) {
 	deviceNo = strings.TrimSpace(deviceNo)
 	defs, err := ListActiveFeatureDefs(ctx)
 	if err != nil {
@@ -134,6 +138,20 @@ func GetFeatureCatalog(ctx context.Context, deviceNo string) (*FeatureCatalogRes
 			continue
 		}
 		entMap[e.FeatureId] = e
+	}
+	userEntMap := map[string]entRow{}
+	if wxID > 0 {
+		var uents []entRow
+		_ = g.DB().Model("feature_user_entitlement").Ctx(ctx).
+			Fields("feature_id,unlock_method,expires_at").
+			Where("wx_id", wxID).
+			Scan(&uents)
+		for _, e := range uents {
+			if e.ExpiresAt > 0 && e.ExpiresAt < now {
+				continue
+			}
+			userEntMap[e.FeatureId] = e
+		}
 	}
 	allowedSt, _ := GetDeviceAllowedCountState(ctx, deviceNo)
 
@@ -180,7 +198,14 @@ func GetFeatureCatalog(ctx context.Context, deviceNo string) (*FeatureCatalogRes
 			item.Unlocked = ac > 0
 			item.TotalActivatableCount = totalActivatable
 		}
-		if e, ok := entMap[d.FeatureId]; ok {
+		subj := NormalizeActivationSubject(d.ActivationSubject)
+		if subj == ActivationSubjectUser {
+			if e, ok := userEntMap[d.FeatureId]; ok {
+				item.Unlocked = true
+				item.UnlockMethod = e.UnlockMethod
+				item.ExpiresAt = e.ExpiresAt
+			}
+		} else if e, ok := entMap[d.FeatureId]; ok {
 			item.Unlocked = true
 			item.UnlockMethod = e.UnlockMethod
 			item.ExpiresAt = e.ExpiresAt

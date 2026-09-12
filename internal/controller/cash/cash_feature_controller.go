@@ -93,13 +93,38 @@ func (c *CashFeatureController) InternalCareAlertAccess(ctx context.Context, req
 	}, nil
 }
 
+// InternalGrowthTrajectoryAccess GET /cash/internal/api/growth-trajectory/access
+// 供 voice 门禁：账号开通 ∨ VIP（无喂养门闸）；须内部密钥。
+func (c *CashFeatureController) InternalGrowthTrajectoryAccess(ctx context.Context, req *v1.CashInternalGrowthTrajectoryAccessReq) (*v1.CashInternalGrowthTrajectoryAccessRes, error) {
+	r := ghttp.RequestFromCtx(ctx)
+	if !cash.ValidateInternalSecret(cash.InternalSecretFromRequest(r)) {
+		return nil, gerror.NewCode(gcode.CodeNotAuthorized, "内部接口未授权")
+	}
+	dn := strings.TrimSpace(req.DeviceNo)
+	if dn == "" {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "deviceNo 不能为空")
+	}
+	if req.WxId <= 0 {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "wxId 无效")
+	}
+	out, err := cash.GetGrowthTrajectoryAccess(ctx, dn, req.WxId)
+	if err != nil {
+		return nil, err
+	}
+	return &v1.CashInternalGrowthTrajectoryAccessRes{
+		Allowed: out.Allowed, FeatureActive: out.FeatureActive,
+		EntitlementExpiresAt: out.EntitlementExpiresAt,
+	}, nil
+}
+
 // Catalog GET /cash/app/api/feature/catalog
 func (c *CashFeatureController) Catalog(ctx context.Context, _ *v1.CashFeatureCatalogReq) (*v1.CashFeatureCatalogRes, error) {
 	dn, err := cashDeviceNoFromHeader(ctx)
 	if err != nil {
 		return nil, err
 	}
-	cat, err := cash.GetFeatureCatalog(ctx, dn)
+	wxID := cashWxIDOptional(ctx)
+	cat, err := cash.GetFeatureCatalog(ctx, dn, wxID)
 	if err != nil {
 		return nil, err
 	}
@@ -200,7 +225,8 @@ func (c *CashFeatureController) AdComplete(ctx context.Context, req *v1.CashFeat
 	if err != nil {
 		return nil, err
 	}
-	if err := cash.CompleteFeatureAd(ctx, dn, req.FeatureId, req.IdempotencyKey, 1, 0); err != nil {
+	wxID := cashWxIDOptional(ctx)
+	if err := cash.CompleteFeatureAd(ctx, dn, req.FeatureId, req.IdempotencyKey, 1, 0, wxID); err != nil {
 		return nil, err
 	}
 	return &v1.CashFeatureAdCompleteRes{}, nil
@@ -224,6 +250,7 @@ func (c *CashFeatureController) AdminFeatureDefs(ctx context.Context, _ *v1.Cash
 			UnlockMethods: it.UnlockMethods, DurationDays: it.DurationDays,
 			InviteDurationDays: it.InviteDurationDays, AdDurationDays: it.AdDurationDays,
 			DefaultAllowedCount: it.DefaultAllowedCount,
+			ActivationSubject:    it.ActivationSubject,
 			Status: it.Status, SortOrder: it.SortOrder,
 		})
 	}
@@ -244,7 +271,7 @@ func (c *CashFeatureController) AdminFeatureDefsUpsert(ctx context.Context, req 
 	if req.AdDurationDays != nil {
 		adDays = *req.AdDurationDays
 	}
-	if err := cash.AdminUpdateFeatureDef(ctx, req.FeatureId, req.Title, req.Description, req.UnlockMethods, req.DurationDays, inviteDays, adDays, req.Status, req.SortOrder, req.DefaultAllowedCount); err != nil {
+	if err := cash.AdminUpdateFeatureDef(ctx, req.FeatureId, req.Title, req.Description, req.UnlockMethods, req.DurationDays, inviteDays, adDays, req.Status, req.SortOrder, req.DefaultAllowedCount, req.ActivationSubject); err != nil {
 		return nil, err
 	}
 	return &v1.CashAdminFeatureDefUpsertRes{}, nil

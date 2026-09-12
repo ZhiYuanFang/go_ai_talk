@@ -515,3 +515,150 @@ func (c *PythonAIClient) CareAlertFeedback(ctx context.Context, req *CareAlertFe
 	}
 	return nil
 }
+
+// ---------- 成长轨迹预测（growth-trajectory）Go → Python 内部契约 ----------
+
+// GrowthTrajectoryAnswer 用户回答（对齐 Python question_id/value）。
+type GrowthTrajectoryAnswer struct {
+	QuestionID string `json:"question_id"`
+	Value      string `json:"value"`
+}
+
+// GrowthTrajectoryTurnRequest POST /v1/growth-trajectory/turn 请求体。
+type GrowthTrajectoryTurnRequest struct {
+	DeviceNo      string                  `json:"device_no"`
+	SessionID     string                  `json:"session_id,omitempty"`
+	Action        string                  `json:"action"`
+	Answer        *GrowthTrajectoryAnswer `json:"answer,omitempty"`
+	PriorFeedback []interface{}           `json:"prior_feedback"`
+	HorizonDays   int                     `json:"horizon_days"`
+	Model         map[string]interface{}  `json:"model"`
+}
+
+// GrowthTrajectoryTurnStreamCallback 解析 Python SSE 命名事件后的回调（data 为原始 JSON 字符串）。
+type GrowthTrajectoryTurnStreamCallback struct {
+	OnThinking func(dataJSON string) error
+	OnQuestion func(dataJSON string) error
+	OnResult   func(dataJSON string) error
+	OnError    func(dataJSON string) error
+	OnDone     func(dataJSON string) error
+}
+
+// GrowthTrajectoryTurnStream 调用 Python 成长轨迹 turn SSE；解析 event+data，结束于 data: [DONE]。
+func (c *PythonAIClient) GrowthTrajectoryTurnStream(ctx context.Context, req *GrowthTrajectoryTurnRequest, cb *GrowthTrajectoryTurnStreamCallback) error {
+	if req.PriorFeedback == nil {
+		req.PriorFeedback = []interface{}{}
+	}
+	if req.Model == nil {
+		req.Model = map[string]interface{}{}
+	}
+	body, err := json.Marshal(req)
+	if err != nil {
+		return fmt.Errorf("序列化成长轨迹 turn 请求失败: %w", err)
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/growth-trajectory/turn", strings.NewReader(string(body)))
+	if err != nil {
+		return fmt.Errorf("创建成长轨迹 turn 请求失败: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Accept", "text/event-stream")
+
+	client := &http.Client{Timeout: 120 * time.Second}
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("调用 Python 成长轨迹 turn 失败: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+		return fmt.Errorf("Python 成长轨迹 turn 返回 %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	scanner := bufio.NewScanner(resp.Body)
+	// 放大缓冲以容纳较长 Markdown result。
+	scanBuf := make([]byte, 0, 64*1024)
+	scanner.Buffer(scanBuf, 2*1024*1024)
+
+	var eventName string
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" {
+			eventName = ""
+			continue
+		}
+		if strings.HasPrefix(line, "event:") {
+			eventName = strings.TrimSpace(strings.TrimPrefix(line, "event:"))
+			continue
+		}
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if data == "[DONE]" {
+			break
+		}
+		if cb == nil {
+			continue
+		}
+		var cbErr error
+		switch eventName {
+		case "thinking":
+			if cb.OnThinking != nil {
+				cbErr = cb.OnThinking(data)
+			}
+		case "question":
+			if cb.OnQuestion != nil {
+				cbErr = cb.OnQuestion(data)
+			}
+		case "result":
+			if cb.OnResult != nil {
+				cbErr = cb.OnResult(data)
+			}
+		case "error":
+			if cb.OnError != nil {
+				cbErr = cb.OnError(data)
+			}
+		case "done":
+			if cb.OnDone != nil {
+				cbErr = cb.OnDone(data)
+			}
+		default:
+			// 兼容无 event 行、仅 data 内含 type 的退化格式。
+			var typed struct {
+				Type string `json:"type"`
+			}
+			if json.Unmarshal([]byte(data), &typed) == nil {
+				switch typed.Type {
+				case "thinking":
+					if cb.OnThinking != nil {
+						cbErr = cb.OnThinking(data)
+					}
+				case "question":
+					if cb.OnQuestion != nil {
+						cbErr = cb.OnQuestion(data)
+					}
+				case "result":
+					if cb.OnResult != nil {
+						cbErr = cb.OnResult(data)
+					}
+				case "error":
+					if cb.OnError != nil {
+						cbErr = cb.OnError(data)
+					}
+				case "done":
+					if cb.OnDone != nil {
+						cbErr = cb.OnDone(data)
+					}
+				}
+			}
+		}
+		if cbErr != nil {
+			return cbErr
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("读取 Python 成长轨迹 SSE 失败: %w", err)
+	}
+	glog.Debugf(ctx, "[Python AI] 成长轨迹 turn 完成。deviceNo=%s action=%s", req.DeviceNo, req.Action)
+	return nil
+}
