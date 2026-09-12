@@ -67,7 +67,8 @@ type CashFeatureCatalogProductItem struct {
 }
 
 // CashFeatureCatalogItem 目录项（开通态 + 可售 products）。
-// AllowedCount：预测永久可激活条数（defaultFree+delta）；TotalActivatableCount：一级根事件天花板（含无子根）。
+// AllowedCount：预测永久可激活条数（defaultFree+delta）；DefaultCount：定义表默认免费条数；
+// TotalActivatableCount：一级根事件天花板（含无子根）。
 type CashFeatureCatalogItem struct {
 	FeatureId             string                          `json:"featureId"`
 	Title                 string                          `json:"title"`
@@ -77,6 +78,7 @@ type CashFeatureCatalogItem struct {
 	UnlockMethod          string                          `json:"unlockMethod,omitempty"`
 	ExpiresAt             int64                           `json:"expiresAt,omitempty"`
 	AllowedCount          *int                            `json:"allowedCount,omitempty"`
+	DefaultCount          *int                            `json:"defaultCount,omitempty"`
 	TotalActivatableCount *int                            `json:"totalActivatableCount,omitempty"`
 	Products              []CashFeatureCatalogProductItem `json:"products"`
 }

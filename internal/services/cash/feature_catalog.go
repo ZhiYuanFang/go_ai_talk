@@ -37,16 +37,17 @@ type FeatureCatalogProduct struct {
 
 // FeatureCatalogItem 合成目录项（含设备开通态与可售 SKU）。
 type FeatureCatalogItem struct {
-	FeatureId              string                  `json:"featureId"`
-	Title                  string                  `json:"title"`
-	Description            string                  `json:"description"`
-	UnlockMethods          string                  `json:"unlockMethods"`
-	Unlocked               bool                    `json:"unlocked"`
-	UnlockMethod           string                  `json:"unlockMethod,omitempty"`
-	ExpiresAt              int64                   `json:"expiresAt,omitempty"`
-	AllowedCount           *int                    `json:"allowedCount,omitempty"`
-	TotalActivatableCount  *int                    `json:"totalActivatableCount,omitempty"`
-	Products               []FeatureCatalogProduct `json:"products"`
+	FeatureId             string                  `json:"featureId"`
+	Title                 string                  `json:"title"`
+	Description           string                  `json:"description"`
+	UnlockMethods         string                  `json:"unlockMethods"`
+	Unlocked              bool                    `json:"unlocked"`
+	UnlockMethod          string                  `json:"unlockMethod,omitempty"`
+	ExpiresAt             int64                   `json:"expiresAt,omitempty"`
+	AllowedCount          *int                    `json:"allowedCount,omitempty"`
+	DefaultCount          *int                    `json:"defaultCount,omitempty"` // 预测：定义表默认免费条数
+	TotalActivatableCount *int                    `json:"totalActivatableCount,omitempty"`
+	Products              []FeatureCatalogProduct `json:"products"`
 }
 
 type featureDefDB struct {
@@ -161,6 +162,12 @@ func GetFeatureCatalog(ctx context.Context, deviceNo string) (*FeatureCatalogRes
 				ac = 0
 			}
 			item.AllowedCount = &ac
+			// 默认免费条数原样下发，供客户端「默认已开启」文案；不参与闸门。
+			dc := d.DefaultAllowedCount
+			if dc < 0 {
+				dc = 0
+			}
+			item.DefaultCount = &dc
 			item.Unlocked = ac > 0
 			item.TotalActivatableCount = totalActivatable
 		}

@@ -112,7 +112,7 @@ func (c *CashFeatureController) Catalog(ctx context.Context, _ *v1.CashFeatureCa
 			FeatureId: it.FeatureId, Title: it.Title, Description: it.Description,
 			UnlockMethods: it.UnlockMethods, Unlocked: it.Unlocked,
 			UnlockMethod: it.UnlockMethod, ExpiresAt: it.ExpiresAt, AllowedCount: it.AllowedCount,
-			TotalActivatableCount: it.TotalActivatableCount,
+			DefaultCount: it.DefaultCount, TotalActivatableCount: it.TotalActivatableCount,
 			Products: make([]v1.CashFeatureCatalogProductItem, 0, len(it.Products)),
 		}
 		for _, p := range it.Products {
