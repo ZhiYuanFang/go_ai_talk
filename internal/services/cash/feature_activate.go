@@ -21,7 +21,7 @@ type ActivateFeatureRequest struct {
 	Channel     string // payment | invite_code | ad
 	ChannelRef  string
 	ActorWxID   int64
-	// 以下字段主要由支付通道传入（SKU）；邀请/广告忽略 GrantKind/DurationDays，改读 feature_def。
+	// 以下字段主要由支付通道传入（SKU）；邀请/广告忽略 GrantKind/DurationDays，改读 feature_def 分列天数。
 	GrantKind    string
 	GrantQty     int
 	DurationDays int
@@ -31,7 +31,8 @@ type ActivateFeatureRequest struct {
 //
 // 效果解析：
 //   - payment：grant_kind/quantity/duration 来自入参（SKU）；
-//   - invite_code / ad：同源读 feature_def.duration_days（0=永久）；预测强制 allowed_count_delta +1。
+//   - invite_code：读 feature_def.invite_duration_days（0=永久）；预测强制 allowed_count_delta +1；
+//   - ad：读 feature_def.ad_duration_days（0=永久）；预测强制 allowed_count_delta +1。
 //
 // Args: req 见 ActivateFeatureRequest。
 // Returns: 参数/主体错误或写库错误。
@@ -69,18 +70,23 @@ func ActivateFeature(ctx context.Context, req ActivateFeatureRequest) error {
 		return GrantEntitlementOrCount(ctx, subjectKey, featureID, channel, GrantKindAllowedCountDelta, grantQty, 0, req.ChannelRef)
 	}
 
-	// 邀请/广告：权益型天数与广告同源，取自功能定义。
+	// 邀请/广告：权益型天数分列读取。
 	if channel == UnlockMethodInviteCode || channel == UnlockMethodAd {
 		var def struct {
-			FeatureId    string `json:"feature_id"`
-			DurationDays int    `json:"duration_days"`
-			Status       int    `json:"status"`
+			FeatureId          string `json:"feature_id"`
+			InviteDurationDays int    `json:"invite_duration_days"`
+			AdDurationDays     int    `json:"ad_duration_days"`
+			Status             int    `json:"status"`
 		}
 		_ = g.DB().Model("feature_def").Ctx(ctx).Where("feature_id", featureID).Scan(&def)
 		if def.FeatureId == "" || def.Status != 1 {
 			return gerror.NewCode(gcode.CodeInvalidParameter, "功能不存在或已停用")
 		}
-		durationDays = def.DurationDays
+		if channel == UnlockMethodInviteCode {
+			durationDays = def.InviteDurationDays
+		} else {
+			durationDays = def.AdDurationDays
+		}
 		grantKind = GrantKindEntitlement
 	}
 	if grantKind == "" {

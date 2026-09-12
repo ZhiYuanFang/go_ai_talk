@@ -223,7 +223,7 @@ func RedeemInviteCode(ctx context.Context, redeemerWxID int64, deviceNo, code, f
 			}
 		}
 
-		// 经原子入口授予：预测 +1；其它读 feature_def.duration_days（邀请/广告同源）。
+		// 经原子入口授予：预测 +1；其它读 feature_def 邀请/广告分列天数。
 		if err := ActivateFeature(ctx, ActivateFeatureRequest{
 			FeatureID:   featureID,
 			SubjectType: ActivationSubjectDevice,

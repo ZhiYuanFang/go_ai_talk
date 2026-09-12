@@ -113,6 +113,7 @@ func (c *CashFeatureController) Catalog(ctx context.Context, _ *v1.CashFeatureCa
 			UnlockMethods: it.UnlockMethods, Unlocked: it.Unlocked,
 			UnlockMethod: it.UnlockMethod, ExpiresAt: it.ExpiresAt, AllowedCount: it.AllowedCount,
 			DefaultCount: it.DefaultCount, TotalActivatableCount: it.TotalActivatableCount,
+			InviteDurationDays: it.InviteDurationDays, AdDurationDays: it.AdDurationDays,
 			Products: make([]v1.CashFeatureCatalogProductItem, 0, len(it.Products)),
 		}
 		for _, p := range it.Products {
@@ -221,6 +222,7 @@ func (c *CashFeatureController) AdminFeatureDefs(ctx context.Context, _ *v1.Cash
 		res.List = append(res.List, v1.CashAdminFeatureDefItem{
 			FeatureId: it.FeatureId, Title: it.Title, Description: it.Description,
 			UnlockMethods: it.UnlockMethods, DurationDays: it.DurationDays,
+			InviteDurationDays: it.InviteDurationDays, AdDurationDays: it.AdDurationDays,
 			DefaultAllowedCount: it.DefaultAllowedCount,
 			Status: it.Status, SortOrder: it.SortOrder,
 		})
@@ -233,7 +235,16 @@ func (c *CashFeatureController) AdminFeatureDefsUpsert(ctx context.Context, req 
 	if err := requireCashAdmin(ctx); err != nil {
 		return nil, err
 	}
-	if err := cash.AdminUpdateFeatureDef(ctx, req.FeatureId, req.Title, req.Description, req.UnlockMethods, req.DurationDays, req.Status, req.SortOrder, req.DefaultAllowedCount); err != nil {
+	// 旧 Admin 只传 durationDays：双写邀请/广告列；新端可分别指定。
+	inviteDays := req.DurationDays
+	adDays := req.DurationDays
+	if req.InviteDurationDays != nil {
+		inviteDays = *req.InviteDurationDays
+	}
+	if req.AdDurationDays != nil {
+		adDays = *req.AdDurationDays
+	}
+	if err := cash.AdminUpdateFeatureDef(ctx, req.FeatureId, req.Title, req.Description, req.UnlockMethods, req.DurationDays, inviteDays, adDays, req.Status, req.SortOrder, req.DefaultAllowedCount); err != nil {
 		return nil, err
 	}
 	return &v1.CashAdminFeatureDefUpsertRes{}, nil

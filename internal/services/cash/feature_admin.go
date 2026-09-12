@@ -17,8 +17,10 @@ import (
 
 // AdminUpdateFeatureDef 更新已有功能定义（禁止新建任意 featureId；编号与客户端约定）。
 //
-// Args: defaultAllowedCount 预测类默认免费开通条数（其它功能可 0）。
-func AdminUpdateFeatureDef(ctx context.Context, featureID, title, desc, unlockMethods string, durationDays, status, sortOrder, defaultAllowedCount int) error {
+// Args: durationDays 旧字段，仍写入；invite/ad 为邀请与广告授予天数（0=永久）。
+//
+//	defaultAllowedCount 预测类默认免费开通条数（其它功能可 0）。
+func AdminUpdateFeatureDef(ctx context.Context, featureID, title, desc, unlockMethods string, durationDays, inviteDurationDays, adDurationDays, status, sortOrder, defaultAllowedCount int) error {
 	featureID = strings.TrimSpace(featureID)
 	if featureID == "" {
 		return gerror.NewCode(gcode.CodeInvalidParameter, "featureId 不能为空")
@@ -36,23 +38,25 @@ func AdminUpdateFeatureDef(ctx context.Context, featureID, title, desc, unlockMe
 	}
 	_, err = g.DB().Model("feature_def").Ctx(ctx).Where("feature_id", featureID).Data(g.Map{
 		"title": title, "description": desc, "unlock_methods": unlockMethods,
-		"duration_days": durationDays, "default_allowed_count": defaultAllowedCount,
+		"duration_days": durationDays,
+		"invite_duration_days": inviteDurationDays, "ad_duration_days": adDurationDays,
+		"default_allowed_count": defaultAllowedCount,
 		"status": status, "sort_order": sortOrder, "updated_at": now,
 	}).Update()
 	invalidateFeatureDefCache(ctx)
 	return err
 }
 
-// AdminUpsertFeatureDef 兼容旧名：仅更新已存在定义。
+// AdminUpsertFeatureDef 兼容旧名：仅更新已存在定义（邀请/广告天数与 durationDays 双写）。
 func AdminUpsertFeatureDef(ctx context.Context, featureID, title, desc, unlockMethods string, durationDays, status, sortOrder int) error {
-	return AdminUpdateFeatureDef(ctx, featureID, title, desc, unlockMethods, durationDays, status, sortOrder, 0)
+	return AdminUpdateFeatureDef(ctx, featureID, title, desc, unlockMethods, durationDays, durationDays, durationDays, status, sortOrder, 0)
 }
 
 // AdminListFeatureDefs 管理端功能列表（含停用）。
 func AdminListFeatureDefs(ctx context.Context) ([]FeatureDefRow, error) {
 	var raw []featureDefDB
 	err := g.DB().Model("feature_def").Ctx(ctx).
-		Fields("feature_id,title,description,unlock_methods,duration_days,default_allowed_count,status,sort_order").
+		Fields("feature_id,title,description,unlock_methods,duration_days,invite_duration_days,ad_duration_days,default_allowed_count,status,sort_order").
 		OrderAsc("sort_order").Scan(&raw)
 	if err != nil {
 		return nil, err
@@ -62,6 +66,7 @@ func AdminListFeatureDefs(ctx context.Context) ([]FeatureDefRow, error) {
 		out = append(out, FeatureDefRow{
 			FeatureId: r.FeatureId, Title: r.Title, Description: r.Description,
 			UnlockMethods: r.UnlockMethods, DurationDays: r.DurationDays,
+			InviteDurationDays: r.InviteDurationDays, AdDurationDays: r.AdDurationDays,
 			DefaultAllowedCount: r.DefaultAllowedCount,
 			Status: r.Status, SortOrder: r.SortOrder,
 		})

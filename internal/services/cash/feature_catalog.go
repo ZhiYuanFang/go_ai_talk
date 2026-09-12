@@ -19,6 +19,8 @@ type FeatureDefRow struct {
 	Description         string `json:"description"`
 	UnlockMethods       string `json:"unlockMethods"`
 	DurationDays        int    `json:"durationDays"`
+	InviteDurationDays  int    `json:"inviteDurationDays"`
+	AdDurationDays      int    `json:"adDurationDays"`
 	DefaultAllowedCount int    `json:"defaultAllowedCount"`
 	Status              int    `json:"status"`
 	SortOrder           int    `json:"sortOrder"`
@@ -47,6 +49,8 @@ type FeatureCatalogItem struct {
 	AllowedCount          *int                    `json:"allowedCount,omitempty"`
 	DefaultCount          *int                    `json:"defaultCount,omitempty"` // 预测：定义表默认免费条数
 	TotalActivatableCount *int                    `json:"totalActivatableCount,omitempty"`
+	InviteDurationDays    int                     `json:"inviteDurationDays"`
+	AdDurationDays        int                     `json:"adDurationDays"`
 	Products              []FeatureCatalogProduct `json:"products"`
 }
 
@@ -56,6 +60,8 @@ type featureDefDB struct {
 	Description         string `json:"description"`
 	UnlockMethods       string `json:"unlock_methods"`
 	DurationDays        int    `json:"duration_days"`
+	InviteDurationDays  int    `json:"invite_duration_days"`
+	AdDurationDays      int    `json:"ad_duration_days"`
 	DefaultAllowedCount int    `json:"default_allowed_count"`
 	Status              int    `json:"status"`
 	SortOrder           int    `json:"sort_order"`
@@ -73,7 +79,7 @@ func ListActiveFeatureDefs(ctx context.Context) ([]FeatureDefRow, error) {
 	}
 	var rawRows []featureDefDB
 	err := g.DB().Model("feature_def").Ctx(ctx).
-		Fields("feature_id,title,description,unlock_methods,duration_days,default_allowed_count,status,sort_order").
+		Fields("feature_id,title,description,unlock_methods,duration_days,invite_duration_days,ad_duration_days,default_allowed_count,status,sort_order").
 		Where("status", 1).
 		OrderAsc("sort_order").OrderAsc("feature_id").
 		Scan(&rawRows)
@@ -85,6 +91,7 @@ func ListActiveFeatureDefs(ctx context.Context) ([]FeatureDefRow, error) {
 		rows = append(rows, FeatureDefRow{
 			FeatureId: r.FeatureId, Title: r.Title, Description: r.Description,
 			UnlockMethods: r.UnlockMethods, DurationDays: r.DurationDays,
+			InviteDurationDays: r.InviteDurationDays, AdDurationDays: r.AdDurationDays,
 			DefaultAllowedCount: r.DefaultAllowedCount,
 			Status: r.Status, SortOrder: r.SortOrder,
 		})
@@ -150,7 +157,9 @@ func GetFeatureCatalog(ctx context.Context, deviceNo string) (*FeatureCatalogRes
 		item := FeatureCatalogItem{
 			FeatureId: d.FeatureId, Title: d.Title, Description: d.Description,
 			UnlockMethods: d.UnlockMethods,
-			Products:      prodByFeature[d.FeatureId],
+			InviteDurationDays: d.InviteDurationDays,
+			AdDurationDays:     d.AdDurationDays,
+			Products:           prodByFeature[d.FeatureId],
 		}
 		if item.Products == nil {
 			item.Products = []FeatureCatalogProduct{}

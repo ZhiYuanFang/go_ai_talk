@@ -65,7 +65,7 @@ func CompleteFeatureAd(ctx context.Context, deviceNo, featureID, idemKey string,
 	if def.FeatureId == "" || def.Status != 1 || !strings.Contains(def.UnlockMethods, UnlockMethodAd) {
 		return gerror.NewCode(gcode.CodeInvalidParameter, "功能不支持广告开通")
 	}
-	// 广告与邀请同源效果：经 ActivateFeature（预测 +1；权益型读 def.duration_days）。
+	// 广告与邀请分列效果：经 ActivateFeature（预测 +1；权益型读 def.ad_duration_days）。
 	// 客户端传入 durationDays 忽略，避免与邀请分叉。
 	_ = durationDays
 	return ActivateFeature(ctx, ActivateFeatureRequest{

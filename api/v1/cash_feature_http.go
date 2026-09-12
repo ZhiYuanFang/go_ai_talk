@@ -69,6 +69,7 @@ type CashFeatureCatalogProductItem struct {
 // CashFeatureCatalogItem 目录项（开通态 + 可售 products）。
 // AllowedCount：预测永久可激活条数（defaultFree+delta）；DefaultCount：定义表默认免费条数；
 // TotalActivatableCount：一级根事件天花板（含无子根）。
+// InviteDurationDays / AdDurationDays：邀请码 / 广告授予天数（0=永久），独立于付费 SKU。
 type CashFeatureCatalogItem struct {
 	FeatureId             string                          `json:"featureId"`
 	Title                 string                          `json:"title"`
@@ -80,6 +81,8 @@ type CashFeatureCatalogItem struct {
 	AllowedCount          *int                            `json:"allowedCount,omitempty"`
 	DefaultCount          *int                            `json:"defaultCount,omitempty"`
 	TotalActivatableCount *int                            `json:"totalActivatableCount,omitempty"`
+	InviteDurationDays    int                             `json:"inviteDurationDays"`
+	AdDurationDays        int                             `json:"adDurationDays"`
 	Products              []CashFeatureCatalogProductItem `json:"products"`
 }
 
@@ -174,12 +177,15 @@ type CashAdminFeatureDefItem struct {
 	Description         string `json:"description"`
 	UnlockMethods       string `json:"unlockMethods"`
 	DurationDays        int    `json:"durationDays"`
+	InviteDurationDays  int    `json:"inviteDurationDays"`
+	AdDurationDays      int    `json:"adDurationDays"`
 	DefaultAllowedCount int    `json:"defaultAllowedCount"`
 	Status              int    `json:"status"`
 	SortOrder           int    `json:"sortOrder"`
 }
 
 // CashAdminFeatureDefUpsertReq POST 更新功能定义（禁止新建未知 featureId）。
+// InviteDurationDays / AdDurationDays 可空：旧管理端只传 durationDays 时双写到两新列。
 type CashAdminFeatureDefUpsertReq struct {
 	g.Meta              `path:"/cash/admin/api/feature/defs" method:"post" tags:"cash-admin" summary:"管理端更新功能定义（编号只读）"`
 	FeatureId           string `json:"featureId" v:"required"`
@@ -187,6 +193,8 @@ type CashAdminFeatureDefUpsertReq struct {
 	Description         string `json:"description"`
 	UnlockMethods       string `json:"unlockMethods"`
 	DurationDays        int    `json:"durationDays"`
+	InviteDurationDays  *int   `json:"inviteDurationDays"`
+	AdDurationDays      *int   `json:"adDurationDays"`
 	DefaultAllowedCount int    `json:"defaultAllowedCount"`
 	Status              int    `json:"status" d:"1"`
 	SortOrder           int    `json:"sortOrder"`
