@@ -8,22 +8,40 @@
 	<link rel="stylesheet" href="/resource/public/admin-pages.css" />
 	<style>
 		.hint { font-size: 12px; color: #64748b; line-height: 1.55; margin: 0 0 14px; }
-		.form-stack { display: flex; flex-direction: column; gap: 12px; max-width: 720px; margin-bottom: 14px; }
+		.form-stack { display: flex; flex-direction: column; gap: 14px; max-width: 920px; margin-bottom: 14px; }
+		.form-section { border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px; background: #f8fafc; }
+		.form-section h4 { margin: 0 0 10px; font-size: 13px; color: #0f172a; font-weight: 700; }
+		.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; }
+		.form-grid .span-2 { grid-column: 1 / -1; }
 		.field { display: flex; flex-direction: column; gap: 4px; }
 		.field label { font-size: 12px; color: #334155; font-weight: 600; }
 		.field .sub { font-size: 11px; color: #94a3b8; font-weight: 400; line-height: 1.35; }
-		.field input, .field select, .field textarea { font-size: 13px; padding: 6px 8px; max-width: 420px; }
+		.field input, .field select, .field textarea { font-size: 13px; padding: 6px 8px; width: 100%; max-width: 100%; box-sizing: border-box; }
 		.field textarea { min-height: 64px; resize: vertical; }
 		.field-readonly input { background: #f1f5f9; color: #64748b; }
 		.checks { display: flex; flex-wrap: wrap; gap: 10px 16px; padding: 4px 0; }
 		.checks label { font-weight: 500; font-size: 13px; display: flex; align-items: center; gap: 6px; }
-		.btn-row { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-top: 4px; }
-		.btn-row button { min-width: 160px; }
+		.btn-row { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 4px; }
+		.btn-row button { min-width: 120px; }
 		.badge-on { color: #059669; font-weight: 600; }
 		.badge-off { color: #dc2626; font-weight: 600; }
 		.price-preview { font-size: 12px; color: #0f766e; margin-left: 4px; }
 		.clickable { cursor: pointer; }
 		.clickable:hover { background: #f8fafc; }
+		.visual-row { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
+		.logo-preview {
+			width: 64px; height: 64px; border-radius: 12px; border: 1px solid #e2e8f0;
+			background: #fff; display: flex; align-items: center; justify-content: center; overflow: hidden;
+		}
+		.logo-preview img { width: 100%; height: 100%; object-fit: contain; }
+		.logo-preview .ph { font-size: 11px; color: #94a3b8; }
+		.color-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+		.color-row input[type="color"] { width: 42px; height: 32px; padding: 0; border: 1px solid #cbd5e1; border-radius: 6px; }
+		.color-row input[type="text"] { max-width: 110px; }
+		@media (max-width: 720px) {
+			.form-grid { grid-template-columns: 1fr; }
+			.form-grid .span-2 { grid-column: auto; }
+		}
 	</style>
 </head>
 <body>
@@ -42,62 +60,92 @@
 		</p>
 
 		<h3>一、功能定义（App 目录项）</h3>
-		<p class="hint">点击列表行载入编辑。功能编号只读；标题/简介由服务端返回给客户端直接展示。</p>
+		<p class="hint">点击列表行载入编辑。功能编号只读；标题/简介/Logo/主色由服务端返回给客户端直接展示。</p>
 		<div class="form-stack">
-			<div class="field field-readonly">
-				<label>功能编号</label>
-				<span class="sub">与客户端约定，不可修改；从下方列表点选载入</span>
-				<input id="fId" readonly placeholder="请从列表选择" />
-			</div>
-			<div class="field">
-				<label>显示名称（标题）</label>
-				<span class="sub">App 开通中心直接展示</span>
-				<input id="fTitle" placeholder="预测事项开通数量" />
-			</div>
-			<div class="field">
-				<label>简介</label>
-				<span class="sub">App 开通中心直接展示</span>
-				<textarea id="fDesc" placeholder="功能说明文案"></textarea>
-			</div>
-			<div class="field">
-				<label>允许的开通方式</label>
-				<span class="sub">多选；落库为逗号串以兼容 App</span>
-				<div class="checks" id="fMethods">
-					<label><input type="checkbox" value="payment" /> 付费 payment</label>
-					<label><input type="checkbox" value="invite_code" /> 邀请码 invite_code</label>
-					<label><input type="checkbox" value="ad" /> 广告 ad</label>
+			<section class="form-section">
+				<h4>文案</h4>
+				<div class="form-grid">
+					<div class="field field-readonly">
+						<label>功能编号</label>
+						<span class="sub">与客户端约定，不可修改；从下方列表点选载入</span>
+						<input id="fId" readonly placeholder="请从列表选择" />
+					</div>
+					<div class="field">
+						<label>显示名称（标题）</label>
+						<span class="sub">App 开通中心直接展示</span>
+						<input id="fTitle" placeholder="预测事项开通数量" />
+					</div>
+					<div class="field span-2">
+						<label>简介</label>
+						<span class="sub">App 开通中心直接展示</span>
+						<textarea id="fDesc" placeholder="功能说明文案"></textarea>
+					</div>
 				</div>
-			</div>
-			<div class="field">
-				<label>邀请/广告授予天数</label>
-				<span class="sub">invite_code 与 ad 共用；0=永久；付费看下方套餐 duration；预测条数类忽略本字段</span>
-				<input id="fDuration" type="number" value="0" min="0" />
-			</div>
-			<div class="field">
-				<label>默认开通条数</label>
-				<span class="sub">仅预测类有意义；有效条数 = 默认 + 永久累加；邀请码临时全开为 -1</span>
-				<input id="fDefault" type="number" value="0" min="0" />
-			</div>
-			<div class="field">
-				<label>开放主体（对人 / 对机）</label>
-				<span class="sub">对机=device 全家共享；对人=user 跟登录账号。预测条数类禁止对人。</span>
-				<select id="fSubject">
-					<option value="device">对机（device）</option>
-					<option value="user">对人（user）</option>
-				</select>
-			</div>
-			<div class="field">
-				<label>是否上架</label>
-				<select id="fStatus">
-					<option value="1" selected>上架</option>
-					<option value="0">下架</option>
-				</select>
-			</div>
-			<div class="field">
-				<label>排序</label>
-				<span class="sub">数字越小越靠前</span>
-				<input id="fSort" type="number" value="10" />
-			</div>
+			</section>
+			<section class="form-section">
+				<h4>开通策略</h4>
+				<div class="form-grid">
+					<div class="field span-2">
+						<label>允许的开通方式</label>
+						<span class="sub">多选；落库为逗号串以兼容 App</span>
+						<div class="checks" id="fMethods">
+							<label><input type="checkbox" value="payment" /> 付费 payment</label>
+							<label><input type="checkbox" value="invite_code" /> 邀请码 invite_code</label>
+							<label><input type="checkbox" value="ad" /> 广告 ad</label>
+						</div>
+					</div>
+					<div class="field">
+						<label>邀请/广告授予天数</label>
+						<span class="sub">invite_code 与 ad 共用；0=永久；付费看下方套餐 duration</span>
+						<input id="fDuration" type="number" value="0" min="0" />
+					</div>
+					<div class="field">
+						<label>默认开通条数</label>
+						<span class="sub">仅预测类有意义；有效条数 = 默认 + 永久累加</span>
+						<input id="fDefault" type="number" value="0" min="0" />
+					</div>
+					<div class="field">
+						<label>开放主体（对人 / 对机）</label>
+						<span class="sub">对机=device 全家共享；对人=user。预测禁止对人。</span>
+						<select id="fSubject">
+							<option value="device">对机（device）</option>
+							<option value="user">对人（user）</option>
+						</select>
+					</div>
+					<div class="field">
+						<label>是否上架</label>
+						<select id="fStatus">
+							<option value="1" selected>上架</option>
+							<option value="0">下架</option>
+						</select>
+					</div>
+					<div class="field">
+						<label>排序</label>
+						<span class="sub">数字越小越靠前</span>
+						<input id="fSort" type="number" value="10" />
+					</div>
+				</div>
+			</section>
+			<section class="form-section">
+				<h4>视觉</h4>
+				<div class="visual-row">
+					<div class="field">
+						<label>功能 Logo</label>
+						<span class="sub">png/jpg/webp；先上传再保存定义</span>
+						<div class="logo-preview" id="fLogoPreview"><span class="ph">暂无</span></div>
+						<input id="fLogoFile" type="file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" style="margin-top:8px;max-width:260px;" />
+						<input type="hidden" id="fLogoKey" value="" />
+					</div>
+					<div class="field">
+						<label>主色</label>
+						<span class="sub">App 玻璃拟态 accent；#RGB / #RRGGBB</span>
+						<div class="color-row">
+							<input id="fColorPick" type="color" value="#3B82F6" title="选择主色" />
+							<input id="fColor" type="text" value="#3B82F6" placeholder="#3B82F6" />
+						</div>
+					</div>
+				</div>
+			</section>
 			<div class="btn-row">
 				<button id="saveDefBtn" type="button">保存功能定义</button>
 				<button id="reloadDefBtn" type="button" class="secondary">刷新列表</button>
@@ -107,6 +155,8 @@
 			<table>
 				<thead>
 					<tr>
+						<th>Logo</th>
+						<th>主色</th>
 						<th>功能编号</th>
 						<th>显示名称</th>
 						<th>开放主体</th>
@@ -124,22 +174,24 @@
 		<h3 style="margin-top:22px;">一（附）、微信群二维码（加群获取邀请码）</h3>
 		<p class="hint">上传强制保存为 <code>er_code.png</code>（覆盖唯一一张）。有效期内 App 开通中心展示；过期后 App 不返回链接，本页仍可预览。</p>
 		<div class="form-stack">
-			<div class="field">
-				<label>上传 PNG</label>
-				<input id="qrFile" type="file" accept="image/png,.png" />
-			</div>
-			<div class="field">
-				<label>有效期截止（本地时间）</label>
-				<span class="sub">清空并保存 = 对 App 立即失效（expiresAt=0）</span>
-				<input id="qrExpiresLocal" type="datetime-local" />
-			</div>
-			<div class="field">
-				<label>App 是否可见</label>
-				<span id="qrAppVisible" class="sub">—</span>
-			</div>
-			<div class="field">
-				<label>预览</label>
-				<img id="qrPreview" alt="群二维码预览" style="max-width:220px;max-height:220px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;" />
+			<div class="form-grid">
+				<div class="field">
+					<label>上传 PNG</label>
+					<input id="qrFile" type="file" accept="image/png,.png" />
+				</div>
+				<div class="field">
+					<label>有效期截止（本地时间）</label>
+					<span class="sub">清空并保存 = 对 App 立即失效（expiresAt=0）</span>
+					<input id="qrExpiresLocal" type="datetime-local" />
+				</div>
+				<div class="field">
+					<label>App 是否可见</label>
+					<span id="qrAppVisible" class="sub">—</span>
+				</div>
+				<div class="field">
+					<label>预览</label>
+					<img id="qrPreview" alt="群二维码预览" style="max-width:220px;max-height:220px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;" />
+				</div>
 			</div>
 			<div class="btn-row">
 				<button id="qrUploadBtn" type="button">上传并刷新</button>
@@ -149,53 +201,55 @@
 		</div>
 
 		<h3 style="margin-top:22px;">二、售卖套餐（SKU / 商品）</h3>
-		<p class="hint">新建时商品编码可留空由服务端生成；所属功能从已有定义下拉选择。</p>
+		<p class="hint">新建时商品编码可留空由服务端生成；所属功能从已有定义下拉选择。视觉品牌在功能定义上配置，SKU 不单独配色。</p>
 		<div class="form-stack">
-			<div class="field field-readonly">
-				<label>商品编码</label>
-				<span class="sub">新建留空自动生成；编辑已有套餐时只读</span>
-				<input id="pCode" readonly placeholder="保存后自动生成" />
-			</div>
-			<div class="field">
-				<label>所属功能</label>
-				<select id="pFid"></select>
-			</div>
-			<div class="field">
-				<label>开通类型</label>
-				<select id="pKind">
-					<option value="allowed_count_delta" selected>allowed_count_delta · 增加可看数量</option>
-					<option value="entitlement">entitlement · 功能权益</option>
-				</select>
-			</div>
-			<div class="field">
-				<label>授予数量</label>
-				<span class="sub">增加几条 / 权益一般填 1</span>
-				<input id="pQty" type="number" value="1" min="1" />
-			</div>
-			<div class="field">
-				<label>价格（分）</label>
-				<span class="sub">6 元 = 600<span id="pricePreview" class="price-preview"></span></span>
-				<input id="pPrice" type="number" value="600" min="0" />
-			</div>
-			<div class="field">
-				<label>划线原价（分）</label>
-				<input id="pOrig" type="number" value="0" min="0" />
-			</div>
-			<div class="field">
-				<label>有效天数</label>
-				<span class="sub">0 = 永久；权益类常用</span>
-				<input id="pDays" type="number" value="0" min="0" />
-			</div>
-			<div class="field">
-				<label>Apple 商品 ID</label>
-				<input id="pApple" placeholder="可选" />
-			</div>
-			<div class="field">
-				<label>是否上架</label>
-				<select id="pStatus">
-					<option value="1" selected>上架</option>
-					<option value="0">下架</option>
-				</select>
+			<div class="form-grid">
+				<div class="field field-readonly">
+					<label>商品编码</label>
+					<span class="sub">新建留空自动生成；编辑已有套餐时只读</span>
+					<input id="pCode" readonly placeholder="保存后自动生成" />
+				</div>
+				<div class="field">
+					<label>所属功能</label>
+					<select id="pFid"></select>
+				</div>
+				<div class="field">
+					<label>开通类型</label>
+					<select id="pKind">
+						<option value="allowed_count_delta" selected>allowed_count_delta · 增加可看数量</option>
+						<option value="entitlement">entitlement · 功能权益</option>
+					</select>
+				</div>
+				<div class="field">
+					<label>授予数量</label>
+					<span class="sub">增加几条 / 权益一般填 1</span>
+					<input id="pQty" type="number" value="1" min="1" />
+				</div>
+				<div class="field">
+					<label>价格（分）</label>
+					<span class="sub">6 元 = 600<span id="pricePreview" class="price-preview"></span></span>
+					<input id="pPrice" type="number" value="600" min="0" />
+				</div>
+				<div class="field">
+					<label>划线原价（分）</label>
+					<input id="pOrig" type="number" value="0" min="0" />
+				</div>
+				<div class="field">
+					<label>有效天数</label>
+					<span class="sub">0 = 永久；权益类常用</span>
+					<input id="pDays" type="number" value="0" min="0" />
+				</div>
+				<div class="field">
+					<label>Apple 商品 ID</label>
+					<input id="pApple" placeholder="可选" />
+				</div>
+				<div class="field">
+					<label>是否上架</label>
+					<select id="pStatus">
+						<option value="1" selected>上架</option>
+						<option value="0">下架</option>
+					</select>
+				</div>
 			</div>
 			<div class="btn-row">
 				<button id="saveProdBtn" type="button">保存套餐</button>
@@ -239,12 +293,73 @@
 	};
 	const esc = (s) => String(s == null ? '' : s)
 		.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+	const normHex = (c) => {
+		const s = String(c || '').trim();
+		if (/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(s)) return s;
+		return '#3B82F6';
+	};
+	const toColorInput = (c) => {
+		const s = normHex(c);
+		if (s.length === 4) {
+			return '#' + s[1] + s[1] + s[2] + s[2] + s[3] + s[3];
+		}
+		return s;
+	};
 
 	const getMethods = () => Array.from(document.querySelectorAll('#fMethods input:checked')).map(el => el.value).join(',');
 	const setMethods = (s) => {
 		const set = new Set(String(s || '').split(',').map(x => x.trim()).filter(Boolean));
 		document.querySelectorAll('#fMethods input').forEach(el => { el.checked = set.has(el.value); });
 	};
+
+	let pendingLogoKey = '';
+	let logoObjectUrl = '';
+	function revokeLogoObjectUrl() {
+		if (logoObjectUrl) {
+			try { URL.revokeObjectURL(logoObjectUrl); } catch (_) {}
+			logoObjectUrl = '';
+		}
+	}
+	function setLogoPreview(src) {
+		const box = document.getElementById('fLogoPreview');
+		box.innerHTML = '';
+		if (src) {
+			const img = document.createElement('img');
+			img.alt = '功能 Logo';
+			img.src = src;
+			box.appendChild(img);
+		} else {
+			box.innerHTML = '<span class="ph">暂无</span>';
+		}
+	}
+
+	document.getElementById('fColorPick').addEventListener('input', () => {
+		document.getElementById('fColor').value = document.getElementById('fColorPick').value;
+	});
+	document.getElementById('fColor').addEventListener('change', () => {
+		const v = document.getElementById('fColor').value.trim();
+		if (/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v)) {
+			document.getElementById('fColorPick').value = toColorInput(v);
+		}
+	});
+	document.getElementById('fLogoFile').addEventListener('change', async () => {
+		const f = document.getElementById('fLogoFile').files[0];
+		if (!f) return;
+		try {
+			const fd = new FormData();
+			fd.append('logo', f);
+			const data = await AdminCommon.adminFetchForm('/cash/admin/api/feature/defs/logo', fd);
+			pendingLogoKey = (data && data.objectKey) ? String(data.objectKey) : '';
+			document.getElementById('fLogoKey').value = pendingLogoKey;
+			revokeLogoObjectUrl();
+			logoObjectUrl = URL.createObjectURL(f);
+			setLogoPreview(logoObjectUrl);
+			show('Logo 已上传，请保存功能定义', true);
+		} catch (e) {
+			show(e.message || String(e), false);
+			document.getElementById('fLogoFile').value = '';
+		}
+	});
 
 	document.getElementById('pPrice').addEventListener('input', () => {
 		const el = document.getElementById('pricePreview');
@@ -284,6 +399,14 @@
 		fSubject.value = (r.activationSubject === 'user') ? 'user' : 'device';
 		fStatus.value = String(r.status != null ? r.status : 1);
 		fSort.value = r.sortOrder != null ? r.sortOrder : 10;
+		const color = normHex(r.color);
+		fColor.value = color;
+		fColorPick.value = toColorInput(color);
+		pendingLogoKey = '';
+		document.getElementById('fLogoKey').value = '';
+		document.getElementById('fLogoFile').value = '';
+		revokeLogoObjectUrl();
+		setLogoPreview(r.logo || '');
 	}
 
 	async function loadDefs() {
@@ -291,8 +414,14 @@
 		defList = data.list || [];
 		fillFeatureSelect();
 		const tb = document.getElementById('defBody');
-		tb.innerHTML = defList.map(r =>
-			`<tr class="clickable" data-fid="${esc(r.featureId)}">
+		tb.innerHTML = defList.map(r => {
+			const logoCell = r.logo
+				? `<img src="${esc(r.logo)}" alt="" style="width:28px;height:28px;object-fit:contain;border-radius:6px;background:#fff;" />`
+				: '<span class="ph">—</span>';
+			const swatch = `<span style="display:inline-block;width:16px;height:16px;border-radius:4px;border:1px solid #cbd5e1;background:${esc(normHex(r.color))};vertical-align:middle;"></span> <code>${esc(normHex(r.color))}</code>`;
+			return `<tr class="clickable" data-fid="${esc(r.featureId)}">
+				<td>${logoCell}</td>
+				<td>${swatch}</td>
 				<td><code>${esc(r.featureId)}</code></td>
 				<td>${esc(r.title || '')}</td>
 				<td>${subjectLabel(r.activationSubject)}</td>
@@ -301,8 +430,8 @@
 				<td>${r.durationDays != null ? r.durationDays : 0}</td>
 				<td>${r.defaultAllowedCount != null ? r.defaultAllowedCount : 0}</td>
 				<td>${statusLabel(r.status)}</td>
-			</tr>`
-		).join('') || '<tr><td colspan="8">暂无功能定义（须种子/发版写入）</td></tr>';
+			</tr>`;
+		}).join('') || '<tr><td colspan="10">暂无功能定义（须种子/发版写入）</td></tr>';
 		tb.querySelectorAll('tr[data-fid]').forEach(tr => {
 			tr.onclick = () => {
 				const r = defList.find(x => x.featureId === tr.dataset.fid);
@@ -362,20 +491,30 @@
 			if (!featureId) { show('请先从列表选择功能', false); return; }
 			const unlockMethods = getMethods();
 			if (!unlockMethods) { show('请至少选择一种开通方式', false); return; }
+			const color = fColor.value.trim();
+			if (!/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(color)) {
+				show('主色须为 #RGB 或 #RRGGBB', false);
+				return;
+			}
+			const body = {
+				featureId,
+				title: fTitle.value.trim(),
+				description: fDesc.value.trim(),
+				unlockMethods,
+				durationDays: Number(fDuration.value) || 0,
+				defaultAllowedCount: Number(fDefault.value) || 0,
+				activationSubject: fSubject.value === 'user' ? 'user' : 'device',
+				color,
+				status: Number(fStatus.value),
+				sortOrder: Number(fSort.value) || 0
+			};
+			if (pendingLogoKey) body.logo = pendingLogoKey;
 			await AdminCommon.adminFetch('/cash/admin/api/feature/defs', {
 				method: 'POST',
-				body: JSON.stringify({
-					featureId,
-					title: fTitle.value.trim(),
-					description: fDesc.value.trim(),
-					unlockMethods,
-					durationDays: Number(fDuration.value) || 0,
-					defaultAllowedCount: Number(fDefault.value) || 0,
-					activationSubject: fSubject.value === 'user' ? 'user' : 'device',
-					status: Number(fStatus.value),
-					sortOrder: Number(fSort.value) || 0
-				})
+				body: JSON.stringify(body)
 			});
+			pendingLogoKey = '';
+			document.getElementById('fLogoKey').value = '';
 			show('功能定义已保存', true);
 			await loadDefs();
 		} catch (e) { show(e.message || String(e), false); }

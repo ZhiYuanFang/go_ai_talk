@@ -54,6 +54,12 @@ func InternalMediaUpload(r *ghttp.Request) {
 	}
 	ext = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(ext)), ".")
 
+	// kind：event（默认）| feature；决定 OSS objectKey 前缀，兼容旧 device 上传不传 kind。
+	kind := strings.ToLower(strings.TrimSpace(r.GetForm("kind").String()))
+	if kind == "" {
+		kind = "event"
+	}
+
 	limited := io.LimitReader(file, ucgsvc.MaxEventLogoBytes+1)
 	data, err := io.ReadAll(limited)
 	if err != nil {
@@ -64,7 +70,16 @@ func InternalMediaUpload(r *ghttp.Request) {
 		writeUcgInternalUploadFail(r, gerror.NewCode(gcode.CodeInvalidParameter, "logo 文件过大"))
 		return
 	}
-	objectKey, cdnURL, err := ucgsvc.UploadEventLogoObject(ctx, ext, bytes.NewReader(data), int64(len(data)))
+	var objectKey, cdnURL string
+	switch kind {
+	case "feature":
+		objectKey, cdnURL, err = ucgsvc.UploadFeatureLogoObject(ctx, ext, bytes.NewReader(data), int64(len(data)))
+	case "event":
+		objectKey, cdnURL, err = ucgsvc.UploadEventLogoObject(ctx, ext, bytes.NewReader(data), int64(len(data)))
+	default:
+		writeUcgInternalUploadFail(r, gerror.NewCode(gcode.CodeInvalidParameter, "kind 须为 event 或 feature"))
+		return
+	}
 	if err != nil {
 		writeUcgInternalUploadFail(r, err)
 		return

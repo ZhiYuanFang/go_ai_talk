@@ -19,8 +19,14 @@ const MaxMediaUploadBytes = 25 << 20
 // MaxEventLogoBytes 事件 logo 单文件上限（与历史 device.eventImageMaxBytes 2MB 对齐）。
 const MaxEventLogoBytes = 2 << 20
 
+// MaxFeatureLogoBytes 功能 logo 单文件上限（与事件 logo 同档）。
+const MaxFeatureLogoBytes = MaxEventLogoBytes
+
 // EventLogoObjectKeyPrefix 事件 logo OSS 前缀。
 const EventLogoObjectKeyPrefix = "event/"
+
+// FeatureLogoObjectKeyPrefix 功能开通 logo OSS 前缀。
+const FeatureLogoObjectKeyPrefix = "feature/"
 
 // UploadMediaResult 服务端直传 OSS 结果。
 type UploadMediaResult struct {
@@ -109,6 +115,16 @@ func UploadVideoTranscodedObject(ctx context.Context, input []byte) (*UploadMedi
 
 // UploadEventLogoObject 服务端直传事件 logo 至 event/ 前缀（device internal 调用）。
 func UploadEventLogoObject(ctx context.Context, ext string, body io.Reader, size int64) (objectKey, cdnURL string, err error) {
+	return uploadBrandedLogoObject(ctx, EventLogoObjectKeyPrefix, ext, body, size)
+}
+
+// UploadFeatureLogoObject 服务端直传功能 logo 至 feature/ 前缀（cash internal 调用）。
+func UploadFeatureLogoObject(ctx context.Context, ext string, body io.Reader, size int64) (objectKey, cdnURL string, err error) {
+	return uploadBrandedLogoObject(ctx, FeatureLogoObjectKeyPrefix, ext, body, size)
+}
+
+// uploadBrandedLogoObject 通用品牌 logo 直传（事件/功能共用校验与大小上限）。
+func uploadBrandedLogoObject(ctx context.Context, prefix, ext string, body io.Reader, size int64) (objectKey, cdnURL string, err error) {
 	if size <= 0 || size > MaxEventLogoBytes {
 		return "", "", gerror.NewCode(gcode.CodeInvalidParameter, "logo 文件大小无效或超过上限")
 	}
@@ -127,7 +143,7 @@ func UploadEventLogoObject(ctx context.Context, ext string, body io.Reader, size
 	if err != nil {
 		return "", "", gerror.NewCode(gcode.CodeInvalidParameter, "读取 logo 失败")
 	}
-	objectKey = buildObjectKey(EventLogoObjectKeyPrefix, ext)
+	objectKey = buildObjectKey(prefix, ext)
 	return putOSSObjectBytes(ctx, cfg, objectKey, 1, ext, data)
 }
 

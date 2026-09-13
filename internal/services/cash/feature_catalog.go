@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"hello/internal/platform/cachekit"
+	"hello/internal/shared/featurelogo"
 
 	"github.com/gogf/gf/v2/frame/g"
 )
@@ -23,6 +24,8 @@ type FeatureDefRow struct {
 	AdDurationDays      int    `json:"adDurationDays"`
 	DefaultAllowedCount int    `json:"defaultAllowedCount"`
 	ActivationSubject   string `json:"activationSubject"` // device|user
+	Logo                string `json:"logo"`              // 库内 objectKey；HTTP 边界再映 CDN
+	Color               string `json:"color"`             // #RGB / #RRGGBB
 	Status              int    `json:"status"`
 	SortOrder           int    `json:"sortOrder"`
 }
@@ -52,6 +55,8 @@ type FeatureCatalogItem struct {
 	TotalActivatableCount *int                    `json:"totalActivatableCount,omitempty"`
 	InviteDurationDays    int                     `json:"inviteDurationDays"`
 	AdDurationDays        int                     `json:"adDurationDays"`
+	Logo                  string                  `json:"logo"`  // CDN URL；无则空串
+	Color                 string                  `json:"color"` // 主色 hex
 	Products              []FeatureCatalogProduct `json:"products"`
 }
 
@@ -65,6 +70,8 @@ type featureDefDB struct {
 	AdDurationDays      int    `json:"ad_duration_days"`
 	DefaultAllowedCount int    `json:"default_allowed_count"`
 	ActivationSubject   string `json:"activation_subject"`
+	Logo                string `json:"logo"`
+	Color               string `json:"color"`
 	Status              int    `json:"status"`
 	SortOrder           int    `json:"sort_order"`
 }
@@ -81,7 +88,7 @@ func ListActiveFeatureDefs(ctx context.Context) ([]FeatureDefRow, error) {
 	}
 	var rawRows []featureDefDB
 	err := g.DB().Model("feature_def").Ctx(ctx).
-		Fields("feature_id,title,description,unlock_methods,duration_days,invite_duration_days,ad_duration_days,default_allowed_count,activation_subject,status,sort_order").
+		Fields("feature_id,title,description,unlock_methods,duration_days,invite_duration_days,ad_duration_days,default_allowed_count,activation_subject,logo,color,status,sort_order").
 		Where("status", 1).
 		OrderAsc("sort_order").OrderAsc("feature_id").
 		Scan(&rawRows)
@@ -96,6 +103,7 @@ func ListActiveFeatureDefs(ctx context.Context) ([]FeatureDefRow, error) {
 			InviteDurationDays: r.InviteDurationDays, AdDurationDays: r.AdDurationDays,
 			DefaultAllowedCount: r.DefaultAllowedCount,
 			ActivationSubject:    NormalizeActivationSubject(r.ActivationSubject),
+			Logo: featurelogo.NormalizeObjectKey(r.Logo), Color: strings.TrimSpace(r.Color),
 			Status: r.Status, SortOrder: r.SortOrder,
 		})
 	}
@@ -177,6 +185,8 @@ func GetFeatureCatalog(ctx context.Context, deviceNo string, wxID int64) (*Featu
 			UnlockMethods: d.UnlockMethods,
 			InviteDurationDays: d.InviteDurationDays,
 			AdDurationDays:     d.AdDurationDays,
+			Logo:               featurelogo.CdnURL(ctx, d.Logo),
+			Color:              strings.TrimSpace(d.Color),
 			Products:           prodByFeature[d.FeatureId],
 		}
 		if item.Products == nil {

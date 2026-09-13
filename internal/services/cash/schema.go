@@ -74,6 +74,8 @@ func EnsureSchema(ctx context.Context) error {
   invite_duration_days   INT          NOT NULL DEFAULT 0,
   ad_duration_days       INT          NOT NULL DEFAULT 0,
   default_allowed_count  INT          NOT NULL DEFAULT 0,
+  logo                   VARCHAR(512) NOT NULL DEFAULT '',
+  color                  VARCHAR(16)  NOT NULL DEFAULT '',
   status                 TINYINT      NOT NULL DEFAULT 1,
   sort_order             INT          NOT NULL DEFAULT 0,
   updated_at             BIGINT       NOT NULL DEFAULT 0,
@@ -284,6 +286,18 @@ func EnsureSchema(ctx context.Context) error {
 			return err
 		}
 	}
+	// 功能视觉：logo（OSS objectKey）与主色 hex；已有库补列。
+	for _, alterSQL := range []string{
+		`ALTER TABLE feature_def ADD COLUMN logo VARCHAR(512) NOT NULL DEFAULT ''`,
+		`ALTER TABLE feature_def ADD COLUMN color VARCHAR(16) NOT NULL DEFAULT ''`,
+	} {
+		if _, err := db.Exec(ctx, alterSQL); err != nil {
+			msg := err.Error()
+			if !strings.Contains(msg, "Duplicate column") && !strings.Contains(msg, "1060") {
+				return err
+			}
+		}
+	}
 	// 邀请去重键升级为人×码×功能（未发布环境可接受失败重试）。
 	if _, err := db.Exec(ctx, `ALTER TABLE feature_invite_feature_grant DROP PRIMARY KEY, ADD PRIMARY KEY (redeemer_wx_id, code, feature_id)`); err != nil {
 		msg := err.Error()
@@ -316,19 +330,24 @@ ON DUPLICATE KEY UPDATE
 		return err
 	}
 	// 种子预测开通功能定义（可停用；运营可用 Admin 改文案/默认条数；不覆盖已有 default_allowed_count）。
+	// color 仅空才填默认蓝，避免覆盖运维主色；logo 种子为空（App 占位）。
 	_, err = db.Exec(ctx, `
-INSERT INTO feature_def (feature_id, title, description, unlock_methods, duration_days, default_allowed_count, status, sort_order, updated_at)
-VALUES (?, '预测事项开通数量', '增加可展示的预测事项数量', 'payment,invite_code,ad', 0, 0, 1, 10, ?)
-ON DUPLICATE KEY UPDATE updated_at=VALUES(updated_at)`,
+INSERT INTO feature_def (feature_id, title, description, unlock_methods, duration_days, default_allowed_count, logo, color, status, sort_order, updated_at)
+VALUES (?, '预测事项开通数量', '增加可展示的预测事项数量', 'payment,invite_code,ad', 0, 0, '', '#3B82F6', 1, 10, ?)
+ON DUPLICATE KEY UPDATE
+  color=IF(color='' OR color IS NULL, VALUES(color), color),
+  updated_at=VALUES(updated_at)`,
 		FeatureIDPredictionUnlock, now)
 	if err != nil {
 		return err
 	}
-	// 种子值得留意智能提醒：邀请/广告默认 7 天；不覆盖运维已改授予天数/文案。
+	// 种子值得留意智能提醒：邀请/广告默认 7 天；不覆盖运维已改授予天数/文案；默认主色青绿。
 	_, err = db.Exec(ctx, `
-INSERT INTO feature_def (feature_id, title, description, unlock_methods, duration_days, invite_duration_days, ad_duration_days, default_allowed_count, status, sort_order, updated_at)
-VALUES (?, '值得留意智能提醒', '开通后可查看值得留意智能提醒', 'payment,invite_code,ad', 7, 7, 7, 0, 1, 20, ?)
-ON DUPLICATE KEY UPDATE updated_at=VALUES(updated_at)`,
+INSERT INTO feature_def (feature_id, title, description, unlock_methods, duration_days, invite_duration_days, ad_duration_days, default_allowed_count, logo, color, status, sort_order, updated_at)
+VALUES (?, '值得留意智能提醒', '开通后可查看值得留意智能提醒', 'payment,invite_code,ad', 7, 7, 7, 0, '', '#0D9488', 1, 20, ?)
+ON DUPLICATE KEY UPDATE
+  color=IF(color='' OR color IS NULL, VALUES(color), color),
+  updated_at=VALUES(updated_at)`,
 		FeatureIDCareAlertSmartRemind, now)
 	if err != nil {
 		return err
@@ -341,11 +360,13 @@ VALUES (?, ?, 'entitlement', 1, 990, 0, 0, '', 1, ?)`,
 	if err != nil {
 		return err
 	}
-	// 种子成长轨迹预测：账号维开通；邀请/广告默认 7 天；不覆盖运维已改授予天数/文案。
+	// 种子成长轨迹预测：账号维开通；邀请/广告默认 7 天；不覆盖运维已改授予天数/文案；默认主色橙。
 	_, err = db.Exec(ctx, `
-INSERT INTO feature_def (feature_id, title, description, unlock_methods, duration_days, invite_duration_days, ad_duration_days, default_allowed_count, activation_subject, status, sort_order, updated_at)
-VALUES (?, '成长轨迹预测', '开通后可使用成长轨迹预测', 'payment,invite_code,ad', 7, 7, 7, 0, 'user', 1, 30, ?)
-ON DUPLICATE KEY UPDATE updated_at=VALUES(updated_at)`,
+INSERT INTO feature_def (feature_id, title, description, unlock_methods, duration_days, invite_duration_days, ad_duration_days, default_allowed_count, activation_subject, logo, color, status, sort_order, updated_at)
+VALUES (?, '成长轨迹预测', '开通后可使用成长轨迹预测', 'payment,invite_code,ad', 7, 7, 7, 0, 'user', '', '#EA580C', 1, 30, ?)
+ON DUPLICATE KEY UPDATE
+  color=IF(color='' OR color IS NULL, VALUES(color), color),
+  updated_at=VALUES(updated_at)`,
 		FeatureIDGrowthTrajectoryPredict, now)
 	if err != nil {
 		return err

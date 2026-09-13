@@ -139,6 +139,7 @@ func (c *CashFeatureController) Catalog(ctx context.Context, _ *v1.CashFeatureCa
 			UnlockMethod: it.UnlockMethod, ExpiresAt: it.ExpiresAt, AllowedCount: it.AllowedCount,
 			DefaultCount: it.DefaultCount, TotalActivatableCount: it.TotalActivatableCount,
 			InviteDurationDays: it.InviteDurationDays, AdDurationDays: it.AdDurationDays,
+			Logo: it.Logo, Color: it.Color,
 			Products: make([]v1.CashFeatureCatalogProductItem, 0, len(it.Products)),
 		}
 		for _, p := range it.Products {
@@ -251,6 +252,7 @@ func (c *CashFeatureController) AdminFeatureDefs(ctx context.Context, _ *v1.Cash
 			InviteDurationDays: it.InviteDurationDays, AdDurationDays: it.AdDurationDays,
 			DefaultAllowedCount: it.DefaultAllowedCount,
 			ActivationSubject:    it.ActivationSubject,
+			Logo: it.Logo, Color: it.Color,
 			Status: it.Status, SortOrder: it.SortOrder,
 		})
 	}
@@ -271,10 +273,46 @@ func (c *CashFeatureController) AdminFeatureDefsUpsert(ctx context.Context, req 
 	if req.AdDurationDays != nil {
 		adDays = *req.AdDurationDays
 	}
-	if err := cash.AdminUpdateFeatureDef(ctx, req.FeatureId, req.Title, req.Description, req.UnlockMethods, req.DurationDays, inviteDays, adDays, req.Status, req.SortOrder, req.DefaultAllowedCount, req.ActivationSubject); err != nil {
+	if err := cash.AdminUpdateFeatureDef(ctx, req.FeatureId, req.Title, req.Description, req.UnlockMethods, req.DurationDays, inviteDays, adDays, req.Status, req.SortOrder, req.DefaultAllowedCount, req.ActivationSubject, req.Logo, req.Color); err != nil {
 		return nil, err
 	}
 	return &v1.CashAdminFeatureDefUpsertRes{}, nil
+}
+
+// AdminFeatureLogoUpload POST /cash/admin/api/feature/defs/logo — multipart 字段 logo 或 file。
+func (c *CashFeatureController) AdminFeatureLogoUpload(ctx context.Context, _ *v1.CashAdminFeatureLogoUploadReq) (*v1.CashAdminFeatureLogoUploadRes, error) {
+	if err := requireCashAdmin(ctx); err != nil {
+		return nil, err
+	}
+	r := ghttp.RequestFromCtx(ctx)
+	if r == nil {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "无效请求")
+	}
+	if err := r.ParseMultipartForm(3 << 20); err != nil {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "multipart 解析失败")
+	}
+	file, hdr, err := r.Request.FormFile("logo")
+	if err != nil || file == nil {
+		file, hdr, err = r.Request.FormFile("file")
+	}
+	if err != nil || file == nil {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "缺少 logo 或 file 字段")
+	}
+	defer file.Close()
+	filename := ""
+	var size int64
+	if hdr != nil {
+		filename = hdr.Filename
+		size = hdr.Size
+	}
+	objectKey, err := cash.UploadFeatureLogo(ctx, filename, file, size)
+	if err != nil {
+		return nil, err
+	}
+	return &v1.CashAdminFeatureLogoUploadRes{
+		ObjectKey: objectKey,
+		CdnUrl:    cash.FeatureLogoCdnURL(ctx, objectKey),
+	}, nil
 }
 
 // AdminFeatureProducts GET

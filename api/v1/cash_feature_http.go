@@ -97,6 +97,8 @@ type CashFeatureCatalogItem struct {
 	TotalActivatableCount *int                            `json:"totalActivatableCount,omitempty"`
 	InviteDurationDays    int                             `json:"inviteDurationDays"`
 	AdDurationDays        int                             `json:"adDurationDays"`
+	Logo                  string                          `json:"logo" dc:"CDN URL；无则空串"`
+	Color                 string                          `json:"color" dc:"主色 #RGB/#RRGGBB"`
 	Products              []CashFeatureCatalogProductItem `json:"products"`
 }
 
@@ -195,6 +197,8 @@ type CashAdminFeatureDefItem struct {
 	AdDurationDays      int    `json:"adDurationDays"`
 	DefaultAllowedCount int    `json:"defaultAllowedCount"`
 	ActivationSubject   string `json:"activationSubject" dc:"device=对机；user=对人"`
+	Logo                string `json:"logo" dc:"CDN URL"`
+	Color               string `json:"color" dc:"主色 #RGB/#RRGGBB"`
 	Status              int    `json:"status"`
 	SortOrder           int    `json:"sortOrder"`
 }
@@ -202,6 +206,7 @@ type CashAdminFeatureDefItem struct {
 // CashAdminFeatureDefUpsertReq POST 更新功能定义（禁止新建未知 featureId）。
 // InviteDurationDays / AdDurationDays 可空：旧管理端只传 durationDays 时双写到两新列。
 // ActivationSubject 可空：未传则保持库中原值。
+// Logo 可空：空串表示保留原 logo（须先经上传接口拿到 objectKey 再写入）。
 type CashAdminFeatureDefUpsertReq struct {
 	g.Meta              `path:"/cash/admin/api/feature/defs" method:"post" tags:"cash-admin" summary:"管理端更新功能定义（编号只读）"`
 	FeatureId           string  `json:"featureId" v:"required"`
@@ -213,6 +218,8 @@ type CashAdminFeatureDefUpsertReq struct {
 	AdDurationDays      *int    `json:"adDurationDays"`
 	DefaultAllowedCount int     `json:"defaultAllowedCount"`
 	ActivationSubject   *string `json:"activationSubject" dc:"device|user；空则不改"`
+	Logo                string  `json:"logo" dc:"OSS objectKey；空则保留原 logo"`
+	Color               string  `json:"color" dc:"主色 #RGB/#RRGGBB"`
 	Status              int     `json:"status" d:"1"`
 	SortOrder           int     `json:"sortOrder"`
 }
@@ -220,6 +227,16 @@ type CashAdminFeatureDefUpsertReq struct {
 // CashAdminFeatureDefUpsertRes 空。
 type CashAdminFeatureDefUpsertRes struct{}
 
+// CashAdminFeatureLogoUploadReq POST 上传功能 logo（multipart 字段 logo/file）。
+type CashAdminFeatureLogoUploadReq struct {
+	g.Meta `path:"/cash/admin/api/feature/defs/logo" method:"post" tags:"cash-admin" summary:"管理端上传功能 logo"`
+}
+
+// CashAdminFeatureLogoUploadRes 上传结果。
+type CashAdminFeatureLogoUploadRes struct {
+	ObjectKey string `json:"objectKey"`
+	CdnUrl    string `json:"cdnUrl"`
+}
 // CashAdminFeatureProductsListReq GET 功能 SKU。
 type CashAdminFeatureProductsListReq struct {
 	g.Meta `path:"/cash/admin/api/feature/products" method:"get" tags:"cash-admin" summary:"管理端功能 SKU 列表"`

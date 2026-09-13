@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"hello/internal/shared/featurelogo"
+
 	"github.com/gogf/gf/v2/errors/gcode"
 	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/frame/g"
@@ -21,13 +23,19 @@ import (
 //
 //	defaultAllowedCount 预测类默认免费开通条数（其它功能可 0）。
 //	activationSubject 可选：nil 保持原值；非 nil 须为 device|user；预测类禁止改为 user。
-func AdminUpdateFeatureDef(ctx context.Context, featureID, title, desc, unlockMethods string, durationDays, inviteDurationDays, adDurationDays, status, sortOrder, defaultAllowedCount int, activationSubject *string) error {
+//	logoObjectKey 可选：非空则更新 logo（存 objectKey）；空串表示保留原 logo。
+//	color 主色 hex；空串允许写入（防御）；非法格式拒绝。
+func AdminUpdateFeatureDef(ctx context.Context, featureID, title, desc, unlockMethods string, durationDays, inviteDurationDays, adDurationDays, status, sortOrder, defaultAllowedCount int, activationSubject *string, logoObjectKey, color string) error {
 	featureID = strings.TrimSpace(featureID)
 	if featureID == "" {
 		return gerror.NewCode(gcode.CodeInvalidParameter, "featureId 不能为空")
 	}
 	if defaultAllowedCount < 0 {
 		defaultAllowedCount = 0
+	}
+	color = strings.TrimSpace(color)
+	if err := ValidateFeatureColor(color); err != nil {
+		return err
 	}
 	now := time.Now().Unix()
 	r, err := g.DB().Model("feature_def").Ctx(ctx).Where("feature_id", featureID).One()
@@ -42,7 +50,12 @@ func AdminUpdateFeatureDef(ctx context.Context, featureID, title, desc, unlockMe
 		"duration_days": durationDays,
 		"invite_duration_days": inviteDurationDays, "ad_duration_days": adDurationDays,
 		"default_allowed_count": defaultAllowedCount,
+		"color":                 color,
 		"status": status, "sort_order": sortOrder, "updated_at": now,
+	}
+	// logo：非空才更新，避免未传文件时清空已有图
+	if key := featurelogo.StoredObjectKey(ctx, logoObjectKey); key != "" {
+		data["logo"] = key
 	}
 	if activationSubject != nil {
 		raw := strings.TrimSpace(*activationSubject)
@@ -62,14 +75,14 @@ func AdminUpdateFeatureDef(ctx context.Context, featureID, title, desc, unlockMe
 
 // AdminUpsertFeatureDef 兼容旧名：仅更新已存在定义（邀请/广告天数与 durationDays 双写）。
 func AdminUpsertFeatureDef(ctx context.Context, featureID, title, desc, unlockMethods string, durationDays, status, sortOrder int) error {
-	return AdminUpdateFeatureDef(ctx, featureID, title, desc, unlockMethods, durationDays, durationDays, durationDays, status, sortOrder, 0, nil)
+	return AdminUpdateFeatureDef(ctx, featureID, title, desc, unlockMethods, durationDays, durationDays, durationDays, status, sortOrder, 0, nil, "", "")
 }
 
-// AdminListFeatureDefs 管理端功能列表（含停用）。
+// AdminListFeatureDefs 管理端功能列表（含停用）；Logo 字段为 CDN URL。
 func AdminListFeatureDefs(ctx context.Context) ([]FeatureDefRow, error) {
 	var raw []featureDefDB
 	err := g.DB().Model("feature_def").Ctx(ctx).
-		Fields("feature_id,title,description,unlock_methods,duration_days,invite_duration_days,ad_duration_days,default_allowed_count,activation_subject,status,sort_order").
+		Fields("feature_id,title,description,unlock_methods,duration_days,invite_duration_days,ad_duration_days,default_allowed_count,activation_subject,logo,color,status,sort_order").
 		OrderAsc("sort_order").Scan(&raw)
 	if err != nil {
 		return nil, err
@@ -82,6 +95,7 @@ func AdminListFeatureDefs(ctx context.Context) ([]FeatureDefRow, error) {
 			InviteDurationDays: r.InviteDurationDays, AdDurationDays: r.AdDurationDays,
 			DefaultAllowedCount: r.DefaultAllowedCount,
 			ActivationSubject:    NormalizeActivationSubject(r.ActivationSubject),
+			Logo: featurelogo.CdnURL(ctx, r.Logo), Color: strings.TrimSpace(r.Color),
 			Status: r.Status, SortOrder: r.SortOrder,
 		})
 	}
