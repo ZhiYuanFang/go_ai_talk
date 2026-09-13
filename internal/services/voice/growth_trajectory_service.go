@@ -70,6 +70,9 @@ func GrowthTrajectoryLatest(ctx context.Context, deviceNo string, wxID int64) (*
 		return nil, err
 	}
 	out := &v1.DeviceGrowthTrajectoryLatestRes{SessionId: "", UpdatedAt: 0}
+	used, limit := growthTrajectoryUsageSnapshot(ctx, wxID)
+	out.UsedToday = used
+	out.DailyLimit = limit
 	if !ok {
 		return out, nil
 	}
@@ -174,7 +177,7 @@ func GrowthTrajectoryTurn(ctx context.Context, deviceNo, action, sessionID strin
 			return nil
 		},
 		OnResult: func(dataJSON string) error {
-			// 先落库再 INCR，再转发 SSE。
+			// 先落库再 INCR，再转发 SSE（附带用量字段）。
 			if uErr := upsertGrowthTrajectoryResultFromEvent(ctx, deviceNo, dataJSON); uErr != nil {
 				glog.Warningf(ctx, "[GrowthTrajectory] result 落库失败 deviceNoLen=%d err=%v", len(deviceNo), uErr)
 				return gerror.WrapCode(gcode.CodeInternalError, uErr, "成长轨迹结果保存失败")
@@ -182,8 +185,9 @@ func GrowthTrajectoryTurn(ctx context.Context, deviceNo, action, sessionID strin
 			if iErr := incrGrowthTrajectoryDailyUsage(ctx, wxID); iErr != nil {
 				glog.Warningf(ctx, "[GrowthTrajectory] 日限 INCR 失败 wxId=%d err=%v", wxID, iErr)
 			}
+			enriched := enrichGrowthTrajectoryResultJSON(ctx, wxID, dataJSON)
 			if cb != nil && cb.OnResult != nil {
-				return cb.OnResult(dataJSON)
+				return cb.OnResult(enriched)
 			}
 			return nil
 		},
@@ -265,6 +269,49 @@ func readGrowthTrajectoryDailyUsage(ctx context.Context, wxID int64) (int, error
 	}
 	n, _ := strconv.Atoi(strings.TrimSpace(raw))
 	return n, nil
+}
+
+// growthTrajectoryUsageSnapshot 账号今日已用与上限（读失败时 used=0、limit=默认）。
+func growthTrajectoryUsageSnapshot(ctx context.Context, wxID int64) (used, limit int) {
+	limit, err := GetGrowthTrajectoryDailyLimit(ctx)
+	if err != nil || limit <= 0 {
+		limit = growthTrajectoryDefaultLimit
+	}
+	used, uErr := readGrowthTrajectoryDailyUsage(ctx, wxID)
+	if uErr != nil {
+		glog.Warningf(ctx, "[GrowthTrajectory] 读用量失败 wxId=%d err=%v", wxID, uErr)
+		used = 0
+	}
+	return used, limit
+}
+
+// enrichGrowthTrajectoryResultJSON 在 Python result JSON 上附加 usedToday/dailyLimit。
+func enrichGrowthTrajectoryResultJSON(ctx context.Context, wxID int64, dataJSON string) string {
+	used, limit := growthTrajectoryUsageSnapshot(ctx, wxID)
+	var m map[string]interface{}
+	if err := json.Unmarshal([]byte(dataJSON), &m); err != nil || m == nil {
+		m = map[string]interface{}{}
+		// 尽量保留原文 markdown
+		var typed struct {
+			Markdown  string `json:"markdown"`
+			SessionID string `json:"sessionId"`
+		}
+		if json.Unmarshal([]byte(dataJSON), &typed) == nil {
+			if typed.Markdown != "" {
+				m["markdown"] = typed.Markdown
+			}
+			if typed.SessionID != "" {
+				m["sessionId"] = typed.SessionID
+			}
+		}
+	}
+	m["usedToday"] = used
+	m["dailyLimit"] = limit
+	b, err := json.Marshal(m)
+	if err != nil {
+		return dataJSON
+	}
+	return string(b)
 }
 
 func incrGrowthTrajectoryDailyUsage(ctx context.Context, wxID int64) error {

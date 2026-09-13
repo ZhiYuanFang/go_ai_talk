@@ -13,6 +13,8 @@ type DeviceGrowthTrajectoryLatestRes struct {
 	ResultMarkdown *string `json:"resultMarkdown" dc:"最新 Markdown；无结果时为 null"`
 	UpdatedAt      int64   `json:"updatedAt" dc:"更新时间 unix 秒；无结果时为 0"`
 	SessionId      string  `json:"sessionId" dc:"最近会话 ID"`
+	UsedToday      int     `json:"usedToday" dc:"今日已用次数（账号维上海日）"`
+	DailyLimit     int     `json:"dailyLimit" dc:"今日上限"`
 }
 
 // DeviceGrowthTrajectoryAnswerDTO turn 回答体。
