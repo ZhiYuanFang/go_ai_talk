@@ -103,24 +103,19 @@ func AddForceDelta(ctx context.Context, wxID int64, reason string, delta int, re
 	ref = strings.TrimSpace(ref)
 	now := time.Now().Unix()
 	return g.DB().Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
-		var cur struct {
-			ForceValue int `json:"force_value"`
-		}
-		err := tx.Model("ucg_user_force").Ctx(ctx).Where("wx_id", wxID).LockUpdate().Scan(&cur)
+		// 空集不用 Scan：无行时部分驱动返回 sql.ErrNoRows，会导致首次获客/辩论加分失败。
+		one, err := tx.Model("ucg_user_force").Ctx(ctx).Where("wx_id", wxID).LockUpdate().One()
 		if err != nil {
 			return err
 		}
-		n, err := tx.Model("ucg_user_force").Ctx(ctx).Where("wx_id", wxID).Count()
-		if err != nil {
-			return err
-		}
-		if n == 0 {
+		if one.IsEmpty() {
 			_, err = tx.Model("ucg_user_force").Ctx(ctx).Data(g.Map{
 				"wx_id": wxID, "force_value": delta, "updated_at": now,
 			}).Insert()
 		} else {
+			cur := one["force_value"].Int()
 			_, err = tx.Model("ucg_user_force").Ctx(ctx).Where("wx_id", wxID).Data(g.Map{
-				"force_value": cur.ForceValue + delta,
+				"force_value": cur + delta,
 				"updated_at":  now,
 			}).Update()
 		}

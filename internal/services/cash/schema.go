@@ -140,7 +140,7 @@ func EnsureSchema(ctx context.Context) error {
   KEY idx_code_time (code, redeemed_at),
   KEY idx_redeemer (redeemer_wx_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
-		// 设备维邀请去重：仅 InviteOncePerDevice 功能（如值得留意）写入；预测不得使用。
+		// 设备维邀请去重：仅 InviteOncePerDevice 功能（值得留意）写入；预测与成长轨迹不得使用。
 		// 原力流水仍记用户；本表只拦「同设备再次邀请开通该功能」。
 		`CREATE TABLE IF NOT EXISTS feature_invite_device_grant (
   device_no    VARCHAR(64) NOT NULL,

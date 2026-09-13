@@ -254,6 +254,31 @@ func (c *CashFeatureController) AdminFeatureDefs(ctx context.Context, _ *v1.Cash
 			ActivationSubject:    it.ActivationSubject,
 			Logo: it.Logo, Color: it.Color,
 			Status: it.Status, SortOrder: it.SortOrder,
+			RuleSummary: it.RuleSummary,
+		})
+	}
+	return res, nil
+}
+
+// AdminFeatureActivations GET /cash/admin/api/feature/activations — 当前开通快照（方案 A）。
+func (c *CashFeatureController) AdminFeatureActivations(ctx context.Context, req *v1.CashAdminFeatureActivationsReq) (*v1.CashAdminFeatureActivationsRes, error) {
+	if err := requireCashAdmin(ctx); err != nil {
+		return nil, err
+	}
+	page, err := cash.AdminListFeatureActivationSnapshot(ctx, req.FeatureId, req.Limit, req.Offset)
+	if err != nil {
+		return nil, err
+	}
+	res := &v1.CashAdminFeatureActivationsRes{
+		FeatureId: page.FeatureId, RuleSummary: page.RuleSummary, Note: page.Note, Total: page.Total,
+		List: make([]v1.CashAdminFeatureActivationItem, 0, len(page.List)),
+	}
+	for _, it := range page.List {
+		res.List = append(res.List, v1.CashAdminFeatureActivationItem{
+			SubjectType: it.SubjectType, DeviceNo: it.DeviceNo, WxId: it.WxId, Nickname: it.Nickname,
+			UnlockMethod: it.UnlockMethod, PermanentDelta: it.PermanentDelta,
+			ExpiresAt: it.ExpiresAt, Active: it.Active, RemainingSeconds: it.RemainingSeconds,
+			UpdatedAt: it.UpdatedAt, Kind: it.Kind,
 		})
 	}
 	return res, nil

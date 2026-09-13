@@ -201,6 +201,39 @@ type CashAdminFeatureDefItem struct {
 	Color               string `json:"color" dc:"主色 #RGB/#RRGGBB"`
 	Status              int    `json:"status"`
 	SortOrder           int    `json:"sortOrder"`
+	RuleSummary         string `json:"ruleSummary" dc:"只读开通规则说明"`
+}
+
+// CashAdminFeatureActivationsReq GET 功能当前开通快照（方案 A）。
+type CashAdminFeatureActivationsReq struct {
+	g.Meta    `path:"/cash/admin/api/feature/activations" method:"get" tags:"cash-admin" summary:"管理端功能开通快照"`
+	FeatureId string `json:"featureId" in:"query" v:"required"`
+	Limit     int    `json:"limit" in:"query" d:"50"`
+	Offset    int    `json:"offset" in:"query" d:"0"`
+}
+
+// CashAdminFeatureActivationItem 快照行。
+type CashAdminFeatureActivationItem struct {
+	SubjectType      string `json:"subjectType"`
+	DeviceNo         string `json:"deviceNo,omitempty"`
+	WxId             int64  `json:"wxId,omitempty"`
+	Nickname         string `json:"nickname,omitempty"`
+	UnlockMethod     string `json:"unlockMethod,omitempty"`
+	PermanentDelta   int    `json:"permanentDelta,omitempty"`
+	ExpiresAt        int64  `json:"expiresAt"`
+	Active           bool   `json:"active"`
+	RemainingSeconds int64  `json:"remainingSeconds,omitempty"`
+	UpdatedAt        int64  `json:"updatedAt,omitempty"`
+	Kind             string `json:"kind"`
+}
+
+// CashAdminFeatureActivationsRes 快照响应。
+type CashAdminFeatureActivationsRes struct {
+	FeatureId   string                           `json:"featureId"`
+	RuleSummary string                           `json:"ruleSummary"`
+	Note        string                           `json:"note"`
+	Total       int                              `json:"total"`
+	List        []CashAdminFeatureActivationItem `json:"list"`
 }
 
 // CashAdminFeatureDefUpsertReq POST 更新功能定义（禁止新建未知 featureId）。

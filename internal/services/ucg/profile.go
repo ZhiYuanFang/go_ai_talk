@@ -347,13 +347,14 @@ func enrichProfileStats(ctx context.Context, wxID uint64, dto *ProfileDTO) {
 	}
 }
 
-// mergeProfileForAuthor 合并 profile 与 author
+// mergeProfileForAuthor 合并 profile 与 author，并填充本域原力（与公开主页一致）。
 func mergeProfileForAuthor(ctx context.Context, p entity.UcgProfile) (*ProfileDTO, error) {
 	dto := profileToDTO(p)
 	enrichProfileStats(ctx, p.WxId, dto)
 	job, ok, err := LoadLatestPendingProfileJob(ctx, int64(p.WxId))
 	if err != nil {
 		g.Log().Warningf(ctx, "[ucg-profile] 读取待审 job 失败 wxId=%d err=%v", p.WxId, err)
+		enrichProfileForceValues(ctx, dto)
 		return dto, nil
 	}
 	if !ok {
@@ -367,6 +368,7 @@ func mergeProfileForAuthor(ctx context.Context, p entity.UcgProfile) (*ProfileDT
 			Scan(&applyFailed)
 		if applyFailed.RejectReason != "" {
 			dto.RejectReason = applyFailed.RejectReason
+			enrichProfileForceValues(ctx, dto)
 			return dto, nil
 		}
 		// 迁移期：读最近 rejected job 的 reason
@@ -380,6 +382,7 @@ func mergeProfileForAuthor(ctx context.Context, p entity.UcgProfile) (*ProfileDT
 		if rejected.RejectReason != "" {
 			dto.RejectReason = rejected.RejectReason
 		}
+		enrichProfileForceValues(ctx, dto)
 		return dto, nil
 	}
 	dto.AuditPending = true
@@ -397,5 +400,6 @@ func mergeProfileForAuthor(ctx context.Context, p entity.UcgProfile) (*ProfileDT
 	if job.UpdatedAt > dto.UpdatedAt {
 		dto.UpdatedAt = job.UpdatedAt
 	}
+	enrichProfileForceValues(ctx, dto)
 	return dto, nil
 }

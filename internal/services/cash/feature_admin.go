@@ -97,6 +97,7 @@ func AdminListFeatureDefs(ctx context.Context) ([]FeatureDefRow, error) {
 			ActivationSubject:    NormalizeActivationSubject(r.ActivationSubject),
 			Logo: featurelogo.CdnURL(ctx, r.Logo), Color: strings.TrimSpace(r.Color),
 			Status: r.Status, SortOrder: r.SortOrder,
+			RuleSummary: FeatureRuleSummary(r.FeatureId),
 		})
 	}
 	return out, nil

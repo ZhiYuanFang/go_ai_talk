@@ -124,6 +124,11 @@
 						<span class="sub">数字越小越靠前</span>
 						<input id="fSort" type="number" value="10" />
 					</div>
+					<div class="field span-2 field-readonly">
+						<label>开通规则说明（只读）</label>
+						<span class="sub">由服务端按功能编号派生，保存定义不会改写闸门逻辑</span>
+						<textarea id="fRuleSummary" readonly rows="4" placeholder="选择功能后显示"></textarea>
+					</div>
 				</div>
 			</section>
 			<section class="form-section">
@@ -148,8 +153,37 @@
 			</section>
 			<div class="btn-row">
 				<button id="saveDefBtn" type="button">保存功能定义</button>
+				<button id="detailDefBtn" type="button" class="secondary">查看开通快照</button>
 				<button id="reloadDefBtn" type="button" class="secondary">刷新列表</button>
 			</div>
+		</div>
+		<div class="form-stack" id="activationPanel" style="display:none;max-width:920px;">
+			<section class="form-section">
+				<h4>开通快照 · <span id="actFeatureId"></span></h4>
+				<p class="hint" id="actNote"></p>
+				<p class="hint" id="actRule" style="white-space:pre-wrap;"></p>
+				<div class="table-wrap">
+					<table>
+						<thead>
+							<tr>
+								<th>主体</th>
+								<th>标识</th>
+								<th>昵称</th>
+								<th>方式</th>
+								<th>状态</th>
+								<th>到期/剩余</th>
+								<th>条数</th>
+								<th>更新时间</th>
+							</tr>
+						</thead>
+						<tbody id="actBody"></tbody>
+					</table>
+				</div>
+				<div class="btn-row">
+					<button id="actReloadBtn" type="button" class="secondary">刷新快照</button>
+					<button id="actCloseBtn" type="button" class="secondary">收起</button>
+				</div>
+			</section>
 		</div>
 		<div class="table-wrap">
 			<table>
@@ -165,6 +199,7 @@
 						<th>邀请/广告天数</th>
 						<th>默认条数</th>
 						<th>上架</th>
+						<th>操作</th>
 					</tr>
 				</thead>
 				<tbody id="defBody"></tbody>
@@ -399,6 +434,7 @@
 		fSubject.value = (r.activationSubject === 'user') ? 'user' : 'device';
 		fStatus.value = String(r.status != null ? r.status : 1);
 		fSort.value = r.sortOrder != null ? r.sortOrder : 10;
+		document.getElementById('fRuleSummary').value = r.ruleSummary || '';
 		const color = normHex(r.color);
 		fColor.value = color;
 		fColorPick.value = toColorInput(color);
@@ -407,6 +443,55 @@
 		document.getElementById('fLogoFile').value = '';
 		revokeLogoObjectUrl();
 		setLogoPreview(r.logo || '');
+	}
+
+	function fmtRemain(it) {
+		if (it.kind === 'allowed_count') return '—';
+		if (!it.active) return '已过期';
+		if (!it.expiresAt) return '永久';
+		const sec = Number(it.remainingSeconds) || 0;
+		if (sec <= 0) return '永久/到期';
+		const d = Math.floor(sec / 86400);
+		const h = Math.floor((sec % 86400) / 3600);
+		return d + '天' + h + '时';
+	}
+	function fmtTs(ts) {
+		const n = Number(ts) || 0;
+		if (n <= 0) return '—';
+		const d = new Date(n * 1000);
+		const pad = x => String(x).padStart(2, '0');
+		return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) +
+			' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+	}
+	async function loadActivations(featureId) {
+		const fid = String(featureId || '').trim();
+		if (!fid) { show('请先选择功能', false); return; }
+		const data = await AdminCommon.adminFetch('/cash/admin/api/feature/activations?featureId=' + encodeURIComponent(fid) + '&limit=50&offset=0');
+		const panel = document.getElementById('activationPanel');
+		panel.style.display = '';
+		document.getElementById('actFeatureId').textContent = data.featureId || fid;
+		document.getElementById('actNote').textContent = data.note || '';
+		document.getElementById('actRule').textContent = data.ruleSummary || '';
+		const list = data.list || [];
+		const tb = document.getElementById('actBody');
+		tb.innerHTML = list.map(it => {
+			const idLabel = it.subjectType === 'user'
+				? ('wx ' + (it.wxId || ''))
+				: esc(it.deviceNo || '');
+			const st = it.active
+				? '<span class="badge-on">有效</span>'
+				: '<span class="badge-off">无效</span>';
+			return `<tr>
+				<td>${esc(it.subjectType || '')}</td>
+				<td><code>${idLabel}</code></td>
+				<td>${esc(it.nickname || '—')}</td>
+				<td>${esc(it.unlockMethod || '—')}</td>
+				<td>${st}</td>
+				<td>${esc(fmtRemain(it))}</td>
+				<td>${it.kind === 'allowed_count' ? (it.permanentDelta != null ? it.permanentDelta : 0) : '—'}</td>
+				<td>${esc(fmtTs(it.updatedAt))}</td>
+			</tr>`;
+		}).join('') || '<tr><td colspan="8">暂无开通记录</td></tr>';
 	}
 
 	async function loadDefs() {
@@ -430,12 +515,23 @@
 				<td>${r.durationDays != null ? r.durationDays : 0}</td>
 				<td>${r.defaultAllowedCount != null ? r.defaultAllowedCount : 0}</td>
 				<td>${statusLabel(r.status)}</td>
+				<td><button type="button" class="secondary act-btn" data-fid="${esc(r.featureId)}">快照</button></td>
 			</tr>`;
-		}).join('') || '<tr><td colspan="10">暂无功能定义（须种子/发版写入）</td></tr>';
+		}).join('') || '<tr><td colspan="11">暂无功能定义（须种子/发版写入）</td></tr>';
 		tb.querySelectorAll('tr[data-fid]').forEach(tr => {
-			tr.onclick = () => {
+			tr.onclick = (ev) => {
+				if (ev.target && ev.target.classList && ev.target.classList.contains('act-btn')) return;
 				const r = defList.find(x => x.featureId === tr.dataset.fid);
 				if (r) loadDefIntoForm(r);
+			};
+		});
+		tb.querySelectorAll('button.act-btn').forEach(btn => {
+			btn.onclick = (ev) => {
+				ev.stopPropagation();
+				const fid = btn.getAttribute('data-fid');
+				const r = defList.find(x => x.featureId === fid);
+				if (r) loadDefIntoForm(r);
+				loadActivations(fid).catch(e => show(e.message || e, false));
 			};
 		});
 		if (!fId.value && defList.length) loadDefIntoForm(defList[0]);
@@ -473,6 +569,15 @@
 	}
 
 	document.getElementById('reloadDefBtn').onclick = () => loadDefs().catch(e => show(e.message || e, false));
+	document.getElementById('detailDefBtn').onclick = () => {
+		loadActivations(fId.value.trim()).catch(e => show(e.message || e, false));
+	};
+	document.getElementById('actReloadBtn').onclick = () => {
+		loadActivations(document.getElementById('actFeatureId').textContent || fId.value).catch(e => show(e.message || e, false));
+	};
+	document.getElementById('actCloseBtn').onclick = () => {
+		document.getElementById('activationPanel').style.display = 'none';
+	};
 	document.getElementById('reloadProdBtn').onclick = () => loadProds().catch(e => show(e.message || e, false));
 	document.getElementById('newProdBtn').onclick = () => {
 		pCode.value = '';

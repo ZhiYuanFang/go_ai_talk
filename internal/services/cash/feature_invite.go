@@ -1,11 +1,11 @@
 package cash
 
 import (
-	deviceclient "hello/internal/clients/device"
-	ucgclient "hello/internal/clients/ucg"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	deviceclient "hello/internal/clients/device"
+	ucgclient "hello/internal/clients/ucg"
 	"strings"
 	"time"
 
@@ -131,8 +131,9 @@ func ListInviteInvitees(ctx context.Context, ownerWxID int64) ([]InviteeRow, err
 // RedeemInviteCode 邀请码兑换单功能。
 //
 // 规则：不可自用；不可使用同一宝宝（同 device_no）下其他账号的码；人×码×功能仅一次；
-// 多好友码可兑（不同设备）；预测永久 +1；非预测经 ActivateFeature（邀请天数读 feature_def）；
-// InviteOncePerDevice：device×feature 邀请仅一次；InviteOncePerUser（成长轨迹）：人×feature 任意码仅一次；
+// 多好友码可兑（不同宝宝）；预测永久 +1；非预测经 ActivateFeature（邀请天数读 feature_def）；
+// InviteOncePerDevice（值得留意）：device×feature 邀请仅一次；
+// InviteOncePerUser（成长轨迹）：人×feature 任意码仅一次，同机可兑不同码；
 // 原力仍记码主人用户。开通主体按 feature_def.activation_subject（device|user）。
 // 码级有效期/功能子表/一家锁定不再校验；开通能力仅看 feature_def.unlock_methods。
 // 主人设备号经 device 契约查询：失败 fail-closed；主人未绑机（空 device_no）不因同设备规则拒绝。
@@ -212,7 +213,7 @@ func RedeemInviteCode(ctx context.Context, redeemerWxID int64, deviceNo, code, f
 			return gerror.NewCode(gcode.CodeInvalidParameter, "功能不支持邀请码开通")
 		}
 
-		// 值得留意 / 成长轨迹等：同一 device_no 对本功能仅能邀请开通一次。
+		// 值得留意等：同一 device_no 对本功能仅能邀请开通一次（成长轨迹不适用）。
 		if InviteOncePerDevice(featureID) {
 			dn, err := tx.Model("feature_invite_device_grant").Ctx(ctx).
 				Where("device_no", deviceNo).Where("feature_id", featureID).Count()
@@ -220,7 +221,7 @@ func RedeemInviteCode(ctx context.Context, redeemerWxID int64, deviceNo, code, f
 				return err
 			}
 			if dn > 0 {
-				return gerror.NewCode(gcode.CodeInvalidParameter, "该设备已使用过邀请码开通此功能")
+				return gerror.NewCode(gcode.CodeInvalidParameter, "该宝宝已使用过邀请码开通此功能")
 			}
 		}
 

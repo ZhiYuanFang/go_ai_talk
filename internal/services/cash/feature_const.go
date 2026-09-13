@@ -33,13 +33,14 @@ const (
 	AllowedCountFullAccessSentinel = -1
 )
 
-// InviteOncePerDevice 该功能邀请开通是否按设备仅一次（值得留意 / 成长轨迹防刷；与权益主体无关）。
+// InviteOncePerDevice 该功能邀请开通是否按设备仅一次（值得留意防刷；与权益主体无关）。
+// 成长轨迹为账号维开通，同宝宝多家长须各自可兑不同码，故不得再适用本闸。
 func InviteOncePerDevice(featureID string) bool {
-	return featureID == FeatureIDCareAlertSmartRemind || featureID == FeatureIDGrowthTrajectoryPredict
+	return featureID == FeatureIDCareAlertSmartRemind
 }
 
-// InviteOncePerUser 该功能邀请开通是否按账号仅一次（跨任意邀请码；与 InviteOncePerDevice 可并存）。
-// 成长轨迹：权益跟人，故同一人只能邀请开通一次；设备一次闸仍保留。
+// InviteOncePerUser 该功能邀请开通是否按账号仅一次（跨任意邀请码）。
+// 成长轨迹：权益跟人，同一人只能邀请开通一次；同机可兑多个不同好友码。
 func InviteOncePerUser(featureID string) bool {
 	return featureID == FeatureIDGrowthTrajectoryPredict
 }

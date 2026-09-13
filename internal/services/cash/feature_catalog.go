@@ -28,6 +28,7 @@ type FeatureDefRow struct {
 	Color               string `json:"color"`             // #RGB / #RRGGBB
 	Status              int    `json:"status"`
 	SortOrder           int    `json:"sortOrder"`
+	RuleSummary         string `json:"ruleSummary,omitempty"` // 只读开通规则（运维展示）
 }
 
 // FeatureCatalogProduct 目录项内嵌可售 SKU（仅 status=1）。
