@@ -27,13 +27,13 @@ const (
 	// maxTimelineLen 单用户时间线硬顶。
 	maxTimelineLen = 10000
 	// rateLimitTTL 同 wx 上报间隔。
-	rateLimitTTL = 3 * time.Second
+	rateLimitTTL = 1 * time.Second
 	// maxFeatureIDLen featureId 最大长度，防巨型 Hash field。
 	maxFeatureIDLen = 128
 	// maxDescriptionLen description 最大长度。
 	maxDescriptionLen = 128
-	crossFieldSep = "\x1f"
-	timelineSep   = "|"
+	crossFieldSep     = "\x1f"
+	timelineSep       = "|"
 )
 
 var featCache = cachekit.Default()
