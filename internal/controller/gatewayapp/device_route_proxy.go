@@ -35,6 +35,11 @@ func installDeviceProxyMiddleware(s *ghttp.Server) {
 			r.Middleware.Next()
 			return
 		}
+		// 客户端功能使用统计（client-usage）同为本机 Redis，不得反代至 device-service。
+		if strings.HasPrefix(r.URL.Path, "/device/admin/api/client-usage/") {
+			r.Middleware.Next()
+			return
+		}
 		// 运维 history API 反代至 history-service，不得误转发至 device-service。
 		if strings.HasPrefix(r.URL.Path, "/device/admin/api/history/") {
 			r.Middleware.Next()

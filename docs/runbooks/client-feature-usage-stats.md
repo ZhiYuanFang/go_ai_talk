@@ -24,3 +24,5 @@ await api.post('/device/app/api/client-usage/report', body: {
 ## Hub
 
 设备管理 → **客户端使用统计**（`/device/admin/client-usage-stats`）：按功能 / 按用户；列表与时间线均展示 **事件名 + 说明**。
+
+Admin API（`/device/admin/api/client-usage/*`）由 **gateway-app 本机**处理，device 反代须旁路（与 `/device/admin/api/usage/*` 同）；漏旁路时会 404。
