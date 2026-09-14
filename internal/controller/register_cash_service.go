@@ -14,4 +14,5 @@ func RegisterCashServiceHTTP(s *ghttp.Server) {
 		group.Bind(&cashctrl.CashFeatureController{})
 	})
 	cashctrl.RegisterAlipayNotify(s)
+	cashctrl.RegisterAppleNotifications(s)
 }

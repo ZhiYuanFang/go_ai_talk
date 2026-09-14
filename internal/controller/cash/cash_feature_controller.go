@@ -168,7 +168,8 @@ func (c *CashFeatureController) Orders(ctx context.Context, req *v1.CashFeatureC
 	return &v1.CashFeatureCreateOrderRes{
 		OrderNo: out.OrderNo, ProductCode: out.ProductCode, Channel: out.Channel,
 		AmountFen: out.AmountFen, AppleProductId: out.AppleProductId,
-		AlipayOrderStr: out.AlipayOrderStr, PayTip: out.PayTip,
+		AppAccountToken: out.AppAccountToken,
+		AlipayOrderStr:  out.AlipayOrderStr, PayTip: out.PayTip,
 	}, nil
 }
 

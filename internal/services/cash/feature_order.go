@@ -81,27 +81,29 @@ func GetFeatureProductByAppleID(ctx context.Context, applePID string) (*FeatureP
 
 // FeatureOrder 功能订单行。
 type FeatureOrder struct {
-	Id           int64  `json:"id"`
-	OrderNo      string `json:"orderNo"`
-	DeviceNo     string `json:"deviceNo"`
-	WxId         int64  `json:"wxId"`
-	ProductCode  string `json:"productCode"`
-	Channel      string `json:"channel"`
-	AmountFen    int    `json:"amountFen"`
-	Status       string `json:"status"`
-	ChannelTxnId string `json:"channelTxnId"`
+	Id              int64  `json:"id"`
+	OrderNo         string `json:"orderNo"`
+	DeviceNo        string `json:"deviceNo"`
+	WxId            int64  `json:"wxId"`
+	ProductCode     string `json:"productCode"`
+	Channel         string `json:"channel"`
+	AmountFen       int    `json:"amountFen"`
+	Status          string `json:"status"`
+	ChannelTxnId    string `json:"channelTxnId"`
+	AppAccountToken string `json:"appAccountToken,omitempty"`
 }
 
 type featureOrderDB struct {
-	Id           int64  `json:"id"`
-	OrderNo      string `json:"order_no"`
-	DeviceNo     string `json:"device_no"`
-	WxId         int64  `json:"wx_id"`
-	ProductCode  string `json:"product_code"`
-	Channel      string `json:"channel"`
-	AmountFen    int    `json:"amount_fen"`
-	Status       string `json:"status"`
-	ChannelTxnId string `json:"channel_txn_id"`
+	Id              int64  `json:"id"`
+	OrderNo         string `json:"order_no"`
+	DeviceNo        string `json:"device_no"`
+	WxId            int64  `json:"wx_id"`
+	ProductCode     string `json:"product_code"`
+	Channel         string `json:"channel"`
+	AmountFen       int    `json:"amount_fen"`
+	Status          string `json:"status"`
+	ChannelTxnId    string `json:"channel_txn_id"`
+	AppAccountToken string `json:"app_account_token"`
 }
 
 func loadFeatureOrderByNo(ctx context.Context, orderNo string) (*FeatureOrder, error) {
@@ -116,7 +118,7 @@ func loadFeatureOrderByNo(ctx context.Context, orderNo string) (*FeatureOrder, e
 	return &FeatureOrder{
 		Id: r.Id, OrderNo: r.OrderNo, DeviceNo: r.DeviceNo, WxId: r.WxId,
 		ProductCode: r.ProductCode, Channel: r.Channel, AmountFen: r.AmountFen,
-		Status: r.Status, ChannelTxnId: r.ChannelTxnId,
+		Status: r.Status, ChannelTxnId: r.ChannelTxnId, AppAccountToken: r.AppAccountToken,
 	}, nil
 }
 
@@ -136,7 +138,28 @@ func loadFeatureOrderByChannelTxn(ctx context.Context, channel, txn string) (*Fe
 	return &FeatureOrder{
 		Id: r.Id, OrderNo: r.OrderNo, DeviceNo: r.DeviceNo, WxId: r.WxId,
 		ProductCode: r.ProductCode, Channel: r.Channel, AmountFen: r.AmountFen,
-		Status: r.Status, ChannelTxnId: r.ChannelTxnId,
+		Status: r.Status, ChannelTxnId: r.ChannelTxnId, AppAccountToken: r.AppAccountToken,
+	}, nil
+}
+
+// loadFeatureOrderByAppAccountToken 按 Apple appAccountToken 查功能订单。
+func loadFeatureOrderByAppAccountToken(ctx context.Context, token string) (*FeatureOrder, error) {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return nil, nil
+	}
+	var r featureOrderDB
+	err := g.DB().Model("feature_order").Ctx(ctx).Where("app_account_token", token).Scan(&r)
+	if err != nil {
+		return nil, err
+	}
+	if r.OrderNo == "" {
+		return nil, nil
+	}
+	return &FeatureOrder{
+		Id: r.Id, OrderNo: r.OrderNo, DeviceNo: r.DeviceNo, WxId: r.WxId,
+		ProductCode: r.ProductCode, Channel: r.Channel, AmountFen: r.AmountFen,
+		Status: r.Status, ChannelTxnId: r.ChannelTxnId, AppAccountToken: r.AppAccountToken,
 	}, nil
 }
 
@@ -159,7 +182,7 @@ func CreateFeatureOrder(ctx context.Context, deviceNo string, wxID int64, produc
 		return nil, err
 	}
 	now := time.Now().Unix()
-	_, err = g.DB().Model("feature_order").Ctx(ctx).Data(g.Map{
+	row := g.Map{
 		"order_no":     orderNo,
 		"device_no":    deviceNo,
 		"wx_id":        wxID,
@@ -169,7 +192,16 @@ func CreateFeatureOrder(ctx context.Context, deviceNo string, wxID int64, produc
 		"currency":     "CNY",
 		"status":       OrderCreated,
 		"created_at":   now,
-	}).Insert()
+	}
+	var appToken string
+	if channel == ChannelAppleIAP {
+		appToken, err = newAppAccountToken()
+		if err != nil {
+			return nil, err
+		}
+		row["app_account_token"] = appToken
+	}
+	_, err = g.DB().Model("feature_order").Ctx(ctx).Data(row).Insert()
 	if err != nil {
 		return nil, err
 	}
@@ -178,6 +210,7 @@ func CreateFeatureOrder(ctx context.Context, deviceNo string, wxID int64, produc
 	}
 	if channel == ChannelAppleIAP {
 		out.AppleProductId = prod.AppleProductId
+		out.AppAccountToken = appToken
 		return out, nil
 	}
 	// 复用支付宝拼串：构造临时 VIP Product 形状。

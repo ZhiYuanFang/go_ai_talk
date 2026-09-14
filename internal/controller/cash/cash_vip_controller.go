@@ -1,9 +1,10 @@
 package cashctrl
 
 import (
-	"hello/internal/platform/httpmeta"
 	"context"
 	"fmt"
+	"hello/internal/platform/httpmeta"
+	"net/http"
 	"strconv"
 	"strings"
 
@@ -70,17 +71,19 @@ func (c *CashVipController) Orders(ctx context.Context, req *v1.CashVipCreateOrd
 		return nil, err
 	}
 	return &v1.CashVipCreateOrderRes{
-		OrderNo:        out.OrderNo,
-		ProductCode:    out.ProductCode,
-		Channel:        out.Channel,
-		AmountFen:      out.AmountFen,
-		AppleProductId: out.AppleProductId,
-		AlipayOrderStr: out.AlipayOrderStr,
-		PayTip:         out.PayTip,
+		OrderNo:         out.OrderNo,
+		ProductCode:     out.ProductCode,
+		Channel:         out.Channel,
+		AmountFen:       out.AmountFen,
+		AppleProductId:  out.AppleProductId,
+		AppAccountToken: out.AppAccountToken,
+		AlipayOrderStr:  out.AlipayOrderStr,
+		PayTip:          out.PayTip,
 	}, nil
 }
 
 // AppleVerify POST /cash/app/api/vip/apple/verify
+// 可选加速履约；权威路径为 ASN（…/apple/notifications），二者共用 Fulfill* 幂等。
 func (c *CashVipController) AppleVerify(ctx context.Context, req *v1.CashVipAppleVerifyReq) (res *v1.CashVipAppleVerifyRes, err error) {
 	wxID, err := cashWxIDFromHeader(ctx)
 	if err != nil {
@@ -123,6 +126,45 @@ func requireCashAdmin(ctx context.Context) error {
 		return gerror.NewCode(gcode.CodeNotAuthorized, "口令错误")
 	}
 	return nil
+}
+
+// AdminVipProduct GET /cash/admin/api/vip/product — 开通功能管理读取一期 VIP 套餐。
+func (c *CashVipController) AdminVipProduct(ctx context.Context, _ *v1.CashAdminVipProductGetReq) (*v1.CashAdminVipProductGetRes, error) {
+	if err := requireCashAdmin(ctx); err != nil {
+		return nil, err
+	}
+	prod, err := cash.GetVipProductForAdmin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &v1.CashAdminVipProductGetRes{
+		ProductCode:      prod.ProductCode,
+		Title:            prod.Title,
+		PriceFen:         prod.PriceFen,
+		OriginalPriceFen: prod.OriginalPriceFen,
+		DurationDays:     prod.DurationDays,
+		AppleProductId:   prod.AppleProductId,
+		Status:           prod.Status,
+	}, nil
+}
+
+// AdminVipProductUpsert POST /cash/admin/api/vip/product — 仅更新 vip_monthly_19。
+func (c *CashVipController) AdminVipProductUpsert(ctx context.Context, req *v1.CashAdminVipProductUpsertReq) (*v1.CashAdminVipProductUpsertRes, error) {
+	if err := requireCashAdmin(ctx); err != nil {
+		return nil, err
+	}
+	if err := cash.AdminUpdateVipProduct(ctx, cash.AdminUpdateVipProductInput{
+		ProductCode:      req.ProductCode,
+		Title:            req.Title,
+		PriceFen:         req.PriceFen,
+		OriginalPriceFen: req.OriginalPriceFen,
+		DurationDays:     req.DurationDays,
+		AppleProductId:   req.AppleProductId,
+		Status:           req.Status,
+	}); err != nil {
+		return nil, err
+	}
+	return &v1.CashAdminVipProductUpsertRes{ProductCode: cash.ProductMonthly19}, nil
 }
 
 // AdminVipEntitlements GET /cash/admin/api/vip/entitlements — 只读分页列表（含已过期 + 最近实付）。
@@ -182,6 +224,30 @@ func RegisterAlipayNotify(s *ghttp.Server) {
 		}
 		r.Response.WriteStatus(200)
 		r.Response.Write("success")
+	})
+}
+
+// RegisterAppleNotifications Apple ASN V2：读 JSON signedPayload，同步验签履约；失败非 2xx 触发苹果重试。
+// 无 MQ、无标准 JSON envelope（对齐支付宝 notify 特殊写出风格）。
+func RegisterAppleNotifications(s *ghttp.Server) {
+	s.BindHandler("POST:/cash/app/api/vip/apple/notifications", func(r *ghttp.Request) {
+		var body struct {
+			SignedPayload string `json:"signedPayload"`
+		}
+		if err := r.Parse(&body); err != nil || strings.TrimSpace(body.SignedPayload) == "" {
+			// 兼容原始 body 仅为 JWS 字符串的误配（少见）
+			raw := strings.TrimSpace(r.GetBodyString())
+			if strings.HasPrefix(raw, "eyJ") {
+				body.SignedPayload = raw
+			}
+		}
+		if err := cash.HandleAppleNotification(r.Context(), body.SignedPayload); err != nil {
+			r.Response.WriteStatus(http.StatusInternalServerError)
+			r.Response.Write([]byte(err.Error()))
+			return
+		}
+		r.Response.WriteStatus(http.StatusOK)
+		r.Response.Write([]byte("ok"))
 	})
 }
 

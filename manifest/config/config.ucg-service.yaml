@@ -29,9 +29,12 @@ ucg:
     maxTranscodeConcurrency: 2
     transcodeTimeoutSec: 120
   oss:
-    bucket: "pang-bao"
-    region: "cn-beijing"
-    endpoint: "oss-cn-beijing.aliyuncs.com"
+    # 新桶 caidoukeji（杭州）；服务端 SDK 两段式：endpoint 不含 bucket 主机前缀，bucket 单独配置。
+    # 生产默认内网 endpoint（须杭州同地域 VPC）；本地/非 VPC 可用 env UCG_OSS_ENDPOINT 覆盖为公网 oss-cn-hangzhou.aliyuncs.com。
+    # 旧桶 pang-bao 已弃用；历史对象由运维同 objectKey 拷贝至本桶，CDN 已指向 caidoukeji。
+    bucket: "caidoukeji"
+    region: "cn-hangzhou"
+    endpoint: "oss-cn-hangzhou-internal.aliyuncs.com"
     accessKeyId: ""
     accessKeySecret: ""
     objectKeyPrefix: "social/"

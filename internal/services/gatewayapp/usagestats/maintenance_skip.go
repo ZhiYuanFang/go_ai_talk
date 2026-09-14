@@ -23,6 +23,11 @@ var maintenanceExactAPI = map[string]struct{}{
 	"GET /device/history/api/list":          {},
 	// VIP 商品现价/原价：负责人确认匿名读价不计入 usage（vip-price-db）。
 	"GET /cash/app/api/vip/product": {},
+	// Apple ASN / 支付宝 notify：渠道机器回调，不计入 App usage（负责人确认）。
+	"POST /cash/app/api/vip/apple/notifications": {},
+	"POST /cash/app/api/vip/alipay/notify":       {},
+	// 客户端功能上报：统计基础设施，不计入 App API 使用统计（负责人确认）。
+	"POST /device/app/api/client-usage/report": {},
 	// 商业功能：查询链路不计入 usage；开通意图 POST（建单/兑码/广告）仍统计。
 	"GET /cash/app/api/ucg/eligibility":  {},
 	"GET /cash/app/api/feature/catalog": {},

@@ -32,6 +32,8 @@ var (
 		"/device/admin/api/login",
 		// 支付宝异步通知：匿名到达，cash-service 内验签。
 		"/cash/app/api/vip/alipay/notify",
+		// Apple Server Notifications V2：匿名到达，cash-service 内验 signedPayload。
+		"/cash/app/api/vip/apple/notifications",
 	}
 
 	// GET 且路径精确匹配（WebSocket Upgrade 等不要求 HTTP 层 Bearer）。
@@ -54,6 +56,7 @@ var (
 		"/device/admin/qa-records",
 		"/device/admin/feedback-records",
 		"/device/admin/api-usage-stats",
+		"/device/admin/client-usage-stats",
 		"/device/app/api/site/home",
 		"/device/app/api/version/check",
 		"/device/history/api/event/options",

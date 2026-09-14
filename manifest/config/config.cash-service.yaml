@@ -3,8 +3,10 @@
 # 监听：CASH_SERVICE_ADDR（默认 :9807）。
 # UCG 资格：HISTORY_SERVICE_URL + DEVICE_GATEWAY_INTERNAL_SECRET（HTTP 契约，禁止配 history DB link）。
 # 支付宝：CASH_ALIPAY_APP_ID / CASH_ALIPAY_PRIVATE_KEY / CASH_ALIPAY_PUBLIC_KEY / CASH_ALIPAY_NOTIFY_URL
-# Apple IAP：CASH_APPLE_BUNDLE_ID / CASH_APPLE_PRODUCT_ID（映射 vip_monthly_19）
-# 开发旁路（仅非生产）：CASH_PAYMENT_DEV_BYPASS=1 时可跳过渠道验签（仍校验订单号/金额/商品）。
+# Apple IAP：CASH_APPLE_BUNDLE_ID（验 JWS / ASN bundle）；VIP Apple 商品 ID / 现价在开通功能管理写 vip_product，勿用 env。
+# Apple ASN URL 配在 App Store Connect（Production+Sandbox）→ POST /cash/app/api/vip/apple/notifications（非新 env 密钥）。
+# 可选证书轮换：CASH_APPLE_ROOT_CA_PEM（默认内置 Apple Root CA - G3）。
+# 开发旁路（仅非生产）：CASH_PAYMENT_DEV_BYPASS=1 时可跳过支付宝验签 / 允许无 JWS 的 apple/verify；ASN 始终验签。
 
 server:
   address: ":9807"
@@ -20,7 +22,3 @@ database:
   default:
     link: "mysql:user:password@tcp(127.0.0.1:3306)/ai_voice_cash"
     debug: false
-
-cash:
-  # 一期 Apple IAP 商品 ID（可被 CASH_APPLE_PRODUCT_ID 覆盖）
-  appleProductId: ""

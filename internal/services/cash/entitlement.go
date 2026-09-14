@@ -64,3 +64,33 @@ ON DUPLICATE KEY UPDATE expire_at=VALUES(expire_at), updated_at=VALUES(updated_a
 		wxID, newExpire, now)
 	return newExpire, err
 }
+
+// ShrinkEntitlement 退款回退：expire_at = max(now, expire_at - durationDays*86400)。
+//
+// 业务：按「该笔 VIP 时长」缩短，避免叠加续期时一次 REFUND 清掉全部权益；
+// 若仅一笔则回退后 expire≈now，IsVip 立即为 false（可测）。
+func ShrinkEntitlement(ctx context.Context, wxID int64, durationDays int) error {
+	if wxID <= 0 {
+		return nil
+	}
+	if durationDays <= 0 {
+		durationDays = ProductDurationD
+	}
+	now := time.Now().Unix()
+	st, err := GetVipStatus(ctx, wxID)
+	if err != nil {
+		return err
+	}
+	if st.ExpireAt <= 0 {
+		return nil
+	}
+	newExpire := st.ExpireAt - int64(durationDays)*86400
+	if newExpire < now {
+		newExpire = now
+	}
+	_, err = g.DB().Model("vip_entitlement").Ctx(ctx).Where("wx_id", wxID).Data(g.Map{
+		"expire_at":  newExpire,
+		"updated_at": now,
+	}).Update()
+	return err
+}

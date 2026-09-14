@@ -14,14 +14,17 @@ import (
 
 // AppleVerifyInput App 提交的 IAP 验单载荷。
 type AppleVerifyInput struct {
-	OrderNo             string `json:"orderNo"`
-	TransactionId       string `json:"transactionId"`
-	ProductId           string `json:"productId"`
-	SignedTransaction   string `json:"signedTransaction"` // JWS，可选；有则解析声明
+	OrderNo           string `json:"orderNo"`
+	TransactionId     string `json:"transactionId"`
+	ProductId         string `json:"productId"`
+	SignedTransaction string `json:"signedTransaction"` // JWS，可选；有则解析声明
 }
 
 // VerifyAppleIAP 校验 Apple IAP 并履约开通（VIP 或功能订单共用入口）。
-// 生产应配置真实验签；CASH_PAYMENT_DEV_BYPASS=1 时仅校验 productId 映射与订单归属。
+//
+// 权威开通路径为 ASN（POST …/apple/notifications）；本接口为可选加速，
+// 与 ASN 共用 Fulfill* / channel_txn_id 幂等。生产须提交 signedTransaction 并验签（与 ASN 共用 VerifyAndDecodeAppleJWS）。
+// CASH_PAYMENT_DEV_BYPASS=1 仅非生产：允许无 JWS；有 JWS 时仍尽量验签。
 func VerifyAppleIAP(ctx context.Context, wxID int64, in AppleVerifyInput) error {
 	if wxID <= 0 {
 		return gerror.NewCode(gcode.CodeInvalidParameter, "缺少 X-Internal-Wx-Id")
@@ -34,9 +37,18 @@ func VerifyAppleIAP(ctx context.Context, wxID int64, in AppleVerifyInput) error 
 	}
 
 	if jws := strings.TrimSpace(in.SignedTransaction); jws != "" {
-		claims, cErr := decodeJWSPayload(jws)
+		var claims map[string]string
+		var cErr error
+		// 优先真实验签（与 ASN 共用）；DEV_BYPASS 时验签失败再回退到仅解码（便于本地假 JWS）。
+		claims, cErr = DecodeAppleJWSPayloadMap(jws)
 		if cErr != nil {
-			return gerror.WrapCode(gcode.CodeInvalidParameter, cErr, "signedTransaction 解析失败")
+			if paymentDevBypass() {
+				glog.Warningf(ctx, "[cash] apple verify JWS 验签失败，DEV_BYPASS 回退解码: %v", cErr)
+				claims, cErr = decodeJWSPayloadUnverified(jws)
+			}
+			if cErr != nil {
+				return gerror.WrapCode(gcode.CodeInvalidParameter, cErr, "signedTransaction 校验失败")
+			}
 		}
 		if v := strings.TrimSpace(claims["transactionId"]); v != "" {
 			txn = v
@@ -49,9 +61,7 @@ func VerifyAppleIAP(ctx context.Context, wxID int64, in AppleVerifyInput) error 
 				return gerror.NewCode(gcode.CodeNotAuthorized, "bundleId 不匹配")
 			}
 		}
-		if !paymentDevBypass() {
-			glog.Infof(ctx, "[cash] apple verify using JWS payload fields txn=%s product=%s", txn, productID)
-		}
+		glog.Infof(ctx, "[cash] apple verify ok txn=%s product=%s (ASN 为权威履约路径)", txn, productID)
 	} else if !paymentDevBypass() {
 		return gerror.NewCode(gcode.CodeInvalidParameter, "生产环境须提交 signedTransaction（JWS）；开发可设 CASH_PAYMENT_DEV_BYPASS=1")
 	}
@@ -89,10 +99,7 @@ func VerifyAppleIAP(ctx context.Context, wxID int64, in AppleVerifyInput) error 
 	}
 	expectPID := strings.TrimSpace(prod.AppleProductId)
 	if expectPID == "" {
-		expectPID = strings.TrimSpace(os.Getenv("CASH_APPLE_PRODUCT_ID"))
-	}
-	if expectPID == "" {
-		return gerror.NewCode(gcode.CodeInternalError, "未配置 Apple productId（CASH_APPLE_PRODUCT_ID）")
+		return gerror.NewCode(gcode.CodeInternalError, "未在开通功能管理配置 VIP 的 Apple 商品 ID")
 	}
 	if productID != expectPID {
 		return gerror.NewCode(gcode.CodeInvalidParameter, "productId 与一期 VIP 商品不匹配")
@@ -119,14 +126,14 @@ func VerifyAppleIAP(ctx context.Context, wxID int64, in AppleVerifyInput) error 
 	return FulfillPaid(ctx, orderNo, ChannelAppleIAP, txn, prod.PriceFen)
 }
 
-func decodeJWSPayload(jws string) (map[string]string, error) {
+// decodeJWSPayloadUnverified 仅 Base64 解码 payload（无签名校验；仅 DEV_BYPASS 回退）。
+func decodeJWSPayloadUnverified(jws string) (map[string]string, error) {
 	parts := strings.Split(jws, ".")
 	if len(parts) < 2 {
 		return nil, gerror.New("JWS 格式非法")
 	}
 	raw, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
-		// 兼容 padding
 		raw, err = base64.URLEncoding.DecodeString(parts[1])
 		if err != nil {
 			return nil, err

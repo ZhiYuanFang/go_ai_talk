@@ -2,7 +2,6 @@ package cash
 
 import (
 	"context"
-	"os"
 	"strings"
 	"time"
 
@@ -20,8 +19,9 @@ const (
 	ChannelAlipay   = "alipay"
 	ChannelAppleIAP = "apple_iap"
 
-	OrderCreated = "created"
-	OrderPaid    = "paid"
+	OrderCreated  = "created"
+	OrderPaid     = "paid"
+	OrderRefunded = "refunded" // Apple ASN REFUND 等退款语义
 	OrderFailed  = "failed"
 	OrderClosed  = "closed"
 )
@@ -42,19 +42,21 @@ func EnsureSchema(ctx context.Context) error {
   PRIMARY KEY (product_code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 		`CREATE TABLE IF NOT EXISTS vip_order (
-  id              BIGINT       NOT NULL AUTO_INCREMENT,
-  order_no        VARCHAR(64)  NOT NULL,
-  wx_id           BIGINT       NOT NULL,
-  product_code    VARCHAR(64)  NOT NULL,
-  channel         VARCHAR(32)  NOT NULL,
-  amount_fen      INT          NOT NULL DEFAULT 0,
-  currency        VARCHAR(8)   NOT NULL DEFAULT 'CNY',
-  status          VARCHAR(16)  NOT NULL DEFAULT 'created',
-  channel_txn_id  VARCHAR(128) NOT NULL DEFAULT '',
-  created_at      BIGINT       NOT NULL DEFAULT 0,
-  paid_at         BIGINT       NOT NULL DEFAULT 0,
+  id                 BIGINT       NOT NULL AUTO_INCREMENT,
+  order_no           VARCHAR(64)  NOT NULL,
+  wx_id              BIGINT       NOT NULL,
+  product_code       VARCHAR(64)  NOT NULL,
+  channel            VARCHAR(32)  NOT NULL,
+  amount_fen         INT          NOT NULL DEFAULT 0,
+  currency           VARCHAR(8)   NOT NULL DEFAULT 'CNY',
+  status             VARCHAR(16)  NOT NULL DEFAULT 'created',
+  channel_txn_id     VARCHAR(128) NOT NULL DEFAULT '',
+  app_account_token  CHAR(36)     NULL DEFAULT NULL COMMENT 'Apple StoreKit appAccountToken(UUID)；仅 apple_iap',
+  created_at         BIGINT       NOT NULL DEFAULT 0,
+  paid_at            BIGINT       NOT NULL DEFAULT 0,
   PRIMARY KEY (id),
   UNIQUE KEY uk_order_no (order_no),
+  UNIQUE KEY uk_app_account_token (app_account_token),
   KEY idx_wx_created (wx_id, created_at),
   KEY idx_channel_txn (channel, channel_txn_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
@@ -188,20 +190,22 @@ func EnsureSchema(ctx context.Context) error {
   PRIMARY KEY (device_no)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 		`CREATE TABLE IF NOT EXISTS feature_order (
-  id              BIGINT       NOT NULL AUTO_INCREMENT,
-  order_no        VARCHAR(64)  NOT NULL,
-  device_no       VARCHAR(64)  NOT NULL,
-  wx_id           BIGINT       NOT NULL DEFAULT 0,
-  product_code    VARCHAR(64)  NOT NULL,
-  channel         VARCHAR(32)  NOT NULL,
-  amount_fen      INT          NOT NULL DEFAULT 0,
-  currency        VARCHAR(8)   NOT NULL DEFAULT 'CNY',
-  status          VARCHAR(16)  NOT NULL DEFAULT 'created',
-  channel_txn_id  VARCHAR(128) NOT NULL DEFAULT '',
-  created_at      BIGINT       NOT NULL DEFAULT 0,
-  paid_at         BIGINT       NOT NULL DEFAULT 0,
+  id                 BIGINT       NOT NULL AUTO_INCREMENT,
+  order_no           VARCHAR(64)  NOT NULL,
+  device_no          VARCHAR(64)  NOT NULL,
+  wx_id              BIGINT       NOT NULL DEFAULT 0,
+  product_code       VARCHAR(64)  NOT NULL,
+  channel            VARCHAR(32)  NOT NULL,
+  amount_fen         INT          NOT NULL DEFAULT 0,
+  currency           VARCHAR(8)   NOT NULL DEFAULT 'CNY',
+  status             VARCHAR(16)  NOT NULL DEFAULT 'created',
+  channel_txn_id     VARCHAR(128) NOT NULL DEFAULT '',
+  app_account_token  CHAR(36)     NULL DEFAULT NULL COMMENT 'Apple StoreKit appAccountToken(UUID)；仅 apple_iap',
+  created_at         BIGINT       NOT NULL DEFAULT 0,
+  paid_at            BIGINT       NOT NULL DEFAULT 0,
   PRIMARY KEY (id),
   UNIQUE KEY uk_order_no (order_no),
+  UNIQUE KEY uk_app_account_token (app_account_token),
   KEY idx_device_created (device_no, created_at),
   KEY idx_channel_txn (channel, channel_txn_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
@@ -233,11 +237,26 @@ func EnsureSchema(ctx context.Context) error {
 		`ALTER TABLE feature_def ADD COLUMN default_allowed_count INT NOT NULL DEFAULT 0`,
 		`ALTER TABLE feature_allowed_count ADD COLUMN full_access TINYINT NOT NULL DEFAULT 0`,
 		`ALTER TABLE feature_allowed_count ADD COLUMN full_access_expires_at BIGINT NOT NULL DEFAULT 0`,
+		// Apple ASN：建单写入 UUID，通知用 appAccountToken 反查；可空以兼容历史/支付宝行。
+		`ALTER TABLE vip_order ADD COLUMN app_account_token CHAR(36) NULL DEFAULT NULL COMMENT 'Apple appAccountToken UUID；仅 apple_iap'`,
+		`ALTER TABLE feature_order ADD COLUMN app_account_token CHAR(36) NULL DEFAULT NULL COMMENT 'Apple appAccountToken UUID；仅 apple_iap'`,
 	}
 	for _, alterSQL := range alterCols {
 		if _, err := db.Exec(ctx, alterSQL); err != nil {
 			msg := err.Error()
 			if !strings.Contains(msg, "Duplicate column") && !strings.Contains(msg, "1060") {
+				return err
+			}
+		}
+	}
+	// 唯一索引：MySQL 允许多个 NULL；重复执行忽略 Duplicate key name。
+	for _, idxSQL := range []string{
+		`ALTER TABLE vip_order ADD UNIQUE KEY uk_app_account_token (app_account_token)`,
+		`ALTER TABLE feature_order ADD UNIQUE KEY uk_app_account_token (app_account_token)`,
+	} {
+		if _, err := db.Exec(ctx, idxSQL); err != nil {
+			msg := err.Error()
+			if !strings.Contains(msg, "Duplicate") && !strings.Contains(msg, "1061") && !strings.Contains(msg, "already exists") {
 				return err
 			}
 		}
@@ -307,17 +326,11 @@ func EnsureSchema(ctx context.Context) error {
 			g.Log().Warningf(ctx, "[cash-schema] invite grant PK migrate: %v", err)
 		}
 	}
-	applePID := strings.TrimSpace(os.Getenv("CASH_APPLE_PRODUCT_ID"))
-	if applePID == "" {
-		if v, err := g.Cfg().Get(ctx, "cash.appleProductId"); err == nil && v != nil {
-			applePID = strings.TrimSpace(v.String())
-		}
-	}
 	now := time.Now().Unix()
-	// 不覆盖已有 price_fen / original_price_fen，便于运维手工 SQL 改价后重启仍保留。
+	// 种子 Apple 商品 ID 为空；Admin/SQL 已写入的非空值不覆盖。价格同样不覆盖已有 price_fen。
 	_, err := db.Exec(ctx, `
 INSERT INTO vip_product (product_code, title, price_fen, original_price_fen, duration_days, apple_product_id, status, updated_at)
-VALUES (?, 'VIP月会员', ?, ?, ?, ?, 1, ?)
+VALUES (?, 'VIP月会员', ?, ?, ?, '', 1, ?)
 ON DUPLICATE KEY UPDATE
   title=VALUES(title),
   duration_days=VALUES(duration_days),
@@ -325,7 +338,7 @@ ON DUPLICATE KEY UPDATE
   original_price_fen=IF(original_price_fen=0, VALUES(original_price_fen), original_price_fen),
   status=1,
   updated_at=VALUES(updated_at)`,
-		ProductMonthly19, ProductPriceFen, ProductOriginalPriceFen, ProductDurationD, applePID, now)
+		ProductMonthly19, ProductPriceFen, ProductOriginalPriceFen, ProductDurationD, now)
 	if err != nil {
 		return err
 	}

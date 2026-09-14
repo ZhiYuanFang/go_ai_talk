@@ -149,6 +149,30 @@ func (c *RedisCache) ListPush(ctx context.Context, key, value string) error {
 	return nil
 }
 
+// ListLPush 将值插入列表头部（LPUSH）；用于时间线「最新在前」。
+func (c *RedisCache) ListLPush(ctx context.Context, key, value string) error {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return ErrInvalidKey
+	}
+	if _, err := g.Redis().Do(ctx, "LPUSH", key, value); err != nil {
+		return fmt.Errorf("%w: %v", ErrUnavailable, err)
+	}
+	return nil
+}
+
+// ListTrim 裁剪列表仅保留 [start, stop]（含）；常与 LPUSH 配合限制条数。
+func (c *RedisCache) ListTrim(ctx context.Context, key string, start, stop int64) error {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return ErrInvalidKey
+	}
+	if _, err := g.Redis().Do(ctx, "LTRIM", key, start, stop); err != nil {
+		return fmt.Errorf("%w: %v", ErrUnavailable, err)
+	}
+	return nil
+}
+
 // 返回列表的长度(列表名:key)
 // eg. 返回列表的长度(列表名:user:123)
 // redis.ListLen(ctx, "user:123")

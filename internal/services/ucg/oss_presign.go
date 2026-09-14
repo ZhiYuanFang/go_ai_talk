@@ -6,47 +6,28 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aliyun/aliyun-oss-go-sdk/oss"
 	"github.com/gogf/gf/v2/errors/gcode"
 	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/util/grand"
 )
 
-const presignExpireSeconds = 900
-
-// PresignUpload 生成 social/ 前缀 objectKey 与 PUT 预签名 URL（不写 ownership，由 register 负责）。
+// PresignUpload 已停用：禁止向客户端签发 OSS 预签名上传 URL。
+//
+// 业务说明：桶迁至 caidoukeji 后服务端使用杭州内网 endpoint；若再签发 SignURL，
+// 手机会拿到不可达的内网地址。全客户端改走 POST /media/upload 服务端 PutObject。
+//
+// Args: ctx/wxID/mediaKind/ext — 保留原签名以兼容 controller 调用，参数均忽略。
+// Returns: 明确业务错误，且 uploadURL 恒为空。
+// Side Effects: 无（不初始化 OSS 客户端、不 SignURL）。
 func PresignUpload(ctx context.Context, wxID int64, mediaKind int, ext string) (uploadURL, objectKey, cdnURL string, headers map[string]string, err error) {
+	_ = ctx
 	_ = wxID
-	cfg := LoadOSSConfig(ctx)
-	if err = validateOSSConfig(cfg); err != nil {
-		return "", "", "", nil, err
-	}
-	ext = normalizeExtension(ext)
-	if ext == "" {
-		return "", "", "", nil, gerror.NewCode(gcode.CodeInvalidParameter, "extension 无效")
-	}
-	objectKey = buildObjectKey(cfg.ObjectKeyPrefix, ext)
-	client, err := oss.New(cfg.Endpoint, cfg.AccessKeyID, cfg.AccessKeySecret)
-	if err != nil {
-		return "", "", "", nil, gerror.WrapCode(gcode.CodeInternalError, err, "OSS 客户端初始化失败")
-	}
-	bucket, err := client.Bucket(cfg.Bucket)
-	if err != nil {
-		return "", "", "", nil, gerror.WrapCode(gcode.CodeInternalError, err, "OSS Bucket 不可用")
-	}
-	contentType := contentTypeForMedia(mediaKind, ext)
-	opts := []oss.Option{
-		oss.ContentType(contentType),
-	}
-	signedURL, err := bucket.SignURL(objectKey, oss.HTTPPut, presignExpireSeconds, opts...)
-	if err != nil {
-		return "", "", "", nil, gerror.WrapCode(gcode.CodeInternalError, err, "生成预签名 URL 失败")
-	}
-	cdnURL = cfg.CdnBaseURL + "/" + strings.TrimPrefix(objectKey, "/")
-	headers = map[string]string{
-		"Content-Type": contentType,
-	}
-	return signedURL, objectKey, cdnURL, headers, nil
+	_ = mediaKind
+	_ = ext
+	return "", "", "", nil, gerror.NewCode(
+		gcode.CodeNotSupported,
+		"预签名直传已停用，请使用 POST /ucg/app/api/media/upload（经网关 multipart）",
+	)
 }
 
 func validateOSSConfig(cfg OSSConfig) error {

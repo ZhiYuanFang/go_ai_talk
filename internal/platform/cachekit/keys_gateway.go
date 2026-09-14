@@ -63,3 +63,45 @@ func GatewayUsageSimWxSetKey() string {
 func GatewayUsageSimWxMember(wxID int64) string {
 	return strconv.FormatInt(wxID, 10)
 }
+
+// —— 客户端功能使用统计（client-usage；仅 Redis，可丢；窗口约 30 天）——
+
+// GatewayFeatUsageDayGlobalKey 全局 feature 日计数 Hash；TTL ≈30 天。
+func GatewayFeatUsageDayGlobalKey(day string) string {
+	return "gw:featusage:d:" + day + ":g"
+}
+
+// GatewayFeatUsageDayWxKey 单用户 feature 日计数 Hash；TTL ≈30 天。
+func GatewayFeatUsageDayWxKey(day string, wxID int64) string {
+	return fmt.Sprintf("gw:featusage:d:%s:w:%d", day, wxID)
+}
+
+// GatewayFeatUsageDayCrossKey feature×wxId 交叉日计数 Hash；TTL ≈30 天。
+func GatewayFeatUsageDayCrossKey(day string) string {
+	return "gw:featusage:d:" + day + ":x"
+}
+
+// GatewayFeatUsageLastGlobalKey 全局 feature 最近上报时间 Hash。
+func GatewayFeatUsageLastGlobalKey() string {
+	return "gw:featusage:last:g"
+}
+
+// GatewayFeatUsageLastWxKey 单用户 feature 最近上报时间 Hash。
+func GatewayFeatUsageLastWxKey(wxID int64) string {
+	return fmt.Sprintf("gw:featusage:last:w:%d", wxID)
+}
+
+// GatewayFeatUsageTimelineKey 单用户时间线 LIST（最新在头）；TTL ≈30 天，条数硬顶 1 万。
+func GatewayFeatUsageTimelineKey(wxID int64) string {
+	return fmt.Sprintf("gw:featusage:tl:%d", wxID)
+}
+
+// GatewayFeatUsageRateLimitKey 同 wx 上报限流键；TTL=3 秒。
+func GatewayFeatUsageRateLimitKey(wxID int64) string {
+	return fmt.Sprintf("gw:featusage:rl:%d", wxID)
+}
+
+// GatewayFeatUsageDescGlobalKey 全局 featureId→最近 description Hash（运维展示；TTL 随写入刷新）。
+func GatewayFeatUsageDescGlobalKey() string {
+	return "gw:featusage:desc:g"
+}

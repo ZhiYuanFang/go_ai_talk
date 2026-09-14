@@ -50,14 +50,18 @@
 		<div class="logo">功能</div>
 		<div>
 			<h1>开通功能管理</h1>
-			<p>配置 App 可开通功能与付费套餐 · 须先在 <a href="/device/admin">运维 Hub</a> 登录</p>
+			<p>配置 App 可开通功能、VIP 套餐与付费 SKU · 须先在 <a href="/device/admin">运维 Hub</a> 登录</p>
 		</div>
 	</header>
 	<div class="card glass hidden" id="mainCard">
 		<p class="hint">
 			<strong>怎么用：</strong>编辑已有「功能定义」（编号与客户端约定，不可新建/改号），再为该功能建「售卖套餐」。
+			VIP 月会员在本页独立「VIP 套餐」配置现价与 Apple 商品 ID，不进入功能定义列表。
 			价格单位为<strong>分</strong>。若本页样式/字段与说明不符，请对浏览器做<strong>强制刷新</strong>（Ctrl+F5）清静态缓存。
 		</p>
+		<div class="btn-row">
+			<button id="vipListBtn" type="button" class="secondary">VIP列表</button>
+		</div>
 
 		<h3>一、功能定义（App 目录项）</h3>
 		<p class="hint">点击列表行载入编辑。功能编号只读；标题/简介/Logo/主色由服务端返回给客户端直接展示。</p>
@@ -235,6 +239,49 @@
 			</div>
 		</div>
 
+		<h3 style="margin-top:22px;">VIP 套餐（账号月会员）</h3>
+		<p class="hint">写 <code>vip_product.vip_monthly_19</code>，不进入 App 功能目录。Apple 商品 ID 须与 ASC 人肉对齐；支付宝金额用现价（分）。</p>
+		<div class="form-stack">
+			<div class="form-grid">
+				<div class="field field-readonly">
+					<label>商品编码</label>
+					<input id="vipCode" readonly />
+				</div>
+				<div class="field">
+					<label>标题</label>
+					<input id="vipTitle" />
+				</div>
+				<div class="field">
+					<label>价格（分）</label>
+					<span class="sub">19 元 = 1900<span id="vipPricePreview" class="price-preview"></span></span>
+					<input id="vipPrice" type="number" value="1900" min="0" />
+				</div>
+				<div class="field">
+					<label>划线原价（分）</label>
+					<input id="vipOrig" type="number" value="0" min="0" />
+				</div>
+				<div class="field">
+					<label>有效天数</label>
+					<input id="vipDays" type="number" value="30" min="0" />
+				</div>
+				<div class="field">
+					<label>Apple 商品 ID</label>
+					<input id="vipApple" placeholder="ASC Product ID" />
+				</div>
+				<div class="field">
+					<label>是否上架</label>
+					<select id="vipStatus">
+						<option value="1" selected>上架</option>
+						<option value="0">下架</option>
+					</select>
+				</div>
+			</div>
+			<div class="btn-row">
+				<button id="saveVipBtn" type="button">保存 VIP 套餐</button>
+				<button id="reloadVipBtn" type="button" class="secondary">刷新 VIP 套餐</button>
+			</div>
+		</div>
+
 		<h3 style="margin-top:22px;">二、售卖套餐（SKU / 商品）</h3>
 		<p class="hint">新建时商品编码可留空由服务端生成；所属功能从已有定义下拉选择。视觉品牌在功能定义上配置，SKU 不单独配色。</p>
 		<div class="form-stack">
@@ -401,6 +448,14 @@
 		const n = Number(document.getElementById('pPrice').value) || 0;
 		el.textContent = n > 0 ? '（约 ¥' + (n / 100).toFixed(2) + '）' : '';
 	});
+	document.getElementById('vipPrice').addEventListener('input', () => {
+		const el = document.getElementById('vipPricePreview');
+		const n = Number(document.getElementById('vipPrice').value) || 0;
+		el.textContent = n > 0 ? '（约 ¥' + (n / 100).toFixed(2) + '）' : '';
+	});
+	document.getElementById('vipListBtn').onclick = () => {
+		window.location.href = '/device/admin/cash-vip-admin.html';
+	};
 
 	try {
 		await AdminCommon.requireAdmin();
@@ -702,8 +757,40 @@
 		} catch (e) { show(e.message || String(e), false); }
 	};
 
+	async function loadVipProduct() {
+		const data = await AdminCommon.adminFetch('/cash/admin/api/vip/product');
+		document.getElementById('vipCode').value = data.productCode || 'vip_monthly_19';
+		document.getElementById('vipTitle').value = data.title || '';
+		document.getElementById('vipPrice').value = data.priceFen != null ? data.priceFen : 0;
+		document.getElementById('vipOrig').value = data.originalPriceFen != null ? data.originalPriceFen : 0;
+		document.getElementById('vipDays').value = data.durationDays != null ? data.durationDays : 30;
+		document.getElementById('vipApple').value = data.appleProductId || '';
+		document.getElementById('vipStatus').value = String(data.status != null ? data.status : 1);
+		document.getElementById('vipPrice').dispatchEvent(new Event('input'));
+	}
+	document.getElementById('reloadVipBtn').onclick = () => loadVipProduct().catch(e => show(e.message || e, false));
+	document.getElementById('saveVipBtn').onclick = async () => {
+		try {
+			await AdminCommon.adminFetch('/cash/admin/api/vip/product', {
+				method: 'POST',
+				body: JSON.stringify({
+					productCode: document.getElementById('vipCode').value.trim(),
+					title: document.getElementById('vipTitle').value.trim(),
+					priceFen: Number(document.getElementById('vipPrice').value) || 0,
+					originalPriceFen: Number(document.getElementById('vipOrig').value) || 0,
+					durationDays: Number(document.getElementById('vipDays').value) || 0,
+					appleProductId: document.getElementById('vipApple').value.trim(),
+					status: Number(document.getElementById('vipStatus').value)
+				})
+			});
+			show('VIP 套餐已保存', true);
+			await loadVipProduct();
+		} catch (e) { show(e.message || String(e), false); }
+	};
+
 	await loadDefs();
 	await loadProds();
+	await loadVipProduct().catch(e => show(e.message || e, false));
 	await loadQrMeta().catch(() => {});
 })();
 </script>

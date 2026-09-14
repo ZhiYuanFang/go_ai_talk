@@ -159,6 +159,20 @@ func (c *observedCache) ListPush(ctx context.Context, key, value string) error {
 	return err
 }
 
+func (c *observedCache) ListLPush(ctx context.Context, key, value string) error {
+	begin := time.Now()
+	err := c.base.ListLPush(ctx, key, value)
+	c.observer.OnOperation(ctx, "lpush", key, time.Since(begin), err)
+	return err
+}
+
+func (c *observedCache) ListTrim(ctx context.Context, key string, start, stop int64) error {
+	begin := time.Now()
+	err := c.base.ListTrim(ctx, key, start, stop)
+	c.observer.OnOperation(ctx, "ltrim", key, time.Since(begin), err)
+	return err
+}
+
 func (c *observedCache) ListLen(ctx context.Context, key string) (int64, error) {
 	begin := time.Now()
 	val, err := c.base.ListLen(ctx, key)

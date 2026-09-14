@@ -54,6 +54,7 @@ func RegisterGatewayAppHTTP(s *ghttp.Server) {
 		group.Middleware(ghttp.MiddlewareHandlerResponse)
 		group.Bind(NewGatewayAppCtrl())
 		group.Bind(NewGatewayAppUsageAdminCtrl())
+		group.Bind(NewGatewayAppClientUsageCtrl())
 		group.Bind(NewGatewayAdminLoginCtrl())
 	})
 

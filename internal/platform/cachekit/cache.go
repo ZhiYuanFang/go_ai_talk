@@ -30,6 +30,8 @@ type Cache interface {
 	HashGet(ctx context.Context, key, field string) (string, bool, error)
 	HashGetAll(ctx context.Context, key string) (map[string]string, error)
 	ListPush(ctx context.Context, key, value string) error
+	ListLPush(ctx context.Context, key, value string) error
+	ListTrim(ctx context.Context, key string, start, stop int64) error
 	ListLen(ctx context.Context, key string) (int64, error)
 	ListRange(ctx context.Context, key string, start, end int64) ([]string, error)
 	ListIndex(ctx context.Context, key string, index int64) (string, error)

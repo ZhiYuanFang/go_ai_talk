@@ -117,13 +117,14 @@ type CashFeatureCreateOrderReq struct {
 
 // CashFeatureCreateOrderRes 建单 data（字段对齐 VIP 建单）。
 type CashFeatureCreateOrderRes struct {
-	OrderNo        string `json:"orderNo"`
-	ProductCode    string `json:"productCode"`
-	Channel        string `json:"channel"`
-	AmountFen      int    `json:"amountFen"`
-	AppleProductId string `json:"appleProductId,omitempty"`
-	AlipayOrderStr string `json:"alipayOrderStr,omitempty"`
-	PayTip         string `json:"payTip,omitempty"`
+	OrderNo         string `json:"orderNo"`
+	ProductCode     string `json:"productCode"`
+	Channel         string `json:"channel"`
+	AmountFen       int    `json:"amountFen"`
+	AppleProductId  string `json:"appleProductId,omitempty"`
+	AppAccountToken string `json:"appAccountToken,omitempty" dc:"Apple StoreKit UUID；购买必带"`
+	AlipayOrderStr  string `json:"alipayOrderStr,omitempty"`
+	PayTip          string `json:"payTip,omitempty"`
 }
 
 // CashFeatureInviteRedeemReq POST 邀请码兑换单功能。

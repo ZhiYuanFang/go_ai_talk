@@ -38,13 +38,14 @@ type CashVipCreateOrderReq struct {
 
 // CashVipCreateOrderRes 建单 data。
 type CashVipCreateOrderRes struct {
-	OrderNo        string `json:"orderNo"`
-	ProductCode    string `json:"productCode"`
-	Channel        string `json:"channel"`
-	AmountFen      int    `json:"amountFen"`
-	AppleProductId string `json:"appleProductId,omitempty"`
-	AlipayOrderStr string `json:"alipayOrderStr,omitempty"`
-	PayTip         string `json:"payTip,omitempty"`
+	OrderNo         string `json:"orderNo"`
+	ProductCode     string `json:"productCode"`
+	Channel         string `json:"channel"`
+	AmountFen       int    `json:"amountFen"`
+	AppleProductId  string `json:"appleProductId,omitempty"`
+	AppAccountToken string `json:"appAccountToken,omitempty" dc:"Apple StoreKit UUID；购买必带"`
+	AlipayOrderStr  string `json:"alipayOrderStr,omitempty"`
+	PayTip          string `json:"payTip,omitempty"`
 }
 
 // CashVipAppleVerifyReq POST Apple IAP 验单。
@@ -58,6 +59,15 @@ type CashVipAppleVerifyReq struct {
 
 // CashVipAppleVerifyRes 验单结果。
 type CashVipAppleVerifyRes struct{}
+
+// CashVipAppleNotificationsReq Apple Server Notifications V2（JSON signedPayload；白名单）。
+// 实际由 RegisterAppleNotifications 读 body；此处登记 path 供 apiregistry。
+type CashVipAppleNotificationsReq struct {
+	g.Meta `path:"/cash/app/api/vip/apple/notifications" method:"post" tags:"cash" summary:"Apple Server Notifications V2"`
+}
+
+// CashVipAppleNotificationsRes Apple 仅关心 HTTP 2xx；controller 特殊写出。
+type CashVipAppleNotificationsRes struct{}
 
 // CashVipAlipayNotifyReq 支付宝异步通知（表单；白名单）。
 // 实际由 controller 读 form；此处仅登记 path。
@@ -106,4 +116,37 @@ type CashAdminVipEntitlementsRes struct {
 	Page     int                           `json:"page"`
 	PageSize int                           `json:"pageSize"`
 	Total    int                           `json:"total"`
+}
+
+// CashAdminVipProductGetReq GET 一期 VIP 套餐（开通功能管理编辑）。
+type CashAdminVipProductGetReq struct {
+	g.Meta `path:"/cash/admin/api/vip/product" method:"get" tags:"cash-admin" summary:"管理端读取 VIP 商品"`
+}
+
+// CashAdminVipProductGetRes VIP 商品 data。
+type CashAdminVipProductGetRes struct {
+	ProductCode      string `json:"productCode"`
+	Title            string `json:"title"`
+	PriceFen         int    `json:"priceFen"`
+	OriginalPriceFen int    `json:"originalPriceFen"`
+	DurationDays     int    `json:"durationDays"`
+	AppleProductId   string `json:"appleProductId"`
+	Status           int    `json:"status"`
+}
+
+// CashAdminVipProductUpsertReq POST 更新一期 VIP 套餐；productCode 只读 vip_monthly_19。
+type CashAdminVipProductUpsertReq struct {
+	g.Meta           `path:"/cash/admin/api/vip/product" method:"post" tags:"cash-admin" summary:"管理端更新 VIP 商品"`
+	ProductCode      string `json:"productCode" dc:"只读；空或 vip_monthly_19"`
+	Title            string `json:"title"`
+	PriceFen         int    `json:"priceFen"`
+	OriginalPriceFen int    `json:"originalPriceFen"`
+	DurationDays     int    `json:"durationDays"`
+	AppleProductId   string `json:"appleProductId"`
+	Status           int    `json:"status" d:"1"`
+}
+
+// CashAdminVipProductUpsertRes 更新结果。
+type CashAdminVipProductUpsertRes struct {
+	ProductCode string `json:"productCode"`
 }

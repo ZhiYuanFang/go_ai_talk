@@ -30,6 +30,7 @@ func (c *UcgAppCtrl) Health(ctx context.Context, req *v1.UcgHealthReq) (res *v1.
 }
 
 // MediaPresign POST /ucg/app/api/media/presign
+// 已停用：拒绝签发 uploadUrl，引导客户端改走 /media/upload。
 func (c *UcgAppCtrl) MediaPresign(ctx context.Context, req *v1.UcgMediaPresignReq) (res *v1.UcgMediaPresignRes, err error) {
 	_ = c
 	wxID, err := wxIDFromUcgHeader(ghttp.RequestFromCtx(ctx))

@@ -34,7 +34,7 @@ window.ADMIN_MODULES = [
 		id: 'cash-vip-admin',
 		title: 'VIP 权益',
 		pagePath: '/device/admin/cash-vip-admin.html',
-		showInNav: true
+		showInNav: false
 	},
 	{
 		id: 'cash-feature-admin',
@@ -65,6 +65,13 @@ window.ADMIN_MODULES = [
 		id: 'api-usage-stats',
 		title: '功能使用统计',
 		pagePath: '/device/admin/api-usage-stats',
+		showInNav: false,
+		showInDeviceRecord: true
+	},
+	{
+		id: 'client-usage-stats',
+		title: '客户端使用统计',
+		pagePath: '/device/admin/client-usage-stats',
 		showInNav: false,
 		showInDeviceRecord: true
 	}

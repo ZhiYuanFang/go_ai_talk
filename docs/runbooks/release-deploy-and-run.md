@@ -160,7 +160,7 @@ systemctl status mysql-local.service
 - **`*_DB_LINK`**：6 条 DSN，host 写占位符 `mysql-host`
 - **`GF_REDIS_DEFAULT_ADDRESS`**：本机 Redis（Cluster 三主种子或 standalone 单地址）
 - **`GATEWAY_APP_JWT_SECRET`**：App JWT 签名密钥（gateway-app 签发、ucg 校验须同值）
-- **`UCG_OSS_ACCESS_KEY_ID` / `UCG_OSS_ACCESS_KEY_SECRET`**：ucg OSS 直传与 Green 审核（Green 复用 OSS AK）；`config.ucg-service.yaml` 留空，见 `manifest/docker/.env.example`
+- **`UCG_OSS_ACCESS_KEY_ID` / `UCG_OSS_ACCESS_KEY_SECRET`**：ucg OSS 服务端上传与 Green 审核（Green 复用 OSS AK）；桶 `caidoukeji` / 杭州内网 endpoint，见 `docs/runbooks/ucg-oss-caidoukeji.md` 与 `manifest/docker/.env.example`；可选 `UCG_OSS_ENDPOINT` 本地公网覆盖。预签名直传已停用。
 - **ucg-service 视频验真/转码（Phase 1 + Phase 2）**：镜像 `Dockerfile.ucg-service` 已含 `ffmpeg`/`ffprobe`；部署 **ucg-service** 须重建镜像。视频 register 仅接受 `transformVersion=v1|v2`。Web `POST /ucg/app/api/media/upload`（`mediaKind=2`）三分支：**A** v1 合规直传 OSS，响应 `transformVersion=v1`、`contentHash` 为原始字节；**B** v1 不合规但 ffprobe 可解码（含视频轨）则服务端 `NormalizeVideo` 转 v2 后 PUT，响应 `transformVersion=v2`、`contentHash` 为转码后字节；**C** 不可解码 4xx、不创建 OSS 对象。Web/Flutter Web register **须**使用响应中的 `transformVersion` 与 `contentHash` 配对。sim T4 经 `POST /ucg/internal/api/media/upload-video` 转码为 v2。建议 **ucg-service 先于或与 sim-user-service、原生 App v2 同期** 上线，避免旧客户端 `sim-raw` 或非合规视频 register 失败。
 - **`UCG_DASHSCOPE_API_KEY`**：ucg AI 润笔（DashScope）；yaml 中 `dashscope_api_key` 留空
 - **`VOICE_DASHSCOPE_API_KEY`**（可选）：voice-service **对话** STT（`/voice/chat/ws`，百炼 `qwen-audio-3.0-asr-flash-streaming`）；空则回退 `UCG_DASHSCOPE_API_KEY`
@@ -286,9 +286,9 @@ curl -s http://127.0.0.1:9805/api.json   # sim-user-service
 1. **建库**：MySQL 创建 `ai_voice_cash`，配置 `CASH_DB_LINK`（进程启动 `EnsureSchema` 建表并种子 `vip_monthly_19`；亦可手工执行 `hack/ddl_cash_vip.sql`）。**禁止**再执行已废弃的 `ddl_wx_is_vip.sql`。
 2. **端口**：`cash-service` 默认 `:9807`（`:9806` 为 notify-service）。
 3. **部署顺序**：`cash-service` → `gateway-app`（`CASH_SERVICE_URL`、反代 `/cash/app/api/*` 与 `/cash/admin/api/*`、支付宝 notify 白名单）→ `voice-service`（`CASH_SERVICE_URL` + 内部密钥：care-alert 读 VIP 与 **值得留意 access 双门禁** `/cash/internal/api/care-alert/access`）。
-4. **支付配置**：`CASH_ALIPAY_*`、`CASH_APPLE_PRODUCT_ID`（ASC 沙箱商品映射一期 19 元月会员）；非生产可临时 `CASH_PAYMENT_DEV_BYPASS=1`。
+4. **支付配置**：`CASH_ALIPAY_*`、`CASH_APPLE_BUNDLE_ID`；VIP / 功能 Apple 商品 ID 在开通功能管理配库；非生产可临时 `CASH_PAYMENT_DEV_BYPASS=1`。
 5. **验收**：支付成功后 `GET /cash/app/api/vip/status` 为 VIP；care-alert 当日 miss 时 VIP→DeepSeek，非 VIP/cash 不可达→Zhipu；缺 `X-Internal-Wx-Id` 拒绝。
-6. **运维 Hub「VIP 权益」**：登录 `/device/admin` → 模块「VIP 权益」→ `/device/admin/cash-vip-admin.html`。列表走 `GET /cash/admin/api/vip/entitlements`（含已过期；激活金额=最近 paid `amount_fen`）。口令：gateway 注入 `X-Admin-Password`（优先 `CASH_ADMIN_PASSWORD`，否则 `GATEWAY_APP_ADMIN_PASSWORD`）；`cash-service` 须能读到相同口令（compose 已注入二者）。Admin API **不计入** App usage；**禁止** device 直查 `ai_voice_cash`。
+6. **运维 Hub「开通功能管理」**：登录 `/device/admin` → 模块「开通功能管理」→ 配置 VIP 套餐；按钮「VIP列表」→ `/device/admin/cash-vip-admin.html`。权益列表走 `GET /cash/admin/api/vip/entitlements`（含已过期；激活金额=最近 paid `amount_fen`）。口令：gateway 注入 `X-Admin-Password`（优先 `CASH_ADMIN_PASSWORD`，否则 `GATEWAY_APP_ADMIN_PASSWORD`）；`cash-service` 须能读到相同口令（compose 已注入二者）。Admin API **不计入** App usage；**禁止** device 直查 `ai_voice_cash`。
 7. **商业功能开通 + 喂养资格场景**：`EnsureSchema` 建 `feature_*`（含 `feature_user_entitlement`、`feature_def.activation_subject`）与 `feeding_eligibility_scene`（种子 `ucg_entry` 7/10、`care_alert_entry` 2/10）。成长轨迹为 **对人**（`activation_subject=user`），**无需手工 DDL**；旧 device 权益行不自动迁移。UCG / 值得留意连续有效日判定 **均在 cash-service**；history 按日 SQL COUNT，窗口=`requiredDays` 个上海**已闭合日**（**昨天起往前，不含今日**）；跨日 0 点后按请求日缓存键重算即可立即合格。App：`GET /cash/app/api/ucg/eligibility`、`GET /cash/app/api/care-alert/eligibility`（查询不计入 usage；进度文案由客户端用 `effectiveDays` 等字段拼接）。Hub：「喂养资格门槛」`/device/admin/cash-feeding-eligibility-admin.html`、「开通功能管理」`/device/admin/cash-feature-admin.html`（Ctrl+F5 看对人/对机）。
 
 首次部署或升级后 `EnsureSchema` 会创建 `sim_config.runtime_json`、`sim_llm_lane_config` 并写入代码默认种子。**任务周期/开关/LLM lane 优先读 DB**，经 Admin 保存即可在线生效（调度类变更会 Stop→Start scheduler，Admin 触发热重启跳过长错峰）。仅 **`SIM_USER_SERVICE_ENABLED`** 仍为 env 硬闸，修改后须 **`--force-recreate sim-user-service`**。仅改 `maxSimUsers` 可不触发 scheduler 全量重启。
@@ -1425,8 +1425,9 @@ mcp-service 是小智 AI 平台（xiaozhi.me）MCP 接入点桥接进程：作�
 | `*_DB_LINK` | 6 条 DSN，host 写 `mysql-host`；库名区分 test/prod |
 | `GF_REDIS_DEFAULT_ADDRESS` | Redis 地址；生产多地址逗号分隔（Cluster），测试 `redis-test:6379` |
 | `GATEWAY_APP_JWT_SECRET` | App access JWT 密钥；**prod/test 必须不同**；ucg 与 gateway-app 同值 |
-| `UCG_OSS_ACCESS_KEY_ID` | ucg OSS AccessKey ID；yaml `ucg.oss.accessKeyId` 留空，Green 审核复用同一 AK |
+| `UCG_OSS_ACCESS_KEY_ID` | ucg OSS AccessKey ID；yaml `ucg.oss.accessKeyId` 留空，Green 审核复用同一 AK；桶 caidoukeji |
 | `UCG_OSS_ACCESS_KEY_SECRET` | ucg OSS AccessKey Secret |
+| `UCG_OSS_ENDPOINT` | 可选；覆盖 yaml 内网 endpoint（本地公网 `oss-cn-hangzhou.aliyuncs.com`）；生产勿设 |
 | `UCG_DASHSCOPE_API_KEY` | ucg AI 润笔 DashScope API Key；yaml `ucg.ai.dashscope_api_key` 留空 |
 | `VOICE_DASHSCOPE_API_KEY` | voice 对话 STT 专用 DashScope Key；空则回退 `UCG_DASHSCOPE_API_KEY` |
 | `DASHSCOPE_WORKSPACE_ID` | voice 对话 STT 百炼 Workspace ID（`/voice/chat/ws`） |
@@ -1495,7 +1496,7 @@ curl -sk https://test.pangbao.cuplay.top:9702/device/app/api/site/home
 | 运维 Hub | `/device/admin` | `POST /device/admin/api/login` → Bearer；`/device/admin/api/*` |
 | 历史记录 | `/device/history/{deviceNo}` | 同源 `/device/history/api/*`（用户 JWT 或白名单） |
 | 问答库 / 反馈 / 统计 / UCG | `/device/admin/*` | 同源 + Admin JWT（须先 Hub 登录） |
-| VIP 权益 | `/device/admin/cash-vip-admin.html` | 同源 `GET /cash/admin/api/vip/entitlements` + Admin JWT |
+| 开通功能管理 / VIP列表 | `/device/admin/cash-feature-admin.html` → `cash-vip-admin.html` | 同源 `/cash/admin/api/vip/product`、`/cash/admin/api/vip/entitlements` + Admin JWT |
 | 版本管理 | `/device/app/version-admin.html` | 同源 `/device/app/api/version/admin/*` + Admin JWT |
 | App 联调 | `/device/app/integration-test.html` | 默认 `window.location.origin`（可手改 baseUrl） |
 

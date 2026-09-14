@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>客户端使用统计 — 设备管理</title>
+	<link rel="stylesheet" href="/resource/public/pangbao-theme.css" />
+	<link rel="stylesheet" href="/resource/public/admin-pages.css" />
+</head>
+<body>
+<div class="page">
+	<header class="admin-header glass">
+		<div class="logo">App</div>
+		<div>
+			<h1>客户端使用统计</h1>
+			<p>按功能与用户查看客户端主动上报（非 API 调用）</p>
+		</div>
+	</header>
+	<div class="card glass hidden" id="mainCard">
+		<div class="card-head">
+			<h3>统计概览</h3>
+			<div class="card-actions">
+				<label>时间范围
+					<select id="daysSelect">
+						<option value="7" selected>近 7 天</option>
+						<option value="30">近 30 天</option>
+					</select>
+				</label>
+				<label>排序
+					<select id="sortSelect">
+						<option value="count" selected>次数 ↓</option>
+						<option value="lastAt">最近上报 ↓</option>
+					</select>
+				</label>
+				<button id="refreshBtn" type="button">刷新</button>
+				<a class="link-btn" href="/device/admin">返回设备管理</a>
+			</div>
+		</div>
+		<div class="card-actions" style="margin-bottom:12px;">
+			<button id="tabFeatBtn" type="button" class="tab-btn active">按功能</button>
+			<button id="tabUserBtn" type="button" class="tab-btn">按用户</button>
+		</div>
+		<p class="hint">数据仅存 Redis，可丢失；窗口最多 30 天。时间线每用户最多 1 万条（可能短于次数合计）。须登录上报；模拟用户不计；同账号 3 秒限流 1 次。上报接口不计入「App API 使用统计」。</p>
+		<div id="mainMsg" class="msg"></div>
+
+		<div id="featPanel">
+			<div class="table-wrap">
+				<table>
+					<thead>
+						<tr>
+							<th>功能 / 事件名</th>
+							<th>说明</th>
+							<th>次数</th>
+							<th>最近上报</th>
+							<th>操作</th>
+						</tr>
+					</thead>
+					<tbody id="featTbody"></tbody>
+				</table>
+			</div>
+			<div class="pager" id="featPager">
+				<button id="featPrevBtn" type="button">上一页</button>
+				<button id="featNextBtn" type="button">下一页</button>
+				<span id="featPagerInfo"></span>
+			</div>
+			<div id="featDetailPanel" class="detail-panel hidden">
+				<h4 id="featDetailTitle"></h4>
+				<div class="table-wrap">
+					<table>
+						<thead>
+							<tr><th>wxId</th><th>UCG昵称</th><th>次数</th><th>最近上报</th></tr>
+						</thead>
+						<tbody id="featDetailTbody"></tbody>
+					</table>
+				</div>
+			</div>
+		</div>
+
+		<div id="userPanel" class="hidden">
+			<div class="card-actions">
+				<input id="wxSearchInput" placeholder="搜索 wxId / 设备号 / unionid / 账号" style="min-width:220px;" />
+				<button id="wxSearchBtn" type="button">搜索</button>
+			</div>
+			<div class="table-wrap" style="margin-top:12px;">
+				<table>
+					<thead>
+						<tr>
+							<th>wxId</th>
+							<th>UCG昵称</th>
+							<th>注册时间</th>
+							<th>设备号</th>
+							<th>unionid</th>
+							<th>平台</th>
+							<th>用户名账号</th>
+						</tr>
+					</thead>
+					<tbody id="wxListTbody"></tbody>
+				</table>
+			</div>
+			<p class="hint" style="margin-top:8px;">点击 wx 行查看该用户功能汇总与操作时间线</p>
+			<h4 id="userDetailTitle" style="margin:16px 0 8px;font-size:15px;color:#333;">未选择用户</h4>
+			<div class="table-wrap">
+				<table>
+					<thead>
+						<tr>
+							<th>功能 / 事件名</th>
+							<th>说明</th>
+							<th>次数</th>
+							<th>最近上报</th>
+						</tr>
+					</thead>
+					<tbody id="userFeatTbody"></tbody>
+				</table>
+			</div>
+			<h4 style="margin:16px 0 8px;font-size:15px;color:#333;">操作时间线</h4>
+			<div class="table-wrap">
+				<table>
+					<thead>
+						<tr>
+							<th>服务端时间</th>
+							<th>事件名</th>
+							<th>说明</th>
+						</tr>
+					</thead>
+					<tbody id="timelineTbody"></tbody>
+				</table>
+			</div>
+		</div>
+	</div>
+
+<script src="/resource/public/admin-common.js"></script>
+<script>
+let activeTab = 'feat';
+let selectedWxId = 0;
+const pageSize = 20;
+let featListCache = [];
+let featPage = 1;
+let featDetailCache = [];
+let currentFeatureId = '';
+
+const mainCard = document.getElementById('mainCard');
+const mainMsg = document.getElementById('mainMsg');
+const featTbody = document.getElementById('featTbody');
+const featPanel = document.getElementById('featPanel');
+const userPanel = document.getElementById('userPanel');
+const featDetailPanel = document.getElementById('featDetailPanel');
+const featDetailTbody = document.getElementById('featDetailTbody');
+const featDetailTitle = document.getElementById('featDetailTitle');
+const featPagerInfo = document.getElementById('featPagerInfo');
+const featPrevBtn = document.getElementById('featPrevBtn');
+const featNextBtn = document.getElementById('featNextBtn');
+const wxListTbody = document.getElementById('wxListTbody');
+const userFeatTbody = document.getElementById('userFeatTbody');
+const timelineTbody = document.getElementById('timelineTbody');
+const userDetailTitle = document.getElementById('userDetailTitle');
+
+function setMsg(el, text, ok){
+	el.textContent = text || '';
+	el.style.color = ok ? '#0a6' : '#c1121f';
+}
+function escapeHtml(s){
+	return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function formatTime(ts){
+	const n = Number(ts);
+	if(!n) return '-';
+	const d = new Date(n * 1000);
+	if(isNaN(d.getTime())) return '-';
+	return d.toLocaleString('zh-CN', { hour12: false });
+}
+function daysParam(){ return document.getElementById('daysSelect').value; }
+function sortParam(){ return document.getElementById('sortSelect').value; }
+function qSuffix(){ return 'days='+encodeURIComponent(daysParam())+'&sortBy='+encodeURIComponent(sortParam()); }
+function api(path, options={}){ return AdminCommon.adminFetch(path, options); }
+function totalPages(total){ return Math.max(1, Math.ceil(total / pageSize)); }
+function clampPage(page, total){ return Math.min(Math.max(1, page), totalPages(total)); }
+function pageSlice(list, page){
+	const p = clampPage(page, list.length);
+	return { page: p, slice: list.slice((p-1)*pageSize, p*pageSize) };
+}
+function updatePager(infoEl, prevBtn, nextBtn, page, total){
+	const tp = totalPages(total);
+	infoEl.textContent = total ? ('第 '+ page +' / '+ tp +' 页，共 '+ total +' 条') : '暂无数据';
+	prevBtn.disabled = page <= 1;
+	nextBtn.disabled = page >= tp || total === 0;
+}
+
+function renderFeatListPage(){
+	const { page, slice } = pageSlice(featListCache, featPage);
+	featPage = page;
+	featTbody.innerHTML = '';
+	slice.forEach(it => {
+		const tr = document.createElement('tr');
+		tr.innerHTML =
+			'<td class="wrapcell">'+ escapeHtml(it.featureId||'') +'</td>' +
+			'<td class="wrapcell">'+ escapeHtml(it.description||'-') +'</td>' +
+			'<td>'+ escapeHtml(it.count ?? 0) +'</td>' +
+			'<td>'+ escapeHtml(formatTime(it.lastAt)) +'</td>' +
+			'<td><button type="button" class="drill-btn">下钻</button></td>';
+		tr.querySelector('.drill-btn').addEventListener('click', () => loadFeatDetail(it.featureId));
+		featTbody.appendChild(tr);
+	});
+	updatePager(featPagerInfo, featPrevBtn, featNextBtn, featPage, featListCache.length);
+}
+
+function renderFeatDetail(){
+	featDetailTbody.innerHTML = '';
+	featDetailCache.forEach(it => {
+		const tr = document.createElement('tr');
+		tr.innerHTML =
+			'<td>'+ escapeHtml(it.wxId) +'</td>' +
+			'<td>'+ escapeHtml(it.nickname || '-') +'</td>' +
+			'<td>'+ escapeHtml(it.count ?? 0) +'</td>' +
+			'<td>'+ escapeHtml(formatTime(it.lastAt)) +'</td>';
+		featDetailTbody.appendChild(tr);
+	});
+}
+
+async function loadFeatList(){
+	const d = await api('/device/admin/api/client-usage/features?'+qSuffix());
+	featListCache = d.list || [];
+	featPage = 1;
+	featDetailPanel.classList.add('hidden');
+	currentFeatureId = '';
+	renderFeatListPage();
+	setMsg(mainMsg, featListCache.length ? ('已加载 '+ featListCache.length +' 个功能事件') : '暂无客户端上报数据', true);
+}
+
+async function loadFeatDetail(featureId){
+	const d = await api('/device/admin/api/client-usage/feature-users?featureId='+encodeURIComponent(featureId)+'&'+qSuffix());
+	currentFeatureId = featureId;
+	featDetailCache = d.list || [];
+	featDetailTitle.textContent = '功能 '+ featureId;
+	renderFeatDetail();
+	featDetailPanel.classList.remove('hidden');
+}
+
+async function loadWxList(){
+	const q = document.getElementById('wxSearchInput').value.trim();
+	const qs = 'page=1&pageSize=50' + (q ? '&q='+encodeURIComponent(q) : '');
+	const d = await api('/device/admin/api/client-usage/wx-list?'+qs);
+	wxListTbody.innerHTML = '';
+	(d.list || []).forEach(it => {
+		const tr = document.createElement('tr');
+		tr.style.cursor = 'pointer';
+		if(Number(it.id) === selectedWxId) tr.classList.add('row-selected');
+		tr.innerHTML =
+			'<td>'+ escapeHtml(it.id) +'</td>' +
+			'<td>'+ escapeHtml(it.nickname || '-') +'</td>' +
+			'<td>'+ escapeHtml(formatTime(it.createdAt)) +'</td>' +
+			'<td>'+ escapeHtml(it.deviceNo||'') +'</td>' +
+			'<td class="wrapcell">'+ escapeHtml(it.unionid||'-') +'</td>' +
+			'<td>'+ escapeHtml(it.platform||'') +'</td>' +
+			'<td>'+ escapeHtml(it.account||'-') +'</td>';
+		tr.addEventListener('click', () => {
+			selectedWxId = Number(it.id);
+			loadWxList().catch(() => {});
+			loadUserDetail(it.id).catch(e => setMsg(mainMsg, e.message || '加载失败'));
+		});
+		wxListTbody.appendChild(tr);
+	});
+}
+
+async function loadUserDetail(wxId){
+	const id = wxId || selectedWxId;
+	if(!id){ setMsg(mainMsg, '请先选择 wx 账号'); return; }
+	const d = await api('/device/admin/api/client-usage/user?wxId='+encodeURIComponent(id)+'&'+qSuffix()+'&timelineLimit=200');
+	userDetailTitle.textContent = 'wxId '+ id;
+	userFeatTbody.innerHTML = '';
+	(d.list || []).forEach(it => {
+		const tr = document.createElement('tr');
+		tr.innerHTML =
+			'<td class="wrapcell">'+ escapeHtml(it.featureId||'') +'</td>' +
+			'<td class="wrapcell">'+ escapeHtml(it.description||'-') +'</td>' +
+			'<td>'+ escapeHtml(it.count ?? 0) +'</td>' +
+			'<td>'+ escapeHtml(formatTime(it.lastAt)) +'</td>';
+		userFeatTbody.appendChild(tr);
+	});
+	timelineTbody.innerHTML = '';
+	(d.timeline || []).forEach(it => {
+		const tr = document.createElement('tr');
+		tr.innerHTML =
+			'<td>'+ escapeHtml(formatTime(it.at)) +'</td>' +
+			'<td class="wrapcell">'+ escapeHtml(it.featureId||'') +'</td>' +
+			'<td class="wrapcell">'+ escapeHtml(it.description||'-') +'</td>';
+		timelineTbody.appendChild(tr);
+	});
+	const n = (d.list||[]).length;
+	const tn = (d.timeline||[]).length;
+	setMsg(mainMsg, 'wxId '+ id +'：'+ n +' 个功能，时间线 '+ tn +' 条（展示上限 200）', true);
+}
+
+function switchTab(tab){
+	activeTab = tab;
+	document.getElementById('tabFeatBtn').classList.toggle('active', tab === 'feat');
+	document.getElementById('tabUserBtn').classList.toggle('active', tab === 'user');
+	featPanel.classList.toggle('hidden', tab !== 'feat');
+	userPanel.classList.toggle('hidden', tab !== 'user');
+	if(tab === 'user') loadWxList().catch(e => setMsg(mainMsg, e.message || '加载失败'));
+}
+
+document.getElementById('refreshBtn').addEventListener('click', async () => {
+	try {
+		if(activeTab === 'feat') await loadFeatList();
+		else { await loadWxList(); if(selectedWxId) await loadUserDetail(); }
+	} catch (e) { setMsg(mainMsg, e.message || '刷新失败'); }
+});
+document.getElementById('daysSelect').addEventListener('change', async () => {
+	try {
+		if(activeTab === 'feat') await loadFeatList();
+		else if(selectedWxId) await loadUserDetail();
+	} catch (e) { setMsg(mainMsg, e.message || '加载失败'); }
+});
+document.getElementById('sortSelect').addEventListener('change', async () => {
+	try {
+		if(activeTab === 'feat') {
+			await loadFeatList();
+			if(currentFeatureId) await loadFeatDetail(currentFeatureId);
+		} else if(selectedWxId) await loadUserDetail();
+	} catch (e) { setMsg(mainMsg, e.message || '加载失败'); }
+});
+featPrevBtn.addEventListener('click', () => { featPage--; renderFeatListPage(); });
+featNextBtn.addEventListener('click', () => { featPage++; renderFeatListPage(); });
+document.getElementById('tabFeatBtn').addEventListener('click', () => switchTab('feat'));
+document.getElementById('tabUserBtn').addEventListener('click', () => switchTab('user'));
+document.getElementById('wxSearchBtn').addEventListener('click', () => loadWxList().catch(e => setMsg(mainMsg, e.message || '搜索失败')));
+
+if(AdminCommon.requireAdmin()){
+	mainCard.classList.remove('hidden');
+	loadFeatList().catch(e => setMsg(mainMsg, e.message || '加载失败'));
+}
+</script>
+</div>
+</body>
+</html>
