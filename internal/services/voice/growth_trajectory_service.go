@@ -20,8 +20,8 @@ import (
 )
 
 const (
-	growthTrajectoryHorizonDays = 7
-	growthTrajectoryTurnTimeout = 120 * time.Second
+	growthTrajectoryHorizonDays  = 7
+	growthTrajectoryTurnTimeout  = 120 * time.Second
 	growthTrajectoryDefaultLimit = 5
 )
 
@@ -43,6 +43,7 @@ type GrowthTrajectoryTurnCallback struct {
 }
 
 type growthTrajectoryLatestRow struct {
+	WxId           int64  `orm:"wx_id" json:"wxId"`
 	DeviceNo       string `orm:"device_no" json:"deviceNo"`
 	ResultMarkdown string `orm:"result_markdown" json:"resultMarkdown"`
 	FeedbackJson   string `orm:"feedback_json" json:"feedbackJson"`
@@ -50,7 +51,7 @@ type growthTrajectoryLatestRow struct {
 	UpdatedAt      int64  `orm:"updated_at" json:"updatedAt"`
 }
 
-// GrowthTrajectoryLatest 返回设备最新成长轨迹 Markdown（须登录；免开通校验）。
+// GrowthTrajectoryLatest 返回该用户该宝宝最新成长轨迹 Markdown（须登录；免开通校验）。
 func GrowthTrajectoryLatest(ctx context.Context, deviceNo string, wxID int64) (*v1.DeviceGrowthTrajectoryLatestRes, error) {
 	deviceNo = strings.TrimSpace(deviceNo)
 	if deviceNo == "" {
@@ -65,7 +66,7 @@ func GrowthTrajectoryLatest(ctx context.Context, deviceNo string, wxID int64) (*
 	if err := DeviceAdmin().EnsureRegistered(ctx, deviceNo); err != nil {
 		return nil, err
 	}
-	row, ok, err := loadGrowthTrajectoryLatest(ctx, deviceNo)
+	row, ok, err := loadGrowthTrajectoryLatest(ctx, wxID, deviceNo)
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +86,7 @@ func GrowthTrajectoryLatest(ctx context.Context, deviceNo string, wxID int64) (*
 	return out, nil
 }
 
-// GrowthTrajectoryTurn 开流前校验开通与日限，再 single-flight 调 Python 透传 SSE；result 落库后 INCR。
+// GrowthTrajectoryTurn 开流前校验开通与日限，再 single-flight 调 Python 透传 SSE；result 落库后 INCR + claim。
 func GrowthTrajectoryTurn(ctx context.Context, deviceNo, action, sessionID string, answer *v1.DeviceGrowthTrajectoryAnswerDTO, wxID int64, cb *GrowthTrajectoryTurnCallback) error {
 	deviceNo = strings.TrimSpace(deviceNo)
 	action = strings.TrimSpace(strings.ToLower(action))
@@ -121,7 +122,6 @@ func GrowthTrajectoryTurn(ctx context.Context, deviceNo, action, sessionID strin
 		return err
 	}
 
-	// single-flight：同账号同时仅一路 turn。
 	growthTrajectoryFlightMu.Lock()
 	if _, busy := growthTrajectoryFlight[wxID]; busy {
 		growthTrajectoryFlightMu.Unlock()
@@ -137,7 +137,7 @@ func GrowthTrajectoryTurn(ctx context.Context, deviceNo, action, sessionID strin
 		growthTrajectoryFlightMu.Unlock()
 	}()
 
-	priorFeedback, err := loadGrowthTrajectoryPriorFeedback(ctx, deviceNo)
+	priorFeedback, err := loadGrowthTrajectoryPriorFeedback(ctx, wxID, deviceNo)
 	if err != nil {
 		glog.Warningf(ctx, "[GrowthTrajectory] 读 prior_feedback 失败 deviceNoLen=%d err=%v", len(deviceNo), err)
 		priorFeedback = []interface{}{}
@@ -177,13 +177,16 @@ func GrowthTrajectoryTurn(ctx context.Context, deviceNo, action, sessionID strin
 			return nil
 		},
 		OnResult: func(dataJSON string) error {
-			// 先落库再 INCR，再转发 SSE（附带用量字段）。
-			if uErr := upsertGrowthTrajectoryResultFromEvent(ctx, deviceNo, dataJSON); uErr != nil {
+			// 先落库再 INCR / claim，再转发 SSE。
+			if uErr := upsertGrowthTrajectoryResultFromEvent(ctx, wxID, deviceNo, dataJSON); uErr != nil {
 				glog.Warningf(ctx, "[GrowthTrajectory] result 落库失败 deviceNoLen=%d err=%v", len(deviceNo), uErr)
 				return gerror.WrapCode(gcode.CodeInternalError, uErr, "成长轨迹结果保存失败")
 			}
 			if iErr := incrGrowthTrajectoryDailyUsage(ctx, wxID); iErr != nil {
 				glog.Warningf(ctx, "[GrowthTrajectory] 日限 INCR 失败 wxId=%d err=%v", wxID, iErr)
+			}
+			if cErr := cash.RemoteClaimFeatureTrial(ctx, wxID, "growth_trajectory_predict"); cErr != nil {
+				glog.Warningf(ctx, "[GrowthTrajectory] claim trial 失败 wxId=%d err=%v", wxID, cErr)
 			}
 			enriched := enrichGrowthTrajectoryResultJSON(ctx, wxID, dataJSON)
 			if cb != nil && cb.OnResult != nil {
@@ -245,7 +248,6 @@ func shanghaiDayCompact(t time.Time) string {
 func growthTrajectoryDailyUsageTTL(now time.Time) time.Duration {
 	loc := shanghaiLocation()
 	now = now.In(loc)
-	// 次日 02:00 过期，覆盖跨午夜读；最短 1h。
 	next := time.Date(now.Year(), now.Month(), now.Day()+1, 2, 0, 0, 0, loc)
 	d := next.Sub(now)
 	if d < time.Hour {
@@ -271,7 +273,6 @@ func readGrowthTrajectoryDailyUsage(ctx context.Context, wxID int64) (int, error
 	return n, nil
 }
 
-// growthTrajectoryUsageSnapshot 账号今日已用与上限（读失败时 used=0、limit=默认）。
 func growthTrajectoryUsageSnapshot(ctx context.Context, wxID int64) (used, limit int) {
 	limit, err := GetGrowthTrajectoryDailyLimit(ctx)
 	if err != nil || limit <= 0 {
@@ -285,13 +286,11 @@ func growthTrajectoryUsageSnapshot(ctx context.Context, wxID int64) (used, limit
 	return used, limit
 }
 
-// enrichGrowthTrajectoryResultJSON 在 Python result JSON 上附加 usedToday/dailyLimit。
 func enrichGrowthTrajectoryResultJSON(ctx context.Context, wxID int64, dataJSON string) string {
 	used, limit := growthTrajectoryUsageSnapshot(ctx, wxID)
 	var m map[string]interface{}
 	if err := json.Unmarshal([]byte(dataJSON), &m); err != nil || m == nil {
 		m = map[string]interface{}{}
-		// 尽量保留原文 markdown
 		var typed struct {
 			Markdown  string `json:"markdown"`
 			SessionID string `json:"sessionId"`
@@ -330,15 +329,16 @@ func incrGrowthTrajectoryDailyUsage(ctx context.Context, wxID int64) error {
 	return nil
 }
 
-func loadGrowthTrajectoryLatest(ctx context.Context, deviceNo string) (growthTrajectoryLatestRow, bool, error) {
+func loadGrowthTrajectoryLatest(ctx context.Context, wxID int64, deviceNo string) (growthTrajectoryLatestRow, bool, error) {
 	var row growthTrajectoryLatestRow
-	err := g.DB().Model("growth_trajectory_latest").Ctx(ctx).Where("device_no", deviceNo).Scan(&row)
+	err := g.DB().Model("growth_trajectory_latest").Ctx(ctx).
+		Where("wx_id", wxID).Where("device_no", deviceNo).Scan(&row)
 	if err != nil {
 		return growthTrajectoryLatestRow{}, false, err
 	}
-	if strings.TrimSpace(row.DeviceNo) == "" {
-		// gf Scan 无行时可能返回零值无 error。
-		n, cErr := g.DB().Model("growth_trajectory_latest").Ctx(ctx).Where("device_no", deviceNo).Count()
+	if row.WxId == 0 && strings.TrimSpace(row.DeviceNo) == "" {
+		n, cErr := g.DB().Model("growth_trajectory_latest").Ctx(ctx).
+			Where("wx_id", wxID).Where("device_no", deviceNo).Count()
 		if cErr != nil {
 			return growthTrajectoryLatestRow{}, false, cErr
 		}
@@ -349,8 +349,8 @@ func loadGrowthTrajectoryLatest(ctx context.Context, deviceNo string) (growthTra
 	return row, true, nil
 }
 
-func loadGrowthTrajectoryPriorFeedback(ctx context.Context, deviceNo string) ([]interface{}, error) {
-	row, ok, err := loadGrowthTrajectoryLatest(ctx, deviceNo)
+func loadGrowthTrajectoryPriorFeedback(ctx context.Context, wxID int64, deviceNo string) ([]interface{}, error) {
+	row, ok, err := loadGrowthTrajectoryLatest(ctx, wxID, deviceNo)
 	if err != nil {
 		return nil, err
 	}
@@ -368,10 +368,10 @@ func loadGrowthTrajectoryPriorFeedback(ctx context.Context, deviceNo string) ([]
 	return arr, nil
 }
 
-func upsertGrowthTrajectoryResultFromEvent(ctx context.Context, deviceNo, dataJSON string) error {
+func upsertGrowthTrajectoryResultFromEvent(ctx context.Context, wxID int64, deviceNo, dataJSON string) error {
 	var payload struct {
-		Markdown  string `json:"markdown"`
-		SessionID string `json:"sessionId"`
+		Markdown  string          `json:"markdown"`
+		SessionID string          `json:"sessionId"`
 		Feedback  json.RawMessage `json:"feedback"`
 	}
 	if err := json.Unmarshal([]byte(dataJSON), &payload); err != nil {
@@ -381,11 +381,10 @@ func upsertGrowthTrajectoryResultFromEvent(ctx context.Context, deviceNo, dataJS
 	sid := strings.TrimSpace(payload.SessionID)
 	now := time.Now().Unix()
 
-	// 保留已有 feedback；若 result 带 feedback 数组则覆盖为最新。
 	feedbackJSON := ""
 	if len(payload.Feedback) > 0 && string(payload.Feedback) != "null" {
 		feedbackJSON = string(payload.Feedback)
-	} else if row, ok, _ := loadGrowthTrajectoryLatest(ctx, deviceNo); ok {
+	} else if row, ok, _ := loadGrowthTrajectoryLatest(ctx, wxID, deviceNo); ok {
 		feedbackJSON = row.FeedbackJson
 	}
 	if feedbackJSON == "" {
@@ -393,13 +392,15 @@ func upsertGrowthTrajectoryResultFromEvent(ctx context.Context, deviceNo, dataJS
 	}
 
 	data := g.Map{
+		"wx_id":           wxID,
 		"device_no":       deviceNo,
 		"result_markdown": md,
 		"feedback_json":   feedbackJSON,
 		"session_id":      sid,
 		"updated_at":      now,
 	}
-	n, err := g.DB().Model("growth_trajectory_latest").Ctx(ctx).Where("device_no", deviceNo).Count()
+	n, err := g.DB().Model("growth_trajectory_latest").Ctx(ctx).
+		Where("wx_id", wxID).Where("device_no", deviceNo).Count()
 	if err != nil {
 		return err
 	}
@@ -407,6 +408,7 @@ func upsertGrowthTrajectoryResultFromEvent(ctx context.Context, deviceNo, dataJS
 		_, err = g.DB().Model("growth_trajectory_latest").Ctx(ctx).Data(data).Insert()
 		return err
 	}
-	_, err = g.DB().Model("growth_trajectory_latest").Ctx(ctx).Where("device_no", deviceNo).Data(data).Update()
+	_, err = g.DB().Model("growth_trajectory_latest").Ctx(ctx).
+		Where("wx_id", wxID).Where("device_no", deviceNo).Data(data).Update()
 	return err
 }

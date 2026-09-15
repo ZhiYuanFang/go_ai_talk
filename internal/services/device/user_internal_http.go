@@ -158,3 +158,32 @@ func WxIDByDeviceNo(ctx context.Context, deviceNo string) (int64, error) {
 	}
 	return one["id"].Int64(), nil
 }
+
+// listWxIDsByDeviceNoMax 单次返回上限；超出截断并告警（预测扇出等场景）。
+const listWxIDsByDeviceNoMax = 64
+
+// ListWxIDsByDeviceNo 返回绑定同一 device_no 的全部 wx 主键；truncated 表示命中上限截断。
+// Args: deviceNo 宝宝设备号。
+// Returns: ids、是否截断、错误。
+func ListWxIDsByDeviceNo(ctx context.Context, deviceNo string) (ids []int64, truncated bool, err error) {
+	deviceNo = strings.TrimSpace(deviceNo)
+	if deviceNo == "" {
+		return nil, false, nil
+	}
+	cols := dao.Wx.Columns()
+	// Limit+1 用于判断是否截断。
+	records, err := dao.Wx.Ctx(ctx).Fields(cols.Id).Where(cols.DeviceNo, deviceNo).Limit(listWxIDsByDeviceNoMax + 1).All()
+	if err != nil {
+		return nil, false, err
+	}
+	ids = make([]int64, 0, len(records))
+	for _, row := range records {
+		ids = append(ids, row[cols.Id].Int64())
+	}
+	if len(ids) > listWxIDsByDeviceNoMax {
+		truncated = true
+		ids = ids[:listWxIDsByDeviceNoMax]
+		g.Log().Warningf(ctx, "[device] ListWxIDsByDeviceNo truncated deviceNoLen=%d max=%d", len(deviceNo), listWxIDsByDeviceNoMax)
+	}
+	return ids, truncated, nil
+}

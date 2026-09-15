@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	deviceclient "hello/internal/clients/device"
 	ucgclient "hello/internal/clients/ucg"
 	"strings"
 	"time"
@@ -104,7 +103,7 @@ func ListInviteInvitees(ctx context.Context, ownerWxID int64) ([]InviteeRow, err
 	if err != nil {
 		return nil, err
 	}
-	// 同一 redeemer 多次兑不同功能时合并为最早/最近一次展示：取每条 redemption，按人去重保留首次。
+	// 同一 redeemer 多次兑不同功能时合并：按人去重保留首次。
 	seen := map[int64]struct{}{}
 	ids := make([]int64, 0)
 	ordered := make([]redT, 0)
@@ -130,13 +129,9 @@ func ListInviteInvitees(ctx context.Context, ownerWxID int64) ([]InviteeRow, err
 
 // RedeemInviteCode 邀请码兑换单功能。
 //
-// 规则：不可自用；不可使用同一宝宝（同 device_no）下其他账号的码；人×码×功能仅一次；
-// 多好友码可兑（不同宝宝）；预测永久 +1；非预测经 ActivateFeature（邀请天数读 feature_def）；
-// InviteOncePerDevice（值得留意）：device×feature 邀请仅一次；
-// InviteOncePerUser（成长轨迹）：人×feature 任意码仅一次，同机可兑不同码；
-// 原力仍记码主人用户。开通主体按 feature_def.activation_subject（device|user）。
-// 码级有效期/功能子表/一家锁定不再校验；开通能力仅看 feature_def.unlock_methods。
-// 主人设备号经 device 契约查询：失败 fail-closed；主人未绑机（空 device_no）不因同设备规则拒绝。
+// 规则：不可自用；人×码×功能仅一次；InviteOncePerUser（care+growth）：人×功能任意码仅一次；
+// 经 ActivateFeature 邀请 7d；开通主体按 feature_def.activation_subject。
+// 已删除：同宝宝（同 device_no）拒绝、InviteOncePerDevice。
 func RedeemInviteCode(ctx context.Context, redeemerWxID int64, deviceNo, code, featureID string) error {
 	code = strings.TrimSpace(code)
 	featureID = strings.TrimSpace(featureID)
@@ -148,7 +143,6 @@ func RedeemInviteCode(ctx context.Context, redeemerWxID int64, deviceNo, code, f
 		return gerror.NewCode(gcode.CodeInvalidParameter, "deviceNo/code/featureId 不能为空")
 	}
 
-	// 事务前窥视码主人，便于同设备校验时不持行锁打 HTTP。
 	var peek struct {
 		Code      string `json:"code"`
 		OwnerWxId int64  `json:"owner_wx_id"`
@@ -160,14 +154,6 @@ func RedeemInviteCode(ctx context.Context, redeemerWxID int64, deviceNo, code, f
 	}
 	if peek.OwnerWxId == redeemerWxID {
 		return gerror.NewCode(gcode.CodeInvalidParameter, "不可使用自己的邀请码")
-	}
-	ownerDeviceNo, dErr := deviceclient.FetchDeviceNoByWxID(ctx, peek.OwnerWxId)
-	if dErr != nil {
-		glog.Warningf(ctx, "[cash-invite] owner device lookup failed owner=%d err=%v", peek.OwnerWxId, dErr)
-		return gerror.WrapCode(gcode.CodeInternalError, dErr, "暂时无法校验邀请码，请稍后重试")
-	}
-	if ownerDeviceNo != "" && ownerDeviceNo == deviceNo {
-		return gerror.NewCode(gcode.CodeInvalidParameter, "不可使用同一宝宝下其他账号的邀请码")
 	}
 
 	now := time.Now().Unix()
@@ -213,19 +199,7 @@ func RedeemInviteCode(ctx context.Context, redeemerWxID int64, deviceNo, code, f
 			return gerror.NewCode(gcode.CodeInvalidParameter, "功能不支持邀请码开通")
 		}
 
-		// 值得留意等：同一 device_no 对本功能仅能邀请开通一次（成长轨迹不适用）。
-		if InviteOncePerDevice(featureID) {
-			dn, err := tx.Model("feature_invite_device_grant").Ctx(ctx).
-				Where("device_no", deviceNo).Where("feature_id", featureID).Count()
-			if err != nil {
-				return err
-			}
-			if dn > 0 {
-				return gerror.NewCode(gcode.CodeInvalidParameter, "该宝宝已使用过邀请码开通此功能")
-			}
-		}
-
-		// 成长轨迹等：同一人对本功能邀请仅一次（跨任意邀请码）。
+		// care/growth：同一人对本功能邀请仅一次（跨任意邀请码）。
 		if InviteOncePerUser(featureID) {
 			un, err := tx.Model("feature_invite_feature_grant").Ctx(ctx).
 				Where("redeemer_wx_id", redeemerWxID).
@@ -242,7 +216,6 @@ func RedeemInviteCode(ctx context.Context, redeemerWxID int64, deviceNo, code, f
 		if sErr != nil {
 			return sErr
 		}
-		// 经原子入口授予：预测 +1；其它读 feature_def 邀请/广告分列天数；主体按 activation_subject。
 		if err := ActivateFeature(ctx, ActivateFeatureRequest{
 			FeatureID:   featureID,
 			SubjectType: subjType,
@@ -252,16 +225,6 @@ func RedeemInviteCode(ctx context.Context, redeemerWxID int64, deviceNo, code, f
 			ActorWxID:   redeemerWxID,
 		}); err != nil {
 			return err
-		}
-
-		if InviteOncePerDevice(featureID) {
-			_, err = tx.Model("feature_invite_device_grant").Ctx(ctx).Data(g.Map{
-				"device_no": deviceNo, "feature_id": featureID, "code": code,
-				"redeemer_wx_id": redeemerWxID, "redeemed_at": now,
-			}).Insert()
-			if err != nil {
-				return err
-			}
 		}
 
 		_, err = tx.Model("feature_invite_feature_grant").Ctx(ctx).Data(g.Map{

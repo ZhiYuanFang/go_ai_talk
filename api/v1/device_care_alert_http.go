@@ -30,29 +30,30 @@ type CareAlertItemDTO struct {
 	Reasons        []CareAlertReasonDTO `json:"reasons" dc:"结构化原因列表"`
 }
 
-// DeviceCareAlertDailyReq GET 宝宝日护理留意列表。
-// force=1（或 true）时删除当日 Redis 日缓存后重新生成；仍须 App 鉴权注入 wxId>0。
+// DeviceCareAlertDailyReq GET 宝宝护理留意 latest；force=1 时生成（消耗日额度）。
 type DeviceCareAlertDailyReq struct {
-	g.Meta   `path:"/device/api/care-alert/daily" method:"get" tags:"device" summary:"护理留意日列表（可选 force 强刷）"`
+	g.Meta   `path:"/device/api/care-alert/daily" method:"get" tags:"device" summary:"护理留意 latest（可选 force 生成）"`
 	DeviceNo string `json:"deviceNo" p:"deviceNo" v:"required" dc:"设备号（宝宝维度）"`
-	Force    string `json:"force" p:"force" dc:"强刷：1/true 时清当日缓存后重生"`
+	Force    string `json:"force" p:"force" dc:"强刷生成：1/true 时生成并刷新 latest"`
 }
 
-// DeviceCareAlertDailyRes 日列表 data（经 MiddlewareHandlerResponse 包为 envelope）。
+// DeviceCareAlertDailyRes latest 列表 data（经 MiddlewareHandlerResponse 包为 envelope）。
 type DeviceCareAlertDailyRes struct {
-	Day   string             `json:"day" dc:"Asia/Shanghai 自然日 YYYY-MM-DD"`
-	Items []CareAlertItemDTO `json:"items" dc:"留意建议列表"`
+	Day        string             `json:"day" dc:"Asia/Shanghai 自然日 YYYY-MM-DD"`
+	Items      []CareAlertItemDTO `json:"items" dc:"留意建议列表"`
+	UsedToday  int                `json:"usedToday" dc:"今日已用次数"`
+	DailyLimit int                `json:"dailyLimit" dc:"今日上限"`
 }
 
-// DeviceCareAlertDailyItemDeleteReq 从当日缓存删除单条 suggestionId。
+// DeviceCareAlertDailyItemDeleteReq 从 latest 删除单条 suggestionId。
 // Query 与 Flutter ApiClient.deleteEnvelope 对齐；亦接受 JSON body。
 type DeviceCareAlertDailyItemDeleteReq struct {
-	g.Meta       `path:"/device/api/care-alert/daily/item" method:"delete" tags:"device" summary:"删除当日护理留意项"`
+	g.Meta       `path:"/device/api/care-alert/daily/item" method:"delete" tags:"device" summary:"删除护理留意 latest 项"`
 	DeviceNo     string `json:"deviceNo" p:"deviceNo" v:"required" dc:"设备号"`
 	SuggestionId string `json:"suggestionId" p:"suggestionId" v:"required" dc:"建议 UUID"`
 }
 
-// DeviceCareAlertDailyItemDeleteRes 删除后的当日列表（与 GET 同形，便于多看护对齐）。
+// DeviceCareAlertDailyItemDeleteRes 删除后的列表（与 GET 同形，便于多看护对齐）。
 type DeviceCareAlertDailyItemDeleteRes struct {
 	Day   string             `json:"day" dc:"Asia/Shanghai 自然日 YYYY-MM-DD"`
 	Items []CareAlertItemDTO `json:"items" dc:"更新后的列表"`

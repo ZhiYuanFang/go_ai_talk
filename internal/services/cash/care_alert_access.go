@@ -9,19 +9,22 @@ import (
 	"github.com/gogf/gf/v2/os/glog"
 )
 
-// CareAlertAccessResult 值得留意可看合成（喂养资格 ∧（设备开通 ∨ VIP））。
+// CareAlertAccessResult 值得留意可看合成（喂养资格 ∧（用户权益 ∨ VIP ∨ 试用未用））。
 type CareAlertAccessResult struct {
 	Allowed              bool  `json:"allowed"`
 	FeedingQualified     bool  `json:"feedingQualified"`
-	FeatureActive        bool  `json:"featureActive"`
+	FeatureActive        bool  `json:"featureActive"` // 已开通：用户权益 ∨ VIP（不含 soft trial）
+	TrialAvailable       bool  `json:"trialAvailable"`
 	EntitlementExpiresAt int64 `json:"entitlementExpiresAt,omitempty"`
 }
 
 // GetCareAlertAccess 合成值得留意是否可看（权威在 cash；voice 经 internal 调用）。
 //
-// 业务：feedingQualified 复用 care_alert_entry；featureActive = 未过期设备权益 ∨ isVip。
-// VIP 查询失败当作非 VIP（仅认 entitlement）；喂养计算失败向上返回（调用方 fail-closed）。
-// VIP/开通 MUST NOT 短路 feedingQualified。
+// 业务：feedingQualified 复用 care_alert_entry；
+// featureActive = 未过期用户权益 ∨ isVip；
+// canUse = featureActive ∨ trialUnused；
+// Allowed = feedingQualified ∧ canUse。
+// VIP 查询失败当作非 VIP；喂养计算失败向上返回（调用方 fail-closed）。
 func GetCareAlertAccess(ctx context.Context, deviceNo string, wxID int64) (*CareAlertAccessResult, error) {
 	deviceNo = strings.TrimSpace(deviceNo)
 	if deviceNo == "" {
@@ -34,7 +37,7 @@ func GetCareAlertAccess(ctx context.Context, deviceNo string, wxID int64) (*Care
 	if err != nil {
 		return nil, err
 	}
-	entActive, entExp, eErr := HasActiveFeatureEntitlement(ctx, deviceNo, FeatureIDCareAlertSmartRemind)
+	entActive, entExp, eErr := HasActiveUserFeatureEntitlement(ctx, wxID, FeatureIDCareAlertSmartRemind)
 	if eErr != nil {
 		return nil, eErr
 	}
@@ -44,12 +47,18 @@ func GetCareAlertAccess(ctx context.Context, deviceNo string, wxID int64) (*Care
 	} else {
 		vip = st.IsVip
 	}
+	trialUnused, tErr := IsTrialUnused(ctx, wxID, FeatureIDCareAlertSmartRemind)
+	if tErr != nil {
+		return nil, tErr
+	}
 	featureActive := entActive || vip
+	canUse := featureActive || trialUnused
 	out := &CareAlertAccessResult{
 		FeedingQualified:     feeding != nil && feeding.Qualified,
 		FeatureActive:        featureActive,
+		TrialAvailable:       trialUnused && !featureActive,
 		EntitlementExpiresAt: entExp,
 	}
-	out.Allowed = out.FeedingQualified && out.FeatureActive
+	out.Allowed = out.FeedingQualified && canUse
 	return out, nil
 }

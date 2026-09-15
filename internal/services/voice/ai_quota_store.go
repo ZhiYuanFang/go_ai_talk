@@ -55,6 +55,7 @@ func EnsureVoiceAIQuotaSchema(ctx context.Context) error {
 		`ALTER TABLE ai_quota_default ADD COLUMN care_alert_monthly_limit INT NOT NULL DEFAULT 10`,
 		`ALTER TABLE ai_quota_user_override ADD COLUMN care_alert_monthly_limit INT NULL`,
 		`ALTER TABLE ai_quota_default ADD COLUMN growth_trajectory_daily_limit INT NOT NULL DEFAULT 5`,
+		`ALTER TABLE ai_quota_default ADD COLUMN care_alert_daily_limit INT NOT NULL DEFAULT 5`,
 	}
 	for _, sql := range alters {
 		if _, err := g.DB().Exec(ctx, sql); err != nil {
@@ -64,15 +65,43 @@ func EnsureVoiceAIQuotaSchema(ctx context.Context) error {
 			}
 		}
 	}
-	// 成长轨迹最新结果表（按 device_no 存 Markdown + 反馈）。
+	// 成长轨迹最新结果：复合键 (wx_id, device_no)；旧表仅 device_no 时补列并换主键。
 	_, err := g.DB().Exec(ctx, `
 CREATE TABLE IF NOT EXISTS growth_trajectory_latest (
+  wx_id           BIGINT       NOT NULL DEFAULT 0,
   device_no       VARCHAR(128) NOT NULL,
   result_markdown MEDIUMTEXT   NULL,
   feedback_json   MEDIUMTEXT   NULL,
   session_id      VARCHAR(128) NOT NULL DEFAULT '',
   updated_at      BIGINT       NOT NULL DEFAULT 0,
-  PRIMARY KEY (device_no)
+  PRIMARY KEY (wx_id, device_no)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`)
+	if err != nil {
+		return err
+	}
+	if _, err := g.DB().Exec(ctx, `ALTER TABLE growth_trajectory_latest ADD COLUMN wx_id BIGINT NOT NULL DEFAULT 0`); err != nil {
+		msg := err.Error()
+		if !strings.Contains(msg, "Duplicate column") && !strings.Contains(msg, "1060") {
+			return err
+		}
+	}
+	// 旧 PK(device_no) → (wx_id, device_no)；已是新主键时忽略错误。
+	if _, err := g.DB().Exec(ctx, `ALTER TABLE growth_trajectory_latest DROP PRIMARY KEY, ADD PRIMARY KEY (wx_id, device_no)`); err != nil {
+		msg := err.Error()
+		if !strings.Contains(msg, "Multiple primary key") && !strings.Contains(msg, "1068") &&
+			!strings.Contains(msg, "Duplicate") && !strings.Contains(msg, "already exists") {
+			g.Log().Warningf(ctx, "[voice-schema] growth_trajectory_latest PK migrate: %v", err)
+		}
+	}
+	// 值得留意最新结果：按 (wx_id, device_no) 持久化 items JSON。
+	_, err = g.DB().Exec(ctx, `
+CREATE TABLE IF NOT EXISTS care_alert_latest (
+  wx_id      BIGINT       NOT NULL,
+  device_no  VARCHAR(128) NOT NULL,
+  day        VARCHAR(32)  NOT NULL DEFAULT '',
+  items_json MEDIUMTEXT   NULL,
+  updated_at BIGINT       NOT NULL DEFAULT 0,
+  PRIMARY KEY (wx_id, device_no)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`)
 	return err
 }
@@ -103,17 +132,19 @@ func EnsureVoiceAIQuotaDefaultRow(ctx context.Context) error {
 		"clinic_ai_monthly_limit":        30,
 		"care_alert_monthly_limit":       10,
 		"growth_trajectory_daily_limit":  5,
+		"care_alert_daily_limit":         5,
 		"updated_at":                     now,
 	}).Insert()
 	return err
 }
 
 type voiceQuotaDefaultRow struct {
-	VoiceAiMonthlyLimit          int   `json:"voiceAiMonthlyLimit"`
-	ClinicAiMonthlyLimit         int   `json:"clinicAiMonthlyLimit"`
-	CareAlertMonthlyLimit        int   `json:"careAlertMonthlyLimit"`
-	GrowthTrajectoryDailyLimit   int   `json:"growthTrajectoryDailyLimit"`
-	UpdatedAt                    int64 `json:"updatedAt"`
+	VoiceAiMonthlyLimit        int   `json:"voiceAiMonthlyLimit"`
+	ClinicAiMonthlyLimit       int   `json:"clinicAiMonthlyLimit"`
+	CareAlertMonthlyLimit      int   `json:"careAlertMonthlyLimit"`
+	GrowthTrajectoryDailyLimit int   `json:"growthTrajectoryDailyLimit"`
+	CareAlertDailyLimit        int   `json:"careAlertDailyLimit"`
+	UpdatedAt                  int64 `json:"updatedAt"`
 }
 
 func loadVoiceAIQuotaDefault(ctx context.Context) (voiceQuotaDefaultRow, error) {
@@ -136,6 +167,9 @@ func loadVoiceAIQuotaDefault(ctx context.Context) (voiceQuotaDefaultRow, error) 
 	if row.GrowthTrajectoryDailyLimit <= 0 {
 		row.GrowthTrajectoryDailyLimit = 5
 	}
+	if row.CareAlertDailyLimit <= 0 {
+		row.CareAlertDailyLimit = 5
+	}
 	return row, nil
 }
 
@@ -149,6 +183,18 @@ func GetGrowthTrajectoryDailyLimit(ctx context.Context) (int, error) {
 		return 5, nil
 	}
 	return row.GrowthTrajectoryDailyLimit, nil
+}
+
+// GetCareAlertDailyLimit 读取值得留意每日生成次数上限（默认 5）。
+func GetCareAlertDailyLimit(ctx context.Context) (int, error) {
+	row, err := loadVoiceAIQuotaDefault(ctx)
+	if err != nil {
+		return 5, err
+	}
+	if row.CareAlertDailyLimit <= 0 {
+		return 5, nil
+	}
+	return row.CareAlertDailyLimit, nil
 }
 
 type voiceQuotaOverrideRow struct {

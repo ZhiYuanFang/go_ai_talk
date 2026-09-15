@@ -41,16 +41,14 @@ type CashInternalCareAlertAccessReq struct {
 
 // CashInternalCareAlertAccessRes 内部可看 data。
 type CashInternalCareAlertAccessRes struct {
-	Allowed bool `json:"allowed"`
-	// 喂养资格
-	FeedingQualified bool `json:"feedingQualified"`
-	// 功能资格
-	FeatureActive bool `json:"featureActive"`
-	// 资格过期时间，空时不反悔
+	Allowed              bool  `json:"allowed"`
+	FeedingQualified     bool  `json:"feedingQualified"`
+	FeatureActive        bool  `json:"featureActive"`
+	TrialAvailable       bool  `json:"trialAvailable"`
 	EntitlementExpiresAt int64 `json:"entitlementExpiresAt,omitempty"`
 }
 
-// CashInternalGrowthTrajectoryAccessReq 内部：成长轨迹可看合成（账号开通∨VIP；无喂养门闸）。
+// CashInternalGrowthTrajectoryAccessReq 内部：成长轨迹可看合成（账号开通∨VIP∨试用；无喂养门闸）。
 type CashInternalGrowthTrajectoryAccessReq struct {
 	g.Meta   `path:"/cash/internal/api/growth-trajectory/access" method:"get" tags:"cash" summary:"内部成长轨迹可看合成"`
 	DeviceNo string `json:"deviceNo" p:"deviceNo" dc:"设备号（兼容校验非空；开通不依赖设备）"`
@@ -61,8 +59,19 @@ type CashInternalGrowthTrajectoryAccessReq struct {
 type CashInternalGrowthTrajectoryAccessRes struct {
 	Allowed              bool  `json:"allowed"`
 	FeatureActive        bool  `json:"featureActive"`
+	TrialAvailable       bool  `json:"trialAvailable"`
 	EntitlementExpiresAt int64 `json:"entitlementExpiresAt,omitempty"`
 }
+
+// CashInternalFeatureTrialClaimReq 内部：成功落库后 claim 试用（voice 调用）。
+type CashInternalFeatureTrialClaimReq struct {
+	g.Meta    `path:"/cash/internal/api/feature/trial/claim" method:"post" tags:"cash" summary:"内部试用 claim"`
+	WxId      int64  `json:"wxId" v:"required"`
+	FeatureId string `json:"featureId" v:"required"`
+}
+
+// CashInternalFeatureTrialClaimRes 空 data 即可。
+type CashInternalFeatureTrialClaimRes struct{}
 
 // CashFeatureCatalogReq GET 合成功能目录。
 type CashFeatureCatalogReq struct {
@@ -81,9 +90,7 @@ type CashFeatureCatalogProductItem struct {
 }
 
 // CashFeatureCatalogItem 目录项（开通态 + 可售 products）。
-// AllowedCount：预测永久可激活条数（defaultFree+delta）；DefaultCount：定义表默认免费条数；
-// TotalActivatableCount：一级根事件天花板（含无子根）。
-// InviteDurationDays / AdDurationDays：邀请码 / 广告授予天数（0=永久），独立于付费 SKU。
+// TrialAvailable / InviteAvailable：试用与邀请入口可用性。
 type CashFeatureCatalogItem struct {
 	FeatureId             string                          `json:"featureId"`
 	Title                 string                          `json:"title"`
@@ -97,6 +104,8 @@ type CashFeatureCatalogItem struct {
 	TotalActivatableCount *int                            `json:"totalActivatableCount,omitempty"`
 	InviteDurationDays    int                             `json:"inviteDurationDays"`
 	AdDurationDays        int                             `json:"adDurationDays"`
+	TrialAvailable        bool                            `json:"trialAvailable"`
+	InviteAvailable       bool                            `json:"inviteAvailable"`
 	Logo                  string                          `json:"logo" dc:"CDN URL；无则空串"`
 	Color                 string                          `json:"color" dc:"主色 #RGB/#RRGGBB"`
 	Products              []CashFeatureCatalogProductItem `json:"products"`

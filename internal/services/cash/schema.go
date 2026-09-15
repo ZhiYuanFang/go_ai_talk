@@ -142,8 +142,7 @@ func EnsureSchema(ctx context.Context) error {
   KEY idx_code_time (code, redeemed_at),
   KEY idx_redeemer (redeemer_wx_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
-		// 设备维邀请去重：仅 InviteOncePerDevice 功能（值得留意）写入；预测与成长轨迹不得使用。
-		// 原力流水仍记用户；本表只拦「同设备再次邀请开通该功能」。
+		// 设备维邀请去重表：历史遗留；现网 care/growth 改用 InviteOncePerUser，不再写入本表。
 		`CREATE TABLE IF NOT EXISTS feature_invite_device_grant (
   device_no    VARCHAR(64) NOT NULL,
   feature_id   VARCHAR(64) NOT NULL,
@@ -166,7 +165,7 @@ func EnsureSchema(ctx context.Context) error {
   UNIQUE KEY uk_device_feature (device_no, feature_id),
   KEY idx_device (device_no)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
-		// 账号维权益：activation_subject=user 的功能写入本表（如成长轨迹）；与设备表并行，不改写旧唯一键。
+		// 账号维权益：activation_subject=user 的功能写入本表（care / growth）；与设备表并行，不改写旧唯一键。
 		`CREATE TABLE IF NOT EXISTS feature_user_entitlement (
   id              BIGINT      NOT NULL AUTO_INCREMENT,
   wx_id           BIGINT      NOT NULL,
@@ -180,6 +179,16 @@ func EnsureSchema(ctx context.Context) error {
   PRIMARY KEY (id),
   UNIQUE KEY uk_wx_feature (wx_id, feature_id),
   KEY idx_wx (wx_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+		// 账号维免费试用记账：unused→used 仅在首次成功落库 claim 时翻转。
+		`CREATE TABLE IF NOT EXISTS feature_user_trial (
+  wx_id       BIGINT      NOT NULL,
+  feature_id  VARCHAR(64) NOT NULL,
+  status      VARCHAR(16) NOT NULL DEFAULT 'unused',
+  used_at     BIGINT      NOT NULL DEFAULT 0,
+  created_at  BIGINT      NOT NULL DEFAULT 0,
+  updated_at  BIGINT      NOT NULL DEFAULT 0,
+  PRIMARY KEY (wx_id, feature_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 		`CREATE TABLE IF NOT EXISTS feature_allowed_count (
   device_no                VARCHAR(64) NOT NULL,
@@ -305,6 +314,20 @@ func EnsureSchema(ctx context.Context) error {
 			return err
 		}
 	}
+	// 每次 Ensure：care / growth 均为账号维开通。
+	if _, err := db.Exec(ctx, `UPDATE feature_def SET activation_subject='user' WHERE feature_id IN (?,?)`,
+		FeatureIDCareAlertSmartRemind, FeatureIDGrowthTrajectoryPredict); err != nil {
+		return err
+	}
+	// 剥离 ad 开通方式（care / growth）；预测项整体停用。
+	if _, err := db.Exec(ctx, `UPDATE feature_def SET unlock_methods='payment,invite_code', invite_duration_days=IF(invite_duration_days<=0,7,invite_duration_days), updated_at=? WHERE feature_id IN (?,?)`,
+		time.Now().Unix(), FeatureIDCareAlertSmartRemind, FeatureIDGrowthTrajectoryPredict); err != nil {
+		return err
+	}
+	if _, err := db.Exec(ctx, `UPDATE feature_def SET status=0, updated_at=? WHERE feature_id=?`,
+		time.Now().Unix(), FeatureIDPredictionUnlock); err != nil {
+		return err
+	}
 	// 功能视觉：logo（OSS objectKey）与主色 hex；已有库补列。
 	for _, alterSQL := range []string{
 		`ALTER TABLE feature_def ADD COLUMN logo VARCHAR(512) NOT NULL DEFAULT ''`,
@@ -342,42 +365,56 @@ ON DUPLICATE KEY UPDATE
 	if err != nil {
 		return err
 	}
-	// 种子预测开通功能定义（可停用；运营可用 Admin 改文案/默认条数；不覆盖已有 default_allowed_count）。
-	// color 仅空才填默认蓝，避免覆盖运维主色；logo 种子为空（App 占位）。
+	// 预测开通：种子后立即停用（status=0）；保留行便于 Admin 历史查看。
 	_, err = db.Exec(ctx, `
 INSERT INTO feature_def (feature_id, title, description, unlock_methods, duration_days, default_allowed_count, logo, color, status, sort_order, updated_at)
-VALUES (?, '预测事项开通数量', '增加可展示的预测事项数量', 'payment,invite_code,ad', 0, 0, '', '#3B82F6', 1, 10, ?)
+VALUES (?, '预测事项开通数量', '增加可展示的预测事项数量', 'payment,invite_code', 0, 0, '', '#3B82F6', 0, 10, ?)
 ON DUPLICATE KEY UPDATE
+  status=0,
   color=IF(color='' OR color IS NULL, VALUES(color), color),
   updated_at=VALUES(updated_at)`,
 		FeatureIDPredictionUnlock, now)
 	if err != nil {
 		return err
 	}
-	// 种子值得留意智能提醒：邀请/广告默认 7 天；不覆盖运维已改授予天数/文案；默认主色青绿。
+	// 值得留意：账号维；支付/邀请；邀请 7 天；默认主色青绿。
 	_, err = db.Exec(ctx, `
-INSERT INTO feature_def (feature_id, title, description, unlock_methods, duration_days, invite_duration_days, ad_duration_days, default_allowed_count, logo, color, status, sort_order, updated_at)
-VALUES (?, '值得留意智能提醒', '开通后可查看值得留意智能提醒', 'payment,invite_code,ad', 7, 7, 7, 0, '', '#0D9488', 1, 20, ?)
+INSERT INTO feature_def (feature_id, title, description, unlock_methods, duration_days, invite_duration_days, ad_duration_days, default_allowed_count, activation_subject, logo, color, status, sort_order, updated_at)
+VALUES (?, '值得留意智能提醒', '开通后可查看值得留意智能提醒', 'payment,invite_code', 7, 7, 0, 0, 'user', '', '#0D9488', 1, 20, ?)
 ON DUPLICATE KEY UPDATE
+  activation_subject='user',
+  unlock_methods='payment,invite_code',
+  invite_duration_days=IF(invite_duration_days<=0, VALUES(invite_duration_days), invite_duration_days),
   color=IF(color='' OR color IS NULL, VALUES(color), color),
   updated_at=VALUES(updated_at)`,
 		FeatureIDCareAlertSmartRemind, now)
 	if err != nil {
 		return err
 	}
-	// 值得留意付费永久 SKU；INSERT IGNORE 不覆盖运维改价。
+	// 值得留意付费 30 天 SKU；INSERT IGNORE 不覆盖运维改价。
 	_, err = db.Exec(ctx, `
 INSERT IGNORE INTO feature_product (product_code, feature_id, grant_kind, grant_quantity, price_fen, original_price_fen, duration_days, apple_product_id, status, updated_at)
-VALUES (?, ?, 'entitlement', 1, 990, 0, 0, '', 1, ?)`,
+VALUES (?, ?, 'entitlement', 1, 990, 0, 30, '', 1, ?)`,
 		CareAlertSmartRemindProductCode, FeatureIDCareAlertSmartRemind, now)
 	if err != nil {
 		return err
 	}
-	// 种子成长轨迹预测：账号维开通；邀请/广告默认 7 天；不覆盖运维已改授予天数/文案；默认主色橙。
+	// 停用旧永久 SKU；若运维已把旧码改成 30d 则仅保证 duration。
+	_, _ = db.Exec(ctx, `UPDATE feature_product SET status=0, updated_at=? WHERE product_code=?`,
+		now, CareAlertSmartRemindProductCodeLegacyPerm)
+	_, _ = db.Exec(ctx, `UPDATE feature_product SET duration_days=30, updated_at=? WHERE product_code=? AND duration_days=0 AND status=1`,
+		now, CareAlertSmartRemindProductCode)
+	// 停用预测槽位相关 SKU（若有）。
+	_, _ = db.Exec(ctx, `UPDATE feature_product SET status=0, updated_at=? WHERE feature_id=?`,
+		now, FeatureIDPredictionUnlock)
+	// 成长轨迹：账号维；支付/邀请；邀请 7 天；默认主色橙。
 	_, err = db.Exec(ctx, `
 INSERT INTO feature_def (feature_id, title, description, unlock_methods, duration_days, invite_duration_days, ad_duration_days, default_allowed_count, activation_subject, logo, color, status, sort_order, updated_at)
-VALUES (?, '成长轨迹预测', '开通后可使用成长轨迹预测', 'payment,invite_code,ad', 7, 7, 7, 0, 'user', '', '#EA580C', 1, 30, ?)
+VALUES (?, '成长轨迹预测', '开通后可使用成长轨迹预测', 'payment,invite_code', 7, 7, 0, 0, 'user', '', '#EA580C', 1, 30, ?)
 ON DUPLICATE KEY UPDATE
+  activation_subject='user',
+  unlock_methods='payment,invite_code',
+  invite_duration_days=IF(invite_duration_days<=0, VALUES(invite_duration_days), invite_duration_days),
   color=IF(color='' OR color IS NULL, VALUES(color), color),
   updated_at=VALUES(updated_at)`,
 		FeatureIDGrowthTrajectoryPredict, now)

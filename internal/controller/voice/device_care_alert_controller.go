@@ -31,22 +31,21 @@ func careAlertRequireWxID(ctx context.Context) (int64, error) {
 	return wxID, nil
 }
 
-// Daily GET /device/api/care-alert/daily — 宝宝日缓存列表；未命中 single-flight 阻塞生成。
-// force=1/true 时先删当日日缓存再生成（仍要求 wxId>0，无鉴权旁路）。
+// Daily GET /device/api/care-alert/daily — 读 latest；force 时生成并计次。
 func (c *DeviceCareAlertController) Daily(ctx context.Context, req *v1.DeviceCareAlertDailyReq) (res *v1.DeviceCareAlertDailyRes, err error) {
 	wxID, err := careAlertRequireWxID(ctx)
 	if err != nil {
 		return nil, err
 	}
 	force := careAlertForceTruthy(req.Force)
-	day, items, err := voice.CareAlertDaily(ctx, req.DeviceNo, wxID, force)
+	day, items, used, limit, err := voice.CareAlertDaily(ctx, req.DeviceNo, wxID, force)
 	if err != nil {
 		return nil, err
 	}
 	if items == nil {
 		items = []v1.CareAlertItemDTO{}
 	}
-	return &v1.DeviceCareAlertDailyRes{Day: day, Items: items}, nil
+	return &v1.DeviceCareAlertDailyRes{Day: day, Items: items, UsedToday: used, DailyLimit: limit}, nil
 }
 
 // careAlertForceTruthy 解析 force 查询：1/true/yes（大小写不敏感）为真。

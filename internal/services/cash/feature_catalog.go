@@ -1,7 +1,6 @@
 package cash
 
 import (
-	deviceclient "hello/internal/clients/device"
 	"context"
 	"encoding/json"
 	"strings"
@@ -42,7 +41,7 @@ type FeatureCatalogProduct struct {
 	AppleProductId   string `json:"appleProductId,omitempty"`
 }
 
-// FeatureCatalogItem 合成目录项（含设备开通态与可售 SKU）。
+// FeatureCatalogItem 合成目录项（含设备/账号开通态与可售 SKU）。
 type FeatureCatalogItem struct {
 	FeatureId             string                  `json:"featureId"`
 	Title                 string                  `json:"title"`
@@ -56,9 +55,13 @@ type FeatureCatalogItem struct {
 	TotalActivatableCount *int                    `json:"totalActivatableCount,omitempty"`
 	InviteDurationDays    int                     `json:"inviteDurationDays"`
 	AdDurationDays        int                     `json:"adDurationDays"`
-	Logo                  string                  `json:"logo"`  // CDN URL；无则空串
-	Color                 string                  `json:"color"` // 主色 hex
-	Products              []FeatureCatalogProduct `json:"products"`
+	// TrialAvailable 试用未用且当前无用户权益；客户端再与 !VIP 合成展示。
+	TrialAvailable bool `json:"trialAvailable"`
+	// InviteAvailable unlock_methods 含 invite 且该人尚未 InviteOncePerUser 成功。
+	InviteAvailable bool                   `json:"inviteAvailable"`
+	Logo            string                 `json:"logo"`  // CDN URL；无则空串
+	Color           string                 `json:"color"` // 主色 hex
+	Products        []FeatureCatalogProduct `json:"products"`
 }
 
 type featureDefDB struct {
@@ -162,7 +165,6 @@ func GetFeatureCatalog(ctx context.Context, deviceNo string, wxID int64) (*Featu
 			userEntMap[e.FeatureId] = e
 		}
 	}
-	allowedSt, _ := GetDeviceAllowedCountState(ctx, deviceNo)
 
 	// 一次拉取全部启用 SKU，按 feature_id 分组（字典小，避免 N+1）。
 	prodByFeature, err := listActiveProductsByFeature(ctx)
@@ -170,20 +172,15 @@ func GetFeatureCatalog(ctx context.Context, deviceNo string, wxID int64) (*Featu
 		return nil, err
 	}
 
-	// 一级根事件天花板（parent_id=0，含无子根）：失败则不写入正数，避免误显示「已全部激活」。
-	// 与 voice「非叶子须追问」无关；历史调用名 FetchNonLeafEventCount。
-	var totalActivatable *int
-	if n, nErr := deviceclient.FetchNonLeafEventCount(ctx); nErr != nil {
-		g.Log().Warningf(ctx, "[cash-catalog] root-count failed err=%v", nErr)
-	} else if n > 0 {
-		totalActivatable = &n
-	}
-
 	out := make([]FeatureCatalogItem, 0, len(defs))
 	for _, d := range defs {
+		// prediction_unlock 已停用；防御性跳过（ListActive 已滤 status=1）。
+		if d.FeatureId == FeatureIDPredictionUnlock {
+			continue
+		}
 		item := FeatureCatalogItem{
 			FeatureId: d.FeatureId, Title: d.Title, Description: d.Description,
-			UnlockMethods: d.UnlockMethods,
+			UnlockMethods:      d.UnlockMethods,
 			InviteDurationDays: d.InviteDurationDays,
 			AdDurationDays:     d.AdDurationDays,
 			Logo:               featurelogo.CdnURL(ctx, d.Logo),
@@ -192,22 +189,6 @@ func GetFeatureCatalog(ctx context.Context, deviceNo string, wxID int64) (*Featu
 		}
 		if item.Products == nil {
 			item.Products = []FeatureCatalogProduct{}
-		}
-		if d.FeatureId == FeatureIDPredictionUnlock {
-			// 永久合成条数（defaultFree+delta）；不再因邀请写全开哨兵；VIP 不改写本字段。
-			ac := d.DefaultAllowedCount + allowedSt.PermanentDelta
-			if ac < 0 {
-				ac = 0
-			}
-			item.AllowedCount = &ac
-			// 默认免费条数原样下发，供客户端「默认已开启」文案；不参与闸门。
-			dc := d.DefaultAllowedCount
-			if dc < 0 {
-				dc = 0
-			}
-			item.DefaultCount = &dc
-			item.Unlocked = ac > 0
-			item.TotalActivatableCount = totalActivatable
 		}
 		subj := NormalizeActivationSubject(d.ActivationSubject)
 		if subj == ActivationSubjectUser {
@@ -220,6 +201,26 @@ func GetFeatureCatalog(ctx context.Context, deviceNo string, wxID int64) (*Featu
 			item.Unlocked = true
 			item.UnlockMethod = e.UnlockMethod
 			item.ExpiresAt = e.ExpiresAt
+		}
+		// trialAvailable：试用未用且无用户权益（VIP 由客户端合成隐藏）。
+		if wxID > 0 {
+			if unused, tErr := IsTrialUnused(ctx, wxID, d.FeatureId); tErr != nil {
+				g.Log().Warningf(ctx, "[cash-catalog] trial 查询失败 feature=%s err=%v", d.FeatureId, tErr)
+			} else {
+				item.TrialAvailable = unused && !item.Unlocked
+			}
+			if strings.Contains(d.UnlockMethods, UnlockMethodInviteCode) {
+				if InviteOncePerUser(d.FeatureId) {
+					has, iErr := HasInviteFeatureGrantAnyCode(ctx, wxID, d.FeatureId)
+					if iErr != nil {
+						g.Log().Warningf(ctx, "[cash-catalog] invite grant 查询失败 feature=%s err=%v", d.FeatureId, iErr)
+					} else {
+						item.InviteAvailable = !has
+					}
+				} else {
+					item.InviteAvailable = true
+				}
+			}
 		}
 		out = append(out, item)
 	}

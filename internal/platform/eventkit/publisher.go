@@ -76,42 +76,57 @@ func (p *HTTPPublisher) CheckDependency(ctx context.Context) error {
 	return nil
 }
 
-// Publish 发布事件
+// Publish 发布事件到配置的即时交换机（默认 voice.events）。
 func (p *HTTPPublisher) Publish(ctx context.Context, routingKey string, payload any) error {
-	// 修剪 routingKey
+	return p.publishTo(ctx, p.cfg.Exchange, routingKey, nil, payload)
+}
+
+// PublishDelayed 发布到 DelayedExchange，headers 带 x-delay（毫秒）；delayMs<0 按 0 处理。
+// 业务：预测临近叫醒；消费侧须再读 Redis 校验，勿依赖消息可取消。
+func (p *HTTPPublisher) PublishDelayed(ctx context.Context, routingKey string, delayMs int64, payload any) error {
+	if delayMs < 0 {
+		delayMs = 0
+	}
+	headers := map[string]any{"x-delay": delayMs}
+	return p.publishTo(ctx, DelayedExchange, routingKey, headers, payload)
+}
+
+func (p *HTTPPublisher) publishTo(ctx context.Context, exchange, routingKey string, headers map[string]any, payload any) error {
 	routingKey = strings.TrimSpace(routingKey)
-	// 如果 routingKey 为空，则返回错误
 	if routingKey == "" {
 		return ErrEmptyRoutingKey
 	}
 	if _, ok := ParseRoutingKey(routingKey); !ok {
 		return ErrInvalidRoutingKey
 	}
-	// 构建 body
+	exchange = strings.TrimSpace(exchange)
+	if exchange == "" {
+		exchange = DefaultExchange
+	}
+	props := map[string]any{}
+	if len(headers) > 0 {
+		props["headers"] = headers
+	}
 	bodyObj := map[string]any{
-		"properties":       map[string]any{},
+		"properties":       props,
 		"routing_key":      routingKey,
 		"payload":          mustJSON(payload),
 		"payload_encoding": "string",
 	}
 	bodyBytes, _ := json.Marshal(bodyObj)
-	// 构建请求
-	u := strings.TrimRight(p.cfg.APIBase, "/") + "/exchanges/%2F/" + p.cfg.Exchange + "/publish"
+	u := strings.TrimRight(p.cfg.APIBase, "/") + "/exchanges/%2F/" + exchange + "/publish"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(bodyBytes))
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrUnavailable, err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", p.basicAuth())
-	// 发送请求
 	resp, err := p.httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrUnavailable, err)
 	}
 	defer resp.Body.Close()
-	// 如果响应状态码不是 2xx，则返回错误
 	if resp.StatusCode >= 300 {
-		// 管理 API 返回非 2xx 视为发布被拒绝，需要上层走失败语义。
 		return fmt.Errorf("%w: status=%d", ErrPublishRejected, resp.StatusCode)
 	}
 	return nil

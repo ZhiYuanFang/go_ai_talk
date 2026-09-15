@@ -22,6 +22,7 @@ func RegisterVoiceServiceHTTP(s *ghttp.Server) {
 		// tip SSE / clinic|tip HTTP 飞轮已下线（remove-tip-and-clinic-feedback）；care-alert / growth-trajectory 保留。
 		group.Bind(&voicectrl.DeviceCareAlertController{})
 		group.Bind(&voicectrl.DeviceGrowthTrajectoryController{})
+		group.Bind(&voicectrl.DevicePredictImminentController{})
 	})
 	s.Group("/", func(group *ghttp.RouterGroup) {
 		group.Middleware(devicectrl.InternalSecretMiddleware)

@@ -7,6 +7,8 @@ import (
 
 const (
 	DefaultExchange = "voice.events"
+	// DelayedExchange 预测临近等延时叫醒；类型 x-delayed-message，须启用 rabbitmq_delayed_message_exchange。
+	DelayedExchange = "voice.delayed"
 )
 
 // RoutingKey 统一路由键格式：domain.bounded-context.event。

@@ -212,6 +212,22 @@ func upsertFeatureEntitlement(ctx context.Context, deviceNo, featureID, unlockMe
 // Args: durationDays=0 表示永久。
 // Side Effects: 写 feature_user_entitlement；失效功能定义缓存。
 func GrantUserEntitlement(ctx context.Context, wxID int64, featureID, unlockMethod string, grantQty, durationDays int, sourceRef string) error {
+	var addSec int64
+	if durationDays > 0 {
+		addSec = int64(durationDays) * 86400
+	}
+	return grantUserEntitlementAddSeconds(ctx, wxID, featureID, unlockMethod, grantQty, addSec, sourceRef)
+}
+
+// GrantUserEntitlementHours 向 wx 授予/续期功能权益（按小时；试用 24h）。
+func GrantUserEntitlementHours(ctx context.Context, wxID int64, featureID, unlockMethod string, grantQty, durationHours int, sourceRef string) error {
+	if durationHours <= 0 {
+		return gerror.NewCode(gcode.CodeInvalidParameter, "durationHours 须为正")
+	}
+	return grantUserEntitlementAddSeconds(ctx, wxID, featureID, unlockMethod, grantQty, int64(durationHours)*3600, sourceRef)
+}
+
+func grantUserEntitlementAddSeconds(ctx context.Context, wxID int64, featureID, unlockMethod string, grantQty int, addSeconds int64, sourceRef string) error {
 	featureID = strings.TrimSpace(featureID)
 	unlockMethod = strings.TrimSpace(unlockMethod)
 	if wxID <= 0 || featureID == "" {
@@ -221,14 +237,15 @@ func GrantUserEntitlement(ctx context.Context, wxID int64, featureID, unlockMeth
 		grantQty = 1
 	}
 	now := time.Now().Unix()
-	if err := upsertFeatureUserEntitlement(ctx, wxID, featureID, unlockMethod, durationDays, grantQty, sourceRef, now); err != nil {
+	if err := upsertFeatureUserEntitlement(ctx, wxID, featureID, unlockMethod, addSeconds, grantQty, sourceRef, now); err != nil {
 		return err
 	}
 	invalidateFeatureDefCache(ctx)
 	return nil
 }
 
-func upsertFeatureUserEntitlement(ctx context.Context, wxID int64, featureID, unlockMethod string, durationDays, quantity int, sourceRef string, now int64) error {
+// upsertFeatureUserEntitlement addSeconds=0 表示永久；>0 从 now 或未过期 expires_at 起叠加。
+func upsertFeatureUserEntitlement(ctx context.Context, wxID int64, featureID, unlockMethod string, addSeconds int64, quantity int, sourceRef string, now int64) error {
 	db := g.DB()
 	exist, err := db.Model("feature_user_entitlement").Ctx(ctx).
 		Where("wx_id", wxID).Where("feature_id", featureID).One()
@@ -236,19 +253,19 @@ func upsertFeatureUserEntitlement(ctx context.Context, wxID int64, featureID, un
 		return err
 	}
 	var newExp int64
-	if durationDays <= 0 {
+	if addSeconds <= 0 {
 		newExp = 0
 	} else if exist.IsEmpty() {
-		newExp = now + int64(durationDays)*86400
+		newExp = now + addSeconds
 	} else {
 		base := now
 		if cur := exist["expires_at"].Int64(); cur > base {
 			base = cur
 		}
 		if exist["expires_at"].Int64() == 0 && exist["updated_at"].Int64() > 0 {
-			newExp = 0
+			newExp = 0 // 已永久不缩短
 		} else {
-			newExp = base + int64(durationDays)*86400
+			newExp = base + addSeconds
 		}
 	}
 	if exist.IsEmpty() {

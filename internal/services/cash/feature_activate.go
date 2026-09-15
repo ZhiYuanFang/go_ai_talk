@@ -11,7 +11,7 @@ import (
 	"github.com/gogf/gf/v2/frame/g"
 )
 
-// ActivateFeatureRequest 功能开通原子入参（支付/邀请/广告共用）。
+// ActivateFeatureRequest 功能开通原子入参（支付/邀请/试用共用；广告通道保留兼容但种子已剥离）。
 //
 // 业务：按主体与通道解析授予效果；支持 Subject=device|user（由 feature_def.activation_subject 驱动）。
 // ActorWxID 供审计；权益主体为 SubjectKey（device_no 或 wx_id 字符串）。
@@ -19,21 +19,24 @@ type ActivateFeatureRequest struct {
 	FeatureID   string
 	SubjectType string // device | user
 	SubjectKey  string // device_no（device）或 wxId 十进制（user）
-	Channel     string // payment | invite_code | ad
+	Channel     string // payment | invite_code | ad | trial
 	ChannelRef  string
 	ActorWxID   int64
-	// 以下字段主要由支付通道传入（SKU）；邀请/广告忽略 GrantKind/DurationDays，改读 feature_def 分列天数。
+	// 以下字段主要由支付通道传入（SKU）；邀请忽略 GrantKind/DurationDays，改读 feature_def 分列天数。
 	GrantKind    string
 	GrantQty     int
 	DurationDays int
+	// DurationHours 试用等短时授予；>0 时优先于 DurationDays（秒级 = hours*3600）。
+	DurationHours int
 }
 
 // ActivateFeature 共用开通原子入口：写入设备/账号权益或预测条数并失效缓存。
 //
 // 效果解析：
 //   - payment：grant_kind/quantity/duration 来自入参（SKU）；
-//   - invite_code：读 feature_def.invite_duration_days（0=永久）；预测强制 allowed_count_delta +1；
-//   - ad：读 feature_def.ad_duration_days（0=永久）；预测强制 allowed_count_delta +1。
+//   - invite_code：读 feature_def.invite_duration_days（0=永久）；
+//   - ad：读 feature_def.ad_duration_days（0=永久）；种子已剥离，旧客户端调用将因 unlock_methods 拒绝；
+//   - trial：DurationHours（默认 TrialDurationHours），仅账号维权益。
 //
 // Args: req 见 ActivateFeatureRequest。
 // Returns: 参数/主体错误或写库错误。
@@ -47,7 +50,7 @@ func ActivateFeature(ctx context.Context, req ActivateFeatureRequest) error {
 		return gerror.NewCode(gcode.CodeInvalidParameter, "featureId/subjectKey 不能为空")
 	}
 	switch channel {
-	case UnlockMethodPayment, UnlockMethodInviteCode, UnlockMethodAd:
+	case UnlockMethodPayment, UnlockMethodInviteCode, UnlockMethodAd, UnlockMethodTrial:
 	default:
 		return gerror.NewCode(gcode.CodeInvalidParameter, "未知开通通道")
 	}
@@ -58,13 +61,26 @@ func ActivateFeature(ctx context.Context, req ActivateFeatureRequest) error {
 	}
 	grantKind := strings.TrimSpace(req.GrantKind)
 	durationDays := req.DurationDays
+	durationHours := req.DurationHours
 
-	// 预测：三通道均为永久条数增量；忽略定义天数；仅允许设备主体。
+	// 预测条数履约已停用：拒绝新授予（旧客户端明确失败）。
 	if featureID == FeatureIDPredictionUnlock {
-		if subjectType != ActivationSubjectDevice {
-			return gerror.NewCode(gcode.CodeInvalidParameter, "预测条数开通仅支持设备主体")
+		return gerror.NewCode(gcode.CodeInvalidOperation, "预测事项开通数量已下线")
+	}
+
+	// 试用：固定短时账号权益。
+	if channel == UnlockMethodTrial {
+		if subjectType != ActivationSubjectUser {
+			return gerror.NewCode(gcode.CodeInvalidParameter, "试用仅支持账号维开通")
 		}
-		return GrantEntitlementOrCount(ctx, subjectKey, featureID, channel, GrantKindAllowedCountDelta, grantQty, 0, req.ChannelRef)
+		if durationHours <= 0 {
+			durationHours = TrialDurationHours
+		}
+		wxID, err := strconv.ParseInt(subjectKey, 10, 64)
+		if err != nil || wxID <= 0 {
+			return gerror.NewCode(gcode.CodeInvalidParameter, "账号维开通须提供有效 wxId")
+		}
+		return GrantUserEntitlementHours(ctx, wxID, featureID, channel, grantQty, durationHours, req.ChannelRef)
 	}
 
 	// 邀请/广告：权益型天数分列读取。
@@ -122,7 +138,7 @@ func GetFeatureActivationSubject(ctx context.Context, featureID string) (string,
 	return NormalizeActivationSubject(r["activation_subject"].String()), nil
 }
 
-// ResolveActivateSubject 按功能定义解析支付/邀请/广告应使用的 SubjectType 与 SubjectKey。
+// ResolveActivateSubject 按功能定义解析支付/邀请/试用应使用的 SubjectType 与 SubjectKey。
 //
 // Args: featureID；deviceNo 与 wxID 由通道提供（user 主体必须 wxID>0）。
 // Returns: subjectType、subjectKey、错误。

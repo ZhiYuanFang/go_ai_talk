@@ -28,6 +28,16 @@ func NewObservedEventPublisher() (eventkit.Publisher, error) {
 	return eventkit.WithObserver(base, eventkit.LoggingObserver{}), nil
 }
 
+// NewHTTPPublisherForDelayed 构造可 PublishDelayed 的 HTTP 发布器（目标交换机仍由 PublishDelayed 固定为 voice.delayed）。
+func NewHTTPPublisherForDelayed() (*eventkit.HTTPPublisher, error) {
+	return eventkit.NewHTTPPublisher(eventkit.HTTPPublisherConfig{
+		APIBase:  strings.TrimSpace(os.Getenv(ProducerAPIEnv)),
+		User:     strings.TrimSpace(os.Getenv(ProducerUserEnv)),
+		Password: strings.TrimSpace(os.Getenv(ProducerPassEnv)),
+		Exchange: ProducerExchange,
+	})
+}
+
 // NewHTTPQueueConsumer 统一构造队列拉取消费器。
 func NewHTTPQueueConsumer() (*eventkit.HTTPQueueConsumer, error) {
 	return eventkit.NewHTTPQueueConsumer(eventkit.HTTPQueueConsumerConfig{

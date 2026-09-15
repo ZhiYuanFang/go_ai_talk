@@ -32,6 +32,11 @@ const (
 	RoutingUcgPostUnliked       RouteKey = RouteKey(RoutingPrefixUcg + "post.unliked")
 	RoutingUcgCommentPublished  RouteKey = RouteKey(RoutingPrefixUcg + "comment.published")
 	RoutingUcgCommentRemoved    RouteKey = RouteKey(RoutingPrefixUcg + "comment.removed")
+
+	// RoutingPrefixVoice voice 域事件前缀。
+	RoutingPrefixVoice = "voice."
+	// RoutingVoicePredictImminentFire 预测事项临近叫醒（经 voice.delayed + x-delay）。
+	RoutingVoicePredictImminentFire RouteKey = RouteKey(RoutingPrefixVoice + "predict.imminent.fire")
 )
 
 var registeredRoutingKeys = map[RouteKey]struct{}{
@@ -51,6 +56,7 @@ var registeredRoutingKeys = map[RouteKey]struct{}{
 	RoutingUcgPostUnliked:            {},
 	RoutingUcgCommentPublished:       {},
 	RoutingUcgCommentRemoved:         {},
+	RoutingVoicePredictImminentFire:  {},
 }
 
 func (k RouteKey) String() string {

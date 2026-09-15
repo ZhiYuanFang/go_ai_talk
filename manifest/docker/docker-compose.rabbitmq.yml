@@ -12,7 +12,11 @@ x-docker-logging-rabbitmq: &docker-logging-rabbitmq
 
 services:
   rabbitmq:
-    image: rabbitmq:3.13-management-alpine
+    # 含 rabbitmq_delayed_message_exchange（预测临近延时叫醒）；勿回退纯官方镜像否则 voice.delayed 声明失败。
+    build:
+      context: ./rabbitmq
+      dockerfile: Dockerfile
+    image: go-ai-talk-rabbitmq:3.13-delayed
     container_name: go-ai-talk-rabbitmq
     mem_limit: 192m
     cpus: "0.2"

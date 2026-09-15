@@ -56,6 +56,10 @@ echo "Declaring exchange and queues..."
 rabbit_put "/exchanges/%2F/voice.events" \
   '{"type":"topic","durable":true,"auto_delete":false}'
 
+# 预测临近：延时交换机（依赖 rabbitmq_delayed_message_exchange 插件）。
+rabbit_put "/exchanges/%2F/voice.delayed" \
+  '{"type":"x-delayed-message","durable":true,"auto_delete":false,"arguments":{"x-delayed-type":"topic"}}'
+
 declare_queue_bind() {
   name="$1"
   rk="$2"
@@ -75,14 +79,21 @@ declare_queue_bind "ucg.recommend.score.q" "ucg.post.unliked"
 declare_queue_bind "ucg.recommend.score.q" "ucg.comment.published"
 declare_queue_bind "ucg.recommend.score.q" "ucg.comment.removed"
 
+# voice 预测临近：绑定到延时交换机（非 voice.events）。
+rabbit_put "/queues/%2F/voice.predict.imminent.q" '{"durable":true,"auto_delete":false,"arguments":{}}'
+rabbit_post "/bindings/%2F/e/voice.delayed/q/voice.predict.imminent.q" \
+  '{"routing_key":"voice.predict.imminent.fire","arguments":{}}'
+
 echo ""
 echo "RabbitMQ baseline initialized."
 echo "Exchange: voice.events (topic)"
+echo "Exchange: voice.delayed (x-delayed-message → topic)"
 echo "Queues:"
 echo " - ucg.post.created.q <= ucg.post.created"
 echo " - ucg.comment.created.q <= ucg.comment.created"
 echo " - ucg.profile.patch.submitted.q <= ucg.profile.patch.submitted"
 echo " - ucg.chat.msg.created.q <= ucg.chat.msg.created"
 echo " - ucg.recommend.score.q <= ucg.post.published|unpublished|liked|unliked|comment.published|comment.removed"
+echo " - voice.predict.imminent.q <= voice.delayed / voice.predict.imminent.fire"
 echo ""
 echo "Verify: open management UI (e.g. http://127.0.0.1:15672 )"

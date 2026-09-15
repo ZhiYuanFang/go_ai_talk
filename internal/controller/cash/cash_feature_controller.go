@@ -89,12 +89,13 @@ func (c *CashFeatureController) InternalCareAlertAccess(ctx context.Context, req
 	}
 	return &v1.CashInternalCareAlertAccessRes{
 		Allowed: out.Allowed, FeedingQualified: out.FeedingQualified,
-		FeatureActive: out.FeatureActive, EntitlementExpiresAt: out.EntitlementExpiresAt,
+		FeatureActive: out.FeatureActive, TrialAvailable: out.TrialAvailable,
+		EntitlementExpiresAt: out.EntitlementExpiresAt,
 	}, nil
 }
 
 // InternalGrowthTrajectoryAccess GET /cash/internal/api/growth-trajectory/access
-// 供 voice 门禁：账号开通 ∨ VIP（无喂养门闸）；须内部密钥。
+// 供 voice 门禁：账号开通 ∨ VIP ∨ 试用未用（无喂养门闸）；须内部密钥。
 func (c *CashFeatureController) InternalGrowthTrajectoryAccess(ctx context.Context, req *v1.CashInternalGrowthTrajectoryAccessReq) (*v1.CashInternalGrowthTrajectoryAccessRes, error) {
 	r := ghttp.RequestFromCtx(ctx)
 	if !cash.ValidateInternalSecret(cash.InternalSecretFromRequest(r)) {
@@ -113,8 +114,24 @@ func (c *CashFeatureController) InternalGrowthTrajectoryAccess(ctx context.Conte
 	}
 	return &v1.CashInternalGrowthTrajectoryAccessRes{
 		Allowed: out.Allowed, FeatureActive: out.FeatureActive,
-		EntitlementExpiresAt: out.EntitlementExpiresAt,
+		TrialAvailable: out.TrialAvailable, EntitlementExpiresAt: out.EntitlementExpiresAt,
 	}, nil
+}
+
+// InternalFeatureTrialClaim POST /cash/internal/api/feature/trial/claim
+// 供 voice 成功落库后 claim 试用；须内部密钥；幂等。
+func (c *CashFeatureController) InternalFeatureTrialClaim(ctx context.Context, req *v1.CashInternalFeatureTrialClaimReq) (*v1.CashInternalFeatureTrialClaimRes, error) {
+	r := ghttp.RequestFromCtx(ctx)
+	if !cash.ValidateInternalSecret(cash.InternalSecretFromRequest(r)) {
+		return nil, gerror.NewCode(gcode.CodeNotAuthorized, "内部接口未授权")
+	}
+	if req.WxId <= 0 || strings.TrimSpace(req.FeatureId) == "" {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "wxId/featureId 无效")
+	}
+	if err := cash.ClaimTrialAfterSuccess(ctx, req.WxId, req.FeatureId); err != nil {
+		return nil, err
+	}
+	return &v1.CashInternalFeatureTrialClaimRes{}, nil
 }
 
 // Catalog GET /cash/app/api/feature/catalog
@@ -139,6 +156,7 @@ func (c *CashFeatureController) Catalog(ctx context.Context, _ *v1.CashFeatureCa
 			UnlockMethod: it.UnlockMethod, ExpiresAt: it.ExpiresAt, AllowedCount: it.AllowedCount,
 			DefaultCount: it.DefaultCount, TotalActivatableCount: it.TotalActivatableCount,
 			InviteDurationDays: it.InviteDurationDays, AdDurationDays: it.AdDurationDays,
+			TrialAvailable: it.TrialAvailable, InviteAvailable: it.InviteAvailable,
 			Logo: it.Logo, Color: it.Color,
 			Products: make([]v1.CashFeatureCatalogProductItem, 0, len(it.Products)),
 		}

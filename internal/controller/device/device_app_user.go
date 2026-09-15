@@ -407,3 +407,19 @@ func (c *DeviceAppUserCtrl) InternalWxIDByDeviceNo(ctx context.Context, req *v1.
 	}
 	return &v1.DeviceWxInternalWxIDByDeviceNoRes{WxId: wxID}, nil
 }
+
+// InternalListWxIDsByDeviceNo GET /device/app/api/user/internal/wx-ids-by-device-no — 同宝宝全部绑定账号。
+func (c *DeviceAppUserCtrl) InternalListWxIDsByDeviceNo(ctx context.Context, req *v1.DeviceWxInternalListWxIDsByDeviceNoReq) (res *v1.DeviceWxInternalListWxIDsByDeviceNoRes, err error) {
+	r := ghttp.RequestFromCtx(ctx)
+	if !device.ValidateGatewayInternalSecret(device.GatewayInternalSecretHeaderFromRequest(r)) {
+		return nil, gerror.NewCode(gcode.CodeNotAuthorized, "内部接口未授权")
+	}
+	ids, truncated, err := device.ListWxIDsByDeviceNo(ctx, req.DeviceNo)
+	if err != nil {
+		return nil, err
+	}
+	if ids == nil {
+		ids = []int64{}
+	}
+	return &v1.DeviceWxInternalListWxIDsByDeviceNoRes{WxIds: ids, Truncated: truncated}, nil
+}

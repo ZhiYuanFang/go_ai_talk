@@ -236,6 +236,18 @@ type DeviceWxInternalWxIDByDeviceNoRes struct {
 	WxId int64 `json:"wxId"`
 }
 
+// DeviceWxInternalListWxIDsByDeviceNoReq 内部：按 device_no 列出全部绑定 wx 主键。
+type DeviceWxInternalListWxIDsByDeviceNoReq struct {
+	g.Meta   `path:"/device/app/api/user/internal/wx-ids-by-device-no" method:"get" tags:"device" summary:"内部按 deviceNo 列全部 wxId"`
+	DeviceNo string `json:"deviceNo" p:"deviceNo" dc:"设备号"`
+}
+
+// DeviceWxInternalListWxIDsByDeviceNoRes 内部 wxId 列表（可能截断）。
+type DeviceWxInternalListWxIDsByDeviceNoRes struct {
+	WxIds     []int64 `json:"wxIds"`
+	Truncated bool    `json:"truncated" dc:"是否因上限截断"`
+}
+
 // DeviceWxInternalDeviceNoByWxIDReq 网关内部：按 wx 主键取 device_no（刷新 access 写 claim 等）。
 type DeviceWxInternalDeviceNoByWxIDReq struct {
 	g.Meta `path:"/device/app/api/user/internal/device-no-by-wx-id" method:"get" tags:"device" summary:"内部按 wxId 取 device_no"`

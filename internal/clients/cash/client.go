@@ -122,6 +122,7 @@ type CareAlertAccessRemote struct {
 	Allowed              bool  `json:"allowed"`
 	FeedingQualified     bool  `json:"feedingQualified"`
 	FeatureActive        bool  `json:"featureActive"`
+	TrialAvailable       bool  `json:"trialAvailable"`
 	EntitlementExpiresAt int64 `json:"entitlementExpiresAt,omitempty"`
 }
 
@@ -190,6 +191,7 @@ func RemoteCareAlertAccess(ctx context.Context, deviceNo string, wxID int64) (*C
 type GrowthTrajectoryAccessRemote struct {
 	Allowed              bool  `json:"allowed"`
 	FeatureActive        bool  `json:"featureActive"`
+	TrialAvailable       bool  `json:"trialAvailable"`
 	EntitlementExpiresAt int64 `json:"entitlementExpiresAt,omitempty"`
 }
 
@@ -252,4 +254,52 @@ func RemoteGrowthTrajectoryAccess(ctx context.Context, deviceNo string, wxID int
 		}
 	}
 	return &data, nil
+}
+
+// RemoteClaimFeatureTrial 供 voice 在成功落库后 claim 试用（幂等）。
+func RemoteClaimFeatureTrial(ctx context.Context, wxID int64, featureID string) error {
+	featureID = strings.TrimSpace(featureID)
+	if wxID <= 0 || featureID == "" {
+		return gerror.NewCode(gcode.CodeInvalidParameter, "wxId/featureId 无效")
+	}
+	c := remoteHTTP()
+	if c == nil || c.base == "" {
+		return gerror.NewCode(gcode.CodeInternalError, "CASH_SERVICE_URL 未配置")
+	}
+	if strings.TrimSpace(c.secret) == "" {
+		return gerror.NewCode(gcode.CodeInternalError, "DEVICE_GATEWAY_INTERNAL_SECRET 未配置")
+	}
+	body, _ := json.Marshal(map[string]interface{}{
+		"wxId": wxID, "featureId": featureID,
+	})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/cash/internal/api/feature/trial/claim",
+		strings.NewReader(string(body)))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(httpmeta.HeaderDeviceGatewayInternalSecret, c.secret)
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return gerror.NewCode(gcode.CodeOperationFailed, fmt.Sprintf("cash-service 不可达: %v", err))
+	}
+	defer resp.Body.Close()
+	rawBody, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+	if err != nil {
+		return err
+	}
+	var env gfEnvelope
+	if len(rawBody) > 0 {
+		if err = json.Unmarshal(rawBody, &env); err != nil {
+			return gerror.NewCode(gcode.CodeInternalError, "cash trial claim 响应非 JSON")
+		}
+	}
+	if resp.StatusCode >= 400 || env.Code != 0 {
+		msg := strings.TrimSpace(env.Message)
+		if msg == "" {
+			msg = fmt.Sprintf("cash trial claim HTTP %d", resp.StatusCode)
+		}
+		return gerror.NewCode(gcode.CodeOperationFailed, msg)
+	}
+	return nil
 }

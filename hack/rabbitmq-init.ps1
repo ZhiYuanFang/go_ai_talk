@@ -38,6 +38,7 @@ if (-not $PrintOnly) {
 Write-Host "Declaring exchange and queues..."
 
 $exchange = "/exchanges/%2F/voice.events"
+$delayedExchange = "/exchanges/%2F/voice.delayed"
 $queues = @(
     @{ Name = "ucg.post.created.q"; RoutingKey = "ucg.post.created" },
     @{ Name = "ucg.comment.created.q"; RoutingKey = "ucg.comment.created" },
@@ -55,20 +56,34 @@ if ($PrintOnly) {
     Write-Host "PrintOnly mode: skip actual API calls."
 } else {
     Invoke-RabbitApi -Method Put -Path $exchange -Body @{ type = "topic"; durable = $true; auto_delete = $false }
+    # 预测临近延时交换机（需插件 rabbitmq_delayed_message_exchange）
+    Invoke-RabbitApi -Method Put -Path $delayedExchange -Body @{
+        type         = "x-delayed-message"
+        durable      = $true
+        auto_delete  = $false
+        arguments    = @{ "x-delayed-type" = "topic" }
+    }
     foreach ($q in $queues) {
         $queuePath = "/queues/%2F/$($q.Name)"
         Invoke-RabbitApi -Method Put -Path $queuePath -Body @{ durable = $true; auto_delete = $false; arguments = @{} }
         $bindPath = "/bindings/%2F/e/voice.events/q/$($q.Name)"
         Invoke-RabbitApi -Method Post -Path $bindPath -Body @{ routing_key = $q.RoutingKey; arguments = @{} }
     }
+    Invoke-RabbitApi -Method Put -Path "/queues/%2F/voice.predict.imminent.q" -Body @{ durable = $true; auto_delete = $false; arguments = @{} }
+    Invoke-RabbitApi -Method Post -Path "/bindings/%2F/e/voice.delayed/q/voice.predict.imminent.q" -Body @{
+        routing_key = "voice.predict.imminent.fire"
+        arguments   = @{}
+    }
 }
 
 Write-Host ""
 Write-Host "RabbitMQ baseline initialized."
 Write-Host "Exchange: voice.events (topic)"
+Write-Host "Exchange: voice.delayed (x-delayed-message)"
 Write-Host "Queues:"
 foreach ($q in $queues) {
     Write-Host (" - " + $q.Name + " <= " + $q.RoutingKey)
 }
+Write-Host " - voice.predict.imminent.q <= voice.delayed / voice.predict.imminent.fire"
 Write-Host ""
 Write-Host "Verify in UI: http://127.0.0.1:15672 (guest/guest)"

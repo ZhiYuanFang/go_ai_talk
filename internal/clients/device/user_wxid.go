@@ -144,3 +144,26 @@ func RemoteWxIDByDeviceNo(ctx context.Context, deviceNo string) (int64, error) {
 	return data.WxId, err
 }
 
+// RemoteListWxIDsByDeviceNo 经 device internal API 列出同 deviceNo 全部绑定 wxId。
+// Returns: ids、是否截断、错误。
+func RemoteListWxIDsByDeviceNo(ctx context.Context, deviceNo string) (ids []int64, truncated bool, err error) {
+	deviceNo = strings.TrimSpace(deviceNo)
+	if deviceNo == "" {
+		return nil, false, nil
+	}
+	var data struct {
+		WxIds     []int64 `json:"wxIds"`
+		Truncated bool    `json:"truncated"`
+	}
+	err = userInternalHTTP().doJSON(ctx, "/device/app/api/user/internal/wx-ids-by-device-no", map[string]string{
+		"deviceNo": deviceNo,
+	}, &data)
+	if err != nil {
+		return nil, false, err
+	}
+	if data.WxIds == nil {
+		data.WxIds = []int64{}
+	}
+	return data.WxIds, data.Truncated, nil
+}
+

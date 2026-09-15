@@ -20,6 +20,7 @@ func RegisterUcgServiceHTTP(s *ghttp.Server) {
 		group.POST("/ucg/internal/api/chat/sim-unread-sample", ucgctrl.InternalChatSimUnreadSample)
 		group.POST("/ucg/internal/api/profiles/batch", ucgctrl.InternalProfilesBatch)
 		group.POST("/ucg/internal/api/force/acquire", ucgctrl.InternalForceAcquire)
+		group.POST("/ucg/internal/api/push/by-biz-type", ucgctrl.InternalPushByBizType)
 	})
 	ucgctrl.RegisterUcgChatWS(s)
 }

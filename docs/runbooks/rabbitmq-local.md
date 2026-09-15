@@ -46,12 +46,31 @@ docker logs go-ai-talk-rabbitmq 2>&1 | tail
 
 - Exchange:
   - `voice.events`（type=`topic`, durable）
+  - `voice.delayed`（type=`x-delayed-message`，`x-delayed-type=topic`；依赖插件 `rabbitmq_delayed_message_exchange`）
 - Queues（UCG 审核与推荐分）:
   - `ucg.post.created.q`（`ucg.post.created`）
   - `ucg.comment.created.q`（`ucg.comment.created`）
   - `ucg.profile.patch.submitted.q`（`ucg.profile.patch.submitted`）
   - `ucg.chat.msg.created.q`（`ucg.chat.msg.created`）
   - `ucg.recommend.score.q`（`ucg.post.published` / `unpublished` / `liked` / `unliked` / `comment.published` / `comment.removed`）
+- Queues（voice 预测临近）:
+  - `voice.predict.imminent.q` ← 绑定 `voice.delayed` / routing key `voice.predict.imminent.fire`（消息头 `x-delay` 毫秒）
+
+### 延时插件镜像
+
+- Dockerfile：`manifest/docker/rabbitmq/Dockerfile`（基于 `rabbitmq:3.13-management-alpine` 下载并 enable 插件）
+- compose 使用 `build` + `image: go-ai-talk-rabbitmq:3.13-delayed`（prod/test 均如此）
+- 首次或插件变更后：`docker compose -f manifest/docker/docker-compose.rabbitmq.yml build --no-cache && ./hack/rabbitmq-init.sh`（或对应 ps1）
+- 插件未启用时声明 `voice.delayed` 会失败；同步 API 的 PublishDelayed 也会失败可观测
+
+### Voice 预测临近离线提醒（`predict-imminent-offline-push`）
+
+- **权威状态**：Redis 宝宝待办（无 TTL，靠客户端 `PUT /device/api/predict/imminent/pending` 全量替换）
+- **叫醒**：延时 MQ → `voice-service` AMQP consumer（`VOICE_PREDICT_IMMINENT_MQ_CONSUMER_ENABLED`，默认 true）
+- **失败语义**：消费路径业务失败一律 **Ack**，不 Nack requeue，不二次 Publish（避免审核类重试风暴）；推送失败可接受
+- **推送**：`POST /ucg/internal/api/push/by-biz-type`（`bizType=predict_imminent`）；客户端须先 `POST /ucg/app/api/push/register`
+- **环境变量（voice）**：`RABBITMQ_AMQP_URL`（或 HOST/PORT + `MQ_USER`/`MQ_PASSWORD`）、`VOICE_PREDICT_IMMINENT_MQ_PREFETCH`（默认 5）、`UCG_SERVICE_URL`、`DEVICE_SERVICE_URL`、`HISTORY_SERVICE_URL`、`DEVICE_GATEWAY_INTERNAL_SECRET`
+- **usage 统计**：新 App 路径是否计入须负责人确认后再改 `maintenance_skip`（实现期未擅自排除）
 
 > **已移除**：`voice.task.*`、`history.events.q`、`notify.events.q` 等无 consumer 的 orphan 队列（原 worker fan-out 专用）。
 

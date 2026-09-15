@@ -26,6 +26,8 @@ func main() {
 		glog.Fatalf(ctx, "dependency check failed: %v", err)
 		return
 	}
+	// 预测临近延时叫醒：AMQP push consumer（非 ticker）；可经 VOICE_PREDICT_IMMINENT_MQ_CONSUMER_ENABLED=false 关闭。
+	voice.StartPredictImminentMQConsumer(ctx)
 	s := g.Server("voice-service")
 	applyVoiceServiceAddress(s)
 	controller.RegisterVoiceServiceHTTP(s)

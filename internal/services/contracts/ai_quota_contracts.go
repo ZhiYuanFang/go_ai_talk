@@ -15,6 +15,10 @@ const (
 	CodeGrowthTrajectoryDailyLimit = 40303
 	// BizCodeGrowthTrajectoryDailyLimit 成长轨迹日限业务码（契约字符串）。
 	BizCodeGrowthTrajectoryDailyLimit = "GROWTH_TRAJECTORY_DAILY_LIMIT"
+	// CodeCareAlertDailyLimit 值得留意当日生成次数已用尽。
+	CodeCareAlertDailyLimit = 40304
+	// BizCodeCareAlertDailyLimit 值得留意日限业务码。
+	BizCodeCareAlertDailyLimit = "CARE_ALERT_DAILY_LIMIT"
 )
 
 var (
@@ -24,6 +28,8 @@ var (
 	ErrAIQuotaExhausted = errors.New("本月额度已用完")
 	// ErrGrowthTrajectoryDailyLimit 今日成长轨迹预测次数已用完。
 	ErrGrowthTrajectoryDailyLimit = errors.New("今日成长轨迹预测次数已用完，请明日再来")
+	// ErrCareAlertDailyLimit 今日值得留意分析次数已用完。
+	ErrCareAlertDailyLimit = errors.New("今日值得留意分析次数已用完，请明日再来")
 )
 
 // GCodeAINotLoggedIn 供 controller 返回稳定业务码。
@@ -40,6 +46,11 @@ func GCodeAIQuotaExhausted() gcode.Code {
 // Code.Message 为契约字符串 GROWTH_TRAJECTORY_DAILY_LIMIT；对外 Toast 用 NewCode 第二参中文文案。
 func GCodeGrowthTrajectoryDailyLimit() gcode.Code {
 	return gcode.New(CodeGrowthTrajectoryDailyLimit, BizCodeGrowthTrajectoryDailyLimit, nil)
+}
+
+// GCodeCareAlertDailyLimit 供 controller 返回值得留意日限业务码。
+func GCodeCareAlertDailyLimit() gcode.Code {
+	return gcode.New(CodeCareAlertDailyLimit, BizCodeCareAlertDailyLimit, nil)
 }
 
 // AIQuotaFeature 额度维度。
