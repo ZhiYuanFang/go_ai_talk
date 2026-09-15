@@ -3,7 +3,7 @@
 # - 在「全新」Broker 上可重复执行；若绑定已存在，部分 Rabbit 版本可能对重复 POST binding 返回 4xx，需删队列或换 vhost 后重跑。
 # - 宿主机执行时 ApiBase 用 127.0.0.1:15672；在远端机器请改为可达的管理 API 地址。
 param(
-    [string]$ComposeFile = "manifest/docker/docker-compose.rabbitmq.yml",
+    [string]$ComposeFile = "../manifest/docker/docker-compose.rabbitmq.yml",
     [string]$ApiBase = "http://127.0.0.1:15672/api",
     [string]$User = "guest",
     [string]$Password = "guest",

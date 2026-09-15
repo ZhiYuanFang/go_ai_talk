@@ -11,7 +11,7 @@
 
 set -eu
 
-COMPOSE_FILE="${COMPOSE_FILE:-manifest/docker/docker-compose.rabbitmq.yml}"
+COMPOSE_FILE="${COMPOSE_FILE:-../manifest/docker/docker-compose.rabbitmq.yml}"
 API_BASE="${RABBIT_API_BASE:-http://127.0.0.1:15672/api}"
 USER="${RABBITMQ_USER:-guest}"
 PASS="${RABBITMQ_PASS:-guest}"
