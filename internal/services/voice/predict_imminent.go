@@ -12,7 +12,7 @@ import (
 	"time"
 
 	deviceclient "hello/internal/clients/device"
-	ucgclient "hello/internal/clients/ucg"
+	pushclient "hello/internal/clients/push"
 	"hello/internal/platform/cachekit"
 	"hello/internal/platform/eventkit"
 	"hello/internal/shared/mq"
@@ -225,13 +225,14 @@ func handlePredictImminentFire(ctx context.Context, body []byte) error {
 	}
 	alert := "宝宝提醒：" + title
 	data := map[string]string{
-		"bizType":  ucgclient.PushBizPredictImminent,
+		"bizType":  pushclient.BizPredictImminent,
 		"deviceNo": msg.DeviceNo,
 		"eventId":  strconv.FormatInt(msg.EventId, 10),
 		"nextAt":   strconv.FormatInt(msg.NextAt, 10),
 	}
 	for _, wxID := range wxIDs {
-		if pushErr := ucgclient.PushByBizType(ctx, wxID, ucgclient.PushBizPredictImminent, alert, data); pushErr != nil {
+		// badge=0：预测临近不累计 UCG 未读角标。
+		if pushErr := pushclient.PushByBizType(ctx, wxID, pushclient.BizPredictImminent, alert, 0, false, data); pushErr != nil {
 			// 推送失败只打日志，不 return err（避免 Nack requeue 风暴）。
 			glog.Warningf(ctx, "[predict-imminent] push failed wxId=%d err=%v", wxID, pushErr)
 		}

@@ -45,6 +45,12 @@ services:
       - "9804:9804"
     networks: [go-ai-talk-net]
 
+  push-service:
+    image: ${REGISTRY}/push-service:${IMAGE_TAG}
+    ports:
+      - "9808:9808"
+    networks: [go-ai-talk-net]
+
   sim-user-service:
     image: ${REGISTRY}/sim-user-service:${IMAGE_TAG}
     ports:

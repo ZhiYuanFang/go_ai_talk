@@ -5,7 +5,7 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
-$domains = @("cash", "voice", "device", "history", "ucg", "gatewayapp", "simuser", "mcpbridge", "appstatus")
+$domains = @("cash", "voice", "device", "history", "ucg", "push", "gatewayapp", "simuser", "mcpbridge", "appstatus")
 $fail = 0
 
 function Get-ImportHits([string]$srcDir, [string]$dst) {

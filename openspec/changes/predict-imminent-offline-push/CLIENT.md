@@ -12,7 +12,7 @@
 
 ## 推送注册
 
-- 离线系统通知复用 UCG 推送 token：`POST /ucg/app/api/push/register`（`channel`=`apns`|`hms`|`mipush`，`token`，`deviceKey`）
+- 离线系统通知复用全局推送 token：`POST /app/api/push/register`（`channel`=`apns`|`hms`|`mipush`，`token`，`deviceKey`）
 - 未注册则服务端扇出时该账号静默跳过
 - 通知 `bizType`/`data` 可能含 `deviceNo`、`eventId`、`nextAt`；深链页由产品定
 

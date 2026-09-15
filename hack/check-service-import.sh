@@ -6,7 +6,7 @@ set -eu
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
 
-domains="cash voice device history ucg gatewayapp simuser mcpbridge appstatus"
+domains="cash voice device history ucg push gatewayapp simuser mcpbridge appstatus"
 fail=0
 
 if ! command -v rg >/dev/null 2>&1; then

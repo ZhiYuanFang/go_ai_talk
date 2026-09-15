@@ -68,7 +68,7 @@ docker logs go-ai-talk-rabbitmq 2>&1 | tail
 - **权威状态**：Redis 宝宝待办（无 TTL，靠客户端 `PUT /device/api/predict/imminent/pending` 全量替换）
 - **叫醒**：延时 MQ → `voice-service` AMQP consumer（`VOICE_PREDICT_IMMINENT_MQ_CONSUMER_ENABLED`，默认 true）
 - **失败语义**：消费路径业务失败一律 **Ack**，不 Nack requeue，不二次 Publish（避免审核类重试风暴）；推送失败可接受
-- **推送**：`POST /ucg/internal/api/push/by-biz-type`（`bizType=predict_imminent`）；客户端须先 `POST /ucg/app/api/push/register`
+- **推送**：`POST /push/internal/api/by-biz-type`（`bizType=predict_imminent`，宿主 push-service）；客户端须先 `POST /app/api/push/register`
 - **环境变量（voice）**：`RABBITMQ_AMQP_URL`（或 HOST/PORT + `MQ_USER`/`MQ_PASSWORD`）、`VOICE_PREDICT_IMMINENT_MQ_PREFETCH`（默认 5）、`UCG_SERVICE_URL`、`DEVICE_SERVICE_URL`、`HISTORY_SERVICE_URL`、`DEVICE_GATEWAY_INTERNAL_SECRET`
 - **usage 统计**：新 App 路径是否计入须负责人确认后再改 `maintenance_skip`（实现期未擅自排除）
 

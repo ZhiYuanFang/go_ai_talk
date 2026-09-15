@@ -1,4 +1,4 @@
-package ucgctrl
+package pushctrl
 
 import (
 	"encoding/json"
@@ -7,23 +7,23 @@ import (
 	"strings"
 
 	"hello/internal/platform/httpmeta"
-	ucgsvc "hello/internal/services/ucg"
+	pushsvc "hello/internal/services/push"
 
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/net/ghttp"
 )
 
-// ucgInternalPushByBizBody POST /ucg/internal/api/push/by-biz-type 请求体。
-type ucgInternalPushByBizBody struct {
+type pushInternalByBizBody struct {
 	WxId    int64             `json:"wxId"`
 	BizType string            `json:"bizType"`
 	Alert   string            `json:"alert"`
+	Badge   int               `json:"badge"`
+	Silent  bool              `json:"silent"`
 	Data    map[string]string `json:"data"`
 }
 
-// InternalPushByBizType POST /ucg/internal/api/push/by-biz-type — voice 等跨域可见推送。
-// 鉴权：X-Device-Gateway-Internal-Secret。Token 复用 App 注册的 ucg_push_device。
-func InternalPushByBizType(r *ghttp.Request) {
+// InternalByBizType POST /push/internal/api/by-biz-type — 各域经 clients/push 调用。
+func InternalByBizType(r *ghttp.Request) {
 	if r.Method != http.MethodPost {
 		r.Response.WriteStatusExit(http.StatusMethodNotAllowed)
 		return
@@ -44,17 +44,21 @@ func InternalPushByBizType(r *ghttp.Request) {
 		r.Response.WriteJson(g.Map{"code": 400, "message": "读取请求体失败"})
 		return
 	}
-	var body ucgInternalPushByBizBody
+	var body pushInternalByBizBody
 	if len(raw) > 0 {
 		if err = json.Unmarshal(raw, &body); err != nil {
 			r.Response.WriteJson(g.Map{"code": 400, "message": "请求体无效"})
 			return
 		}
 	}
-	if body.WxId <= 0 || strings.TrimSpace(body.Alert) == "" || strings.TrimSpace(body.BizType) == "" {
-		r.Response.WriteJson(g.Map{"code": 400, "message": "wxId/bizType/alert 必填"})
+	if body.WxId <= 0 || strings.TrimSpace(body.BizType) == "" {
+		r.Response.WriteJson(g.Map{"code": 400, "message": "wxId/bizType 必填"})
 		return
 	}
-	ucgsvc.PushByBizType(ctx, body.WxId, body.BizType, body.Alert, body.Data)
+	if !body.Silent && strings.TrimSpace(body.Alert) == "" && strings.TrimSpace(strings.ToLower(body.BizType)) != pushsvc.PushBizUcgSilentBadge {
+		r.Response.WriteJson(g.Map{"code": 400, "message": "非静默推送 alert 必填"})
+		return
+	}
+	pushsvc.PushByBizType(ctx, body.WxId, body.BizType, body.Alert, body.Badge, body.Silent, body.Data)
 	r.Response.WriteJson(g.Map{"code": 0, "message": "OK", "data": g.Map{}})
 }

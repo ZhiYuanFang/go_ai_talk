@@ -30,6 +30,10 @@ services:
     ports:
       - "9804:9804"
 
+  push-service:
+    ports:
+      - "9808:9808"
+
   sim-user-service:
     ports:
       - "9805:9805"

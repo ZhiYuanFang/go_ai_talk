@@ -1,0 +1,36 @@
+# push-service：全局系统推送（APNs/HMS/MiPush）；库 ai_voice_push。
+# PUSH_DB_LINK / GF_DATABASE_DEFAULT_LINK 覆盖 database.default；PUSH_SERVICE_ADDR 默认 :9808。
+# 厂商密钥：PUSH_APNS_* / PUSH_HMS_* / PUSH_MIPUSH_*（Compose 注入，勿写明文）。
+
+server:
+  address: ":9808"
+  openapiPath: "/api.json"
+  swaggerPath: "/swagger"
+
+logger:
+  level: "all"
+  stdout: true
+
+database:
+  default:
+    link: "mysql:user:password@tcp(127.0.0.1:3306)/ai_voice_push"
+    debug: false
+
+push:
+  apns:
+    keyId: ""
+    teamId: ""
+    bundleId: ""
+    keyPath: ""
+    production: false
+  hms:
+    appId: ""
+    appSecret: ""
+  mipush:
+    appId: ""
+    appKey: ""
+    appSecret: ""
+    packageName: "com.fzy.pangbao"
+
+gatewayApp:
+  deviceInternalSecret: ""

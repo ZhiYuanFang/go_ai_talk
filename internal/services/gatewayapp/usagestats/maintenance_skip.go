@@ -15,8 +15,9 @@ var maintenanceExactAPI = map[string]struct{}{
 	"GET /device/app/api/site/home":         {},
 	"GET /voice/app/api/ai-quota":           {},
 	"GET /ucg/app/api/ai-quota":             {},
-	"POST /ucg/app/api/push/register":       {},
-	"POST /ucg/app/api/push/unregister":     {},
+	// 全局推送注册/注销：负责人确认不计入 usage（extract-push-service）。
+	"POST /app/api/push/register":   {},
+	"POST /app/api/push/unregister": {},
 	"GET /device/history/api/event/options": {},
 	"GET /ucg/app/api/conversations":        {},
 	"GET /device/app/api/user/get":          {},

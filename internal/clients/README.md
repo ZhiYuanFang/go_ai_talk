@@ -1,6 +1,6 @@
 # clients 排除项说明（service-package-isolation）
 
-本目录 `internal/clients/{cash,device,history,ucg,voice}` 仅承载**本仓库域服务**之间的出站 HTTP 客户端。
+本目录 `internal/clients/{cash,device,history,ucg,voice,push}` 仅承载**本仓库域服务**之间的出站 HTTP 客户端。
 
 ## 不迁入域名 clients 的依赖
 

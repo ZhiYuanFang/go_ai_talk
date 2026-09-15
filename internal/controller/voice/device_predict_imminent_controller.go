@@ -16,7 +16,7 @@ import (
 type DevicePredictImminentController struct{}
 
 // PendingPut PUT /device/api/predict/imminent/pending — 全量替换 Redis 待办并投递延时 MQ。
-// 客户端须在预测更新后调用；离线收到推送需先注册 /ucg/app/api/push/register。
+// 客户端须在预测更新后调用；离线收到推送需先注册 /app/api/push/register。
 func (c *DevicePredictImminentController) PendingPut(ctx context.Context, req *v1.DevicePredictImminentPendingPutReq) (res *v1.DevicePredictImminentPendingPutRes, err error) {
 	r := ghttp.RequestFromCtx(ctx)
 	if r == nil {

@@ -166,7 +166,7 @@ systemctl status mysql-local.service
 - **`VOICE_DASHSCOPE_API_KEY`**（可选）：voice-service **对话** STT（`/voice/chat/ws`，百炼 `qwen-audio-3.0-asr-flash-streaming`）；空则回退 `UCG_DASHSCOPE_API_KEY`
 - **`DASHSCOPE_WORKSPACE_ID`**（对话 STT 必填）：百炼业务空间 ID，WebSocket 端点 `wss://{id}.cn-beijing.maas.aliyuncs.com/api-ws/v1/inference`；听写 `/voice/asr/ws` 仍用百度 STT，无需此项
 - **回滚对话 STT**：将 `voice-chat.shared.yaml` 的 `sttChat.provider` 改为 `baidu` 并重启 voice-service；听写 `sttDictation` 不受影响
-- **`UCG_APNS_*` / `UCG_HMS_*` / `UCG_MIPUSH_*`**：ucg 启动器角标推送（iOS APNs、华为 HMS、小米 MiPush）；yaml `ucg.push` 留空，见 `manifest/docker/.env.example`；Flutter 客户端见 `flutter_ai_talk/app/README.md`「UCG 启动器角标推送」
+- **`PUSH_APNS_*` / `PUSH_HMS_*` / `PUSH_MIPUSH_*`**：系统推送（iOS APNs、华为 HMS、小米 MiPush），宿主 `push-service`；yaml `push.*` 留空，见 `manifest/docker/.env.example`；Flutter 客户端见 `flutter_ai_talk/app/README.md`「启动器角标推送」；App 注册 `POST /app/api/push/register`（旧 `/ucg/app/api/push/*` 已删除）
 - **`GLM_API_KEY`**：智谱 GLM（voice 喂养/clinic 默认种子、ucg 润笔 zhipu provider）；**生产部署前必须配置**
 - **`DEEPSEEK_API_KEY`**（可选）：覆盖 `voice-chat.shared.yaml` 中 deepseek 段；Admin 切回 deepseek provider 时需配置
 
@@ -1431,16 +1431,15 @@ mcp-service 是小智 AI 平台（xiaozhi.me）MCP 接入点桥接进程：作�
 | `UCG_DASHSCOPE_API_KEY` | ucg AI 润笔 DashScope API Key；yaml `ucg.ai.dashscope_api_key` 留空 |
 | `VOICE_DASHSCOPE_API_KEY` | voice 对话 STT 专用 DashScope Key；空则回退 `UCG_DASHSCOPE_API_KEY` |
 | `DASHSCOPE_WORKSPACE_ID` | voice 对话 STT 百炼 Workspace ID（`/voice/chat/ws`） |
-| `UCG_APNS_KEY_ID` | iOS APNs Auth Key Key ID；yaml `ucg.push.apns.keyId` 留空 |
-| `UCG_APNS_TEAM_ID` | Apple Developer Team ID |
-| `UCG_APNS_BUNDLE_ID` | iOS Bundle ID（须与 APNs Key 授权一致） |
-| `UCG_APNS_KEY_PATH` | 容器内 AuthKey `*.p8` 绝对路径（挂载进 ucg-service，非 env 内嵌正文） |
-| `UCG_APNS_PRODUCTION` | `true`/`1` 走 production APNs；否则 sandbox |
-| `UCG_HMS_APP_ID` | 华为 Push Kit 应用 ID |
-| `UCG_HMS_APP_SECRET` | 华为 Push Kit Client Secret |
-| `UCG_MIPUSH_APP_ID` | 小米推送 AppId（与 Flutter `push.properties` 客户端 id 一致） |
-| `UCG_MIPUSH_APP_KEY` | 小米推送 AppKey |
-| `UCG_MIPUSH_APP_SECRET` | 小米推送 AppSecret |
+| `PUSH_APNS_KEY_ID` | iOS APNs Auth Key Key ID；yaml `push.apns.keyId` 留空 |
+| `PUSH_APNS_TEAM_ID` | Apple Developer Team ID |
+| `PUSH_APNS_BUNDLE_ID` | iOS Bundle ID（须与 APNs Key 授权一致） |
+| `PUSH_APNS_KEY_PATH` | 容器内 AuthKey `*.p8` 绝对路径（挂载进 push-service，非 env 内嵌正文） |
+| `PUSH_APNS_PRODUCTION` | `true`/`1` 走 production APNs；否则 sandbox |
+| `PUSH_HMS_APP_ID` / `PUSH_HMS_APP_SECRET` | 华为 Push Kit |
+| `PUSH_MIPUSH_APP_ID` / `PUSH_MIPUSH_APP_KEY` / `PUSH_MIPUSH_APP_SECRET` | 小米推送 |
+| `PUSH_DB_LINK` | push-service 库连接（`ai_voice_push`） |
+| `PUSH_SERVICE_URL` | 调用方（voice/ucg/gateway-app）访问 push-service 基址 |
 | `GLM_API_KEY` | 智谱 GLM；voice 默认 LLM lane 与 ucg zhipu 润笔 |
 | `DEEPSEEK_API_KEY` | 可选；Admin 切回 deepseek provider 时 voice LLM |
 
@@ -1454,6 +1453,7 @@ MySQL 经 `internal/platform/dbcfg`；Redis 经 `internal/platform/rediscfg`；�
 | device-service | `DEVICE_DB_LINK` | `default` |
 | voice-service | `VOICE_DB_LINK` | `default` |
 | ucg-service | `UCG_DB_LINK` | `default` |
+| push-service | `PUSH_DB_LINK` | `default` |
 | gateway-app | `APP_DB_LINK` | `app` |
 
 **验收**（测试栈示例）：
@@ -1707,7 +1707,7 @@ docker compose -f manifest/docker/docker-compose.redis-cluster.yml up -d --force
 | `v1.0.0-rc.3+sim` | 仅 `sim-user-service` | 仅 `sim-user-service:v1.0.0-rc.3` |
 | `v1.0.0-rc.5+cash` | 仅 `cash-service` | 仅 `cash-service:v1.0.0-rc.5` |
 
-别名：`gateway`、`gateway-app`、`history`/`history-service`、`voice`/`voice-service`、`device`/`device-service`、`ucg`/`ucg-service`、`sim`/`sim-user`/`sim-user-service`、`notify`/`notify-service`、`mcp`/`mcp-service`、`cash`/`cash-service`、`all`（全量）。`.env` 中 `IMAGE_TAG` 用 **`+` 前 base tag**。
+别名：`gateway`、`gateway-app`、`history`/`history-service`、`voice`/`voice-service`、`device`/`device-service`、`ucg`/`ucg-service`、`push`/`push-service`、`sim`/`sim-user`/`sim-user-service`、`notify`/`notify-service`、`mcp`/`mcp-service`、`cash`/`cash-service`、`all`（全量）。`.env` 中 `IMAGE_TAG` 用 **`+` 前 base tag**。
 
 手动触发：Actions → **docker-acr** → Run workflow → 选择 `target_env`、`image_tag`（base tag）；可选 `services`（如 `cash` 或 `ucg`，留空=全量 10 服务）。
 

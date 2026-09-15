@@ -28,11 +28,11 @@
 - 新增需求必须以最少的db操作来考虑实现方案。
 
 ## 源码包边界（强制）
-- `internal/services/{cash,voice,device,history,ucg,gatewayapp,simuser,mcpbridge,appstatus}` **禁止**互相 import 业务实现包。
+- `internal/services/{cash,voice,device,history,ucg,push,gatewayapp,simuser,mcpbridge,appstatus}` **禁止**互相 import 业务实现包。
 - 跨域出站 HTTP 客户端 MUST 放在 `internal/clients/{被调服务}`；调用方 import `clients`，**禁止**再 import 被调方 `services/{X}` 仅为拿 `Remote*`。
 - 无业务共享工具（内部密钥头、`ParseHeaderWxID`、`ConstantTimeEqual` 等）MUST 落在 `internal/platform/httpmeta`（或其它 `platform/*`），禁止为常量/校验互相 import 业务包。
 - 允许跨进程 import 的共享基础设施：`internal/services/contracts`、`internal/services/aimodel`、`internal/platform/**`、`internal/clients/**`。
-- `controller` 按进程分包：`internal/controller/{cash,voice,device,history,ucg,gatewayapp,simuser,notify}`；`controller/{X}` 不得仅为解析头/密钥而 import 他域 `services/{Y}`。
+- `controller` 按进程分包：`internal/controller/{cash,voice,device,history,ucg,push,gatewayapp,simuser,notify}`；`controller/{X}` 不得仅为解析头/密钥而 import 他域 `services/{Y}`。
 - 评审门禁：`hack/check-service-import.sh` 或 `hack/check-service-import.ps1`（失败即退出）；Python/Green/aimodel 客户端不迁入域名 `clients`（见 `internal/clients/README.md`）。
 
 ## 测试文件

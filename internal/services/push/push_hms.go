@@ -1,4 +1,4 @@
-package ucg
+package push
 
 import (
 	"context"
@@ -30,7 +30,7 @@ var (
 func (s *HmsSender) Send(ctx context.Context, token string, payload PushPayload) (invalidToken bool, err error) {
 	cfg := loadPushConfig(ctx)
 	if !hmsConfigured(cfg) {
-		g.Log().Debug(ctx, "[ucg-push] HMS skipped: credentials not configured")
+		g.Log().Debug(ctx, "[push] HMS skipped: credentials not configured")
 		return false, nil
 	}
 	accessToken, err := hmsAccessToken(ctx, cfg)

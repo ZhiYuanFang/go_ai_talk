@@ -25,10 +25,6 @@ func main() {
 		glog.Fatalf(ctx, "dependency check failed: %v", err)
 		return
 	}
-	if err := ucgsvc.EnsurePushDeviceUniqueIndex(ctx); err != nil {
-		glog.Fatalf(ctx, "push device schema ensure failed: %v", err)
-		return
-	}
 	if err := ucgsvc.EnsureForceSchema(ctx); err != nil {
 		glog.Fatalf(ctx, "force schema ensure failed: %v", err)
 		return

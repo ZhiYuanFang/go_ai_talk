@@ -1,4 +1,4 @@
-package ucg
+package push
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 
 	"github.com/gogf/gf/v2/frame/g"
@@ -22,7 +23,7 @@ func (s *MipushSender) Channel() string { return PushChannelMiPush }
 func (s *MipushSender) Send(ctx context.Context, token string, payload PushPayload) (invalidToken bool, err error) {
 	cfg := loadPushConfig(ctx)
 	if !mipushConfigured(cfg) {
-		g.Log().Debug(ctx, "[ucg-push] MiPush skipped: credentials not configured")
+		g.Log().Debug(ctx, "[push] MiPush skipped: credentials not configured")
 		return false, nil
 	}
 	token = strings.TrimSpace(token)
@@ -31,7 +32,7 @@ func (s *MipushSender) Send(ctx context.Context, token string, payload PushPaylo
 	}
 	form := url.Values{}
 	form.Set("registration_id", token)
-	form.Set("restricted_package_name", cfgStr(ctx, "ucg.push.mipush.packageName"))
+	form.Set("restricted_package_name", firstNonEmpty(os.Getenv("PUSH_MIPUSH_PACKAGE_NAME"), cfgStr(ctx, "push.mipush.packageName")))
 	if form.Get("restricted_package_name") == "" {
 		form.Set("restricted_package_name", "com.fzy.pangbao")
 	}

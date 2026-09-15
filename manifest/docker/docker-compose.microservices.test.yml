@@ -61,6 +61,13 @@ services:
       - "19804:9804"
     networks: [go-ai-talk-test-net]
 
+  push-service:
+    image: ${REGISTRY}/push-service:${IMAGE_TAG}
+    container_name: go-ai-talk-push-service-test
+    ports:
+      - "19808:9808"
+    networks: [go-ai-talk-test-net]
+
   sim-user-service:
     image: ${REGISTRY}/sim-user-service:${IMAGE_TAG}
     container_name: go-ai-talk-sim-user-service-test

@@ -1,4 +1,5 @@
-package ucg
+// Package push 出站调用 push-service 的中立 HTTP 客户端。
+package push
 
 import (
 	"bytes"
@@ -17,19 +18,21 @@ import (
 	"github.com/gogf/gf/v2/os/glog"
 )
 
-// PushBizPredictImminent 与 ucg PushByBizType 常量对齐。
-const PushBizPredictImminent = "predict_imminent"
+// 与 push-service 业务类型对齐。
+const (
+	BizPredictImminent = "predict_imminent"
+	BizUcgAlert        = "ucg_alert"
+	BizUcgSilentBadge  = "ucg_silent_badge"
+)
 
-// PushByBizType 经 ucg internal API 按业务类型发送可见推送。
-// 业务：预测临近等；接收方须已在 App 调用 /ucg/app/api/push/register 注册 token。
-// Side Effects: 出站 HTTP；失败返回 error（调用方一期应 Ack MQ 不重试）。
-func PushByBizType(ctx context.Context, wxID int64, bizType, alert string, data map[string]string) error {
-	if wxID <= 0 || strings.TrimSpace(alert) == "" {
+// PushByBizType 经 push internal API 发送；badge 由调用方提供。
+func PushByBizType(ctx context.Context, wxID int64, bizType, alert string, badge int, silent bool, data map[string]string) error {
+	if wxID <= 0 {
 		return nil
 	}
-	base := strings.TrimRight(strings.TrimSpace(os.Getenv("UCG_SERVICE_URL")), "/")
+	base := strings.TrimRight(strings.TrimSpace(os.Getenv("PUSH_SERVICE_URL")), "/")
 	if base == "" {
-		return gerror.NewCode(gcode.CodeInternalError, "未配置 UCG_SERVICE_URL")
+		return gerror.NewCode(gcode.CodeInternalError, "未配置 PUSH_SERVICE_URL")
 	}
 	secret := strings.TrimSpace(os.Getenv("DEVICE_GATEWAY_INTERNAL_SECRET"))
 	if secret == "" {
@@ -39,9 +42,11 @@ func PushByBizType(ctx context.Context, wxID int64, bizType, alert string, data 
 		"wxId":    wxID,
 		"bizType": strings.TrimSpace(bizType),
 		"alert":   strings.TrimSpace(alert),
+		"badge":   badge,
+		"silent":  silent,
 		"data":    data,
 	})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/ucg/internal/api/push/by-biz-type", bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/push/internal/api/by-biz-type", bytes.NewReader(payload))
 	if err != nil {
 		return err
 	}
@@ -50,13 +55,13 @@ func PushByBizType(ctx context.Context, wxID int64, bizType, alert string, data 
 	client := &http.Client{Timeout: 8 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		glog.Warningf(ctx, "[clients/ucg] push/by-biz-type 失败 wxId=%d err=%v", wxID, err)
-		return gerror.WrapCode(gcode.CodeInternalError, err, "ucg 推送失败")
+		glog.Warningf(ctx, "[clients/push] by-biz-type 失败 wxId=%d err=%v", wxID, err)
+		return gerror.WrapCode(gcode.CodeInternalError, err, "push 发送失败")
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode != http.StatusOK {
-		return gerror.NewCode(gcode.CodeInternalError, "ucg 推送失败")
+		return gerror.NewCode(gcode.CodeInternalError, "push 发送失败")
 	}
 	var env struct {
 		Code    int    `json:"code"`
@@ -66,7 +71,7 @@ func PushByBizType(ctx context.Context, wxID int64, bizType, alert string, data 
 		return err
 	}
 	if env.Code != 0 {
-		return gerror.NewCode(gcode.CodeInternalError, "ucg 推送失败: "+env.Message)
+		return gerror.NewCode(gcode.CodeInternalError, "push 发送失败: "+env.Message)
 	}
 	return nil
 }

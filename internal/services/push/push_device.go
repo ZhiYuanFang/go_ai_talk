@@ -1,22 +1,16 @@
-package ucg
+package push
 
 import (
 	"context"
 	"strings"
 	"time"
 
-	"hello/internal/dao"
-
 	"github.com/gogf/gf/v2/errors/gcode"
 	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/frame/g"
 )
 
-const (
-	PushChannelAPNs    = "apns"
-	PushChannelHMS     = "hms"
-	PushChannelMiPush  = "mipush"
-)
+const pushDeviceTable = "push_device"
 
 var validPushChannels = map[string]struct{}{
 	PushChannelAPNs:   {},
@@ -32,7 +26,7 @@ func validatePushChannel(channel string) error {
 	return nil
 }
 
-// RegisterPushDevice upserts a push token for the authenticated wxId.
+// RegisterPushDevice upsert 登录用户推送 token（权威表 ai_voice_push.push_device）。
 func RegisterPushDevice(ctx context.Context, wxID int64, channel, token, deviceKey string) error {
 	if wxID <= 0 {
 		return gerror.NewCode(gcode.CodeInvalidParameter, "wxId 无效")
@@ -50,22 +44,20 @@ func RegisterPushDevice(ctx context.Context, wxID int64, channel, token, deviceK
 		return gerror.NewCode(gcode.CodeInvalidParameter, "deviceKey 无效")
 	}
 	now := time.Now().Unix()
-	cols := dao.UcgPushDevice.Columns()
-	// 单语句 upsert，避免 COUNT 后复用 model 导致 MySQL「commands out of sync」。
-	_, err := dao.UcgPushDevice.Ctx(ctx).Data(g.Map{
-		cols.WxId:      wxID,
-		cols.Channel:   channel,
-		cols.Token:     token,
-		cols.DeviceKey: deviceKey,
-		cols.UpdatedAt: now,
+	_, err := g.DB().Model(pushDeviceTable).Ctx(ctx).Data(g.Map{
+		"wx_id":      wxID,
+		"channel":    channel,
+		"token":      token,
+		"device_key": deviceKey,
+		"updated_at": now,
 	}).OnDuplicate(g.Map{
-		cols.Token:     token,
-		cols.UpdatedAt: now,
+		"token":      token,
+		"updated_at": now,
 	}).Insert()
 	return err
 }
 
-// UnregisterPushDevice removes push rows for wxId + deviceKey (optional channel filter).
+// UnregisterPushDevice 按 wxId+deviceKey 删除（可选 channel）。
 func UnregisterPushDevice(ctx context.Context, wxID int64, deviceKey, channel string) error {
 	if wxID <= 0 {
 		return gerror.NewCode(gcode.CodeInvalidParameter, "wxId 无效")
@@ -74,51 +66,25 @@ func UnregisterPushDevice(ctx context.Context, wxID int64, deviceKey, channel st
 	if deviceKey == "" {
 		return gerror.NewCode(gcode.CodeInvalidParameter, "deviceKey 无效")
 	}
-	model := dao.UcgPushDevice.Ctx(ctx).
-		Where(dao.UcgPushDevice.Columns().WxId, wxID).
-		Where(dao.UcgPushDevice.Columns().DeviceKey, deviceKey)
+	model := g.DB().Model(pushDeviceTable).Ctx(ctx).Where("wx_id", wxID).Where("device_key", deviceKey)
 	channel = strings.TrimSpace(strings.ToLower(channel))
 	if channel != "" {
 		if err := validatePushChannel(channel); err != nil {
 			return err
 		}
-		model = model.Where(dao.UcgPushDevice.Columns().Channel, channel)
+		model = model.Where("channel", channel)
 	}
 	_, err := model.Delete()
 	return err
 }
 
-// DeletePushDeviceByID removes a stale device row after vendor invalid-token response.
+// DeletePushDeviceByID 厂商判定 token 失效后删除。
 func DeletePushDeviceByID(ctx context.Context, id uint64) error {
 	if id == 0 {
 		return nil
 	}
-	_, err := dao.UcgPushDevice.Ctx(ctx).Where(dao.UcgPushDevice.Columns().Id, id).Delete()
+	_, err := g.DB().Model(pushDeviceTable).Ctx(ctx).Where("id", id).Delete()
 	return err
-}
-
-// ListPushDevicesForWx returns all registered devices for fan-out.
-func ListPushDevicesForWx(ctx context.Context, wxID int64) ([]entityPushDevice, error) {
-	if wxID <= 0 {
-		return nil, nil
-	}
-	rows, err := dao.UcgPushDevice.Ctx(ctx).
-		Where(dao.UcgPushDevice.Columns().WxId, wxID).
-		All()
-	if err != nil {
-		return nil, err
-	}
-	out := make([]entityPushDevice, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, entityPushDevice{
-			ID:        row[dao.UcgPushDevice.Columns().Id].Uint64(),
-			WxID:      row[dao.UcgPushDevice.Columns().WxId].Int64(),
-			Channel:   row[dao.UcgPushDevice.Columns().Channel].String(),
-			Token:     row[dao.UcgPushDevice.Columns().Token].String(),
-			DeviceKey: row[dao.UcgPushDevice.Columns().DeviceKey].String(),
-		})
-	}
-	return out, nil
 }
 
 type entityPushDevice struct {
@@ -127,4 +93,26 @@ type entityPushDevice struct {
 	Channel   string
 	Token     string
 	DeviceKey string
+}
+
+// ListPushDevicesForWx 列出某用户全部已注册设备。
+func ListPushDevicesForWx(ctx context.Context, wxID int64) ([]entityPushDevice, error) {
+	if wxID <= 0 {
+		return nil, nil
+	}
+	rows, err := g.DB().Model(pushDeviceTable).Ctx(ctx).Where("wx_id", wxID).All()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]entityPushDevice, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, entityPushDevice{
+			ID:        row["id"].Uint64(),
+			WxID:      row["wx_id"].Int64(),
+			Channel:   row["channel"].String(),
+			Token:     row["token"].String(),
+			DeviceKey: row["device_key"].String(),
+		})
+	}
+	return out, nil
 }

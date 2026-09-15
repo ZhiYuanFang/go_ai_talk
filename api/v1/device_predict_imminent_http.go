@@ -11,7 +11,7 @@ type PredictImminentPendingEventItem struct {
 
 // DevicePredictImminentPendingPutReq 全量替换宝宝待发生预测列表（最后写入赢）。
 // 客户端：孪生仓 Flutter 在每次预测更新后调用；须登录且 deviceNo 与会话绑机一致。
-// 离线推送依赖用户已 POST /ucg/app/api/push/register。
+// 离线推送依赖用户已 POST /app/api/push/register。
 type DevicePredictImminentPendingPutReq struct {
 	g.Meta   `path:"/device/api/predict/imminent/pending" method:"put" tags:"device" summary:"全量同步预测临近待办（Redis）"`
 	DeviceNo string                            `json:"deviceNo" v:"required" dc:"宝宝设备号"`

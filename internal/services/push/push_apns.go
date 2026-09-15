@@ -1,4 +1,4 @@
-package ucg
+package push
 
 import (
 	"context"
@@ -33,7 +33,7 @@ var (
 func (s *ApnsSender) Send(ctx context.Context, token string, payload PushPayload) (invalidToken bool, err error) {
 	cfg := loadPushConfig(ctx)
 	if !apnsConfigured(cfg) {
-		g.Log().Debug(ctx, "[ucg-push] APNs skipped: credentials not configured")
+		g.Log().Debug(ctx, "[push] APNs skipped: credentials not configured")
 		return false, nil
 	}
 	token = strings.TrimSpace(token)

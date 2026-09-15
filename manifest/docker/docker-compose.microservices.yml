@@ -99,6 +99,10 @@ services:
       SIM_SERVICE_BASE_URL: "http://sim-user-service:9805"
       UCG_WS_ROUTE_MODE: proxy
       UCG_WS_PROXY_URL: http://ucg-service:9804
+      # 全局推送：/app/api/push/* → push-service
+      PUSH_API_ROUTE_MODE: proxy
+      PUSH_API_PROXY_URL: http://push-service:9808
+      PUSH_SERVICE_URL: "http://push-service:9808"
       MQ_CONSUMER_ENABLED: "false"
       MQ_HTTP_API_BASE: "http://rabbitmq:15672/api"
       MQ_USER: "guest"
@@ -129,6 +133,8 @@ services:
       device-service:
         condition: service_healthy
       ucg-service:
+        condition: service_healthy
+      push-service:
         condition: service_healthy
     # APK 落盘目录与 gatewayApp.apkStorageDir 默认 /apk/ai_talk/ 一致，映射到宿主机根目录便于备份
     # resource/public 挂载使 git pull 后官网静态页/内联脚本即时生效，无需重建镜像
@@ -203,6 +209,7 @@ services:
       DEVICE_PROFILE_SERVICE_CANARY_PERCENT: "0"
       DEVICE_PROFILE_SERVICE_REMOTE_FAILOVER_LOCAL: "true"
       CASH_SERVICE_URL: "http://cash-service:9807"
+      PUSH_SERVICE_URL: "http://push-service:9808"
       MQ_HTTP_API_BASE: "http://rabbitmq:15672/api"
       MQ_USER: "guest"
       MQ_PASSWORD: "guest"
@@ -301,8 +308,6 @@ services:
       dockerfile: manifest/docker/Dockerfile.ucg-service
     image: go-ai-talk/ucg-service:local
     container_name: go-ai-talk-ucg-service
-    volumes:
-      - ./env/apns:/app/apns:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: on-failure:1
@@ -314,6 +319,7 @@ services:
       MYSQL_TCP_HOST: "${MYSQL_TCP_HOST:-}"
       UCG_SERVICE_ADDR: ":9804"
       DEVICE_SERVICE_URL: "http://device-service:9803"
+      PUSH_SERVICE_URL: "http://push-service:9808"
       DEVICE_GATEWAY_INTERNAL_SECRET: "${DEVICE_GATEWAY_INTERNAL_SECRET:-gateway-internal-change-me}"
       GATEWAY_APP_JWT_SECRET: "${GATEWAY_APP_JWT_SECRET:-}"
       UCG_OSS_ACCESS_KEY_ID: "${UCG_OSS_ACCESS_KEY_ID:-}"
@@ -325,16 +331,6 @@ services:
       UCG_AI_PROVIDER: "${UCG_AI_PROVIDER:-}"
       UCG_AI_VISION_MODEL: "${UCG_AI_VISION_MODEL:-}"
       UCG_ADMIN_PASSWORD: "${UCG_ADMIN_PASSWORD:-}"
-      UCG_APNS_KEY_ID: "${UCG_APNS_KEY_ID:-}"
-      UCG_APNS_TEAM_ID: "${UCG_APNS_TEAM_ID:-}"
-      UCG_APNS_BUNDLE_ID: "${UCG_APNS_BUNDLE_ID:-}"
-      UCG_APNS_KEY_PATH: "${UCG_APNS_KEY_PATH:-}"
-      UCG_APNS_PRODUCTION: "${UCG_APNS_PRODUCTION:-}"
-      UCG_HMS_APP_ID: "${UCG_HMS_APP_ID:-}"
-      UCG_HMS_APP_SECRET: "${UCG_HMS_APP_SECRET:-}"
-      UCG_MIPUSH_APP_ID: "${UCG_MIPUSH_APP_ID:-}"
-      UCG_MIPUSH_APP_KEY: "${UCG_MIPUSH_APP_KEY:-}"
-      UCG_MIPUSH_APP_SECRET: "${UCG_MIPUSH_APP_SECRET:-}"
       MQ_HTTP_API_BASE: "http://rabbitmq:15672/api"
       MQ_USER: "guest"
       MQ_PASSWORD: "guest"
@@ -347,6 +343,45 @@ services:
       IP2REGION_XDB_PATH: "${IP2REGION_XDB_PATH:-/app/resource/ip2region/ip2region_v4.xdb}"
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:9804/api.json > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+    logging: *docker-logging
+
+  push-service:
+    build:
+      context: ../..
+      dockerfile: manifest/docker/Dockerfile.push-service
+    image: go-ai-talk/push-service:local
+    container_name: go-ai-talk-push-service
+    volumes:
+      - ./env/apns:/app/apns:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: on-failure:1
+    environment:
+      <<: *logger-env
+      TZ: Asia/Shanghai
+      GF_GCFG_FILE: manifest/config/config.push-service.yaml
+      PUSH_DB_LINK: "${PUSH_DB_LINK:-}"
+      MYSQL_TCP_HOST: "${MYSQL_TCP_HOST:-}"
+      PUSH_SERVICE_ADDR: ":9808"
+      DEVICE_GATEWAY_INTERNAL_SECRET: "${DEVICE_GATEWAY_INTERNAL_SECRET:-gateway-internal-change-me}"
+      GF_REDIS_DEFAULT_ADDRESS: "${GF_REDIS_DEFAULT_ADDRESS:-}"
+      # 厂商凭证：config.push-service.yaml 的 push.* 留空，由 Compose 注入。
+      PUSH_APNS_KEY_ID: "${PUSH_APNS_KEY_ID:-}"
+      PUSH_APNS_TEAM_ID: "${PUSH_APNS_TEAM_ID:-}"
+      PUSH_APNS_BUNDLE_ID: "${PUSH_APNS_BUNDLE_ID:-}"
+      PUSH_APNS_KEY_PATH: "${PUSH_APNS_KEY_PATH:-}"
+      PUSH_APNS_PRODUCTION: "${PUSH_APNS_PRODUCTION:-}"
+      PUSH_HMS_APP_ID: "${PUSH_HMS_APP_ID:-}"
+      PUSH_HMS_APP_SECRET: "${PUSH_HMS_APP_SECRET:-}"
+      PUSH_MIPUSH_APP_ID: "${PUSH_MIPUSH_APP_ID:-}"
+      PUSH_MIPUSH_APP_KEY: "${PUSH_MIPUSH_APP_KEY:-}"
+      PUSH_MIPUSH_APP_SECRET: "${PUSH_MIPUSH_APP_SECRET:-}"
+      PUSH_MIPUSH_PACKAGE_NAME: "${PUSH_MIPUSH_PACKAGE_NAME:-}"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:9808/api.json > /dev/null || exit 1"]
       interval: 10s
       timeout: 3s
       retries: 6

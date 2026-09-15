@@ -1,4 +1,4 @@
-package ucg
+package push
 
 import (
 	"context"
@@ -58,7 +58,7 @@ func NewPushDispatcher(senders ...PushSender) *PushDispatcher {
 func dispatchPush(ctx context.Context, recipientWxID int64, payload PushPayload) {
 	devices, err := ListPushDevicesForWx(ctx, recipientWxID)
 	if err != nil {
-		g.Log().Warningf(ctx, "[ucg-push] list devices failed wxId=%d err=%v", recipientWxID, err)
+		g.Log().Warningf(ctx, "[push] list devices failed wxId=%d err=%v", recipientWxID, err)
 		return
 	}
 	if len(devices) == 0 {
@@ -77,7 +77,7 @@ func (d *PushDispatcher) sendOne(ctx context.Context, dev entityPushDevice, payl
 	ch := strings.TrimSpace(strings.ToLower(dev.Channel))
 	sender, ok := d.senders[ch]
 	if !ok || sender == nil {
-		g.Log().Debugf(ctx, "[ucg-push] no sender for channel=%s wxId=%d", ch, dev.WxID)
+		g.Log().Debugf(ctx, "[push] no sender for channel=%s wxId=%d", ch, dev.WxID)
 		return
 	}
 	token := strings.TrimSpace(dev.Token)
@@ -86,13 +86,13 @@ func (d *PushDispatcher) sendOne(ctx context.Context, dev entityPushDevice, payl
 	}
 	invalid, err := sender.Send(ctx, token, payload)
 	if err != nil {
-		g.Log().Warningf(ctx, "[ucg-push] send failed channel=%s wxId=%d deviceId=%d err=%v", ch, dev.WxID, dev.ID, err)
+		g.Log().Warningf(ctx, "[push] send failed channel=%s wxId=%d deviceId=%d err=%v", ch, dev.WxID, dev.ID, err)
 	}
 	if invalid && dev.ID > 0 {
 		if delErr := DeletePushDeviceByID(ctx, dev.ID); delErr != nil {
-			g.Log().Warningf(ctx, "[ucg-push] delete invalid token failed id=%d err=%v", dev.ID, delErr)
+			g.Log().Warningf(ctx, "[push] delete invalid token failed id=%d err=%v", dev.ID, delErr)
 		} else {
-			g.Log().Infof(ctx, "[ucg-push] deleted invalid token id=%d channel=%s wxId=%d", dev.ID, ch, dev.WxID)
+			g.Log().Infof(ctx, "[push] deleted invalid token id=%d channel=%s wxId=%d", dev.ID, ch, dev.WxID)
 		}
 	}
 }
