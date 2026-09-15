@@ -13,7 +13,7 @@ const (
 )
 
 // PushByBizType 按业务类型异步下发；badge 由调用方决定（默认 0）。
-// Side Effects: 异步厂商推送；无 token 则静默跳过。
+// Side Effects: 异步厂商推送；无 token 则打 no_device 日志后跳过。
 func PushByBizType(ctx context.Context, recipientWxID int64, bizType, alertBody string, badge int, silent bool, data map[string]string) {
 	if recipientWxID <= 0 {
 		return
@@ -26,12 +26,26 @@ func PushByBizType(ctx context.Context, recipientWxID int64, bizType, alertBody 
 		badge = 0
 	}
 	alert := strings.TrimSpace(alertBody)
+	// 保证 dispatch 日志能带上 bizType（调用方 data 可能为 nil）。
+	payloadData := data
+	if payloadData == nil {
+		payloadData = map[string]string{}
+	} else {
+		copied := make(map[string]string, len(data)+1)
+		for k, v := range data {
+			copied[k] = v
+		}
+		payloadData = copied
+	}
+	if strings.TrimSpace(payloadData["bizType"]) == "" && bizType != "" {
+		payloadData["bizType"] = bizType
+	}
 	asyncPush(recipientWxID, func(bg context.Context) {
 		dispatchPush(bg, recipientWxID, PushPayload{
 			Alert:  alert,
 			Badge:  badge,
 			Silent: silent,
-			Data:   data,
+			Data:   payloadData,
 		})
 	})
 }

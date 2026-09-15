@@ -23,16 +23,32 @@ import (
 )
 
 const (
-	predictImminentLeadSeconds     = 300 // 提前 5 分钟
-	predictImminentPushDedupTTL    = 5 * time.Minute
-	predictImminentHistoryWindowSec = 1800
-	predictImminentSyncLockTTL     = 5 * time.Second
-	predictImminentQueueName       = "voice.predict.imminent.q"
+	predictImminentLeadSecondsDefault = 300 // 默认提前 5 分钟；可由 VOICE_PREDICT_IMMINENT_LEAD_SECONDS 覆盖
+	predictImminentPushDedupTTL       = 5 * time.Minute
+	predictImminentHistoryWindowSec   = 1800
+	predictImminentSyncLockTTL        = 5 * time.Second
+	predictImminentQueueName          = "voice.predict.imminent.q"
 	predictImminentConsumerEnabledEnv = "VOICE_PREDICT_IMMINENT_MQ_CONSUMER_ENABLED"
-	predictImminentPrefetchEnv     = "VOICE_PREDICT_IMMINENT_MQ_PREFETCH"
+	predictImminentPrefetchEnv        = "VOICE_PREDICT_IMMINENT_MQ_PREFETCH"
+	predictImminentLeadSecondsEnv     = "VOICE_PREDICT_IMMINENT_LEAD_SECONDS"
 )
 
 var predictImminentCache = cachekit.Default()
+
+// predictImminentLeadSeconds 读取提前叫醒秒数；非法或未配置时回退默认 300。
+// Args: 无（读环境变量 VOICE_PREDICT_IMMINENT_LEAD_SECONDS）
+// Returns: 正整数秒；最小按 0 处理（立即发延时消息）。
+func predictImminentLeadSeconds() int64 {
+	v := strings.TrimSpace(os.Getenv(predictImminentLeadSecondsEnv))
+	if v == "" {
+		return predictImminentLeadSecondsDefault
+	}
+	n, err := strconv.ParseInt(v, 10, 64)
+	if err != nil || n < 0 {
+		return predictImminentLeadSecondsDefault
+	}
+	return n
+}
 
 // PredictImminentPendingItem Redis / MQ 共用待办项。
 type PredictImminentPendingItem struct {
@@ -121,8 +137,9 @@ func SyncPredictImminentPending(ctx context.Context, wxID int64, deviceNo string
 		return 0, gerror.WrapCode(gcode.CodeInternalError, pubErr, "延时发布器不可用")
 	}
 	now := time.Now().Unix()
+	leadSec := predictImminentLeadSeconds()
 	for _, it := range cleaned {
-		delayMs := (it.NextAt - predictImminentLeadSeconds - now) * 1000
+		delayMs := (it.NextAt - leadSec - now) * 1000
 		if delayMs < 0 {
 			delayMs = 0
 		}
@@ -167,61 +184,101 @@ func pendingMatches(list []PredictImminentPendingItem, eventID, nextAt int64) bo
 	return false
 }
 
+// classifyStalePending 分类 stale 原因，便于生产 Warning 日志排查（不打印完整 deviceNo）。
+// Returns: reason（stale_empty_pending / stale_event_absent / stale_next_at_mismatch）、redisNextAt（仅 mismatch 时有意义）。
+func classifyStalePending(list []PredictImminentPendingItem, eventID, fireNextAt int64) (reason string, redisNextAt int64) {
+	if len(list) == 0 {
+		return "stale_empty_pending", 0
+	}
+	for _, it := range list {
+		if it.EventId != eventID {
+			continue
+		}
+		if it.NextAt == fireNextAt {
+			// 调用方应先 pendingMatches；此处兜底。
+			return "", it.NextAt
+		}
+		return "stale_next_at_mismatch", it.NextAt
+	}
+	return "stale_event_absent", 0
+}
+
 // handlePredictImminentFire 处理单条延时叫醒；业务路径一律成功返回（Ack），禁止 requeue / 二次 Publish。
 func handlePredictImminentFire(ctx context.Context, body []byte) error {
 	var msg predictImminentFirePayload
 	if err := json.Unmarshal(body, &msg); err != nil {
-		glog.Warningf(ctx, "[predict-imminent] bad payload err=%v", err)
+		glog.Warningf(ctx, "[predict-imminent] skip reason=bad_payload err=%v", err)
 		return nil // Ack
 	}
 	msg.DeviceNo = strings.TrimSpace(msg.DeviceNo)
 	if msg.DeviceNo == "" || msg.EventId <= 0 || msg.NextAt <= 0 {
+		glog.Warningf(ctx, "[predict-imminent] skip reason=invalid_fire deviceNoLen=%d eventId=%d nextAt=%d",
+			len(msg.DeviceNo), msg.EventId, msg.NextAt)
 		return nil
 	}
 
 	list, err := loadPredictImminentPending(ctx, msg.DeviceNo)
 	if err != nil {
-		glog.Warningf(ctx, "[predict-imminent] load pending err=%v", err)
+		glog.Warningf(ctx, "[predict-imminent] skip reason=load_pending_err deviceNoLen=%d eventId=%d nextAt=%d err=%v",
+			len(msg.DeviceNo), msg.EventId, msg.NextAt, err)
 		return nil
 	}
 	if !pendingMatches(list, msg.EventId, msg.NextAt) {
-		glog.Debugf(ctx, "[predict-imminent] stale fire deviceNoLen=%d eventId=%d nextAt=%d", len(msg.DeviceNo), msg.EventId, msg.NextAt)
+		reason, redisNextAt := classifyStalePending(list, msg.EventId, msg.NextAt)
+		glog.Warningf(ctx, "[predict-imminent] skip reason=%s deviceNoLen=%d eventId=%d fireNextAt=%d redisNextAt=%d pendingCount=%d",
+			reason, len(msg.DeviceNo), msg.EventId, msg.NextAt, redisNextAt, len(list))
 		return nil
 	}
 
 	// 五分钟去重：进入发送前占位，防止多实例/重投双推。
 	dedupKey, err := cachekit.PredictImminentPushedKey(msg.DeviceNo, msg.EventId)
 	if err != nil {
+		glog.Warningf(ctx, "[predict-imminent] skip reason=dedup_key_err deviceNoLen=%d eventId=%d err=%v",
+			len(msg.DeviceNo), msg.EventId, err)
 		return nil
 	}
 	ok, nxErr := predictImminentCache.SetNXEX(ctx, dedupKey, "1", predictImminentPushDedupTTL)
 	if nxErr != nil {
-		glog.Warningf(ctx, "[predict-imminent] dedup SetNXEX err=%v", nxErr)
+		glog.Warningf(ctx, "[predict-imminent] skip reason=dedup_setnx_err deviceNoLen=%d eventId=%d err=%v",
+			len(msg.DeviceNo), msg.EventId, nxErr)
 		return nil
 	}
 	if !ok {
-		glog.Debugf(ctx, "[predict-imminent] dedup hit deviceNoLen=%d eventId=%d", len(msg.DeviceNo), msg.EventId)
+		glog.Warningf(ctx, "[predict-imminent] skip reason=dedup_hit deviceNoLen=%d eventId=%d nextAt=%d",
+			len(msg.DeviceNo), msg.EventId, msg.NextAt)
 		return nil
 	}
 
 	// 30 分钟历史闸：根事件展开叶子后 filter。
 	if recent, histErr := predictImminentHistoryExists(ctx, msg.DeviceNo, msg.EventId); histErr != nil {
-		glog.Warningf(ctx, "[predict-imminent] history check err=%v", histErr)
 		// 历史不可达时不推，避免误扰；去重键已占，五分钟内不会再推。
+		glog.Warningf(ctx, "[predict-imminent] skip reason=history_check_err deviceNoLen=%d eventId=%d err=%v (dedup occupied)",
+			len(msg.DeviceNo), msg.EventId, histErr)
 		return nil
 	} else if recent {
-		glog.Infof(ctx, "[predict-imminent] skip push: history exists deviceNoLen=%d eventId=%d", len(msg.DeviceNo), msg.EventId)
+		glog.Warningf(ctx, "[predict-imminent] skip reason=history_exists deviceNoLen=%d eventId=%d nextAt=%d",
+			len(msg.DeviceNo), msg.EventId, msg.NextAt)
 		return nil
 	}
 
 	wxIDs, _, listErr := deviceclient.RemoteListWxIDsByDeviceNo(ctx, msg.DeviceNo)
 	if listErr != nil {
-		glog.Warningf(ctx, "[predict-imminent] ListWxIDs err=%v", listErr)
+		glog.Warningf(ctx, "[predict-imminent] skip reason=list_wx_err deviceNoLen=%d eventId=%d err=%v",
+			len(msg.DeviceNo), msg.EventId, listErr)
+		return nil
+	}
+	if len(wxIDs) == 0 {
+		glog.Warningf(ctx, "[predict-imminent] skip reason=no_bound_wx deviceNoLen=%d eventId=%d nextAt=%d",
+			len(msg.DeviceNo), msg.EventId, msg.NextAt)
 		return nil
 	}
 	title := strings.TrimSpace(msg.Title)
 	if title == "" {
-		title = fmt.Sprintf("事件将在约 %d 分钟内发生", predictImminentLeadSeconds/60)
+		leadMin := predictImminentLeadSeconds() / 60
+		if leadMin < 1 {
+			leadMin = 1
+		}
+		title = fmt.Sprintf("事件将在约 %d 分钟内发生", leadMin)
 	}
 	alert := "宝宝提醒：" + title
 	data := map[string]string{
@@ -230,11 +287,13 @@ func handlePredictImminentFire(ctx context.Context, body []byte) error {
 		"eventId":  strconv.FormatInt(msg.EventId, 10),
 		"nextAt":   strconv.FormatInt(msg.NextAt, 10),
 	}
+	glog.Infof(ctx, "[predict-imminent] push_attempt deviceNoLen=%d eventId=%d nextAt=%d wxCount=%d",
+		len(msg.DeviceNo), msg.EventId, msg.NextAt, len(wxIDs))
 	for _, wxID := range wxIDs {
 		// badge=0：预测临近不累计 UCG 未读角标。
 		if pushErr := pushclient.PushByBizType(ctx, wxID, pushclient.BizPredictImminent, alert, 0, false, data); pushErr != nil {
 			// 推送失败只打日志，不 return err（避免 Nack requeue 风暴）。
-			glog.Warningf(ctx, "[predict-imminent] push failed wxId=%d err=%v", wxID, pushErr)
+			glog.Warningf(ctx, "[predict-imminent] push_failed wxId=%d eventId=%d err=%v", wxID, msg.EventId, pushErr)
 		}
 	}
 	return nil

@@ -55,13 +55,23 @@ func NewPushDispatcher(senders ...PushSender) *PushDispatcher {
 	return &PushDispatcher{senders: m}
 }
 
+func pushBizTypeFromPayload(payload PushPayload) string {
+	if payload.Data == nil {
+		return ""
+	}
+	return strings.TrimSpace(payload.Data["bizType"])
+}
+
 func dispatchPush(ctx context.Context, recipientWxID int64, payload PushPayload) {
+	bizType := pushBizTypeFromPayload(payload)
 	devices, err := ListPushDevicesForWx(ctx, recipientWxID)
 	if err != nil {
-		g.Log().Warningf(ctx, "[push] list devices failed wxId=%d err=%v", recipientWxID, err)
+		g.Log().Warningf(ctx, "[push] skip reason=list_devices_err wxId=%d bizType=%s err=%v", recipientWxID, bizType, err)
 		return
 	}
 	if len(devices) == 0 {
+		// 调用方 HTTP 已 200，但无注册 token：常见于未 POST /app/api/push/register。
+		g.Log().Warningf(ctx, "[push] skip reason=no_device wxId=%d bizType=%s silent=%v", recipientWxID, bizType, payload.Silent)
 		return
 	}
 	d := PushDispatcherInstance()
@@ -74,19 +84,21 @@ func (d *PushDispatcher) sendOne(ctx context.Context, dev entityPushDevice, payl
 	if d == nil {
 		return
 	}
+	bizType := pushBizTypeFromPayload(payload)
 	ch := strings.TrimSpace(strings.ToLower(dev.Channel))
 	sender, ok := d.senders[ch]
 	if !ok || sender == nil {
-		g.Log().Debugf(ctx, "[push] no sender for channel=%s wxId=%d", ch, dev.WxID)
+		g.Log().Warningf(ctx, "[push] skip reason=no_sender channel=%s wxId=%d bizType=%s", ch, dev.WxID, bizType)
 		return
 	}
 	token := strings.TrimSpace(dev.Token)
 	if token == "" {
+		g.Log().Warningf(ctx, "[push] skip reason=empty_token channel=%s wxId=%d deviceId=%d bizType=%s", ch, dev.WxID, dev.ID, bizType)
 		return
 	}
 	invalid, err := sender.Send(ctx, token, payload)
 	if err != nil {
-		g.Log().Warningf(ctx, "[push] send failed channel=%s wxId=%d deviceId=%d err=%v", ch, dev.WxID, dev.ID, err)
+		g.Log().Warningf(ctx, "[push] send_failed channel=%s wxId=%d deviceId=%d bizType=%s err=%v", ch, dev.WxID, dev.ID, bizType, err)
 	}
 	if invalid && dev.ID > 0 {
 		if delErr := DeletePushDeviceByID(ctx, dev.ID); delErr != nil {
