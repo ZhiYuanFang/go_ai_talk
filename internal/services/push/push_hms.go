@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -14,12 +15,21 @@ import (
 	"github.com/gogf/gf/v2/frame/g"
 )
 
-// HmsSender sends via Huawei Push Kit REST API.
+// HmsSender 经华为 Push Kit REST 下发通知/静默消息。
 type HmsSender struct{}
 
 func NewHmsSender() *HmsSender { return &HmsSender{} }
 
 func (s *HmsSender) Channel() string { return PushChannelHMS }
+
+const (
+	// hmsBizCodeOK 华为下行消息业务成功码（字符串形式）。
+	hmsBizCodeOK = "80000000"
+	// envHmsClickIntent 非空时 click_action 使用 type=1 + intent（深链）；否则 type=3 打开应用。
+	envHmsClickIntent = "PUSH_HMS_CLICK_INTENT"
+	hmsDefaultTitle   = "胖宝"
+	hmsBadgeClass     = "com.fzy.pangbao.MainActivity"
+)
 
 var (
 	hmsTokenMu    sync.Mutex
@@ -27,6 +37,13 @@ var (
 	hmsTokenExp   time.Time
 )
 
+// Send 向单个 HMS token 发送推送。
+//
+// 业务：非静默+有 alert 走「通知消息」形态（顶层 message.notification + android.click_action），
+// 对齐华为控制台常见样例，避免仅 android 内嵌 title 导致托盘不展示。
+// 静默/无 alert：不伪造可见正文，仅 badge + data。
+//
+// Returns: invalidToken 表示应删除本地 token；err 非 nil 时 dispatcher 记 send_failed。
 func (s *HmsSender) Send(ctx context.Context, token string, payload PushPayload) (invalidToken bool, err error) {
 	cfg := loadPushConfig(ctx)
 	if !hmsConfigured(cfg) {
@@ -37,43 +54,41 @@ func (s *HmsSender) Send(ctx context.Context, token string, payload PushPayload)
 	if err != nil {
 		return false, err
 	}
-	msgBody, err := buildHmsMessage(payload)
+	dataStr, err := buildHmsMessage(payload)
 	if err != nil {
 		return false, err
 	}
-	endpoint := fmt.Sprintf("https://push-api.cloud.huawei.com/v1/%s/messages:send", url.PathEscape(cfg.HmsAppID))
-	reqBody := map[string]interface{}{
-		"message": map[string]interface{}{
-			"token": []string{strings.TrimSpace(token)},
-			"android": map[string]interface{}{
-				"notification": map[string]interface{}{},
-				"data":         msgBody,
-			},
+
+	androidNotif := map[string]interface{}{
+		"click_action": hmsClickAction(),
+		"badge": map[string]interface{}{
+			"add_num": 0,
+			"class":   hmsBadgeClass,
+			"set_num": payload.Badge,
 		},
 	}
-	if !payload.Silent && strings.TrimSpace(payload.Alert) != "" {
-		reqBody["message"].(map[string]interface{})["android"].(map[string]interface{})["notification"] = map[string]interface{}{
-			"title": "胖宝",
-			"body":  payload.Alert,
-			"click_action": map[string]interface{}{
-				"type": 1,
-			},
-			"badge": map[string]interface{}{
-				"add_num": 0,
-				"class":   "com.fzy.pangbao.MainActivity",
-				"set_num": payload.Badge,
-			},
-		}
-	} else {
-		reqBody["message"].(map[string]interface{})["android"].(map[string]interface{})["notification"] = map[string]interface{}{
-			"badge": map[string]interface{}{
-				"add_num": 0,
-				"class":   "com.fzy.pangbao.MainActivity",
-				"set_num": payload.Badge,
-			},
+	android := map[string]interface{}{
+		"notification": androidNotif,
+		"data":         dataStr,
+	}
+	message := map[string]interface{}{
+		"token":   []string{strings.TrimSpace(token)},
+		"android": android,
+	}
+
+	// 可见通知：必须有顶层 notification，系统托盘才按「通知消息」展示。
+	visible := !payload.Silent && strings.TrimSpace(payload.Alert) != ""
+	if visible {
+		message["notification"] = map[string]interface{}{
+			"title": hmsDefaultTitle,
+			"body":  strings.TrimSpace(payload.Alert),
 		}
 	}
+	// 静默/无 alert：不设置顶层 notification，避免空正文骚扰；仅依赖 android badge/data。
+
+	reqBody := map[string]interface{}{"message": message}
 	raw, _ := json.Marshal(reqBody)
+	endpoint := fmt.Sprintf("https://push-api.cloud.huawei.com/v1/%s/messages:send", url.PathEscape(cfg.HmsAppID))
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(string(raw)))
 	if err != nil {
 		return false, err
@@ -86,23 +101,64 @@ func (s *HmsSender) Send(ctx context.Context, token string, payload PushPayload)
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 8192))
-	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		return false, nil
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		invalid, parseErr := parseHmsInvalidToken(body)
+		if invalid {
+			return true, parseErr
+		}
+		return false, fmt.Errorf("hms status=%d body=%s", resp.StatusCode, truncateHmsLog(string(body), 512))
 	}
-	invalid, parseErr := parseHmsInvalidToken(body)
-	if invalid {
-		return true, parseErr
+
+	// HTTP 2xx 仍须校验业务 code；否则会出现假 send_ok。
+	code, msg := parseHmsResponseMeta(body)
+	if code != hmsBizCodeOK {
+		invalid, parseErr := parseHmsInvalidToken(body)
+		if invalid {
+			return true, parseErr
+		}
+		if msg == "" {
+			msg = truncateHmsLog(string(body), 256)
+		}
+		return false, fmt.Errorf("hms biz code=%s msg=%s", code, truncateHmsLog(msg, 256))
 	}
-	return false, fmt.Errorf("hms status=%d body=%s", resp.StatusCode, string(body))
+	return false, nil
+}
+
+// hmsClickAction 默认 type=3 打开应用；配置了 PUSH_HMS_CLICK_INTENT 则 type=1+intent。
+func hmsClickAction() map[string]interface{} {
+	intent := strings.TrimSpace(os.Getenv(envHmsClickIntent))
+	if intent != "" {
+		return map[string]interface{}{
+			"type":   1,
+			"intent": intent,
+		}
+	}
+	return map[string]interface{}{"type": 3}
 }
 
 func buildHmsMessage(payload PushPayload) (string, error) {
 	m := map[string]interface{}{
-		"badge": fmt.Sprintf("%d", payload.Badge),
+		"badge":  fmt.Sprintf("%d", payload.Badge),
 		"silent": payload.Silent,
 	}
 	if payload.Alert != "" {
 		m["alert"] = payload.Alert
+	}
+	// 透传给端上的业务 data（如 bizType），由调用方 payload.Data 扩展时在此合并更清晰；
+	// 当前 build 保持轻量，biz 字段已在 APNs 等路径由 data map 承载；HMS android.data 至少含 badge/silent。
+	if payload.Data != nil {
+		for k, v := range payload.Data {
+			k = strings.TrimSpace(k)
+			if k == "" {
+				continue
+			}
+			// 不覆盖已有核心键。
+			if _, exists := m[k]; exists {
+				continue
+			}
+			m[k] = v
+		}
 	}
 	b, err := json.Marshal(m)
 	return string(b), err
@@ -148,19 +204,44 @@ func hmsAccessToken(ctx context.Context, cfg pushConfig) (string, error) {
 	return hmsTokenCache, nil
 }
 
-func parseHmsInvalidToken(body []byte) (bool, error) {
+// parseHmsResponseMeta 提取华为下行响应 code/msg（code 统一成字符串便于比较）。
+func parseHmsResponseMeta(body []byte) (code, msg string) {
 	var m map[string]interface{}
 	if json.Unmarshal(body, &m) != nil {
-		return false, nil
+		return "", ""
 	}
-	code := fmt.Sprint(m["code"])
-	msg := fmt.Sprint(m["msg"])
+	code = strings.TrimSpace(fmt.Sprint(m["code"]))
+	if code == "<nil>" {
+		code = ""
+	}
+	msg = strings.TrimSpace(fmt.Sprint(m["msg"]))
+	if msg == "<nil>" {
+		msg = ""
+	}
+	return code, msg
+}
+
+func parseHmsInvalidToken(body []byte) (bool, error) {
+	code, msg := parseHmsResponseMeta(body)
 	upper := strings.ToUpper(code + " " + msg)
+	// 常见：token 无效/未注册；部分错误码文档写作 80300007 等，文案含 TOKEN。
 	if strings.Contains(upper, "INVALID") && strings.Contains(upper, "TOKEN") {
-		return true, fmt.Errorf("hms invalid token: %s", msg)
+		return true, fmt.Errorf("hms invalid token: code=%s msg=%s", code, truncateHmsLog(msg, 128))
 	}
 	if strings.Contains(upper, "NOT_REGISTERED") {
-		return true, fmt.Errorf("hms not registered: %s", msg)
+		return true, fmt.Errorf("hms not registered: code=%s msg=%s", code, truncateHmsLog(msg, 128))
+	}
+	// 80300007：部分文档标明为 token 无效类。
+	if code == "80300007" {
+		return true, fmt.Errorf("hms invalid token: code=%s msg=%s", code, truncateHmsLog(msg, 128))
 	}
 	return false, nil
+}
+
+func truncateHmsLog(s string, max int) string {
+	s = strings.TrimSpace(s)
+	if max <= 0 || len(s) <= max {
+		return s
+	}
+	return s[:max] + "..."
 }
