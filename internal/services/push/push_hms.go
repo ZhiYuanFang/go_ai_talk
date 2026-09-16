@@ -59,13 +59,16 @@ func (s *HmsSender) Send(ctx context.Context, token string, payload PushPayload)
 		return false, err
 	}
 
+	// 华为：若带 add_num 则必须在 1–99；predict_imminent 等场景 badge=0，禁止写 add_num:0（会 80100003）。
+	// badge<=0：整段省略角标，仅发通知正文；badge>0：只传 set_num+class，不传 add_num。
 	androidNotif := map[string]interface{}{
 		"click_action": hmsClickAction(),
-		"badge": map[string]interface{}{
-			"add_num": 0,
+	}
+	if payload.Badge > 0 {
+		androidNotif["badge"] = map[string]interface{}{
 			"class":   hmsBadgeClass,
 			"set_num": payload.Badge,
-		},
+		}
 	}
 	android := map[string]interface{}{
 		"notification": androidNotif,
