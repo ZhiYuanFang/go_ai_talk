@@ -68,7 +68,7 @@ func (s *HmsSender) Send(ctx context.Context, token string, payload PushPayload)
 		"click_action": hmsClickAction(),
 		"priority":     "HIGH",
 		"importance":   "HIGH",
-		"channelId":    "push_default", // 和Flutter端创建的通知渠道ID保持一致！
+		// "channelId":    "push_default", // 和Flutter端创建的通知渠道ID保持一致！ 部分老机子不支持
 	}
 	if payload.Badge > 0 {
 		androidNotif["badge"] = map[string]interface{}{
