@@ -7,6 +7,7 @@ import (
 
 	"hello/internal/controller"
 	"hello/internal/platform/dbcfg"
+	"hello/internal/platform/loggercfg"
 	"hello/internal/platform/rediscfg"
 	"hello/internal/platform/runtimecheck"
 	voice "hello/internal/services/voice"
@@ -41,6 +42,8 @@ func prepareVoiceServiceRuntime() {
 	}
 	dbcfg.ApplyGroupFromEnv("voice-service", "default", "VOICE_DB_LINK", "GF_DATABASE_DEFAULT_LINK")
 	rediscfg.ApplyDefaultFromEnv("voice-service")
+	// MUST 在 dbcfg/rediscfg（可能已初始化 logger）之后，用 GF_LOGGER_LEVEL 覆盖 yaml level。
+	loggercfg.ApplyFromEnv("voice-service")
 }
 
 func applyVoiceServiceAddress(s interface{ SetAddr(address string) }) {

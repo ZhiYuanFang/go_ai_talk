@@ -7,6 +7,7 @@ import (
 
 	"hello/internal/controller"
 	"hello/internal/platform/dbcfg"
+	"hello/internal/platform/loggercfg"
 	"hello/internal/platform/rediscfg"
 	"hello/internal/platform/runtimecheck"
 	pushsvc "hello/internal/services/push"
@@ -40,6 +41,8 @@ func preparePushServiceRuntime() {
 	}
 	dbcfg.ApplyGroupFromEnv("push-service", "default", "PUSH_DB_LINK", "GF_DATABASE_DEFAULT_LINK")
 	rediscfg.ApplyDefaultFromEnv("push-service")
+	// MUST 在 dbcfg/rediscfg（可能已初始化 logger）之后，用 GF_LOGGER_LEVEL 覆盖 yaml level。
+	loggercfg.ApplyFromEnv("push-service")
 }
 
 func applyPushServiceAddress(s interface{ SetAddr(address string) }) {

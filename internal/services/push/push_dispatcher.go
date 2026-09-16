@@ -69,6 +69,9 @@ func dispatchPush(ctx context.Context, recipientWxID int64, payload PushPayload)
 		g.Log().Warningf(ctx, "[push] skip reason=list_devices_err wxId=%d bizType=%s err=%v", recipientWxID, bizType, err)
 		return
 	}
+	// prod 可见：对齐 HTTP accepted 与后续 skip/send。
+	g.Log().Warningf(ctx, "[push] dispatch wxId=%d bizType=%s deviceCount=%d silent=%v",
+		recipientWxID, bizType, len(devices), payload.Silent)
 	if len(devices) == 0 {
 		// 调用方 HTTP 已 200，但无注册 token：常见于未 POST /app/api/push/register。
 		g.Log().Warningf(ctx, "[push] skip reason=no_device wxId=%d bizType=%s silent=%v", recipientWxID, bizType, payload.Silent)
@@ -99,6 +102,9 @@ func (d *PushDispatcher) sendOne(ctx context.Context, dev entityPushDevice, payl
 	invalid, err := sender.Send(ctx, token, payload)
 	if err != nil {
 		g.Log().Warningf(ctx, "[push] send_failed channel=%s wxId=%d deviceId=%d bizType=%s err=%v", ch, dev.WxID, dev.ID, bizType, err)
+	} else {
+		// 成功路径也打 Warning，避免 GF_LOGGER_LEVEL=prod 下完全静默。
+		g.Log().Warningf(ctx, "[push] send_ok channel=%s wxId=%d deviceId=%d bizType=%s", ch, dev.WxID, dev.ID, bizType)
 	}
 	if invalid && dev.ID > 0 {
 		if delErr := DeletePushDeviceByID(ctx, dev.ID); delErr != nil {

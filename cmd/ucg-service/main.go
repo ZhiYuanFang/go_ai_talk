@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"hello/internal/controller"
 	"hello/internal/platform/dbcfg"
+	"hello/internal/platform/loggercfg"
 	"hello/internal/platform/rediscfg"
 	"hello/internal/platform/runtimecheck"
 	ucgsvc "hello/internal/services/ucg"
@@ -46,6 +47,8 @@ func prepareUcgServiceRuntime() {
 	}
 	dbcfg.ApplyGroupFromEnv("ucg-service", "default", "UCG_DB_LINK", "GF_DATABASE_DEFAULT_LINK")
 	rediscfg.ApplyDefaultFromEnv("ucg-service")
+	// MUST 在 dbcfg/rediscfg（可能已初始化 logger）之后，用 GF_LOGGER_LEVEL 覆盖 yaml level。
+	loggercfg.ApplyFromEnv("ucg-service")
 }
 
 func applyUcgServiceAddress(s interface{ SetAddr(address string) }) {

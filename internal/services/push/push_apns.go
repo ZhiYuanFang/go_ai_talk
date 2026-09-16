@@ -33,8 +33,8 @@ var (
 func (s *ApnsSender) Send(ctx context.Context, token string, payload PushPayload) (invalidToken bool, err error) {
 	cfg := loadPushConfig(ctx)
 	if !apnsConfigured(cfg) {
-		g.Log().Debug(ctx, "[push] APNs skipped: credentials not configured")
-		return false, nil
+		g.Log().Warningf(ctx, "[push] APNs skipped: credentials not configured")
+		return false, fmt.Errorf("credentials not configured")
 	}
 	token = strings.TrimSpace(token)
 	if token == "" {

@@ -30,8 +30,8 @@ var (
 func (s *HmsSender) Send(ctx context.Context, token string, payload PushPayload) (invalidToken bool, err error) {
 	cfg := loadPushConfig(ctx)
 	if !hmsConfigured(cfg) {
-		g.Log().Debug(ctx, "[push] HMS skipped: credentials not configured")
-		return false, nil
+		g.Log().Warningf(ctx, "[push] HMS skipped: credentials not configured")
+		return false, fmt.Errorf("credentials not configured")
 	}
 	accessToken, err := hmsAccessToken(ctx, cfg)
 	if err != nil {

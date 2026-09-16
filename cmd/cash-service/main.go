@@ -7,6 +7,7 @@ import (
 
 	"hello/internal/controller"
 	"hello/internal/platform/dbcfg"
+	"hello/internal/platform/loggercfg"
 	"hello/internal/platform/rediscfg"
 	"hello/internal/platform/runtimecheck"
 	"hello/internal/services/cash"
@@ -41,6 +42,8 @@ func prepareCashServiceRuntime() {
 	}
 	dbcfg.ApplyGroupFromEnv("cash-service", "default", "CASH_DB_LINK", "GF_DATABASE_DEFAULT_LINK")
 	rediscfg.ApplyDefaultFromEnv("cash-service")
+	// MUST 在 dbcfg/rediscfg（可能已初始化 logger）之后，用 GF_LOGGER_LEVEL 覆盖 yaml level。
+	loggercfg.ApplyFromEnv("cash-service")
 }
 
 func applyCashServiceAddress(s interface{ SetAddr(address string) }) {

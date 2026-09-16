@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"hello/internal/controller"
+	"hello/internal/platform/loggercfg"
 	"hello/internal/platform/rediscfg"
 	"hello/internal/platform/runtimecheck"
 	"hello/internal/services/gatewayapp"
@@ -40,6 +41,8 @@ func prepareGatewayAppRuntime() {
 	// MUST 在任意 g.DB("app") 之前调用；见 gatewayapp.ApplyAppDatabaseLinkFromEnv 注释。
 	gatewayapp.ApplyAppDatabaseLinkFromEnv()
 	rediscfg.ApplyDefaultFromEnv("gateway-app")
+	// MUST 在 rediscfg / app DB link（可能已初始化 logger）之后，用 GF_LOGGER_LEVEL 覆盖 yaml level。
+	loggercfg.ApplyFromEnv("gateway-app")
 }
 
 func applyGatewayAppAddress(s interface{ SetAddr(address string) }) {

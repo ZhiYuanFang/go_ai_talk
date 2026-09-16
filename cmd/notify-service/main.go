@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"hello/internal/controller"
+	"hello/internal/platform/loggercfg"
 	_ "hello/internal/shared/runtime"
 
 	"github.com/gogf/gf/v2/frame/g"
@@ -23,6 +24,8 @@ func prepareNotifyServiceRuntime() {
 	if strings.TrimSpace(os.Getenv("GF_GCFG_FILE")) == "" {
 		_ = os.Setenv("GF_GCFG_FILE", "manifest/config/config.notify-service.yaml")
 	}
+	// 无 dbcfg；ApplyFromEnv 内部会先触达 g.Log() 再覆盖级别。
+	loggercfg.ApplyFromEnv("notify-service")
 }
 
 func applyNotifyServiceAddress(s interface{ SetAddr(address string) }) {

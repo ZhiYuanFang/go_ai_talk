@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"hello/internal/controller"
+	"hello/internal/platform/loggercfg"
 	"hello/internal/platform/rediscfg"
 	"hello/internal/platform/runtimecheck"
 	_ "hello/internal/shared/runtime"
@@ -20,6 +21,8 @@ var Main = gcmd.Command{
 
 	Func: func(ctx context.Context, parser *gcmd.Parser) (err error) {
 		rediscfg.ApplyDefaultFromEnv("gateway")
+		// MUST 在 rediscfg（可能已初始化 logger）之后，用 GF_LOGGER_LEVEL 覆盖 yaml level。
+		loggercfg.ApplyFromEnv("gateway")
 		// 网关仍做依赖探活，避免将不可用流量放入下游链路。
 		if err = runtimecheck.CheckDependencies(ctx, runtimecheck.DependencyOptions{RequireRabbitMQ: false}); err != nil {
 			return err

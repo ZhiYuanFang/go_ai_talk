@@ -23,8 +23,8 @@ func (s *MipushSender) Channel() string { return PushChannelMiPush }
 func (s *MipushSender) Send(ctx context.Context, token string, payload PushPayload) (invalidToken bool, err error) {
 	cfg := loadPushConfig(ctx)
 	if !mipushConfigured(cfg) {
-		g.Log().Debug(ctx, "[push] MiPush skipped: credentials not configured")
-		return false, nil
+		g.Log().Warningf(ctx, "[push] MiPush skipped: credentials not configured")
+		return false, fmt.Errorf("credentials not configured")
 	}
 	token = strings.TrimSpace(token)
 	if token == "" {

@@ -8,6 +8,7 @@ import (
 	"hello/internal/controller"
 	device "hello/internal/services/device"
 	"hello/internal/platform/dbcfg"
+	"hello/internal/platform/loggercfg"
 	"hello/internal/platform/rediscfg"
 	"hello/internal/platform/runtimecheck"
 	_ "hello/internal/shared/runtime"
@@ -42,6 +43,8 @@ func prepareDeviceServiceRuntime() {
 	}
 	dbcfg.ApplyGroupFromEnv("device-service", "default", "DEVICE_DB_LINK", "GF_DATABASE_DEFAULT_LINK")
 	rediscfg.ApplyDefaultFromEnv("device-service")
+	// MUST 在 dbcfg/rediscfg（可能已初始化 logger）之后，用 GF_LOGGER_LEVEL 覆盖 yaml level。
+	loggercfg.ApplyFromEnv("device-service")
 }
 
 func applyDeviceServiceAddress(s interface{ SetAddr(address string) }) {
