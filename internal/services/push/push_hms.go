@@ -61,8 +61,14 @@ func (s *HmsSender) Send(ctx context.Context, token string, payload PushPayload)
 
 	// 华为：若带 add_num 则必须在 1–99；predict_imminent 等场景 badge=0，禁止写 add_num:0（会 80100003）。
 	// badge<=0：整段省略角标，仅发通知正文；badge>0：只传 set_num+class，不传 add_num。
+	// androidNotif := map[string]interface{}{
+	// 	"click_action": hmsClickAction(),
+	// }
 	androidNotif := map[string]interface{}{
 		"click_action": hmsClickAction(),
+		"priority":     "HIGH",
+		"importance":   "HIGH",
+		"channelId":    "push_default", // 和Flutter端创建的通知渠道ID保持一致！
 	}
 	if payload.Badge > 0 {
 		androidNotif["badge"] = map[string]interface{}{
