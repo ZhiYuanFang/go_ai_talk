@@ -162,6 +162,15 @@ func CashAdminPassword() string {
 	return AdminPassword()
 }
 
+// PushAdminPassword 网关注入 push-service Admin 反代用的 X-Admin-Password。
+// 优先 PUSH_ADMIN_PASSWORD；否则回退 DeviceAdminPassword（降低新 env 摩擦）。
+func PushAdminPassword() string {
+	if v := strings.TrimSpace(os.Getenv("PUSH_ADMIN_PASSWORD")); v != "" {
+		return v
+	}
+	return DeviceAdminPassword()
+}
+
 // AdminLoginEnabled Hub 登录是否可用（须配置密码）。
 func AdminLoginEnabled() bool {
 	return AdminPassword() != ""
@@ -200,6 +209,9 @@ func IsGatewayAdminAPIPath(path string) bool {
 		return true
 	}
 	if strings.HasPrefix(path, "/cash/admin/api/") {
+		return true
+	}
+	if strings.HasPrefix(path, "/push/admin/api/") {
 		return true
 	}
 	if strings.HasPrefix(path, "/device/app/api/version/admin/") {

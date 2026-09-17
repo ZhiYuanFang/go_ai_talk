@@ -120,6 +120,8 @@ services:
       SIM_ADMIN_PASSWORD: "${SIM_ADMIN_PASSWORD:-}"
       # 可选；空则注入时回退 GATEWAY_APP_ADMIN_PASSWORD（VIP 权益 Admin）
       CASH_ADMIN_PASSWORD: "${CASH_ADMIN_PASSWORD:-}"
+      # 可选；空则注入时回退 DEVICE_ADMIN_PASSWORD / GATEWAY_APP_ADMIN_PASSWORD（推送设备 Admin）
+      PUSH_ADMIN_PASSWORD: "${PUSH_ADMIN_PASSWORD:-}"
       GF_REDIS_DEFAULT_ADDRESS: "${GF_REDIS_DEFAULT_ADDRESS:-}"
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:9702/api.json > /dev/null || exit 1"]
@@ -385,6 +387,10 @@ services:
       PUSH_MIPUSH_APP_KEY: "${PUSH_MIPUSH_APP_KEY:-}"
       PUSH_MIPUSH_APP_SECRET: "${PUSH_MIPUSH_APP_SECRET:-}"
       PUSH_MIPUSH_PACKAGE_NAME: "${PUSH_MIPUSH_PACKAGE_NAME:-}"
+      # Admin 口令：优先 PUSH_ADMIN_PASSWORD，否则 DEVICE_ADMIN_PASSWORD / GATEWAY_APP_ADMIN_PASSWORD
+      PUSH_ADMIN_PASSWORD: "${PUSH_ADMIN_PASSWORD:-}"
+      DEVICE_ADMIN_PASSWORD: "${DEVICE_ADMIN_PASSWORD:-}"
+      GATEWAY_APP_ADMIN_PASSWORD: "${GATEWAY_APP_ADMIN_PASSWORD:-}"
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:9808/api.json > /dev/null || exit 1"]
       interval: 10s

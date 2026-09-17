@@ -10,7 +10,10 @@ import (
 func RegisterPushServiceHTTP(s *ghttp.Server) {
 	s.Use(ghttp.MiddlewareHandlerResponse)
 	s.Group("/", func(group *ghttp.RouterGroup) {
-		group.Bind(&pushctrl.AppPushCtrl{})
+		group.Bind(
+			&pushctrl.AppPushCtrl{},
+			&pushctrl.AdminPushCtrl{},
+		)
 		group.POST("/push/internal/api/by-biz-type", pushctrl.InternalByBizType)
 	})
 }

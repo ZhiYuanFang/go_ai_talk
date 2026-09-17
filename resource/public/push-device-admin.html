@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>推送设备</title>
+	<link rel="stylesheet" href="/resource/public/pangbao-theme.css" />
+	<link rel="stylesheet" href="/resource/public/admin-pages.css" />
+	<style>
+		.push-hint { font-size: 12px; color: #64748b; line-height: 1.55; margin: 0 0 14px; }
+		.push-pager { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 12px 0 0; font-size: 13px; }
+		.push-pager button { font-size: 12px; padding: 4px 10px; }
+		.token-cell { font-family: ui-monospace, monospace; font-size: 12px; max-width: 280px; word-break: break-all; }
+		.token-toggle { margin-left: 6px; font-size: 11px; padding: 2px 6px; }
+	</style>
+</head>
+<body>
+<div class="page">
+	<header class="admin-header glass">
+		<div class="logo">推送</div>
+		<div>
+			<h1>推送设备</h1>
+			<p>push_device 列表 · <a href="/device/admin">返回运维 Hub</a>（须先登录）</p>
+		</div>
+	</header>
+	<div class="card glass hidden" id="mainCard">
+		<p class="push-hint">
+			数据来自 push-service：<code>ai_voice_push.push_device</code>。
+			注册语义为 <strong>token 全局唯一、后来顶上</strong>（同机换号会顶掉旧账号同 token）。
+			浏览器仅携带 Admin JWT，<strong>不</strong>发送 <code>X-Admin-Password</code>。
+			Token 默认截断展示，可点「展开」查看全文。
+		</p>
+		<div class="row" style="margin-bottom:12px;">
+			<input id="wxIdFilter" type="text" inputmode="numeric" placeholder="wxId" style="width:140px;" />
+			<select id="channelFilter" style="width:120px;">
+				<option value="">全部 channel</option>
+				<option value="apns">apns</option>
+				<option value="hms">hms</option>
+				<option value="mipush">mipush</option>
+			</select>
+			<input id="tokenPrefixFilter" type="text" placeholder="token 前缀（≥4）" style="width:200px;" />
+			<button id="searchBtn" type="button" class="secondary">查询</button>
+			<button id="resetBtn" type="button" class="secondary">重置</button>
+			<button id="refreshBtn" type="button" class="secondary">刷新</button>
+		</div>
+		<div class="table-wrap">
+			<table>
+				<thead>
+					<tr>
+						<th>id</th>
+						<th>wxId</th>
+						<th>channel</th>
+						<th>deviceKey</th>
+						<th>token</th>
+						<th>updatedAt</th>
+						<th>操作</th>
+					</tr>
+				</thead>
+				<tbody id="tbody"></tbody>
+			</table>
+		</div>
+		<div class="push-pager">
+			<button id="prevBtn" type="button" class="secondary">上一页</button>
+			<span id="pageMeta" class="msg" style="color:#64748b;">—</span>
+			<button id="nextBtn" type="button" class="secondary">下一页</button>
+		</div>
+		<div id="msg" class="msg"></div>
+	</div>
+</div>
+<script src="/resource/public/admin-common.js"></script>
+<script>
+function api(path, options) { return AdminCommon.adminFetch(path, options); }
+function showMsg(el, text, ok) {
+	if (!el) return;
+	el.textContent = text || '';
+	el.style.color = ok ? '#16a34a' : '#dc2626';
+}
+function escapeHtml(s) {
+	return String(s == null ? '' : s)
+		.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+		.replace(/"/g, '&quot;');
+}
+function fmtTs(sec) {
+	var n = Number(sec);
+	if (!n || n <= 0) return '—';
+	return new Date(n * 1000).toLocaleString();
+}
+function truncateToken(t) {
+	t = String(t || '');
+	if (t.length <= 16) return t;
+	return t.slice(0, 8) + '…' + t.slice(-6);
+}
+
+var page = 1;
+var pageSize = 20;
+var total = 0;
+var wxIdFilter = '';
+var channelFilter = '';
+var tokenPrefixFilter = '';
+var expandedTokens = {};
+
+async function loadList() {
+	var path = '/push/admin/api/devices?page=' + page + '&pageSize=' + pageSize;
+	if (wxIdFilter) path += '&wxId=' + encodeURIComponent(wxIdFilter);
+	if (channelFilter) path += '&channel=' + encodeURIComponent(channelFilter);
+	if (tokenPrefixFilter) path += '&tokenPrefix=' + encodeURIComponent(tokenPrefixFilter);
+	var data = await api(path);
+	var list = (data && data.list) || [];
+	total = (data && typeof data.total === 'number') ? data.total : list.length;
+	page = (data && data.page) || page;
+	pageSize = (data && data.pageSize) || pageSize;
+	var tbody = document.getElementById('tbody');
+	tbody.innerHTML = '';
+	list.forEach(function(it) {
+		var id = it.id;
+		var full = String(it.token || '');
+		var showFull = !!expandedTokens[id];
+		var tr = document.createElement('tr');
+		tr.innerHTML =
+			'<td>' + escapeHtml(id) + '</td>' +
+			'<td>' + escapeHtml(it.wxId) + '</td>' +
+			'<td>' + escapeHtml(it.channel) + '</td>' +
+			'<td>' + escapeHtml(it.deviceKey) + '</td>' +
+			'<td class="token-cell">' +
+				'<span data-role="token-text">' + escapeHtml(showFull ? full : truncateToken(full)) + '</span>' +
+				(full.length > 16
+					? '<button type="button" class="secondary token-toggle" data-role="token-toggle" data-id="' + id + '">' +
+						(showFull ? '收起' : '展开') + '</button>'
+					: '') +
+			'</td>' +
+			'<td>' + escapeHtml(fmtTs(it.updatedAt)) + '</td>' +
+			'<td><button type="button" class="secondary" data-role="del" data-id="' + id + '">删除</button></td>';
+		tr.dataset.token = full;
+		tbody.appendChild(tr);
+	});
+	var pages = Math.max(1, Math.ceil(total / pageSize) || 1);
+	document.getElementById('pageMeta').textContent = '第 ' + page + ' / ' + pages + ' 页 · 共 ' + total + ' 条';
+	document.getElementById('prevBtn').disabled = page <= 1;
+	document.getElementById('nextBtn').disabled = page >= pages;
+	showMsg(document.getElementById('msg'), '', true);
+}
+
+document.getElementById('tbody').addEventListener('click', async function(ev) {
+	var btn = ev.target.closest('button');
+	if (!btn) return;
+	var id = btn.getAttribute('data-id');
+	if (btn.getAttribute('data-role') === 'token-toggle') {
+		expandedTokens[id] = !expandedTokens[id];
+		await loadList();
+		return;
+	}
+	if (btn.getAttribute('data-role') === 'del') {
+		if (!confirm('确认删除 push_device id=' + id + '？该账号将无法再收到该设备推送，直至重新 register。')) return;
+		try {
+			await api('/push/admin/api/devices/' + encodeURIComponent(id), { method: 'DELETE' });
+			showMsg(document.getElementById('msg'), '已删除 id=' + id, true);
+			await loadList();
+		} catch (e) {
+			showMsg(document.getElementById('msg'), (e && e.message) || String(e), false);
+		}
+	}
+});
+
+document.getElementById('searchBtn').onclick = async function() {
+	wxIdFilter = String(document.getElementById('wxIdFilter').value || '').trim();
+	channelFilter = String(document.getElementById('channelFilter').value || '').trim();
+	tokenPrefixFilter = String(document.getElementById('tokenPrefixFilter').value || '').trim();
+	page = 1;
+	try { await loadList(); } catch (e) { showMsg(document.getElementById('msg'), (e && e.message) || String(e), false); }
+};
+document.getElementById('resetBtn').onclick = async function() {
+	document.getElementById('wxIdFilter').value = '';
+	document.getElementById('channelFilter').value = '';
+	document.getElementById('tokenPrefixFilter').value = '';
+	wxIdFilter = '';
+	channelFilter = '';
+	tokenPrefixFilter = '';
+	page = 1;
+	try { await loadList(); } catch (e) { showMsg(document.getElementById('msg'), (e && e.message) || String(e), false); }
+};
+document.getElementById('refreshBtn').onclick = async function() {
+	try { await loadList(); } catch (e) { showMsg(document.getElementById('msg'), (e && e.message) || String(e), false); }
+};
+document.getElementById('prevBtn').onclick = async function() {
+	if (page > 1) { page--; try { await loadList(); } catch (e) { showMsg(document.getElementById('msg'), (e && e.message) || String(e), false); } }
+};
+document.getElementById('nextBtn').onclick = async function() {
+	page++;
+	try { await loadList(); } catch (e) { showMsg(document.getElementById('msg'), (e && e.message) || String(e), false); page--; }
+};
+
+if (AdminCommon.requireAdmin()) {
+	document.getElementById('mainCard').classList.remove('hidden');
+	loadList().catch(function(e) {
+		showMsg(document.getElementById('msg'), (e && e.message) || String(e), false);
+	});
+}
+</script>
+</body>
+</html>

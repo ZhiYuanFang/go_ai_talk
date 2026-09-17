@@ -27,6 +27,13 @@ func validatePushChannel(channel string) error {
 }
 
 // RegisterPushDevice upsert 登录用户推送 token（权威表 ai_voice_push.push_device）。
+//
+// 业务逻辑（一部手机一个 token / 后来顶上）：
+//  1. 删除库中所有相同 token 的行（含其它 wx），保证全局唯一；
+//  2. 再按 (wx_id, device_key, channel) upsert 当前账号记录。
+// 同用户多机：token 不同则互不影响，可并存多行。
+//
+// Side Effects: 可能删除他号同 token 行；写/更新本账号行。
 func RegisterPushDevice(ctx context.Context, wxID int64, channel, token, deviceKey string) error {
 	if wxID <= 0 {
 		return gerror.NewCode(gcode.CodeInvalidParameter, "wxId 无效")
@@ -44,6 +51,12 @@ func RegisterPushDevice(ctx context.Context, wxID int64, channel, token, deviceK
 		return gerror.NewCode(gcode.CodeInvalidParameter, "deviceKey 无效")
 	}
 	now := time.Now().Unix()
+
+	// 先清同 token（跨 wx / 跨 channel / 跨 device_key），实现后来顶上。
+	if _, err := g.DB().Model(pushDeviceTable).Ctx(ctx).Where("token", token).Delete(); err != nil {
+		return gerror.WrapCode(gcode.CodeDbOperationError, err, "清理冲突 token 失败")
+	}
+
 	// GoFrame：OnDuplicate 仅对 Save 生效；Insert 会忽略并变成纯 INSERT，撞 uk 即 1062。
 	_, err := g.DB().Model(pushDeviceTable).Ctx(ctx).Data(g.Map{
 		"wx_id":      wxID,
@@ -55,7 +68,11 @@ func RegisterPushDevice(ctx context.Context, wxID int64, channel, token, deviceK
 		"token":      token,
 		"updated_at": now,
 	}).Save()
-	return err
+	if err != nil {
+		// 并发双注册可能撞 uk_token；可观测后由客户端重试。
+		return gerror.WrapCode(gcode.CodeDbOperationError, err, "写入推送 token 失败（可能与并发注册冲突，请重试）")
+	}
+	return nil
 }
 
 // UnregisterPushDevice 按 wxId+deviceKey 删除（可选 channel）。
@@ -79,7 +96,7 @@ func UnregisterPushDevice(ctx context.Context, wxID int64, deviceKey, channel st
 	return err
 }
 
-// DeletePushDeviceByID 厂商判定 token 失效后删除。
+// DeletePushDeviceByID 厂商判定 token 失效或运维手动删除后移除行。
 func DeletePushDeviceByID(ctx context.Context, id uint64) error {
 	if id == 0 {
 		return nil
@@ -94,6 +111,7 @@ type entityPushDevice struct {
 	Channel   string
 	Token     string
 	DeviceKey string
+	UpdatedAt int64
 }
 
 // ListPushDevicesForWx 列出某用户全部已注册设备。
@@ -113,6 +131,7 @@ func ListPushDevicesForWx(ctx context.Context, wxID int64) ([]entityPushDevice, 
 			Channel:   row["channel"].String(),
 			Token:     row["token"].String(),
 			DeviceKey: row["device_key"].String(),
+			UpdatedAt: row["updated_at"].Int64(),
 		})
 	}
 	return out, nil

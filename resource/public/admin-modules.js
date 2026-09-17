@@ -49,6 +49,12 @@ window.ADMIN_MODULES = [
 		showInNav: true
 	},
 	{
+		id: 'push-device-admin',
+		title: '推送设备',
+		pagePath: '/device/admin/push-device-admin.html',
+		showInNav: true
+	},
+	{
 		id: 'app-status-admin',
 		title: 'App 维护通知',
 		externalUrl: 'https://notify.cuplay.top/admin',

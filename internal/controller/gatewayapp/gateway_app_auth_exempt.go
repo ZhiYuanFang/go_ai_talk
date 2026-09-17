@@ -72,6 +72,7 @@ var (
 		"/device/admin/cash-vip-admin.html",
 		"/device/admin/cash-feature-admin.html",
 		"/device/admin/cash-feeding-eligibility-admin.html",
+		"/device/admin/push-device-admin.html",
 		"/user-agreement.html",
 		"/privacy-policy.html",
 		"/favicon.ico",

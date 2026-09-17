@@ -22,6 +22,9 @@ func ShouldSkipRecord(r *ghttp.Request) bool {
 	if strings.HasPrefix(path, "/device/admin/api/") {
 		return true
 	}
+	if strings.HasPrefix(path, "/push/admin/api/") {
+		return true
+	}
 	if isStaticOrShellPath(path) {
 		return true
 	}
@@ -50,6 +53,8 @@ func isStaticOrShellPath(path string) bool {
 		"/device/admin/ucg-admin.html",
 		"/device/admin/voice-admin.html",
 		"/device/admin/sim-admin.html",
+		"/device/admin/cash-feature-admin.html",
+		"/device/admin/push-device-admin.html",
 		"/device/admin/api-usage-stats",
 		"/device/app/version-admin.html",
 		"/user-agreement.html",

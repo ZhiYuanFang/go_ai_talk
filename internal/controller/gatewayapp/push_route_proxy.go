@@ -34,6 +34,8 @@ func installPushProxyMiddleware(s *ghttp.Server) {
 	}
 	// 全局推送注册/注销；宿主 push-service。
 	s.BindMiddleware("/app/api/push/*", serve)
+	// 运维推送设备 Admin API；宿主 push-service。
+	s.BindMiddleware("/push/admin/api/*", serve)
 }
 
 func pushProxyFromEnv() (domainRouteProxyConfig, *httputil.ReverseProxy) {
