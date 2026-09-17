@@ -44,6 +44,7 @@ func RegisterPushDevice(ctx context.Context, wxID int64, channel, token, deviceK
 		return gerror.NewCode(gcode.CodeInvalidParameter, "deviceKey 无效")
 	}
 	now := time.Now().Unix()
+	// GoFrame：OnDuplicate 仅对 Save 生效；Insert 会忽略并变成纯 INSERT，撞 uk 即 1062。
 	_, err := g.DB().Model(pushDeviceTable).Ctx(ctx).Data(g.Map{
 		"wx_id":      wxID,
 		"channel":    channel,
@@ -53,7 +54,7 @@ func RegisterPushDevice(ctx context.Context, wxID int64, channel, token, deviceK
 	}).OnDuplicate(g.Map{
 		"token":      token,
 		"updated_at": now,
-	}).Insert()
+	}).Save()
 	return err
 }
 

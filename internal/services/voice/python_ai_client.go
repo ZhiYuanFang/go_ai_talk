@@ -493,6 +493,118 @@ func (c *PythonAIClient) CareAlertAnalyze(ctx context.Context, req *CareAlertAna
 	return &result, nil
 }
 
+// CareAlertAnalyzeStreamCallback 解析 Python care-alert SSE data JSON（type 字段）后的回调。
+type CareAlertAnalyzeStreamCallback struct {
+	OnThinking func(dataJSON string) error
+	OnResult   func(dataJSON string) error
+	OnError    func(dataJSON string) error
+	OnDone     func(dataJSON string) error
+}
+
+// CareAlertAnalyzeStream 调用 Python 护理留意分析 SSE；解析 data: {json}（type=thinking/result/error/done）。
+func (c *PythonAIClient) CareAlertAnalyzeStream(ctx context.Context, req *CareAlertAnalyzeRequest, cb *CareAlertAnalyzeStreamCallback) error {
+	body, err := json.Marshal(req)
+	if err != nil {
+		return fmt.Errorf("序列化护理留意流式分析请求失败: %w", err)
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/care-alert/analyze/stream", strings.NewReader(string(body)))
+	if err != nil {
+		return fmt.Errorf("创建护理留意流式分析请求失败: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Accept", "text/event-stream")
+
+	client := &http.Client{Timeout: 100 * time.Second}
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("调用 Python 护理留意流式分析失败: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+		return fmt.Errorf("Python 护理留意流式分析返回 %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	scanner := bufio.NewScanner(resp.Body)
+	scanBuf := make([]byte, 0, 64*1024)
+	scanner.Buffer(scanBuf, 2*1024*1024)
+
+	var eventName string
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" {
+			eventName = ""
+			continue
+		}
+		if strings.HasPrefix(line, "event:") {
+			eventName = strings.TrimSpace(strings.TrimPrefix(line, "event:"))
+			continue
+		}
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if data == "[DONE]" {
+			break
+		}
+		if cb == nil {
+			continue
+		}
+		var cbErr error
+		switch eventName {
+		case "thinking":
+			if cb.OnThinking != nil {
+				cbErr = cb.OnThinking(data)
+			}
+		case "result":
+			if cb.OnResult != nil {
+				cbErr = cb.OnResult(data)
+			}
+		case "error":
+			if cb.OnError != nil {
+				cbErr = cb.OnError(data)
+			}
+		case "done":
+			if cb.OnDone != nil {
+				cbErr = cb.OnDone(data)
+			}
+		default:
+			// Python care-alert 主路径：无 event 行，data JSON 内含 type。
+			var typed struct {
+				Type string `json:"type"`
+			}
+			if json.Unmarshal([]byte(data), &typed) == nil {
+				switch typed.Type {
+				case "thinking":
+					if cb.OnThinking != nil {
+						cbErr = cb.OnThinking(data)
+					}
+				case "result":
+					if cb.OnResult != nil {
+						cbErr = cb.OnResult(data)
+					}
+				case "error":
+					if cb.OnError != nil {
+						cbErr = cb.OnError(data)
+					}
+				case "done":
+					if cb.OnDone != nil {
+						cbErr = cb.OnDone(data)
+					}
+				}
+			}
+		}
+		if cbErr != nil {
+			return cbErr
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("读取 Python 护理留意 SSE 失败: %w", err)
+	}
+	glog.Debugf(ctx, "[Python AI] 护理留意流式分析完成。deviceNo=%s day=%s", req.DeviceNo, req.Day)
+	return nil
+}
+
 // CareAlertFeedback 转发固定意图飞轮至 Python（/v1/care-alert/feedback；无 NLP，Python 侧 ACK）。
 func (c *PythonAIClient) CareAlertFeedback(ctx context.Context, req *CareAlertFeedbackRequest) error {
 	body, err := json.Marshal(req)

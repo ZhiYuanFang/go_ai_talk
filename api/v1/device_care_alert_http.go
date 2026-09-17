@@ -45,6 +45,15 @@ type DeviceCareAlertDailyRes struct {
 	DailyLimit int                `json:"dailyLimit" dc:"今日上限"`
 }
 
+// DeviceCareAlertDailyStreamReq GET force generate with SSE thinking
+type DeviceCareAlertDailyStreamReq struct {
+	g.Meta   `path:"/device/api/care-alert/daily/stream" method:"get" tags:"device" summary:"护理留意强制生成（SSE thinking）"`
+	DeviceNo string `json:"deviceNo" p:"deviceNo" v:"required#deviceNo不能为空" dc:"宝宝设备号"`
+}
+
+// DeviceCareAlertDailyStreamRes SSE 无固定 JSON；占位以满足 GoFrame 绑定。
+type DeviceCareAlertDailyStreamRes struct{}
+
 // DeviceCareAlertDailyItemDeleteReq 从 latest 删除单条 suggestionId。
 // Query 与 Flutter ApiClient.deleteEnvelope 对齐；亦接受 JSON body。
 type DeviceCareAlertDailyItemDeleteReq struct {

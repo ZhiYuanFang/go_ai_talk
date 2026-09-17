@@ -1,11 +1,12 @@
 package voicectrl
 
 import (
-	"hello/internal/platform/httpmeta"
 	"context"
+	"net/http"
 	"strings"
 
 	v1 "hello/api/v1"
+	"hello/internal/platform/httpmeta"
 	"hello/internal/services/voice"
 
 	"github.com/gogf/gf/v2/errors/gcode"
@@ -52,6 +53,69 @@ func (c *DeviceCareAlertController) Daily(ctx context.Context, req *v1.DeviceCar
 func careAlertForceTruthy(raw string) bool {
 	s := strings.TrimSpace(strings.ToLower(raw))
 	return s == "1" || s == "true" || s == "yes"
+}
+
+// DailyStream GET /device/api/care-alert/daily/stream — 强制生成 SSE；预检失败返回普通 envelope。
+func (c *DeviceCareAlertController) DailyStream(ctx context.Context, req *v1.DeviceCareAlertDailyStreamReq) (res *v1.DeviceCareAlertDailyStreamRes, err error) {
+	wxID, err := careAlertRequireWxID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	r := ghttp.RequestFromCtx(ctx)
+	if r == nil {
+		return nil, gerror.NewCode(gcode.CodeInternalError, "HTTP 请求上下文缺失")
+	}
+	deviceNo := strings.TrimSpace(req.DeviceNo)
+	if deviceNo == "" {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "deviceNo 不能为空")
+	}
+
+	var startedSSE bool
+	var sseWriter http.ResponseWriter
+	startSSE := func() http.ResponseWriter {
+		if startedSSE {
+			return sseWriter
+		}
+		startedSSE = true
+		sseWriter = r.Response.Writer
+		sseWriter.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+		sseWriter.Header().Set("Cache-Control", "no-cache, no-transform")
+		sseWriter.Header().Set("Connection", "keep-alive")
+		sseWriter.Header().Set("X-Accel-Buffering", "no")
+		sseWriter.WriteHeader(http.StatusOK)
+		if flusher, ok := sseWriter.(http.Flusher); ok {
+			flusher.Flush()
+		}
+		return sseWriter
+	}
+
+	streamErr := voice.CareAlertDailyStream(ctx, deviceNo, wxID, &voice.CareAlertDailyStreamCallback{
+		OnThinking: func(dataJSON string) error {
+			return writeGrowthTrajectorySSEEvent(startSSE(), "thinking", dataJSON)
+		},
+		OnResult: func(dataJSON string) error {
+			return writeGrowthTrajectorySSEEvent(startSSE(), "result", dataJSON)
+		},
+		OnError: func(dataJSON string) error {
+			return writeGrowthTrajectorySSEEvent(startSSE(), "error", dataJSON)
+		},
+	})
+
+	// 预检失败：尚未写 SSE 头 → 普通 JSON envelope。
+	if streamErr != nil && !startedSSE {
+		return nil, streamErr
+	}
+
+	var rw http.ResponseWriter = startSSE()
+	if streamErr != nil {
+		_ = writeGrowthTrajectorySSEEvent(rw, "error", `{"code":"CARE_ALERT_STREAM","message":"护理留意分析暂时不可用，请稍后再试"}`)
+	}
+	_, _ = rw.Write([]byte("data: [DONE]\n\n"))
+	if flusher, ok := rw.(http.Flusher); ok {
+		flusher.Flush()
+	}
+	r.ExitAll()
+	return nil, nil
 }
 
 // DailyItemDelete DELETE /device/api/care-alert/daily/item — 仅删当日缓存中该 suggestionId。

@@ -123,6 +123,145 @@ func CareAlertDaily(ctx context.Context, deviceNo string, wxID int64, force bool
 	return day, items, usedToday, dailyLimit, err
 }
 
+// CareAlertDailyStreamCallback 向 SSE 控制器转发 thinking / 终态 result / error。
+type CareAlertDailyStreamCallback struct {
+	OnThinking func(dataJSON string) error
+	OnResult   func(dataJSON string) error // final client-facing result with items+usage
+	OnError    func(dataJSON string) error
+}
+
+// CareAlertDailyStream 护理留意强制生成 SSE：预检通过后调 Python 流式分析；result 落库后回写用量。
+// 预检失败（开通/日限等）返回普通 error，供控制器在开 SSE 头前走 JSON envelope。
+func CareAlertDailyStream(ctx context.Context, deviceNo string, wxID int64, cb *CareAlertDailyStreamCallback) error {
+	deviceNo = strings.TrimSpace(deviceNo)
+	if deviceNo == "" {
+		return gerror.NewCode(gcode.CodeInvalidParameter, "deviceNo 不能为空")
+	}
+	if wxID <= 0 {
+		return gerror.NewCode(gcode.CodeInvalidParameter, "缺少 X-Internal-Wx-Id")
+	}
+	// 与 CareAlertDaily force 路径相同的门禁。
+	if err := requireCareAlertAccess(ctx, deviceNo, wxID); err != nil {
+		return err
+	}
+	if err := EnsureVoiceAIQuotaSchema(ctx); err != nil {
+		return err
+	}
+	if err := DeviceAdmin().EnsureRegistered(ctx, deviceNo); err != nil {
+		return err
+	}
+	if err := checkCareAlertDailyLimit(ctx, wxID); err != nil {
+		return err
+	}
+
+	day := shanghaiDayString(time.Now())
+	lockKey, err := cachekit.CareAlertDailyLockKey(wxID, deviceNo)
+	if err != nil {
+		return err
+	}
+	got, lockErr := careAlertCache.SetNXEX(ctx, lockKey, "1", careAlertLockTTL)
+	if lockErr != nil {
+		glog.Warningf(ctx, "[CareAlert] SSE 加锁失败，退化为本进程生成 day=%s err=%v", day, lockErr)
+		got = true
+	}
+	if !got {
+		return gerror.NewCode(gcode.CodeInvalidOperation, "护理留意生成进行中，请稍候")
+	}
+	defer func() { _ = careAlertCache.Del(context.Background(), lockKey) }()
+
+	genCtx, cancel := context.WithTimeout(ctx, careAlertAnalyzeTimeout)
+	defer cancel()
+
+	ent, runtime, modelCfg, _ := ResolveLaneModel(genCtx, wxID, aimodel.LaneCareAlert, contracts.AIQuotaCareAlert, PrivilegeAccount)
+	if modelCfg != nil {
+		rel, acqErr := aimodel.Acquire(genCtx, runtime)
+		if acqErr != nil {
+			return gerror.WrapCode(gcode.CodeInternalError, acqErr, "护理留意队列繁忙")
+		}
+		defer rel()
+	}
+	ageMonths := careAlertAgeMonths(genCtx, deviceNo)
+
+	pythonClient := PythonAIClientFromCfg()
+	streamErr := pythonClient.CareAlertAnalyzeStream(genCtx, &CareAlertAnalyzeRequest{
+		DeviceNo:       deviceNo,
+		Day:            day,
+		Model:          modelCfg,
+		AgeMonths:      ageMonths,
+		HistorySummary: map[string]interface{}{},
+		KgContext:      map[string]interface{}{},
+	}, &CareAlertAnalyzeStreamCallback{
+		OnThinking: func(dataJSON string) error {
+			if cb != nil && cb.OnThinking != nil {
+				return cb.OnThinking(dataJSON)
+			}
+			return nil
+		},
+		OnResult: func(dataJSON string) error {
+			// 解析 Python result（type=result + items），落库并计次后回写客户端终态。
+			var payload struct {
+				Type  string                 `json:"type"`
+				Day   string                 `json:"day"`
+				Items []CareAlertAnalyzeItem `json:"items"`
+			}
+			if err := json.Unmarshal([]byte(dataJSON), &payload); err != nil {
+				return gerror.WrapCode(gcode.CodeInternalError, err, "护理留意流式结果解析失败")
+			}
+			resultDay := strings.TrimSpace(payload.Day)
+			if resultDay == "" {
+				resultDay = day
+			}
+			items := normalizeCareAlertItems(payload.Items)
+			if err := upsertCareAlertLatest(ctx, wxID, deviceNo, resultDay, items); err != nil {
+				return gerror.WrapCode(gcode.CodeInternalError, err, "护理留意结果保存失败")
+			}
+			if iErr := incrCareAlertDailyUsage(ctx, wxID); iErr != nil {
+				glog.Warningf(ctx, "[CareAlert] SSE 日限 INCR 失败 wxId=%d err=%v", wxID, iErr)
+			}
+			if cErr := cash.RemoteClaimFeatureTrial(ctx, wxID, "care_alert_smart_remind"); cErr != nil {
+				glog.Warningf(ctx, "[CareAlert] SSE claim trial 失败 wxId=%d err=%v", wxID, cErr)
+			}
+			ConsumeVoiceFeatureIfNeeded(ctx, wxID, contracts.AIQuotaCareAlert, ent)
+			usedToday, dailyLimit := careAlertUsageSnapshot(ctx, wxID)
+			if items == nil {
+				items = []v1.CareAlertItemDTO{}
+			}
+			out, mErr := json.Marshal(map[string]interface{}{
+				"type":       "result",
+				"day":        resultDay,
+				"items":      items,
+				"usedToday":  usedToday,
+				"dailyLimit": dailyLimit,
+			})
+			if mErr != nil {
+				return gerror.WrapCode(gcode.CodeInternalError, mErr, "护理留意流式结果序列化失败")
+			}
+			modelName := ""
+			modelProvider := ""
+			if modelCfg != nil {
+				modelName = modelCfg.Name
+				modelProvider = modelCfg.Provider
+			}
+			glog.Infof(ctx, "[CareAlert] SSE generated day=%s count=%d provider=%s model=%s wxId=%d premium=%v vip=%v",
+				resultDay, len(items), modelProvider, modelName, wxID, ent.Premium, ent.VIP)
+			if cb != nil && cb.OnResult != nil {
+				return cb.OnResult(string(out))
+			}
+			return nil
+		},
+		OnError: func(dataJSON string) error {
+			if cb != nil && cb.OnError != nil {
+				return cb.OnError(dataJSON)
+			}
+			return nil
+		},
+	})
+	if streamErr != nil {
+		return gerror.WrapCode(gcode.CodeInternalError, streamErr, "护理留意分析暂时不可用，请稍后再试")
+	}
+	return nil
+}
+
 // CareAlertDeleteItem 从该用户该宝宝 latest 移除 suggestionId；无记录时返回空列表。
 func CareAlertDeleteItem(ctx context.Context, deviceNo, suggestionID string, wxID int64) (day string, items []v1.CareAlertItemDTO, err error) {
 	deviceNo = strings.TrimSpace(deviceNo)
