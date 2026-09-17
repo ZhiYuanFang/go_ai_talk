@@ -4,7 +4,7 @@
 	<meta charset="UTF-8" />
 	<meta name="viewport" content="width=device-width, initial-scale=1" />
 	<title>胖宝 - 用户服务协议</title>
-	<meta name="description" content="胖宝用户服务协议" />
+	<meta name="description" content="胖宝用户服务协议 - 杭州彩逗科技有限公司" />
 	<style>
 		:root{
 			--bg-1:#fdf2f8;
@@ -30,7 +30,7 @@
 				linear-gradient(135deg, var(--bg-1), var(--bg-2) 48%, var(--bg-3));
 			min-height:100vh;
 		}
-		a{color:inherit;text-decoration:none}
+		a{color:inherit;text-decoration:underline;text-underline-offset:3px}
 		.page{width:min(980px, calc(100% - 32px));margin:0 auto;padding:24px 0 56px}
 		.glass{
 			background:var(--glass);
@@ -41,19 +41,22 @@
 		}
 		nav{display:flex;justify-content:flex-start;align-items:center;padding:16px 20px;border-radius:24px;position:sticky;top:16px;z-index:20;margin-bottom:20px}
 		.brand{display:flex;align-items:center;gap:14px}
+		.brand a{text-decoration:none}
 		.logo{width:44px;height:44px;border-radius:14px;background:linear-gradient(135deg, rgba(236,72,153,.95), rgba(56,189,248,.95));color:#fff;font-weight:800;display:grid;place-items:center;letter-spacing:1px}
 		.brand strong{display:block;font-size:18px}
 		.brand span{color:var(--muted);font-size:13px}
 		.card{border-radius:32px;padding:28px}
 		h1{font-size:clamp(28px, 4vw, 42px);margin:0 0 10px}
 		.kicker{display:inline-flex;gap:8px;align-items:center;padding:8px 14px;border-radius:999px;background:rgba(255,255,255,.55);font-size:13px;font-weight:700;color:#db2777;margin-bottom:16px}
-		.meta{margin:0 0 24px;color:var(--muted)}
+		.meta{margin:0 0 12px;color:var(--muted)}
+		.operator{margin:0 0 24px;padding:14px 16px;border-radius:18px;background:rgba(255,255,255,.45);border:1px solid rgba(255,255,255,.55);line-height:1.75;color:#374151;font-size:14px}
+		.operator .en{display:block;color:var(--muted);font-size:12px;margin-top:4px}
 		h2{margin:24px 0 10px;font-size:22px}
 		p,li{line-height:1.85;color:#374151}
 		ul{margin:0;padding-left:20px}
 		.section{padding:16px 0;border-top:1px dashed rgba(255,255,255,.55)}
 		.section:first-of-type{border-top:none;padding-top:0}
-		.foot{margin-top:20px;padding:18px 22px;border-radius:24px;color:var(--muted)}
+		.foot{margin-top:20px;padding:18px 22px;border-radius:24px;color:var(--muted);line-height:1.75}
 		@media (max-width:600px){
 			.page{width:min(100% - 20px, 980px)}
 			nav,.card,.foot{padding:20px}
@@ -63,30 +66,37 @@
 <body>
 	<div class="page">
 		<nav class="glass">
-			<div class="brand">
+			<a class="brand" href="/">
 				<div class="logo">胖宝</div>
 				<div>
 					<strong>胖宝</strong>
 					<span>用户服务协议</span>
 				</div>
-			</div>
+			</a>
 		</nav>
 
 		<main class="card glass">
+			<div class="kicker">服务条款</div>
 			<h1>胖宝用户服务协议</h1>
-			<p class="meta">生效日期：2026-06-08</p>
+			<p class="meta">生效日期：2026-06-08 · 修订日期：2026-09-17</p>
+			<div class="operator">
+				<strong>缔约与运营主体：</strong>杭州彩逗科技有限公司
+				<span class="en">Hangzhou Caidou Technology Co., Ltd.</span>
+				「胖宝」为本公司运营的应用程序。注册地址以市场主体公示为准。<br />
+				客服邮箱：<a href="mailto:tou_zy@foxmail.com">tou_zy@foxmail.com</a>
+			</div>
 
 			<section class="section">
 				<h2>1. 服务内容</h2>
-				<p>本 App 提供母婴成长记录服务，包括但不限于语音/文本驱动的事件记录（如喂奶、睡觉、换尿布等）、数据统计分析及可视化展示；并提供 UGC 社区模块，支持发帖、评论、点赞、关注、私信等互动功能。</p>
+				<p>本 App 由杭州彩逗科技有限公司向您提供母婴成长记录与相关智能服务，包括但不限于：语音/文本驱动的事件记录（如喂奶、睡觉、换尿布等）、数据统计分析与可视化、智能预测与提醒、胖宝诊疗等 AI 参考能力、UGC 社区（发帖、评论、点赞、关注、私信等），以及 VIP 或功能开通等可选商业化服务（以 App 内实际上线功能为准）。</p>
 			</section>
 
 			<section class="section">
 				<h2>2. 账号注册与安全</h2>
 				<ul>
-					<li>本 App 采用微信一键登录。用户授权后，我们将获取您的微信公开信息（昵称、头像、OpenID/UnionID）用于建立账户。</li>
+					<li>本 App 支持微信一键登录。用户授权后，我们将获取您的微信公开信息（昵称、头像、OpenID/UnionID）用于建立账户。</li>
 					<li>在 iOS 端，您亦可选用「通过 Apple 登录」建立账户；我们仅使用 Apple 提供的匿名用户标识符识别您的账户，不存储 Apple 邮箱或姓名。</li>
-					<li>用户需妥善保管微信账号安全，因微信账号丢失导致的本 App 数据损失由用户自行承担。</li>
+					<li>用户需妥善保管登录账号安全，因账号丢失或授权设备被他人使用导致的数据损失，由用户自行承担相应责任（法律法规另有规定的除外）。</li>
 				</ul>
 			</section>
 
@@ -110,16 +120,37 @@
 			</section>
 
 			<section class="section">
-				<h2>5. 知识产权</h2>
+				<h2>5. 付费与会员</h2>
 				<ul>
-					<li>App 的 UI 设计、LOGO（启动图标）、算法技术归“胖宝”团队所有。</li>
-					<li>用户记录的宝宝数据归用户所有。</li>
+					<li>部分功能可能需要付费开通、会员订阅或以邀请码等方式获得使用权益，具体以 App 内展示及支付确认页为准。</li>
+					<li>支付由相应应用商店或支付渠道完成；退款、撤销等事宜遵循适用法律法规及该渠道的规则与流程。</li>
+					<li>因您自身原因（如误购、不想继续使用等）提出的退款请求，我们将在法律与平台规则允许的范围内协助处理，但不保证必然获批。</li>
 				</ul>
+			</section>
+
+			<section class="section">
+				<h2>6. AI 服务免责</h2>
+				<p>App 内 AI 对话、胖宝诊疗、智能提醒、润笔等生成或分析结果<strong>仅供参考</strong>，不能替代执业医师或其他专业人士的诊断、治疗或建议。如有健康疑虑，请及时就医。您应自行判断是否采纳相关内容，并对其使用结果负责。</p>
+			</section>
+
+			<section class="section">
+				<h2>7. 知识产权</h2>
+				<ul>
+					<li>App 的 UI 设计、LOGO（启动图标）、软件代码、算法与文档等知识产权归<strong>杭州彩逗科技有限公司</strong>所有（或本公司享有相应权利）。</li>
+					<li>用户记录的宝宝数据归用户所有。</li>
+					<li>您在社区发布的内容，您保留依法享有的权利；同时授予本公司为运营服务所必需的、非独占的使用许可（如存储、展示、分发至其他用户设备）。</li>
+				</ul>
+			</section>
+
+			<section class="section">
+				<h2>8. 其他</h2>
+				<p>本协议的解释与适用以中华人民共和国法律为准（不含冲突法）。与本服务相关的个人信息处理详见《隐私政策》。如您对本协议有疑问，请联系 <a href="mailto:tou_zy@foxmail.com">tou_zy@foxmail.com</a>。</p>
 			</section>
 		</main>
 
 		<footer class="foot glass">
 			<p>如您继续使用胖宝 App，即表示您已阅读并同意本协议内容。</p>
+			<p>© 2026 杭州彩逗科技有限公司 · <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener">浙ICP备2024101366号</a></p>
 		</footer>
 	</div>
 </body>

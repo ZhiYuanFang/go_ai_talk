@@ -105,7 +105,11 @@
 		.capability-card h3{margin:0;font-size:20px}
 		.capability-card ul{margin:0;padding-left:18px;color:var(--muted);line-height:1.75;font-size:14px}
 		.ai-disclaimer{margin:16px 0 0;font-size:12px;color:var(--muted);line-height:1.6}
-		.foot{display:flex;justify-content:space-between;gap:16px;align-items:center;padding:18px 22px;border-radius:24px;margin-top:22px}
+		.foot{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;padding:18px 22px;border-radius:24px;margin-top:22px}
+		.foot-company{font-size:14px;line-height:1.7;color:#374151;margin:0 0 6px}
+		.foot-company .en{display:block;font-size:12px;color:var(--muted);margin-top:2px}
+		.foot-meta{margin:0;font-size:13px;color:var(--muted);line-height:1.75}
+		.foot-meta a{text-decoration:underline;text-underline-offset:3px}
 		.foot-links{margin-top:8px;font-size:13px}
 		.foot-links a{text-decoration:underline;text-underline-offset:3px}
 		.loading{opacity:.7}
@@ -129,7 +133,7 @@
 				<div class="logo">胖宝</div>
 				<div>
 					<strong>胖宝</strong>
-					<span>0–18 月新手妈妈的数字陪伴</span>
+					<span>杭州彩逗科技有限公司出品</span>
 				</div>
 			</div>
 			<div class="nav-actions">
@@ -167,7 +171,7 @@
 			<div class="hero-side glass">
 				<div class="bubble">
 					<h3>品牌定位</h3>
-					<p id="serviceSummary">胖宝面向 0–18 月新手妈妈：智能喂养记录、同月龄轻社交、AI 随时在。</p>
+					<p id="serviceSummary">胖宝由杭州彩逗科技有限公司运营，面向 0–18 月新手妈妈：智能喂养记录、同月龄轻社交、AI 随时在。</p>
 				</div>
 				<div class="bubble">
 					<h3>为什么选择胖宝</h3>
@@ -175,7 +179,7 @@
 				</div>
 				<div class="bubble">
 					<h3>下载指引</h3>
-					<p>Android 可直接扫码安装；iOS 用户前往 App Store 搜索“胖宝”即可下载体验。</p>
+					<p>Android 可直接扫码安装；iOS 用户可前往 App Store 打开胖宝应用页，或搜索“胖宝”下载体验。</p>
 				</div>
 			</div>
 		</section>
@@ -187,9 +191,9 @@
 				<div class="section-head">
 					<div>
 						<h2>产品能力</h2>
-						<p>喂养记录、同月龄轻社交、AI 智能陪伴 — 陪伴 0–18 月宝宝的每一天。</p>
+						<p>喂养记录、智能预测提醒、同月龄轻社交、AI 智能陪伴 — 陪伴 0–18 月宝宝的每一天。</p>
 					</div>
-					<div class="event-tag">记录 · 连接 · 问答</div>
+					<div class="event-tag">记录 · 预判 · 陪伴</div>
 				</div>
 				<div class="capability-grid">
 					<div class="capability-card">
@@ -202,12 +206,12 @@
 						</ul>
 					</div>
 					<div class="capability-card">
-						<div class="capability-icon">💬</div>
-						<h3>同月龄轻社交</h3>
+						<div class="capability-icon">⏱️</div>
+						<h3>预测与主动提醒</h3>
 						<ul>
-							<li>发帖分享宝宝成长瞬间</li>
-							<li>关注同路人，看看别的妈妈怎么带娃</li>
-							<li>私信交流；AI 帮写朋友圈文案</li>
+							<li>基于历史作息推算下次喂奶、哄睡等时间窗口</li>
+							<li>临近事项系统通知叫醒，离线也能收到提醒</li>
+							<li>「值得留意」等智能要点，帮你盯住关键细节</li>
 						</ul>
 					</div>
 					<div class="capability-card">
@@ -215,12 +219,12 @@
 						<h3>AI 智能陪伴</h3>
 						<ul>
 							<li>语音喂养助手，记事件的同时能聊</li>
-							<li>智能喂养问答：近 7 天摘要 + 宝宝月龄</li>
-							<li>每日成长建议，喂养侧个性化参考</li>
+							<li>胖宝诊疗：结合宝宝与喂养上下文给出适龄参考</li>
+							<li>同月龄社区交流；AI 润笔帮写分享文案</li>
 						</ul>
 					</div>
 				</div>
-				<p class="ai-disclaimer">AI 回答仅供参考，不能替代医生诊断；如有健康疑虑请及时就医。</p>
+				<p class="ai-disclaimer">AI 回答与智能提醒仅供参考，不能替代医生诊断；如有健康疑虑请及时就医。</p>
 			</div>
 
 			<div class="section-card glass" id="events">
@@ -238,7 +242,7 @@
 				<div class="section-head">
 					<div>
 						<h2>下载胖宝 App</h2>
-						<p>Android 支持扫码下载；iOS 前往 App Store 搜索“胖宝”即可获取。</p>
+						<p>Android 支持扫码下载；iOS 可直达 App Store 胖宝应用页，亦可搜索“胖宝”。</p>
 					</div>
 					<div class="event-tag">跨平台下载说明</div>
 				</div>
@@ -261,17 +265,17 @@
 					<div class="download-card glass">
 						<div class="download-meta">
 							<strong>iOS 下载</strong>
-							<p id="iosInstruction">前往 App Store 搜索“胖宝”下载</p>
+							<p id="iosInstruction">在 App Store 获取胖宝</p>
 						</div>
 						<div class="qr-wrap" style="align-content:center;text-align:center">
 							<div>
 								<div class="event-tag" style="margin:0 auto 14px">App Store</div>
-								<p style="margin:0;font-size:22px;font-weight:700">搜索“胖宝”</p>
-								<p class="download-note" style="margin-top:10px">在 App Store 中输入“胖宝”，即可下载安装。</p>
+								<p style="margin:0;font-size:22px;font-weight:700">胖宝</p>
+								<p class="download-note" style="margin-top:10px">点击下方按钮直达应用详情页；亦可在 App Store 搜索“胖宝”。</p>
 							</div>
 						</div>
 						<div class="inline-actions">
-							<a class="btn" href="https://apps.apple.com/cn/" target="_blank" rel="noopener">打开 App Store</a>
+							<a class="btn btn-primary" href="https://apps.apple.com/cn/app/%E8%83%96%E5%AE%9D/id6774418472" target="_blank" rel="noopener">打开 App Store</a>
 						</div>
 					</div>
 				</div>
@@ -280,14 +284,19 @@
 
 		<footer class="foot glass">
 			<div>
-				<p>胖宝 · 专注母婴喂养服务，让照顾孩子更便捷、更轻松。</p>
+				<p class="foot-company">
+					<strong>杭州彩逗科技有限公司</strong>
+					<span class="en">Hangzhou Caidou Technology Co., Ltd.</span>
+				</p>
+				<p class="foot-meta">胖宝由本公司运营 · 客服邮箱 <a href="mailto:tou_zy@foxmail.com">tou_zy@foxmail.com</a></p>
+				<p class="foot-meta"><a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener">浙ICP备2024101366号</a></p>
 				<p class="foot-links">
 					<a href="/privacy-policy.html">隐私政策</a>
 					<span> · </span>
 					<a href="/user-agreement.html">用户协议</a>
 				</p>
 			</div>
-			<p class="download-note">官网事件 logo 与 Android 下载链路均来自系统权威数据。</p>
+			<p class="download-note">© 2026 杭州彩逗科技有限公司</p>
 		</footer>
 	</div>
 

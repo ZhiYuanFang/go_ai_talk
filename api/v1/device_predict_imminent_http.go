@@ -6,7 +6,7 @@ import "github.com/gogf/gf/v2/frame/g"
 type PredictImminentPendingEventItem struct {
 	EventId int64  `json:"eventId" v:"required|min:1" dc:"事件 ID（可为一级根）"`
 	NextAt  int64  `json:"nextAt" v:"required|min:1" dc:"下次发生 unix 秒"`
-	Title   string `json:"title" dc:"可选展示标题"`
+	Title   string `json:"title" dc:"父事件展示名；空则服务端到点不发可见推送"`
 }
 
 // DevicePredictImminentPendingPutReq 全量替换宝宝待发生预测列表（最后写入赢）。

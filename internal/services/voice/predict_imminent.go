@@ -272,15 +272,23 @@ func handlePredictImminentFire(ctx context.Context, body []byte) error {
 			len(msg.DeviceNo), msg.EventId, msg.NextAt)
 		return nil
 	}
+	// 事件名取客户端 pending title（父事件展示名）；空则不推，避免尴尬占位文案。
 	title := strings.TrimSpace(msg.Title)
 	if title == "" {
-		leadMin := predictImminentLeadSeconds() / 60
-		if leadMin < 1 {
-			leadMin = 1
-		}
-		title = fmt.Sprintf("事件将在约 %d 分钟内发生", leadMin)
+		glog.Warningf(ctx, "[predict-imminent] skip reason=empty_title deviceNoLen=%d eventId=%d nextAt=%d",
+			len(msg.DeviceNo), msg.EventId, msg.NextAt)
+		return nil
 	}
-	alert := "宝宝提醒：" + title
+	// 昵称经 device 画像；空或失败回落「宝宝」。
+	nick := "宝宝"
+	if profile, profErr := DeviceProfile().GetProfile(ctx, msg.DeviceNo); profErr != nil {
+		glog.Warningf(ctx, "[predict-imminent] profile_err deviceNoLen=%d eventId=%d err=%v (fallback nick=宝宝)",
+			len(msg.DeviceNo), msg.EventId, profErr)
+	} else if n := strings.TrimSpace(profile.BabyName); n != "" {
+		nick = n
+	}
+	// 可见正文：{昵称}要{title}了；厂商通知标题仍为「胖宝」。
+	alert := nick + "要" + title + "了"
 	data := map[string]string{
 		"bizType":  pushclient.BizPredictImminent,
 		"deviceNo": msg.DeviceNo,
