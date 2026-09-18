@@ -193,9 +193,22 @@ func (c *CashVipController) AdminVipEntitlements(ctx context.Context, req *v1.Ca
 			LastPaidAmountFen: row.LastPaidAmountFen,
 			Channel:           row.Channel,
 			PaidAt:            row.PaidAt,
+			GrantReason:       row.GrantReason,
 		})
 	}
 	return out, nil
+}
+
+// AdminVipGrant POST /cash/admin/api/vip/entitlements/grant — 手工授 VIP。
+func (c *CashVipController) AdminVipGrant(ctx context.Context, req *v1.CashAdminVipGrantReq) (*v1.CashAdminVipGrantRes, error) {
+	if err := requireCashAdmin(ctx); err != nil {
+		return nil, err
+	}
+	out, err := cash.AdminGrantVip(ctx, req.WxId, req.DurationDays, req.Reason)
+	if err != nil {
+		return nil, err
+	}
+	return &v1.CashAdminVipGrantRes{OrderNo: out.OrderNo, WxId: out.WxId, ExpireAt: out.ExpireAt}, nil
 }
 
 // registerCashAlipayNotify 支付宝 notify 需返回纯文本 success，不用标准 JSON envelope。

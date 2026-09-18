@@ -18,6 +18,8 @@ const (
 
 	ChannelAlipay   = "alipay"
 	ChannelAppleIAP = "apple_iap"
+	// ChannelAdmin Hub 手工授 VIP/功能（0 元 paid 订单 + grant_reason）。
+	ChannelAdmin = "admin"
 
 	OrderCreated  = "created"
 	OrderPaid     = "paid"
@@ -52,6 +54,7 @@ func EnsureSchema(ctx context.Context) error {
   status             VARCHAR(16)  NOT NULL DEFAULT 'created',
   channel_txn_id     VARCHAR(128) NOT NULL DEFAULT '',
   app_account_token  CHAR(36)     NULL DEFAULT NULL COMMENT 'Apple StoreKit appAccountToken(UUID)；仅 apple_iap',
+  grant_reason       VARCHAR(256) NOT NULL DEFAULT '' COMMENT 'Admin 手工授理由；支付单为空',
   created_at         BIGINT       NOT NULL DEFAULT 0,
   paid_at            BIGINT       NOT NULL DEFAULT 0,
   PRIMARY KEY (id),
@@ -210,6 +213,7 @@ func EnsureSchema(ctx context.Context) error {
   status             VARCHAR(16)  NOT NULL DEFAULT 'created',
   channel_txn_id     VARCHAR(128) NOT NULL DEFAULT '',
   app_account_token  CHAR(36)     NULL DEFAULT NULL COMMENT 'Apple StoreKit appAccountToken(UUID)；仅 apple_iap',
+  grant_reason       VARCHAR(256) NOT NULL DEFAULT '' COMMENT 'Admin 手工授理由；支付单为空',
   created_at         BIGINT       NOT NULL DEFAULT 0,
   paid_at            BIGINT       NOT NULL DEFAULT 0,
   PRIMARY KEY (id),
@@ -246,6 +250,9 @@ func EnsureSchema(ctx context.Context) error {
 		`ALTER TABLE feature_def ADD COLUMN default_allowed_count INT NOT NULL DEFAULT 0`,
 		`ALTER TABLE feature_allowed_count ADD COLUMN full_access TINYINT NOT NULL DEFAULT 0`,
 		`ALTER TABLE feature_allowed_count ADD COLUMN full_access_expires_at BIGINT NOT NULL DEFAULT 0`,
+		// Admin 手工授审查：授权理由；支付建单不写该列则保持默认空串。
+		`ALTER TABLE vip_order ADD COLUMN grant_reason VARCHAR(256) NOT NULL DEFAULT '' COMMENT 'Admin 手工授理由；支付单为空'`,
+		`ALTER TABLE feature_order ADD COLUMN grant_reason VARCHAR(256) NOT NULL DEFAULT '' COMMENT 'Admin 手工授理由；支付单为空'`,
 		// Apple ASN：建单写入 UUID，通知用 appAccountToken 反查；可空以兼容历史/支付宝行。
 		`ALTER TABLE vip_order ADD COLUMN app_account_token CHAR(36) NULL DEFAULT NULL COMMENT 'Apple appAccountToken UUID；仅 apple_iap'`,
 		`ALTER TABLE feature_order ADD COLUMN app_account_token CHAR(36) NULL DEFAULT NULL COMMENT 'Apple appAccountToken UUID；仅 apple_iap'`,

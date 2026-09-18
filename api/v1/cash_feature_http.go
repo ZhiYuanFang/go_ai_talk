@@ -384,3 +384,20 @@ type CashAdminInviteGroupQrPutRes struct {
 	PreviewPath string `json:"previewPath"`
 	AppVisible  bool   `json:"appVisible"`
 }
+
+// CashAdminFeatureGrantReq POST 手工授功能（补单/赠送）。
+type CashAdminFeatureGrantReq struct {
+	g.Meta        `path:"/cash/admin/api/feature/grants" method:"post" tags:"cash-admin" summary:"管理端手工授功能"`
+	FeatureId     string `json:"featureId" v:"required"`
+	WxId          int64  `json:"wxId" dc:"activation_subject=user 时必填"`
+	DeviceNo      string `json:"deviceNo" dc:"activation_subject=device 时必填"`
+	DurationDays  int    `json:"durationDays" dc:"权益续期天数；条数类可省略"`
+	GrantQuantity int    `json:"grantQuantity" dc:"预测条数增量；权益类默认 1"`
+	Reason        string `json:"reason" v:"required" dc:"授权理由必填"`
+}
+
+// CashAdminFeatureGrantRes 授功能结果。
+type CashAdminFeatureGrantRes struct {
+	OrderNo   string `json:"orderNo"`
+	FeatureId string `json:"featureId"`
+}

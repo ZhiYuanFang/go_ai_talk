@@ -108,6 +108,7 @@ type CashAdminVipEntitlementItem struct {
 	LastPaidAmountFen int    `json:"lastPaidAmountFen" dc:"最近一次 paid 订单 amount_fen，无则为 0"`
 	Channel           string `json:"channel" dc:"最近 paid 订单渠道；无则为空"`
 	PaidAt            int64  `json:"paidAt" dc:"最近 paid 订单支付时间；无则为 0"`
+	GrantReason       string `json:"grantReason" dc:"最近订单为 admin 时的授权理由"`
 }
 
 // CashAdminVipEntitlementsRes 管理端权益分页 data。
@@ -149,4 +150,19 @@ type CashAdminVipProductUpsertReq struct {
 // CashAdminVipProductUpsertRes 更新结果。
 type CashAdminVipProductUpsertRes struct {
 	ProductCode string `json:"productCode"`
+}
+
+// CashAdminVipGrantReq POST 手工授 VIP（补单/赠送；须 X-Admin-Password）。
+type CashAdminVipGrantReq struct {
+	g.Meta       `path:"/cash/admin/api/vip/entitlements/grant" method:"post" tags:"cash-admin" summary:"管理端手工授 VIP"`
+	WxId         int64  `json:"wxId" v:"required|min:1"`
+	DurationDays int    `json:"durationDays" v:"required|min:1" dc:"续期天数，≥1"`
+	Reason       string `json:"reason" v:"required" dc:"授权理由必填"`
+}
+
+// CashAdminVipGrantRes 授 VIP 结果。
+type CashAdminVipGrantRes struct {
+	OrderNo  string `json:"orderNo"`
+	WxId     int64  `json:"wxId"`
+	ExpireAt int64  `json:"expireAt"`
 }

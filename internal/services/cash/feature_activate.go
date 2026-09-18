@@ -50,7 +50,7 @@ func ActivateFeature(ctx context.Context, req ActivateFeatureRequest) error {
 		return gerror.NewCode(gcode.CodeInvalidParameter, "featureId/subjectKey 不能为空")
 	}
 	switch channel {
-	case UnlockMethodPayment, UnlockMethodInviteCode, UnlockMethodAd, UnlockMethodTrial:
+	case UnlockMethodPayment, UnlockMethodInviteCode, UnlockMethodAd, UnlockMethodTrial, UnlockMethodAdmin:
 	default:
 		return gerror.NewCode(gcode.CodeInvalidParameter, "未知开通通道")
 	}

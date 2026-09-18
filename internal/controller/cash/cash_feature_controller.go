@@ -464,3 +464,22 @@ func (c *CashFeatureController) AdminInviteGroupQrPut(ctx context.Context, req *
 		PreviewPath: out.PreviewPath, AppVisible: out.AppVisible,
 	}, nil
 }
+
+// AdminFeatureGrant POST /cash/admin/api/feature/grants — 手工授功能。
+func (c *CashFeatureController) AdminFeatureGrant(ctx context.Context, req *v1.CashAdminFeatureGrantReq) (*v1.CashAdminFeatureGrantRes, error) {
+	if err := requireCashAdmin(ctx); err != nil {
+		return nil, err
+	}
+	out, err := cash.AdminGrantFeature(ctx, cash.AdminGrantFeatureInput{
+		FeatureID:     req.FeatureId,
+		WxID:          req.WxId,
+		DeviceNo:      req.DeviceNo,
+		DurationDays:  req.DurationDays,
+		GrantQuantity: req.GrantQuantity,
+		Reason:        req.Reason,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &v1.CashAdminFeatureGrantRes{OrderNo: out.OrderNo, FeatureId: out.FeatureId}, nil
+}

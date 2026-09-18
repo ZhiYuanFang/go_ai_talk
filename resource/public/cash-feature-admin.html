@@ -63,6 +63,47 @@
 			<button id="vipListBtn" type="button" class="secondary">VIP列表</button>
 		</div>
 
+		<h3 style="margin-top:18px;">手工授功能（补单/赠送）</h3>
+		<p class="hint">
+			写入 <code>feature_order.channel=admin</code> + <code>grant_reason</code>，再履约开通。
+			主体按功能定义的「开放主体」：对人填 wxId，对机填 deviceNo。预测数量类填「授予数量」；权益类填「续期天数」（≥1）。
+		</p>
+		<div class="form-stack">
+			<section class="form-section">
+				<div class="form-grid">
+					<div class="field">
+						<label>功能编号</label>
+						<select id="grantFid"></select>
+					</div>
+					<div class="field">
+						<label>wxId（对人）</label>
+						<input id="grantWxId" type="text" inputmode="numeric" placeholder="activation_subject=user 时必填" />
+					</div>
+					<div class="field">
+						<label>deviceNo（对机）</label>
+						<input id="grantDeviceNo" type="text" placeholder="activation_subject=device 时必填" />
+					</div>
+					<div class="field">
+						<label>续期天数</label>
+						<span class="sub">权益类 ≥1；预测数量类可忽略</span>
+						<input id="grantDays" type="number" min="1" value="30" />
+					</div>
+					<div class="field">
+						<label>授予数量</label>
+						<span class="sub">预测条数增量；权益类可留空</span>
+						<input id="grantQty" type="number" min="1" placeholder="可选" />
+					</div>
+					<div class="field span-2">
+						<label>授权理由（必填）</label>
+						<input id="grantReason" type="text" maxlength="256" placeholder="补单/赠送等原因，将落库审查" />
+					</div>
+				</div>
+				<div class="btn-row">
+					<button id="grantFeatureBtn" type="button">授予功能</button>
+				</div>
+			</section>
+		</div>
+
 		<h3>一、功能定义（App 目录项）</h3>
 		<p class="hint">点击列表行载入编辑。功能编号只读；标题/简介/Logo/主色由服务端返回给客户端直接展示。</p>
 		<div class="form-stack">
@@ -456,6 +497,43 @@
 	document.getElementById('vipListBtn').onclick = () => {
 		window.location.href = '/device/admin/cash-vip-admin.html';
 	};
+	document.getElementById('grantFeatureBtn').onclick = async () => {
+		const featureId = (document.getElementById('grantFid').value || '').trim();
+		const reason = (document.getElementById('grantReason').value || '').trim();
+		const wxRaw = (document.getElementById('grantWxId').value || '').trim();
+		const deviceNo = (document.getElementById('grantDeviceNo').value || '').trim();
+		const days = Number(document.getElementById('grantDays').value) || 0;
+		const qtyRaw = (document.getElementById('grantQty').value || '').trim();
+		if (!featureId) { show('请选择功能编号', false); return; }
+		if (!reason) { show('授权理由必填', false); return; }
+		const body = { featureId, reason };
+		if (wxRaw) {
+			if (!/^\d+$/.test(wxRaw) || Number(wxRaw) < 1) { show('wxId 须为正整数', false); return; }
+			body.wxId = Number(wxRaw);
+		}
+		if (deviceNo) body.deviceNo = deviceNo;
+		if (days >= 1) body.durationDays = days;
+		if (qtyRaw) {
+			const q = Number(qtyRaw);
+			if (!q || q < 1) { show('授予数量须 ≥ 1', false); return; }
+			body.grantQuantity = q;
+		}
+		const btn = document.getElementById('grantFeatureBtn');
+		btn.disabled = true;
+		try {
+			const res = await AdminCommon.adminFetch('/cash/admin/api/feature/grants', {
+				method: 'POST',
+				body: JSON.stringify(body)
+			});
+			document.getElementById('grantReason').value = '';
+			show('已授功能 · 订单 ' + (res && res.orderNo ? res.orderNo : ''), true);
+			await loadActivations(featureId);
+		} catch (e) {
+			show(e.message || String(e), false);
+		} finally {
+			btn.disabled = false;
+		}
+	};
 
 	try {
 		await AdminCommon.requireAdmin();
@@ -465,12 +543,19 @@
 	let defList = [];
 
 	function fillFeatureSelect() {
-		const sel = document.getElementById('pFid');
-		const cur = sel.value;
-		sel.innerHTML = defList.map(r =>
+		const opts = defList.map(r =>
 			`<option value="${esc(r.featureId)}">${esc(r.featureId)} · ${esc(r.title || '')}</option>`
 		).join('') || '<option value="">暂无功能</option>';
+		const sel = document.getElementById('pFid');
+		const cur = sel.value;
+		sel.innerHTML = opts;
 		if (cur) sel.value = cur;
+		const gSel = document.getElementById('grantFid');
+		if (gSel) {
+			const gCur = gSel.value;
+			gSel.innerHTML = opts;
+			if (gCur) gSel.value = gCur;
+		}
 	}
 
 	const subjectLabel = (s) => {

@@ -20,15 +20,30 @@
 		<div class="logo">VIP</div>
 		<div>
 			<h1>VIP 权益</h1>
-			<p>只读列表（含已过期）· <a href="/device/admin/cash-feature-admin.html">返回开通功能管理</a> · 须先在 <a href="/device/admin">运维 Hub</a> 登录</p>
+			<p>权益列表（含已过期）· 支持手工授 VIP · <a href="/device/admin/cash-feature-admin.html">返回开通功能管理</a> · 须先在 <a href="/device/admin">运维 Hub</a> 登录</p>
 		</div>
 	</header>
 	<div class="card glass hidden" id="mainCard">
 		<p class="vip-hint">
-			数据来自 cash-service：<code>vip_entitlement</code> 全量行 + 最近一次 <code>status=paid</code> 订单金额。
-			<strong>激活金额单位为「分」</strong>（表内亦换算为元）。本页无改价 / 退款 / 手工开通。
-			浏览器仅携带 Admin JWT，<strong>不</strong>发送 <code>X-Admin-Password</code>。
+			数据来自 cash-service：<code>vip_entitlement</code> 全量行 + 最近一次 <code>status=paid</code> 订单。
+			<strong>激活金额单位为「分」</strong>。渠道为 <code>admin</code> 时为 Hub 手工授（金额 0），理由见「授权理由」列。
+			本页无改价 / 退款。浏览器仅携带 Admin JWT，<strong>不</strong>发送 <code>X-Admin-Password</code>。
 		</p>
+		<div class="row" style="margin-bottom:14px; flex-wrap:wrap; gap:8px; align-items:flex-end;">
+			<div>
+				<label style="display:block;font-size:12px;color:#334155;font-weight:600;margin-bottom:4px;">wxId</label>
+				<input id="grantWxId" type="text" inputmode="numeric" placeholder="必填" style="width:160px;" />
+			</div>
+			<div>
+				<label style="display:block;font-size:12px;color:#334155;font-weight:600;margin-bottom:4px;">续期天数</label>
+				<input id="grantDays" type="number" min="1" value="30" style="width:100px;" />
+			</div>
+			<div style="flex:1;min-width:200px;">
+				<label style="display:block;font-size:12px;color:#334155;font-weight:600;margin-bottom:4px;">授权理由（必填）</label>
+				<input id="grantReason" type="text" maxlength="256" placeholder="补单/赠送等原因，将落库审查" style="width:100%;max-width:360px;" />
+			</div>
+			<button id="grantBtn" type="button">授予 VIP</button>
+		</div>
 		<div class="row" style="margin-bottom:12px;">
 			<input id="wxIdFilter" type="text" inputmode="numeric" placeholder="按 wxId 精确查询" style="width:220px;" />
 			<button id="searchBtn" type="button" class="secondary">查询</button>
@@ -46,6 +61,7 @@
 						<th>激活金额</th>
 						<th>渠道</th>
 						<th>最近支付时间</th>
+						<th>授权理由</th>
 					</tr>
 				</thead>
 				<tbody id="entBody"></tbody>
@@ -100,7 +116,12 @@ function channelLabel(ch) {
 	if (!ch) return '—';
 	if (ch === 'alipay') return '支付宝';
 	if (ch === 'apple_iap') return 'Apple IAP';
+	if (ch === 'admin') return '手工授';
 	return escapeHtml(ch);
+}
+function fmtAmountFenRow(fen, ch) {
+	if (String(ch || '') === 'admin') return '0（手工）';
+	return fmtAmountFen(fen);
 }
 
 var page = 1;
@@ -121,19 +142,21 @@ async function loadList() {
 	var body = document.getElementById('entBody');
 	body.innerHTML = '';
 	if (!list.length) {
-		body.innerHTML = '<tr><td colspan="7" style="color:#64748b;">暂无权益记录</td></tr>';
+		body.innerHTML = '<tr><td colspan="8" style="color:#64748b;">暂无权益记录</td></tr>';
 	} else {
 		list.forEach(function (row) {
 			var tr = document.createElement('tr');
 			var active = !!row.isVip;
+			var reason = (row.grantReason || '').trim();
 			tr.innerHTML =
 				'<td>' + escapeHtml(row.wxId) + '</td>' +
 				'<td class="' + (active ? 'badge-on' : 'badge-off') + '">' + (active ? '有效' : '已过期') + '</td>' +
 				'<td>' + escapeHtml(fmtTs(row.expireAt)) + '</td>' +
 				'<td>' + escapeHtml(fmtRemaining(row.remainingSeconds, active)) + '</td>' +
-				'<td>' + escapeHtml(fmtAmountFen(row.lastPaidAmountFen)) + '</td>' +
+				'<td>' + escapeHtml(fmtAmountFenRow(row.lastPaidAmountFen, row.channel)) + '</td>' +
 				'<td>' + channelLabel(row.channel) + '</td>' +
-				'<td>' + escapeHtml(fmtTs(row.paidAt)) + '</td>';
+				'<td>' + escapeHtml(fmtTs(row.paidAt)) + '</td>' +
+				'<td>' + (reason ? escapeHtml(reason) : '—') + '</td>';
 			body.appendChild(tr);
 		});
 	}
@@ -186,6 +209,40 @@ document.getElementById('nextBtn').addEventListener('click', function () {
 });
 document.getElementById('wxIdFilter').addEventListener('keydown', function (ev) {
 	if (ev.key === 'Enter') document.getElementById('searchBtn').click();
+});
+document.getElementById('grantBtn').addEventListener('click', function () {
+	var wxRaw = (document.getElementById('grantWxId').value || '').trim();
+	var days = Number(document.getElementById('grantDays').value);
+	var reason = (document.getElementById('grantReason').value || '').trim();
+	if (!wxRaw || !/^\d+$/.test(wxRaw) || Number(wxRaw) < 1) {
+		showMsg(document.getElementById('msg'), '授予 wxId 须为正整数', false);
+		return;
+	}
+	if (!days || days < 1) {
+		showMsg(document.getElementById('msg'), '续期天数须 ≥ 1', false);
+		return;
+	}
+	if (!reason) {
+		showMsg(document.getElementById('msg'), '授权理由必填', false);
+		return;
+	}
+	document.getElementById('grantBtn').disabled = true;
+	api('/cash/admin/api/vip/entitlements/grant', {
+		method: 'POST',
+		body: JSON.stringify({ wxId: Number(wxRaw), durationDays: days, reason: reason })
+	}).then(function (res) {
+		showMsg(document.getElementById('msg'),
+			'已授 VIP · 订单 ' + (res && res.orderNo ? res.orderNo : '') + ' · 到期 ' + fmtTs(res && res.expireAt), true);
+		document.getElementById('grantReason').value = '';
+		wxIdFilter = wxRaw;
+		document.getElementById('wxIdFilter').value = wxRaw;
+		page = 1;
+		return loadList();
+	}).catch(function (e) {
+		showMsg(document.getElementById('msg'), e.message || String(e), false);
+	}).finally(function () {
+		document.getElementById('grantBtn').disabled = false;
+	});
 });
 
 if (AdminCommon.requireAdmin()) {

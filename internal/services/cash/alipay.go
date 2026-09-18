@@ -103,10 +103,26 @@ func yuanToFen(s string) (int, error) {
 	return int(yuan*100 + 0.5), nil
 }
 
+// alipaySignContent 拼装「请求签名」待签串：去掉 sign 与空值，保留 sign_type（App 支付 orderStr 用）。
 func alipaySignContent(params map[string]string) string {
+	return alipayJoinSignParams(params, false)
+}
+
+// alipayNotifySignContent 拼装「异步通知验签」待签串。
+// 业务：支付宝官方要求除去 sign、sign_type；若误留 sign_type 会导致 RSA2 验签失败。
+func alipayNotifySignContent(params map[string]string) string {
+	return alipayJoinSignParams(params, true)
+}
+
+// alipayJoinSignParams 按 key 字典序拼接 key=value&...；skipSignType 为 true 时同时排除 sign_type。
+func alipayJoinSignParams(params map[string]string, skipSignType bool) string {
 	keys := make([]string, 0, len(params))
 	for k, v := range params {
 		if k == "sign" || v == "" {
+			continue
+		}
+		// 异步通知验签：官方文档要求不参与待签串。
+		if skipSignType && k == "sign_type" {
 			continue
 		}
 		keys = append(keys, k)
@@ -150,7 +166,8 @@ func verifyAlipayNotifySign(publicKeyPEM string, form map[string]string) error {
 	if sign == "" {
 		return gerror.NewCode(gcode.CodeNotAuthorized, "缺少 sign")
 	}
-	content := alipaySignContent(form)
+	// 必须用 notify 专用拼串（排除 sign_type），不可与建单签名共用。
+	content := alipayNotifySignContent(form)
 	pub, err := parseRSAPublicKey(publicKeyPEM)
 	if err != nil {
 		return err

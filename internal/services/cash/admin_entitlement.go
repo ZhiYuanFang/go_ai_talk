@@ -22,6 +22,7 @@ type AdminEntitlementRow struct {
 	LastPaidAmountFen  int    `json:"lastPaidAmountFen"`
 	Channel            string `json:"channel"`
 	PaidAt             int64  `json:"paidAt"`
+	GrantReason        string `json:"grantReason"` // 最近 paid 为 admin 时的授权理由
 }
 
 // AdminEntitlementListResult 分页结果。
@@ -78,7 +79,8 @@ SELECT e.wx_id AS wx_id,
        e.expire_at AS expire_at,
        COALESCE(o.amount_fen, 0) AS last_paid_amount_fen,
        COALESCE(o.channel, '') AS channel,
-       COALESCE(o.paid_at, 0) AS paid_at
+       COALESCE(o.paid_at, 0) AS paid_at,
+       COALESCE(o.grant_reason, '') AS grant_reason
 FROM vip_entitlement e
 LEFT JOIN vip_order o ON o.id = (
   SELECT id FROM vip_order
@@ -110,6 +112,7 @@ LEFT JOIN vip_order o ON o.id = (
 			LastPaidAmountFen: r["last_paid_amount_fen"].Int(),
 			Channel:           r["channel"].String(),
 			PaidAt:            r["paid_at"].Int64(),
+			GrantReason:       r["grant_reason"].String(),
 		})
 	}
 	return out, nil

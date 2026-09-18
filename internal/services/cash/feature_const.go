@@ -20,6 +20,8 @@ const (
 	UnlockMethodAd         = "ad" // 已从 unlock_methods 种子移除；履约路径保留拒绝对旧客户端
 	// UnlockMethodTrial 免费试用通道（成功落库后 claim，授予 TrialDurationHours）。
 	UnlockMethodTrial = "trial"
+	// UnlockMethodAdmin Hub 手工授（补单/赠送）；写入权益 unlock_method。
+	UnlockMethodAdmin = "admin"
 
 	// ActivationSubjectDevice 权益落在 device_no（全家共享）。
 	ActivationSubjectDevice = "device"
