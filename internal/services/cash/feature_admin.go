@@ -13,6 +13,7 @@ import (
 	"github.com/gogf/gf/v2/errors/gcode"
 	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/frame/g"
+	"github.com/gogf/gf/v2/os/glog"
 )
 
 // —— Admin：功能定义 / SKU ——
@@ -29,6 +30,10 @@ func AdminUpdateFeatureDef(ctx context.Context, featureID, title, desc, unlockMe
 	featureID = strings.TrimSpace(featureID)
 	if featureID == "" {
 		return gerror.NewCode(gcode.CodeInvalidParameter, "featureId 不能为空")
+	}
+	if featureID == FeatureIDPredictionUnlock {
+		glog.Warningf(ctx, "[cash] prediction_unlock 已下线，拒绝改定义 featureId=%s", featureID)
+		return gerror.NewCode(gcode.CodeInvalidOperation, "预测事项开通数量已下线")
 	}
 	if defaultAllowedCount < 0 {
 		defaultAllowedCount = 0
@@ -63,9 +68,6 @@ func AdminUpdateFeatureDef(ctx context.Context, featureID, title, desc, unlockMe
 			return gerror.NewCode(gcode.CodeInvalidParameter, "activationSubject 须为 device 或 user")
 		}
 		subj := NormalizeActivationSubject(raw)
-		if featureID == FeatureIDPredictionUnlock && subj == ActivationSubjectUser {
-			return gerror.NewCode(gcode.CodeInvalidParameter, "预测条数功能仅支持对机（device）主体")
-		}
 		data["activation_subject"] = subj
 	}
 	_, err = g.DB().Model("feature_def").Ctx(ctx).Where("feature_id", featureID).Data(data).Update()
@@ -130,6 +132,10 @@ func AdminUpsertFeatureProduct(ctx context.Context, p *FeatureProduct) error {
 	if p.FeatureId == "" {
 		return gerror.NewCode(gcode.CodeInvalidParameter, "featureId 不能为空")
 	}
+	if p.FeatureId == FeatureIDPredictionUnlock || p.GrantKind == GrantKindAllowedCountDelta {
+		glog.Warningf(ctx, "[cash] prediction_unlock 已下线，拒绝 SKU featureId=%s kind=%s", p.FeatureId, p.GrantKind)
+		return gerror.NewCode(gcode.CodeInvalidOperation, "预测事项开通数量已下线")
+	}
 	def, err := g.DB().Model("feature_def").Ctx(ctx).Where("feature_id", p.FeatureId).One()
 	if err != nil {
 		return err
@@ -139,10 +145,6 @@ func AdminUpsertFeatureProduct(ctx context.Context, p *FeatureProduct) error {
 	}
 	now := time.Now().Unix()
 	if p.GrantQuantity <= 0 {
-		p.GrantQuantity = 1
-	}
-	if p.FeatureId == FeatureIDPredictionUnlock {
-		p.GrantKind = GrantKindAllowedCountDelta
 		p.GrantQuantity = 1
 	}
 	if p.GrantKind == "" {

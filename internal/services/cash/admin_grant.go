@@ -140,6 +140,10 @@ func AdminGrantFeature(ctx context.Context, in AdminGrantFeatureInput) (*AdminGr
 	if featureID == "" {
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "featureId 必填")
 	}
+	if featureID == FeatureIDPredictionUnlock {
+		glog.Warningf(ctx, "[cash] prediction_unlock 已下线，拒绝手工授 featureId=%s", featureID)
+		return nil, gerror.NewCode(gcode.CodeInvalidOperation, "预测事项开通数量已下线")
+	}
 	reason, err := normalizeGrantReason(in.Reason)
 	if err != nil {
 		return nil, err
@@ -170,32 +174,23 @@ func AdminGrantFeature(ctx context.Context, in AdminGrantFeatureInput) (*AdminGr
 		return nil, err
 	}
 	grantKind := GrantKindEntitlement
-	grantQty := in.GrantQuantity
+	grantQty := 1
 	durationDays := in.DurationDays
 	if prod != nil {
 		grantKind = strings.TrimSpace(prod.GrantKind)
 		if grantKind == "" {
 			grantKind = GrantKindEntitlement
 		}
-		if grantQty <= 0 {
-			grantQty = prod.GrantQuantity
-		}
-		if durationDays <= 0 && grantKind == GrantKindEntitlement {
+		if durationDays <= 0 {
 			durationDays = prod.DurationDays
 		}
 	}
-	if grantKind == GrantKindAllowedCountDelta {
-		if grantQty < 1 {
-			return nil, gerror.NewCode(gcode.CodeInvalidParameter, "预测数量增量 grantQuantity 须≥1")
-		}
-		durationDays = 0
-	} else {
-		if durationDays < 1 {
-			return nil, gerror.NewCode(gcode.CodeInvalidParameter, "durationDays 须≥1")
-		}
-		if grantQty < 1 {
-			grantQty = 1
-		}
+	if grantKind == GrantKindAllowedCountDelta || grantKind != GrantKindEntitlement {
+		glog.Warningf(ctx, "[cash] 非权益类手工授已拒绝 featureId=%s kind=%s", featureID, grantKind)
+		return nil, gerror.NewCode(gcode.CodeInvalidOperation, "预测条数开通已下线")
+	}
+	if durationDays < 1 {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "durationDays 须≥1")
 	}
 
 	orderNo, err := newAdminOrderNo("FAD")

@@ -8,6 +8,7 @@ import (
 	"github.com/gogf/gf/v2/errors/gcode"
 	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/frame/g"
+	"github.com/gogf/gf/v2/os/glog"
 )
 
 // FeatureProduct 功能 SKU。
@@ -277,11 +278,11 @@ func FulfillFeaturePaid(ctx context.Context, orderNo, channel, channelTxnID stri
 	}
 	grantKind := prod.GrantKind
 	if grantKind == "" {
-		if prod.FeatureId == FeatureIDPredictionUnlock {
-			grantKind = GrantKindAllowedCountDelta
-		} else {
-			grantKind = GrantKindEntitlement
-		}
+		grantKind = GrantKindEntitlement
+	}
+	if prod.FeatureId == FeatureIDPredictionUnlock || grantKind == GrantKindAllowedCountDelta {
+		glog.Warningf(ctx, "[cash] prediction_unlock 已下线，拒绝履约 orderNo=%s featureId=%s", order.OrderNo, prod.FeatureId)
+		return gerror.NewCode(gcode.CodeInvalidOperation, "预测事项开通数量已下线")
 	}
 	// 按功能定义选择设备或账号主体（成长轨迹等 user 功能写付款人 wx）。
 	subjType, subjKey, sErr := ResolveActivateSubject(ctx, prod.FeatureId, order.DeviceNo, order.WxId)

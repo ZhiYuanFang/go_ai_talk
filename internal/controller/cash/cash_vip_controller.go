@@ -211,6 +211,17 @@ func (c *CashVipController) AdminVipGrant(ctx context.Context, req *v1.CashAdmin
 	return &v1.CashAdminVipGrantRes{OrderNo: out.OrderNo, WxId: out.WxId, ExpireAt: out.ExpireAt}, nil
 }
 
+// AdminVipRevoke POST /cash/admin/api/vip/entitlements/revoke — 撤销最近一笔手工授 VIP。
+func (c *CashVipController) AdminVipRevoke(ctx context.Context, req *v1.CashAdminVipRevokeReq) (*v1.CashAdminVipRevokeRes, error) {
+	if err := requireCashAdmin(ctx); err != nil {
+		return nil, err
+	}
+	if err := cash.AdminRevokeVip(ctx, req.WxId); err != nil {
+		return nil, err
+	}
+	return &v1.CashAdminVipRevokeRes{}, nil
+}
+
 // registerCashAlipayNotify 支付宝 notify 需返回纯文本 success，不用标准 JSON envelope。
 func RegisterAlipayNotify(s *ghttp.Server) {
 	s.BindHandler("POST:/cash/app/api/vip/alipay/notify", func(r *ghttp.Request) {

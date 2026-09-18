@@ -166,3 +166,12 @@ type CashAdminVipGrantRes struct {
 	WxId     int64  `json:"wxId"`
 	ExpireAt int64  `json:"expireAt"`
 }
+
+// CashAdminVipRevokeReq POST 撤销最近一笔手工授 VIP（须 X-Admin-Password）。
+type CashAdminVipRevokeReq struct {
+	g.Meta `path:"/cash/admin/api/vip/entitlements/revoke" method:"post" tags:"cash-admin" summary:"管理端撤销手工授 VIP"`
+	WxId   int64 `json:"wxId" v:"required|min:1"`
+}
+
+// CashAdminVipRevokeRes 撤销结果（空 data 即可）。
+type CashAdminVipRevokeRes struct{}

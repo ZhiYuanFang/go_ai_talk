@@ -9,6 +9,7 @@ import (
 	"github.com/gogf/gf/v2/errors/gcode"
 	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/frame/g"
+	"github.com/gogf/gf/v2/os/glog"
 )
 
 // ActivateFeatureRequest 功能开通原子入参（支付/邀请/试用共用；广告通道保留兼容但种子已剥离）。
@@ -63,8 +64,9 @@ func ActivateFeature(ctx context.Context, req ActivateFeatureRequest) error {
 	durationDays := req.DurationDays
 	durationHours := req.DurationHours
 
-	// 预测条数履约已停用：拒绝新授予（旧客户端明确失败）。
+	// 预测条数已下线：拒绝并打日志，不当成普通权益。
 	if featureID == FeatureIDPredictionUnlock {
+		glog.Warningf(ctx, "[cash] prediction_unlock 已下线，拒绝开通 featureId=%s channel=%s", featureID, channel)
 		return gerror.NewCode(gcode.CodeInvalidOperation, "预测事项开通数量已下线")
 	}
 
@@ -106,10 +108,8 @@ func ActivateFeature(ctx context.Context, req ActivateFeatureRequest) error {
 		grantKind = GrantKindEntitlement
 	}
 	if grantKind == GrantKindAllowedCountDelta {
-		if subjectType != ActivationSubjectDevice {
-			return gerror.NewCode(gcode.CodeInvalidParameter, "条数增量仅支持设备主体")
-		}
-		return GrantEntitlementOrCount(ctx, subjectKey, featureID, channel, grantKind, grantQty, durationDays, req.ChannelRef)
+		glog.Warningf(ctx, "[cash] allowed_count_delta 已下线 featureId=%s", featureID)
+		return gerror.NewCode(gcode.CodeInvalidOperation, "预测条数开通已下线")
 	}
 
 	if subjectType == ActivationSubjectUser {

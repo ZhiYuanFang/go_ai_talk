@@ -38,6 +38,11 @@
 		.color-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 		.color-row input[type="color"] { width: 42px; height: 32px; padding: 0; border: 1px solid #cbd5e1; border-radius: 6px; }
 		.color-row input[type="text"] { max-width: 110px; }
+		.tile-bar { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 16px; }
+		.tile-bar button { min-width: 96px; }
+		.tile-bar button.on { background: #0f766e; color: #fff; border-color: #0f766e; }
+		.hub-sec { display: none; }
+		.hub-sec.on { display: block; }
 		@media (max-width: 720px) {
 			.form-grid { grid-template-columns: 1fr; }
 			.form-grid .span-2 { grid-column: auto; }
@@ -55,14 +60,12 @@
 	</header>
 	<div class="card glass hidden" id="mainCard">
 		<p class="hint">
-			<strong>怎么用：</strong>编辑已有「功能定义」（编号与客户端约定，不可新建/改号），再为该功能建「售卖套餐」。
-			VIP 月会员在本页独立「VIP 套餐」配置现价与 Apple 商品 ID，不进入功能定义列表。
-			价格单位为<strong>分</strong>。若本页样式/字段与说明不符，请对浏览器做<strong>强制刷新</strong>（Ctrl+F5）清静态缓存。
+			顶部点选一项再编辑。价格单位为<strong>分</strong>。样式不对请 <strong>Ctrl+F5</strong>。
+			撤销手工授会使该项立即过期，此前叠加上去的付费剩余也会一起失效。
 		</p>
-		<div class="btn-row">
-			<button id="vipListBtn" type="button" class="secondary">VIP列表</button>
-		</div>
+		<div class="tile-bar" id="tileBar"></div>
 
+		<div id="secGrant" class="hub-sec">
 		<h3 style="margin-top:18px;">手工授功能（补单/赠送）</h3>
 		<p class="hint">
 			写入 <code>feature_order.channel=admin</code> + <code>grant_reason</code>，再履约开通。
@@ -71,9 +74,10 @@
 		<div class="form-stack">
 			<section class="form-section">
 				<div class="form-grid">
-					<div class="field">
+					<div class="field field-readonly">
 						<label>功能编号</label>
-						<select id="grantFid"></select>
+						<input id="grantFidLabel" readonly />
+						<input id="grantFid" type="hidden" />
 					</div>
 					<div class="field">
 						<label>wxId（对人）</label>
@@ -85,13 +89,8 @@
 					</div>
 					<div class="field">
 						<label>续期天数</label>
-						<span class="sub">权益类 ≥1；预测数量类可忽略</span>
+						<span class="sub">权益类 ≥1</span>
 						<input id="grantDays" type="number" min="1" value="30" />
-					</div>
-					<div class="field">
-						<label>授予数量</label>
-						<span class="sub">预测条数增量；权益类可留空</span>
-						<input id="grantQty" type="number" min="1" placeholder="可选" />
 					</div>
 					<div class="field span-2">
 						<label>授权理由（必填）</label>
@@ -103,9 +102,11 @@
 				</div>
 			</section>
 		</div>
+		</div>
 
-		<h3>一、功能定义（App 目录项）</h3>
-		<p class="hint">点击列表行载入编辑。功能编号只读；标题/简介/Logo/主色由服务端返回给客户端直接展示。</p>
+		<div id="secDef" class="hub-sec">
+		<h3>功能定义</h3>
+		<p class="hint">顶部已选中本功能。编号只读；标题/简介/Logo/主色由服务端返回给客户端直接展示。</p>
 		<div class="form-stack">
 			<section class="form-section">
 				<h4>文案</h4>
@@ -145,13 +146,8 @@
 						<input id="fDuration" type="number" value="0" min="0" />
 					</div>
 					<div class="field">
-						<label>默认开通条数</label>
-						<span class="sub">仅预测类有意义；有效条数 = 默认 + 永久累加</span>
-						<input id="fDefault" type="number" value="0" min="0" />
-					</div>
-					<div class="field">
 						<label>开放主体（对人 / 对机）</label>
-						<span class="sub">对机=device 全家共享；对人=user。预测禁止对人。</span>
+						<span class="sub">对机=device 全家共享；对人=user</span>
 						<select id="fSubject">
 							<option value="device">对机（device）</option>
 							<option value="user">对人（user）</option>
@@ -230,7 +226,7 @@
 				</div>
 			</section>
 		</div>
-		<div class="table-wrap">
+		<div class="table-wrap" id="defTableWrap" style="display:none;">
 			<table>
 				<thead>
 					<tr>
@@ -250,8 +246,10 @@
 				<tbody id="defBody"></tbody>
 			</table>
 		</div>
+		</div>
 
-		<h3 style="margin-top:22px;">一（附）、微信群二维码（加群获取邀请码）</h3>
+		<div id="secQr" class="hub-sec">
+		<h3 style="margin-top:22px;">微信群二维码（加群获取邀请码）</h3>
 		<p class="hint">上传强制保存为 <code>er_code.png</code>（覆盖唯一一张）。有效期内 App 开通中心展示；过期后 App 不返回链接，本页仍可预览。</p>
 		<div class="form-stack">
 			<div class="form-grid">
@@ -279,7 +277,9 @@
 				<button id="qrReloadBtn" type="button" class="secondary">刷新状态</button>
 			</div>
 		</div>
+		</div>
 
+		<div id="secVip" class="hub-sec">
 		<h3 style="margin-top:22px;">VIP 套餐（账号月会员）</h3>
 		<p class="hint">写 <code>vip_product.vip_monthly_19</code>，不进入 App 功能目录。Apple 商品 ID 须与 ASC 人肉对齐；支付宝金额用现价（分）。</p>
 		<div class="form-stack">
@@ -322,8 +322,47 @@
 				<button id="reloadVipBtn" type="button" class="secondary">刷新 VIP 套餐</button>
 			</div>
 		</div>
+		<h3 style="margin-top:18px;">权益列表与手工授</h3>
+		<p class="hint">渠道为手工授且仍有效的行可撤销。确认后该项立即过期，叠加上去的付费剩余也会一起失效。</p>
+		<div class="row" style="margin-bottom:14px; flex-wrap:wrap; gap:8px; align-items:flex-end;">
+			<div>
+				<label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;">wxId</label>
+				<input id="vipGrantWx" type="text" inputmode="numeric" style="width:140px;" />
+			</div>
+			<div>
+				<label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;">续期天数</label>
+				<input id="vipGrantDays" type="number" min="1" value="30" style="width:90px;" />
+			</div>
+			<div style="flex:1;min-width:180px;">
+				<label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;">授权理由（必填）</label>
+				<input id="vipGrantReason" type="text" maxlength="256" style="width:100%;max-width:320px;" />
+			</div>
+			<button id="vipGrantBtn" type="button">授予 VIP</button>
+		</div>
+		<div class="row" style="margin-bottom:8px;">
+			<input id="vipWxFilter" type="text" inputmode="numeric" placeholder="按 wxId 查询" style="width:180px;" />
+			<button id="vipSearchBtn" type="button" class="secondary">查询</button>
+			<button id="vipRefreshBtn" type="button" class="secondary">刷新</button>
+		</div>
+		<div class="table-wrap">
+			<table>
+				<thead>
+					<tr>
+						<th>wxId</th><th>是否有效</th><th>到期</th><th>渠道</th><th>理由</th><th></th>
+					</tr>
+				</thead>
+				<tbody id="vipEntBody"></tbody>
+			</table>
+		</div>
+		<div class="vip-pager" style="display:flex;gap:8px;align-items:center;margin-top:8px;">
+			<button id="vipPrevBtn" type="button" class="secondary">上一页</button>
+			<span id="vipPageMeta" class="msg"></span>
+			<button id="vipNextBtn" type="button" class="secondary">下一页</button>
+		</div>
+		</div>
 
-		<h3 style="margin-top:22px;">二、售卖套餐（SKU / 商品）</h3>
+		<div id="secSku" class="hub-sec">
+		<h3 style="margin-top:22px;">售卖套餐（当前功能）</h3>
 		<p class="hint">新建时商品编码可留空由服务端生成；所属功能从已有定义下拉选择。视觉品牌在功能定义上配置，SKU 不单独配色。</p>
 		<div class="form-stack">
 			<div class="form-grid">
@@ -339,8 +378,7 @@
 				<div class="field">
 					<label>开通类型</label>
 					<select id="pKind">
-						<option value="allowed_count_delta" selected>allowed_count_delta · 增加可看数量</option>
-						<option value="entitlement">entitlement · 功能权益</option>
+						<option value="entitlement" selected>entitlement · 功能权益</option>
 					</select>
 				</div>
 				<div class="field">
@@ -393,6 +431,7 @@
 				</thead>
 				<tbody id="prodBody"></tbody>
 			</table>
+		</div>
 		</div>
 		<div id="msg" class="msg"></div>
 	</div>
@@ -494,17 +533,13 @@
 		const n = Number(document.getElementById('vipPrice').value) || 0;
 		el.textContent = n > 0 ? '（约 ¥' + (n / 100).toFixed(2) + '）' : '';
 	});
-	document.getElementById('vipListBtn').onclick = () => {
-		window.location.href = '/device/admin/cash-vip-admin.html';
-	};
 	document.getElementById('grantFeatureBtn').onclick = async () => {
 		const featureId = (document.getElementById('grantFid').value || '').trim();
 		const reason = (document.getElementById('grantReason').value || '').trim();
 		const wxRaw = (document.getElementById('grantWxId').value || '').trim();
 		const deviceNo = (document.getElementById('grantDeviceNo').value || '').trim();
 		const days = Number(document.getElementById('grantDays').value) || 0;
-		const qtyRaw = (document.getElementById('grantQty').value || '').trim();
-		if (!featureId) { show('请选择功能编号', false); return; }
+		if (!featureId) { show('请先在顶部选择功能', false); return; }
 		if (!reason) { show('授权理由必填', false); return; }
 		const body = { featureId, reason };
 		if (wxRaw) {
@@ -513,11 +548,6 @@
 		}
 		if (deviceNo) body.deviceNo = deviceNo;
 		if (days >= 1) body.durationDays = days;
-		if (qtyRaw) {
-			const q = Number(qtyRaw);
-			if (!q || q < 1) { show('授予数量须 ≥ 1', false); return; }
-			body.grantQuantity = q;
-		}
 		const btn = document.getElementById('grantFeatureBtn');
 		btn.disabled = true;
 		try {
@@ -550,12 +580,6 @@
 		const cur = sel.value;
 		sel.innerHTML = opts;
 		if (cur) sel.value = cur;
-		const gSel = document.getElementById('grantFid');
-		if (gSel) {
-			const gCur = gSel.value;
-			gSel.innerHTML = opts;
-			if (gCur) gSel.value = gCur;
-		}
 	}
 
 	const subjectLabel = (s) => {
@@ -570,7 +594,6 @@
 		fDesc.value = r.description || '';
 		setMethods(r.unlockMethods);
 		fDuration.value = r.durationDays != null ? r.durationDays : 0;
-		fDefault.value = r.defaultAllowedCount != null ? r.defaultAllowedCount : 0;
 		fSubject.value = (r.activationSubject === 'user') ? 'user' : 'device';
 		fStatus.value = String(r.status != null ? r.status : 1);
 		fSort.value = r.sortOrder != null ? r.sortOrder : 10;
@@ -630,8 +653,22 @@
 				<td>${esc(fmtRemain(it))}</td>
 				<td>${it.kind === 'allowed_count' ? (it.permanentDelta != null ? it.permanentDelta : 0) : '—'}</td>
 				<td>${esc(fmtTs(it.updatedAt))}</td>
+				<td>${(it.unlockMethod === 'admin' && it.active) ? `<button type="button" class="secondary revoke-act" data-wx="${it.wxId || ''}" data-dev="${esc(it.deviceNo || '')}">撤销</button>` : ''}</td>
 			</tr>`;
-		}).join('') || '<tr><td colspan="8">暂无开通记录</td></tr>';
+		}).join('') || '<tr><td colspan="9">暂无开通记录</td></tr>';
+		tb.querySelectorAll('.revoke-act').forEach(btn => {
+			btn.onclick = async () => {
+				if (!confirm('撤销后该权益立即过期，此前叠加上去的付费剩余也会一起失效。确定撤销？')) return;
+				try {
+					const body = { featureId: fid };
+					if (btn.dataset.wx) body.wxId = Number(btn.dataset.wx);
+					if (btn.dataset.dev) body.deviceNo = btn.dataset.dev;
+					await AdminCommon.adminFetch('/cash/admin/api/feature/grants/revoke', { method: 'POST', body: JSON.stringify(body) });
+					show('已撤销', true);
+					await loadActivations(fid);
+				} catch (e) { show(e.message || String(e), false); }
+			};
+		});
 	}
 
 	async function loadDefs() {
@@ -675,12 +712,13 @@
 			};
 		});
 		if (!fId.value && defList.length) loadDefIntoForm(defList[0]);
+		renderTiles();
 	}
 
 	async function loadProds() {
 		const data = await AdminCommon.adminFetch('/cash/admin/api/feature/products');
 		const tb = document.getElementById('prodBody');
-		const list = data.list || [];
+		const list = (data.list || []).filter(r => !currentFeatureId || r.featureId === currentFeatureId);
 		tb.innerHTML = list.map(r =>
 			`<tr class="clickable" data-code="${esc(r.productCode)}">
 				<td><code>${esc(r.productCode)}</code></td>
@@ -696,7 +734,7 @@
 				if (!r) return;
 				pCode.value = r.productCode;
 				pFid.value = r.featureId;
-				pKind.value = r.grantKind || 'allowed_count_delta';
+				pKind.value = 'entitlement';
 				pQty.value = r.grantQuantity || 1;
 				pPrice.value = r.priceFen || 0;
 				pOrig.value = r.originalPriceFen || 0;
@@ -747,7 +785,7 @@
 				description: fDesc.value.trim(),
 				unlockMethods,
 				durationDays: Number(fDuration.value) || 0,
-				defaultAllowedCount: Number(fDefault.value) || 0,
+				defaultAllowedCount: 0,
 				activationSubject: fSubject.value === 'user' ? 'user' : 'device',
 				color,
 				status: Number(fStatus.value),
@@ -873,10 +911,119 @@
 		} catch (e) { show(e.message || String(e), false); }
 	};
 
+	let currentPanel = 'vip';
+	let currentFeatureId = '';
+	let vipPage = 1;
+	function renderTiles() {
+		const bar = document.getElementById('tileBar');
+		const items = [{ id: 'vip', label: 'VIP' }];
+		defList.filter(r => Number(r.status) === 1 && r.featureId !== 'prediction_unlock').forEach(r => {
+			items.push({ id: r.featureId, label: r.title || r.featureId });
+		});
+		items.push({ id: 'qr', label: '群二维码' });
+		bar.innerHTML = items.map(it =>
+			`<button type="button" data-panel="${esc(it.id)}" class="${it.id === currentPanel ? 'on' : ''}">${esc(it.label)}</button>`
+		).join('');
+		bar.querySelectorAll('button').forEach(btn => {
+			btn.onclick = () => { selectPanel(btn.getAttribute('data-panel')); };
+		});
+	}
+	function showSecs(ids) {
+		document.querySelectorAll('.hub-sec').forEach(el => el.classList.remove('on'));
+		ids.forEach(id => {
+			const el = document.getElementById(id);
+			if (el) el.classList.add('on');
+		});
+	}
+	async function loadVipEntitlements() {
+		const wx = (document.getElementById('vipWxFilter').value || '').trim();
+		let path = '/cash/admin/api/vip/entitlements?page=' + vipPage + '&pageSize=20';
+		if (wx) path += '&wxId=' + encodeURIComponent(wx);
+		const data = await AdminCommon.adminFetch(path);
+		const list = (data && data.list) || [];
+		const total = (data && data.total) || 0;
+		const tb = document.getElementById('vipEntBody');
+		tb.innerHTML = list.map(row => {
+			const active = !!row.isVip;
+			const can = active && row.channel === 'admin';
+			const ch = row.channel === 'admin' ? '手工授' : (row.channel || '—');
+			return `<tr>
+				<td>${esc(row.wxId)}</td>
+				<td class="${active ? 'badge-on' : 'badge-off'}">${active ? '有效' : '已过期'}</td>
+				<td>${esc(fmtTs(row.expireAt))}</td>
+				<td>${esc(ch)}</td>
+				<td>${esc(row.grantReason || '—')}</td>
+				<td>${can ? `<button type="button" class="secondary vip-revoke" data-wx="${esc(row.wxId)}">撤销</button>` : ''}</td>
+			</tr>`;
+		}).join('') || '<tr><td colspan="6">暂无</td></tr>';
+		document.getElementById('vipPageMeta').textContent = '第 ' + vipPage + ' 页 · 共 ' + total + ' 条';
+		tb.querySelectorAll('.vip-revoke').forEach(btn => {
+			btn.onclick = async () => {
+				if (!confirm('撤销后该账号 VIP 立即失效，此前叠加上去的付费剩余也会一起没。确定撤销？')) return;
+				try {
+					await AdminCommon.adminFetch('/cash/admin/api/vip/entitlements/revoke', {
+						method: 'POST', body: JSON.stringify({ wxId: Number(btn.dataset.wx) })
+					});
+					show('已撤销 VIP', true);
+					await loadVipEntitlements();
+				} catch (e) { show(e.message || String(e), false); }
+			};
+		});
+	}
+	async function selectPanel(id) {
+		currentPanel = id || 'vip';
+		renderTiles();
+		if (currentPanel === 'vip') {
+			currentFeatureId = '';
+			showSecs(['secVip']);
+			await loadVipEntitlements().catch(e => show(e.message || e, false));
+			return;
+		}
+		if (currentPanel === 'qr') {
+			currentFeatureId = '';
+			showSecs(['secQr']);
+			return;
+		}
+		currentFeatureId = currentPanel;
+		showSecs(['secGrant', 'secDef', 'secSku']);
+		const r = defList.find(x => x.featureId === currentFeatureId);
+		if (r) loadDefIntoForm(r);
+		document.getElementById('grantFid').value = currentFeatureId;
+		document.getElementById('grantFidLabel').value = (r && r.title) ? (r.title + ' · ' + currentFeatureId) : currentFeatureId;
+		const pf = document.getElementById('pFid');
+		if (pf) pf.value = currentFeatureId;
+		await loadProds().catch(e => show(e.message || e, false));
+		await loadActivations(currentFeatureId).catch(e => show(e.message || e, false));
+	}
+
 	await loadDefs();
 	await loadProds();
 	await loadVipProduct().catch(e => show(e.message || e, false));
 	await loadQrMeta().catch(() => {});
+	const qPanel = new URLSearchParams(location.search).get('panel') || 'vip';
+	await selectPanel(qPanel);
+	document.getElementById('vipGrantBtn').onclick = async () => {
+		const wxRaw = (document.getElementById('vipGrantWx').value || '').trim();
+		const days = Number(document.getElementById('vipGrantDays').value);
+		const reason = (document.getElementById('vipGrantReason').value || '').trim();
+		if (!/^\d+$/.test(wxRaw) || Number(wxRaw) < 1) { show('wxId 须为正整数', false); return; }
+		if (!days || days < 1) { show('续期天数须 ≥ 1', false); return; }
+		if (!reason) { show('授权理由必填', false); return; }
+		try {
+			await AdminCommon.adminFetch('/cash/admin/api/vip/entitlements/grant', {
+				method: 'POST', body: JSON.stringify({ wxId: Number(wxRaw), durationDays: days, reason })
+			});
+			document.getElementById('vipGrantReason').value = '';
+			document.getElementById('vipWxFilter').value = wxRaw;
+			vipPage = 1;
+			show('已授 VIP', true);
+			await loadVipEntitlements();
+		} catch (e) { show(e.message || String(e), false); }
+	};
+	document.getElementById('vipSearchBtn').onclick = () => { vipPage = 1; loadVipEntitlements().catch(e => show(e.message || e, false)); };
+	document.getElementById('vipRefreshBtn').onclick = () => loadVipEntitlements().catch(e => show(e.message || e, false));
+	document.getElementById('vipPrevBtn').onclick = () => { if (vipPage > 1) { vipPage -= 1; loadVipEntitlements(); } };
+	document.getElementById('vipNextBtn').onclick = () => { vipPage += 1; loadVipEntitlements(); };
 })();
 </script>
 </body>

@@ -483,3 +483,14 @@ func (c *CashFeatureController) AdminFeatureGrant(ctx context.Context, req *v1.C
 	}
 	return &v1.CashAdminFeatureGrantRes{OrderNo: out.OrderNo, FeatureId: out.FeatureId}, nil
 }
+
+// AdminFeatureRevoke POST /cash/admin/api/feature/grants/revoke — 撤销最近一笔手工授功能。
+func (c *CashFeatureController) AdminFeatureRevoke(ctx context.Context, req *v1.CashAdminFeatureRevokeReq) (*v1.CashAdminFeatureRevokeRes, error) {
+	if err := requireCashAdmin(ctx); err != nil {
+		return nil, err
+	}
+	if err := cash.AdminRevokeFeature(ctx, req.FeatureId, req.WxId, req.DeviceNo); err != nil {
+		return nil, err
+	}
+	return &v1.CashAdminFeatureRevokeRes{}, nil
+}

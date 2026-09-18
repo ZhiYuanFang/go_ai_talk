@@ -24,6 +24,8 @@ const (
 	OrderCreated  = "created"
 	OrderPaid     = "paid"
 	OrderRefunded = "refunded" // Apple ASN REFUND 等退款语义
+	// OrderRevoked Hub 撤销手工授：权益立即过期，不用 refunded（那是支付退款）。
+	OrderRevoked = "revoked"
 	OrderFailed  = "failed"
 	OrderClosed  = "closed"
 )
@@ -326,13 +328,9 @@ func EnsureSchema(ctx context.Context) error {
 		FeatureIDCareAlertSmartRemind, FeatureIDGrowthTrajectoryPredict); err != nil {
 		return err
 	}
-	// 剥离 ad 开通方式（care / growth）；预测项整体停用。
+	// 剥离 ad 开通方式（care / growth）。预测槽位不再在启动时写回。
 	if _, err := db.Exec(ctx, `UPDATE feature_def SET unlock_methods='payment,invite_code', invite_duration_days=IF(invite_duration_days<=0,7,invite_duration_days), updated_at=? WHERE feature_id IN (?,?)`,
 		time.Now().Unix(), FeatureIDCareAlertSmartRemind, FeatureIDGrowthTrajectoryPredict); err != nil {
-		return err
-	}
-	if _, err := db.Exec(ctx, `UPDATE feature_def SET status=0, updated_at=? WHERE feature_id=?`,
-		time.Now().Unix(), FeatureIDPredictionUnlock); err != nil {
 		return err
 	}
 	// 功能视觉：logo（OSS objectKey）与主色 hex；已有库补列。
@@ -372,18 +370,6 @@ ON DUPLICATE KEY UPDATE
 	if err != nil {
 		return err
 	}
-	// 预测开通：种子后立即停用（status=0）；保留行便于 Admin 历史查看。
-	_, err = db.Exec(ctx, `
-INSERT INTO feature_def (feature_id, title, description, unlock_methods, duration_days, default_allowed_count, logo, color, status, sort_order, updated_at)
-VALUES (?, '预测事项开通数量', '增加可展示的预测事项数量', 'payment,invite_code', 0, 0, '', '#3B82F6', 0, 10, ?)
-ON DUPLICATE KEY UPDATE
-  status=0,
-  color=IF(color='' OR color IS NULL, VALUES(color), color),
-  updated_at=VALUES(updated_at)`,
-		FeatureIDPredictionUnlock, now)
-	if err != nil {
-		return err
-	}
 	// 值得留意：账号维；支付/邀请；邀请 7 天；默认主色青绿。
 	_, err = db.Exec(ctx, `
 INSERT INTO feature_def (feature_id, title, description, unlock_methods, duration_days, invite_duration_days, ad_duration_days, default_allowed_count, activation_subject, logo, color, status, sort_order, updated_at)
@@ -411,9 +397,6 @@ VALUES (?, ?, 'entitlement', 1, 990, 0, 30, '', 1, ?)`,
 		now, CareAlertSmartRemindProductCodeLegacyPerm)
 	_, _ = db.Exec(ctx, `UPDATE feature_product SET duration_days=30, updated_at=? WHERE product_code=? AND duration_days=0 AND status=1`,
 		now, CareAlertSmartRemindProductCode)
-	// 停用预测槽位相关 SKU（若有）。
-	_, _ = db.Exec(ctx, `UPDATE feature_product SET status=0, updated_at=? WHERE feature_id=?`,
-		now, FeatureIDPredictionUnlock)
 	// 成长轨迹：账号维；支付/邀请；邀请 7 天；默认主色橙。
 	_, err = db.Exec(ctx, `
 INSERT INTO feature_def (feature_id, title, description, unlock_methods, duration_days, invite_duration_days, ad_duration_days, default_allowed_count, activation_subject, logo, color, status, sort_order, updated_at)

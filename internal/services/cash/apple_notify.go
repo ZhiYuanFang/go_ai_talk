@@ -237,42 +237,13 @@ func RevokeFeatureGrantForOrder(ctx context.Context, order *FeatureOrder) error 
 	}
 	grantKind := prod.GrantKind
 	if grantKind == "" {
-		if prod.FeatureId == FeatureIDPredictionUnlock {
-			grantKind = GrantKindAllowedCountDelta
-		} else {
-			grantKind = GrantKindEntitlement
-		}
+		grantKind = GrantKindEntitlement
 	}
-	qty := prod.GrantQuantity
-	if qty <= 0 {
-		qty = 1
-	}
-	now := time.Now().Unix()
-
-	if grantKind == GrantKindAllowedCountDelta {
-		subjType, subjKey, sErr := ResolveActivateSubject(ctx, prod.FeatureId, order.DeviceNo, order.WxId)
-		if sErr != nil {
-			return sErr
-		}
-		if subjType == ActivationSubjectUser {
-			glog.Warningf(ctx, "[cash] refund allowed_count skip user subject orderNo=%s", order.OrderNo)
-			return nil
-		}
-		deviceNo := subjKey
-		if deviceNo == "" {
-			deviceNo = order.DeviceNo
-		}
-		if err := incrAllowedCount(ctx, deviceNo, -qty); err != nil {
-			return err
-		}
-		one, qErr := g.DB().Model("feature_allowed_count").Ctx(ctx).Where("device_no", deviceNo).One()
-		if qErr == nil && !one.IsEmpty() && one["allowed_count"].Int() < 0 {
-			_, _ = g.DB().Model("feature_allowed_count").Ctx(ctx).Where("device_no", deviceNo).
-				Data(g.Map{"allowed_count": 0, "updated_at": now}).Update()
-		}
-		invalidateDeviceFeatureCaches(ctx, deviceNo)
+	if prod.FeatureId == FeatureIDPredictionUnlock || grantKind == GrantKindAllowedCountDelta {
+		glog.Warningf(ctx, "[cash] prediction_unlock 退款跳过条数回退 orderNo=%s", order.OrderNo)
 		return nil
 	}
+	now := time.Now().Unix()
 
 	featureID := strings.TrimSpace(prod.FeatureId)
 	if featureID == "" {

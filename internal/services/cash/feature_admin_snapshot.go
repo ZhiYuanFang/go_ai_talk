@@ -12,6 +12,7 @@ import (
 	"github.com/gogf/gf/v2/errors/gcode"
 	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/frame/g"
+	"github.com/gogf/gf/v2/os/glog"
 )
 
 // FeatureActivationSnapshotItem 单条当前开通快照。
@@ -72,36 +73,8 @@ func AdminListFeatureActivationSnapshot(ctx context.Context, featureID string, l
 	}
 
 	if featureID == FeatureIDPredictionUnlock {
-		total, err := g.DB().Model("feature_allowed_count").Ctx(ctx).Count()
-		if err != nil {
-			return nil, err
-		}
-		page.Total = total
-		type rowT struct {
-			DeviceNo     string `json:"device_no"`
-			AllowedCount int    `json:"allowed_count"`
-			UpdatedAt    int64  `json:"updated_at"`
-		}
-		var rows []rowT
-		err = g.DB().Model("feature_allowed_count").Ctx(ctx).
-			Fields("device_no,allowed_count,updated_at").
-			OrderDesc("updated_at").OrderDesc("device_no").
-			Limit(limit).Offset(offset).Scan(&rows)
-		if err != nil {
-			return nil, err
-		}
-		for _, row := range rows {
-			page.List = append(page.List, FeatureActivationSnapshotItem{
-				SubjectType:    ActivationSubjectDevice,
-				DeviceNo:       row.DeviceNo,
-				PermanentDelta: row.AllowedCount,
-				ExpiresAt:      0,
-				Active:         row.AllowedCount > 0,
-				UpdatedAt:      row.UpdatedAt,
-				Kind:           "allowed_count",
-			})
-		}
-		return page, nil
+		glog.Warningf(ctx, "[cash] prediction_unlock 已下线，拒绝快照 featureId=%s", featureID)
+		return nil, gerror.NewCode(gcode.CodeInvalidOperation, "预测事项开通数量已下线")
 	}
 
 	subj := NormalizeActivationSubject(r["activation_subject"].String())

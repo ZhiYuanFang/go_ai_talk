@@ -401,3 +401,14 @@ type CashAdminFeatureGrantRes struct {
 	OrderNo   string `json:"orderNo"`
 	FeatureId string `json:"featureId"`
 }
+
+// CashAdminFeatureRevokeReq POST 撤销最近一笔手工授功能。
+type CashAdminFeatureRevokeReq struct {
+	g.Meta    `path:"/cash/admin/api/feature/grants/revoke" method:"post" tags:"cash-admin" summary:"管理端撤销手工授功能"`
+	FeatureId string `json:"featureId" v:"required"`
+	WxId      int64  `json:"wxId"`
+	DeviceNo  string `json:"deviceNo"`
+}
+
+// CashAdminFeatureRevokeRes 撤销结果。
+type CashAdminFeatureRevokeRes struct{}
