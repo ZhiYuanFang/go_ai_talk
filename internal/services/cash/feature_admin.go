@@ -2,9 +2,6 @@ package cash
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
-	"fmt"
 	"strings"
 	"time"
 
@@ -55,11 +52,11 @@ func AdminUpdateFeatureDef(ctx context.Context, featureID, title, desc, unlockMe
 	}
 	data := g.Map{
 		"title": title, "description": desc, "unlock_methods": unlockMethods,
-		"duration_days": durationDays,
+		"duration_days":        durationDays,
 		"invite_duration_days": inviteDurationDays, "ad_duration_days": adDurationDays,
 		"default_allowed_count": defaultAllowedCount,
 		"color":                 color,
-		"status": status, "sort_order": sortOrder, "updated_at": now,
+		"status":                status, "sort_order": sortOrder, "updated_at": now,
 	}
 	// logo：非空才更新，避免未传文件时清空已有图
 	if key := featurelogo.StoredObjectKey(ctx, logoObjectKey); key != "" {
@@ -99,8 +96,8 @@ func AdminListFeatureDefs(ctx context.Context) ([]FeatureDefRow, error) {
 			UnlockMethods: r.UnlockMethods, DurationDays: r.DurationDays,
 			InviteDurationDays: r.InviteDurationDays, AdDurationDays: r.AdDurationDays,
 			DefaultAllowedCount: r.DefaultAllowedCount,
-			ActivationSubject:    NormalizeActivationSubject(r.ActivationSubject),
-			Logo: featurelogo.CdnURL(ctx, r.Logo), Color: strings.TrimSpace(r.Color),
+			ActivationSubject:   NormalizeActivationSubject(r.ActivationSubject),
+			Logo:                featurelogo.CdnURL(ctx, r.Logo), Color: strings.TrimSpace(r.Color),
 			Status: r.Status, SortOrder: r.SortOrder,
 			RuleSummary: FeatureRuleSummary(r.FeatureId),
 		})
@@ -108,23 +105,9 @@ func AdminListFeatureDefs(ctx context.Context) ([]FeatureDefRow, error) {
 	return out, nil
 }
 
-// genFeatureProductCode 生成全局唯一商品编码。
-func genFeatureProductCode(featureID string) string {
-	b := make([]byte, 4)
-	_, _ = rand.Read(b)
-	fid := strings.TrimSpace(featureID)
-	if len(fid) > 24 {
-		fid = fid[:24]
-	}
-	if fid == "" {
-		fid = "feat"
-	}
-	return fmt.Sprintf("fp_%s_%d_%s", fid, time.Now().Unix(), hex.EncodeToString(b))
-}
-
-// AdminUpsertFeatureProduct 创建或更新功能 SKU。
+// AdminUpsertFeatureProduct 只更新已有功能 SKU，不新建商品编码。
 //
-// 业务：新建时 productCode 可空（服务端自动生成）；更新必须带已有编码且不得改所属功能外的主键语义。
+// 业务：空编码或库中不存在的编码直接拒绝。已有行更新价格、天数、Apple ID、上下架等，不改 product_code。
 // 所属 featureId MUST 已存在于 feature_def。
 func AdminUpsertFeatureProduct(ctx context.Context, p *FeatureProduct) error {
 	if p == nil {
@@ -156,48 +139,22 @@ func AdminUpsertFeatureProduct(ctx context.Context, p *FeatureProduct) error {
 	if p.DurationDays < 1 {
 		return gerror.NewCode(gcode.CodeInvalidParameter, "有效天数须≥1，不支持永久")
 	}
-
 	if p.ProductCode == "" {
-		// 新建：自动生成编码。
-		for i := 0; i < 5; i++ {
-			code := genFeatureProductCode(p.FeatureId)
-			exist, e := g.DB().Model("feature_product").Ctx(ctx).Where("product_code", code).One()
-			if e != nil {
-				return e
-			}
-			if exist.IsEmpty() {
-				p.ProductCode = code
-				break
-			}
-		}
-		if p.ProductCode == "" {
-			return gerror.NewCode(gcode.CodeInternalError, "生成商品编码失败")
-		}
-		_, err = g.DB().Model("feature_product").Ctx(ctx).Data(g.Map{
-			"product_code": p.ProductCode, "feature_id": p.FeatureId, "grant_kind": p.GrantKind,
-			"grant_quantity": p.GrantQuantity, "price_fen": p.PriceFen, "original_price_fen": p.OriginalPriceFen,
-			"duration_days": p.DurationDays, "apple_product_id": p.AppleProductId, "status": p.Status, "updated_at": now,
-		}).Insert()
-		invalidateFeatureDefCache(ctx)
-		return err
+		return gerror.NewCode(gcode.CodeInvalidParameter, "须选择已有套餐，不能新建")
 	}
 
 	r, err := g.DB().Model("feature_product").Ctx(ctx).Where("product_code", p.ProductCode).One()
 	if err != nil {
 		return err
 	}
-	data := g.Map{
+	if r.IsEmpty() {
+		return gerror.NewCode(gcode.CodeInvalidParameter, "商品编码不存在，不能新建")
+	}
+	_, err = g.DB().Model("feature_product").Ctx(ctx).Where("product_code", p.ProductCode).Data(g.Map{
 		"feature_id": p.FeatureId, "grant_kind": p.GrantKind,
 		"grant_quantity": p.GrantQuantity, "price_fen": p.PriceFen, "original_price_fen": p.OriginalPriceFen,
 		"duration_days": p.DurationDays, "apple_product_id": p.AppleProductId, "status": p.Status, "updated_at": now,
-	}
-	if r.IsEmpty() {
-		// 运维指定编码新建。
-		data["product_code"] = p.ProductCode
-		_, err = g.DB().Model("feature_product").Ctx(ctx).Data(data).Insert()
-	} else {
-		_, err = g.DB().Model("feature_product").Ctx(ctx).Where("product_code", p.ProductCode).Data(data).Update()
-	}
+	}).Update()
 	invalidateFeatureDefCache(ctx)
 	return err
 }

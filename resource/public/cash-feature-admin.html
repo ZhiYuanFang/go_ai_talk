@@ -432,12 +432,12 @@
 
 		<div id="secSku" class="hub-sec">
 		<h3 style="margin-top:22px;">售卖套餐（当前功能）</h3>
-		<p class="hint">新建时商品编码可留空由服务端生成；所属功能从已有定义下拉选择。视觉品牌在功能定义上配置，SKU 不单独配色。</p>
+		<p class="hint">保存只改当前商品编码，不能新建。所属功能与当前顶栏一致。视觉品牌在功能定义上配置。</p>
 		<div class="form-stack">
 			<div class="form-grid">
 				<div class="field field-readonly">
 					<label>商品编码</label>
-					<span class="sub">新建留空自动生成；编辑已有套餐时只读</span>
+					<span class="sub">只读；打开功能时填入已有套餐</span>
 					<input id="pCode" readonly placeholder="保存后自动生成" />
 				</div>
 				<div class="field">
@@ -483,7 +483,6 @@
 			</div>
 			<div class="btn-row">
 				<button id="saveProdBtn" type="button">保存套餐</button>
-				<button id="newProdBtn" type="button" class="secondary">新建套餐（清空编码）</button>
 				<button id="reloadProdBtn" type="button" class="secondary">刷新列表</button>
 			</div>
 		</div>
@@ -798,21 +797,31 @@
 			</tr>`
 		).join('') || '<tr><td colspan="5">暂无套餐</td></tr>';
 		tb.querySelectorAll('tr[data-code]').forEach(tr => {
-			tr.onclick = () => {
-				const r = list.find(x => x.productCode === tr.dataset.code);
-				if (!r) return;
-				pCode.value = r.productCode;
-				pFid.value = r.featureId;
-				pKind.value = 'entitlement';
-				pQty.value = r.grantQuantity || 1;
-				pPrice.value = r.priceFen || 0;
-				pOrig.value = r.originalPriceFen || 0;
-				pDays.value = r.durationDays || 0;
-				pApple.value = r.appleProductId || '';
-				pStatus.value = String(r.status != null ? r.status : 1);
-				document.getElementById('pPrice').dispatchEvent(new Event('input'));
-			};
+			tr.onclick = () => fillSkuForm(list.find(x => x.productCode === tr.dataset.code));
 		});
+		if (currentFeatureId) fillSkuForm(pickSku(list));
+	}
+	function pickSku(list) {
+		if (!list || !list.length) return null;
+		const on = list.filter(r => Number(r.status) === 1);
+		const pool = on.length ? on : list;
+		return pool.find(r => r.productCode && !String(r.productCode).startsWith('fp_')) || pool[0];
+	}
+	function fillSkuForm(r) {
+		if (!r) {
+			pCode.value = '';
+			return;
+		}
+		pCode.value = r.productCode;
+		pFid.value = r.featureId;
+		pKind.value = 'entitlement';
+		pQty.value = r.grantQuantity || 1;
+		pPrice.value = r.priceFen || 0;
+		pOrig.value = r.originalPriceFen || 0;
+		pDays.value = r.durationDays || 0;
+		pApple.value = r.appleProductId || '';
+		pStatus.value = String(r.status != null ? r.status : 1);
+		document.getElementById('pPrice').dispatchEvent(new Event('input'));
 	}
 
 	document.getElementById('reloadDefBtn').onclick = () => loadDefs().catch(e => show(e.message || e, false));
@@ -826,17 +835,6 @@
 		document.getElementById('activationPanel').style.display = 'none';
 	};
 	document.getElementById('reloadProdBtn').onclick = () => loadProds().catch(e => show(e.message || e, false));
-	document.getElementById('newProdBtn').onclick = () => {
-		pCode.value = '';
-		pQty.value = 1;
-		pPrice.value = 600;
-		pOrig.value = 0;
-		pDays.value = 30;
-		pApple.value = '';
-		pStatus.value = '1';
-		document.getElementById('pPrice').dispatchEvent(new Event('input'));
-		show('已清空编码，保存将自动生成', true);
-	};
 	document.getElementById('saveDefBtn').onclick = async () => {
 		try {
 			const featureId = fId.value.trim();
@@ -874,11 +872,13 @@
 	document.getElementById('saveProdBtn').onclick = async () => {
 		try {
 			const featureId = pFid.value.trim();
+			const productCode = pCode.value.trim();
+			if (!productCode) { show('须选择已有套餐，不能新建', false); return; }
 			if (!featureId) { show('请选择所属功能', false); return; }
 			const data = await AdminCommon.adminFetch('/cash/admin/api/feature/products', {
 				method: 'POST',
 				body: JSON.stringify({
-					productCode: pCode.value.trim(),
+					productCode,
 					featureId,
 					grantKind: pKind.value.trim(),
 					grantQuantity: Number(pQty.value) || 1,
