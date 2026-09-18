@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gogf/gf/v2/database/gdb"
 	"github.com/gogf/gf/v2/errors/gcode"
 	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/frame/g"
@@ -45,21 +46,22 @@ func mapFeatureProduct(r featureProductDB) *FeatureProduct {
 }
 
 // GetActiveFeatureProduct 按 product_code 取启用功能 SKU。
+//
+// 空结果返回业务错误，不向外抛 sql.ErrNoRows（对齐 VIP GetActiveProduct 的 .One 语义）。
 func GetActiveFeatureProduct(ctx context.Context, productCode string) (*FeatureProduct, error) {
 	productCode = strings.TrimSpace(productCode)
 	if productCode == "" {
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "productCode 不能为空")
 	}
-	var r featureProductDB
-	err := g.DB().Model("feature_product").Ctx(ctx).
-		Where("product_code", productCode).Where("status", 1).Scan(&r)
+	one, err := g.DB().Model("feature_product").Ctx(ctx).
+		Where("product_code", productCode).Where("status", 1).Limit(1).One()
 	if err != nil {
 		return nil, err
 	}
-	if r.ProductCode == "" {
+	if one.IsEmpty() {
 		return nil, gerror.NewCode(gcode.CodeNotFound, "功能商品不存在或已停用")
 	}
-	return mapFeatureProduct(r), nil
+	return mapFeatureProductRecord(one), nil
 }
 
 // GetFeatureProductByAppleID 按 Apple productId 查找启用功能 SKU。
@@ -68,16 +70,29 @@ func GetFeatureProductByAppleID(ctx context.Context, applePID string) (*FeatureP
 	if applePID == "" {
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "apple productId 为空")
 	}
-	var r featureProductDB
-	err := g.DB().Model("feature_product").Ctx(ctx).
-		Where("apple_product_id", applePID).Where("status", 1).Scan(&r)
+	one, err := g.DB().Model("feature_product").Ctx(ctx).
+		Where("apple_product_id", applePID).Where("status", 1).Limit(1).One()
 	if err != nil {
 		return nil, err
 	}
-	if r.ProductCode == "" {
+	if one.IsEmpty() {
 		return nil, gerror.NewCode(gcode.CodeNotFound, "未找到功能 Apple 商品映射")
 	}
-	return mapFeatureProduct(r), nil
+	return mapFeatureProductRecord(one), nil
+}
+
+func mapFeatureProductRecord(one gdb.Record) *FeatureProduct {
+	return mapFeatureProduct(featureProductDB{
+		ProductCode:      one["product_code"].String(),
+		FeatureId:        one["feature_id"].String(),
+		GrantKind:        one["grant_kind"].String(),
+		GrantQuantity:    one["grant_quantity"].Int(),
+		PriceFen:         one["price_fen"].Int(),
+		OriginalPriceFen: one["original_price_fen"].Int(),
+		DurationDays:     one["duration_days"].Int(),
+		AppleProductId:   one["apple_product_id"].String(),
+		Status:           one["status"].Int(),
+	})
 }
 
 // FeatureOrder 功能订单行。
@@ -107,61 +122,68 @@ type featureOrderDB struct {
 	AppAccountToken string `json:"app_account_token"`
 }
 
+// loadFeatureOrderByNo 按订单号读功能单。无行返回明确业务错误，不返回 sql.ErrNoRows。
 func loadFeatureOrderByNo(ctx context.Context, orderNo string) (*FeatureOrder, error) {
-	var r featureOrderDB
-	err := g.DB().Model("feature_order").Ctx(ctx).Where("order_no", orderNo).Scan(&r)
+	orderNo = strings.TrimSpace(orderNo)
+	if orderNo == "" {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "orderNo 不能为空")
+	}
+	one, err := g.DB().Model("feature_order").Ctx(ctx).Where("order_no", orderNo).Limit(1).One()
 	if err != nil {
 		return nil, err
 	}
-	if r.OrderNo == "" {
+	if one.IsEmpty() {
 		return nil, gerror.NewCode(gcode.CodeNotFound, "功能订单不存在")
 	}
-	return &FeatureOrder{
-		Id: r.Id, OrderNo: r.OrderNo, DeviceNo: r.DeviceNo, WxId: r.WxId,
-		ProductCode: r.ProductCode, Channel: r.Channel, AmountFen: r.AmountFen,
-		Status: r.Status, ChannelTxnId: r.ChannelTxnId, AppAccountToken: r.AppAccountToken,
-	}, nil
+	return scanFeatureOrder(one), nil
 }
 
+// loadFeatureOrderByChannelTxn 按渠道交易号查；无行返回 nil（首次回调幂等），不返回 sql.ErrNoRows。
 func loadFeatureOrderByChannelTxn(ctx context.Context, channel, txn string) (*FeatureOrder, error) {
+	txn = strings.TrimSpace(txn)
 	if txn == "" {
 		return nil, nil
 	}
-	var r featureOrderDB
-	err := g.DB().Model("feature_order").Ctx(ctx).
-		Where("channel", channel).Where("channel_txn_id", txn).Scan(&r)
+	one, err := g.DB().Model("feature_order").Ctx(ctx).
+		Where("channel", channel).Where("channel_txn_id", txn).Limit(1).One()
 	if err != nil {
 		return nil, err
 	}
-	if r.OrderNo == "" {
+	if one.IsEmpty() {
 		return nil, nil
 	}
-	return &FeatureOrder{
-		Id: r.Id, OrderNo: r.OrderNo, DeviceNo: r.DeviceNo, WxId: r.WxId,
-		ProductCode: r.ProductCode, Channel: r.Channel, AmountFen: r.AmountFen,
-		Status: r.Status, ChannelTxnId: r.ChannelTxnId, AppAccountToken: r.AppAccountToken,
-	}, nil
+	return scanFeatureOrder(one), nil
 }
 
-// loadFeatureOrderByAppAccountToken 按 Apple appAccountToken 查功能订单。
+// loadFeatureOrderByAppAccountToken 按 Apple appAccountToken 查功能订单；无行返回 nil。
 func loadFeatureOrderByAppAccountToken(ctx context.Context, token string) (*FeatureOrder, error) {
 	token = strings.TrimSpace(token)
 	if token == "" {
 		return nil, nil
 	}
-	var r featureOrderDB
-	err := g.DB().Model("feature_order").Ctx(ctx).Where("app_account_token", token).Scan(&r)
+	one, err := g.DB().Model("feature_order").Ctx(ctx).Where("app_account_token", token).Limit(1).One()
 	if err != nil {
 		return nil, err
 	}
-	if r.OrderNo == "" {
+	if one.IsEmpty() {
 		return nil, nil
 	}
+	return scanFeatureOrder(one), nil
+}
+
+func scanFeatureOrder(one gdb.Record) *FeatureOrder {
 	return &FeatureOrder{
-		Id: r.Id, OrderNo: r.OrderNo, DeviceNo: r.DeviceNo, WxId: r.WxId,
-		ProductCode: r.ProductCode, Channel: r.Channel, AmountFen: r.AmountFen,
-		Status: r.Status, ChannelTxnId: r.ChannelTxnId, AppAccountToken: r.AppAccountToken,
-	}, nil
+		Id:              one["id"].Int64(),
+		OrderNo:         one["order_no"].String(),
+		DeviceNo:        one["device_no"].String(),
+		WxId:            one["wx_id"].Int64(),
+		ProductCode:     one["product_code"].String(),
+		Channel:         one["channel"].String(),
+		AmountFen:       one["amount_fen"].Int(),
+		Status:          one["status"].String(),
+		ChannelTxnId:    one["channel_txn_id"].String(),
+		AppAccountToken: one["app_account_token"].String(),
+	}
 }
 
 // CreateFeatureOrder 创建功能订单并返回调起参数。
@@ -305,10 +327,12 @@ func FulfillFeaturePaid(ctx context.Context, orderNo, channel, channelTxnID stri
 // DispatchFulfillPaid 按订单号分流 VIP / 功能履约（共用支付回调入口）。
 func DispatchFulfillPaid(ctx context.Context, orderNo, channel, channelTxnID string, amountFen int) error {
 	orderNo = strings.TrimSpace(orderNo)
-	// 先查功能订单，再查 VIP。
-	var fo featureOrderDB
-	_ = g.DB().Model("feature_order").Ctx(ctx).Where("order_no", orderNo).Scan(&fo)
-	if fo.OrderNo != "" {
+	// 先查功能订单，再查 VIP。空结果用 .One，避免 Scan 抛 sql.ErrNoRows。
+	one, err := g.DB().Model("feature_order").Ctx(ctx).Where("order_no", orderNo).Limit(1).One()
+	if err != nil {
+		return err
+	}
+	if !one.IsEmpty() {
 		return FulfillFeaturePaid(ctx, orderNo, channel, channelTxnID, amountFen)
 	}
 	return FulfillPaid(ctx, orderNo, channel, channelTxnID, amountFen)
