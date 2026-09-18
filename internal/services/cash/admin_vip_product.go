@@ -35,8 +35,8 @@ func AdminUpdateVipProduct(ctx context.Context, in AdminUpdateVipProductInput) e
 	if in.PriceFen < 0 || in.OriginalPriceFen < 0 {
 		return gerror.NewCode(gcode.CodeInvalidParameter, "价格不能为负")
 	}
-	if in.DurationDays < 0 {
-		return gerror.NewCode(gcode.CodeInvalidParameter, "时长不能为负")
+	if in.DurationDays < 1 {
+		return gerror.NewCode(gcode.CodeInvalidParameter, "有效天数须≥1")
 	}
 	status := in.Status
 	if status != 0 && status != 1 {

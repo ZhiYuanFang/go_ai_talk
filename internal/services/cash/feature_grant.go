@@ -16,7 +16,7 @@ import (
 // GrantEntitlementOrCount 向 device 授予权益并失效相关缓存。
 //
 // 业务：支付履约写 feature_entitlement。预测条数增量已下线。
-// Args: grantKind 须为 entitlement；durationDays=0 表示永久。
+// Args: grantKind 须为 entitlement；durationDays 须≥1，不支持永久。
 func GrantEntitlementOrCount(ctx context.Context, deviceNo, featureID, unlockMethod, grantKind string, grantQty, durationDays int, sourceRef string) error {
 	deviceNo = strings.TrimSpace(deviceNo)
 	featureID = strings.TrimSpace(featureID)
@@ -46,6 +46,9 @@ func GrantEntitlementOrCount(ctx context.Context, deviceNo, featureID, unlockMet
 }
 
 func upsertFeatureEntitlement(ctx context.Context, deviceNo, featureID, unlockMethod string, durationDays, quantity int, sourceRef string, now int64) error {
+	if durationDays < 1 {
+		return gerror.NewCode(gcode.CodeInvalidParameter, "授予天数须≥1，不支持永久")
+	}
 	db := g.DB()
 	exist, err := db.Model("feature_entitlement").Ctx(ctx).
 		Where("device_no", deviceNo).Where("feature_id", featureID).One()
@@ -53,9 +56,7 @@ func upsertFeatureEntitlement(ctx context.Context, deviceNo, featureID, unlockMe
 		return err
 	}
 	var newExp int64
-	if durationDays <= 0 {
-		newExp = 0
-	} else if exist.IsEmpty() {
+	if exist.IsEmpty() {
 		newExp = now + int64(durationDays)*86400
 	} else {
 		base := now
@@ -96,13 +97,13 @@ func upsertFeatureEntitlement(ctx context.Context, deviceNo, featureID, unlockMe
 
 // GrantUserEntitlement 向 wx 授予/续期功能权益（账号维）。
 //
-// Args: durationDays=0 表示永久。
+// Args: durationDays 须≥1。
 // Side Effects: 写 feature_user_entitlement；失效功能定义缓存。
 func GrantUserEntitlement(ctx context.Context, wxID int64, featureID, unlockMethod string, grantQty, durationDays int, sourceRef string) error {
-	var addSec int64
-	if durationDays > 0 {
-		addSec = int64(durationDays) * 86400
+	if durationDays < 1 {
+		return gerror.NewCode(gcode.CodeInvalidParameter, "授予天数须≥1，不支持永久")
 	}
+	addSec := int64(durationDays) * 86400
 	return grantUserEntitlementAddSeconds(ctx, wxID, featureID, unlockMethod, grantQty, addSec, sourceRef)
 }
 
@@ -131,7 +132,7 @@ func grantUserEntitlementAddSeconds(ctx context.Context, wxID int64, featureID, 
 	return nil
 }
 
-// upsertFeatureUserEntitlement addSeconds=0 表示永久；>0 从 now 或未过期 expires_at 起叠加。
+// upsertFeatureUserEntitlement addSeconds 须为正；从 now 或未过期 expires_at 起叠加。已有永久行保持永久。
 func upsertFeatureUserEntitlement(ctx context.Context, wxID int64, featureID, unlockMethod string, addSeconds int64, quantity int, sourceRef string, now int64) error {
 	db := g.DB()
 	exist, err := db.Model("feature_user_entitlement").Ctx(ctx).
@@ -141,8 +142,9 @@ func upsertFeatureUserEntitlement(ctx context.Context, wxID int64, featureID, un
 	}
 	var newExp int64
 	if addSeconds <= 0 {
-		newExp = 0
-	} else if exist.IsEmpty() {
+		return gerror.NewCode(gcode.CodeInvalidParameter, "授予时长须为正，不支持永久")
+	}
+	if exist.IsEmpty() {
 		newExp = now + addSeconds
 	} else {
 		base := now

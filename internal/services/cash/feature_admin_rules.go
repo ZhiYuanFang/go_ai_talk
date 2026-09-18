@@ -15,8 +15,8 @@ func FeatureRuleSummary(featureID string) string {
 	switch strings.TrimSpace(featureID) {
 	case FeatureIDCareAlertSmartRemind:
 		return inviteCommonRulePrefix +
-			" 本功能：开放主体=对机（device），全家共享权益。邀请：同一宝宝对本功能仅能成功邀请开通一次；授予天数看功能定义「邀请授予天数」（0=永久）。" +
-			"付费：对机写入权益（种子 SKU 多为永久）。VIP 可覆盖使用权，但开通快照页不含 VIP 旁路。"
+			" 本功能：开放主体=对机（device），全家共享权益。邀请：同一宝宝对本功能仅能成功邀请开通一次；授予天数须≥1。" +
+			"付费：对机写入权益（限时，不支持永久）。VIP 可覆盖使用权，但开通快照页不含 VIP 旁路。"
 	case FeatureIDGrowthTrajectoryPredict:
 		return inviteCommonRulePrefix +
 			" 本功能：开放主体=对人（user），一人一份。邀请：同宝宝可兑多个不同好友码；同一人对本功能任意邀请码仅能成功一次；授予天数看「邀请授予天数」。" +

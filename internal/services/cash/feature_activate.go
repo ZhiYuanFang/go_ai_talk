@@ -35,8 +35,8 @@ type ActivateFeatureRequest struct {
 //
 // 效果解析：
 //   - payment：grant_kind/quantity/duration 来自入参（SKU）；
-//   - invite_code：读 feature_def.invite_duration_days（0=永久）；
-//   - ad：读 feature_def.ad_duration_days（0=永久）；种子已剥离，旧客户端调用将因 unlock_methods 拒绝；
+//   - invite_code：读 feature_def.invite_duration_days，须≥1；
+//   - ad：读 feature_def.ad_duration_days，须≥1；种子已剥离，旧客户端调用将因 unlock_methods 拒绝；
 //   - trial：DurationHours（默认 TrialDurationHours），仅账号维权益。
 //
 // Args: req 见 ActivateFeatureRequest。
@@ -110,6 +110,10 @@ func ActivateFeature(ctx context.Context, req ActivateFeatureRequest) error {
 	if grantKind == GrantKindAllowedCountDelta {
 		glog.Warningf(ctx, "[cash] allowed_count_delta 已下线 featureId=%s", featureID)
 		return gerror.NewCode(gcode.CodeInvalidOperation, "预测条数开通已下线")
+	}
+	// 支付/邀请/广告都不支持永久：天数须≥1，拒绝写成 expires_at=0。
+	if durationDays < 1 {
+		return gerror.NewCode(gcode.CodeInvalidParameter, "授予天数须≥1，不支持永久")
 	}
 
 	if subjectType == ActivationSubjectUser {

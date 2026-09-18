@@ -10,14 +10,14 @@ import (
 // 流程约束：新增 App HTTP 接口 MUST 先向负责人确认是否统计，见 openspec/project.md「App API 使用统计约定」。
 
 var maintenanceExactAPI = map[string]struct{}{
-	"POST /device/app/api/token/refresh":    {},
-	"GET /device/app/api/version/check":     {},
-	"GET /device/app/api/site/home":         {},
-	"GET /voice/app/api/ai-quota":           {},
-	"GET /ucg/app/api/ai-quota":             {},
+	"POST /device/app/api/token/refresh": {},
+	"GET /device/app/api/version/check":  {},
+	"GET /device/app/api/site/home":      {},
+	"GET /voice/app/api/ai-quota":        {},
+	"GET /ucg/app/api/ai-quota":          {},
 	// 全局推送注册/注销：负责人确认不计入 usage（extract-push-service）。
-	"POST /app/api/push/register":   {},
-	"POST /app/api/push/unregister": {},
+	"POST /app/api/push/register":           {},
+	"POST /app/api/push/unregister":         {},
 	"GET /device/history/api/event/options": {},
 	"GET /ucg/app/api/conversations":        {},
 	"GET /device/app/api/user/get":          {},
@@ -30,14 +30,19 @@ var maintenanceExactAPI = map[string]struct{}{
 	// 客户端功能上报：统计基础设施，不计入 App API 使用统计（负责人确认）。
 	"POST /device/app/api/client-usage/report": {},
 	// 商业功能：查询链路不计入 usage；开通意图 POST（建单/兑码/广告）仍统计。
-	"GET /cash/app/api/ucg/eligibility":  {},
+	"GET /cash/app/api/ucg/eligibility": {},
 	"GET /cash/app/api/feature/catalog": {},
 	// 值得留意喂养资格：与 UCG eligibility 同属资格查询读路径；按商业资格查询不计入策略对齐（feeding-eligibility-admin-scenes）。
 	"GET /cash/app/api/care-alert/eligibility": {},
 	// 邀请码/原力：非开通意图的查询不计入；redeem 仍统计（invite-peer-force-ucg）。
 	"GET /cash/app/api/invite/mine":     {},
 	"GET /cash/app/api/invite/invitees": {},
-	"GET /ucg/app/api/force/ledger": {},
+	"GET /ucg/app/api/force/ledger":     {},
+	// 负责人确认：下列四条不计入 usage，仅精确匹配该方法与路径。
+	"GET /device/history/api/filter":           {},
+	"GET /ucg/app/api/notifications/comments":  {},
+	"GET /cash/app/api/vip/status":             {},
+	"PUT /device/api/predict/imminent/pending": {},
 }
 
 var maintenancePathPrefixes = []string{

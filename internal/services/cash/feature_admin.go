@@ -20,7 +20,7 @@ import (
 
 // AdminUpdateFeatureDef 更新已有功能定义（禁止新建任意 featureId；编号与客户端约定）。
 //
-// Args: durationDays 旧字段，仍写入；invite/ad 为邀请与广告授予天数（0=永久）。
+// Args: durationDays、邀请天数、广告天数均须≥1，不支持永久。
 //
 //	defaultAllowedCount 预测类默认免费开通条数（其它功能可 0）。
 //	activationSubject 可选：nil 保持原值；非 nil 须为 device|user；预测类禁止改为 user。
@@ -34,6 +34,9 @@ func AdminUpdateFeatureDef(ctx context.Context, featureID, title, desc, unlockMe
 	if featureID == FeatureIDPredictionUnlock {
 		glog.Warningf(ctx, "[cash] prediction_unlock 已下线，拒绝改定义 featureId=%s", featureID)
 		return gerror.NewCode(gcode.CodeInvalidOperation, "预测事项开通数量已下线")
+	}
+	if durationDays < 1 || inviteDurationDays < 1 || adDurationDays < 1 {
+		return gerror.NewCode(gcode.CodeInvalidParameter, "授予天数须≥1，不支持永久")
 	}
 	if defaultAllowedCount < 0 {
 		defaultAllowedCount = 0
@@ -149,6 +152,9 @@ func AdminUpsertFeatureProduct(ctx context.Context, p *FeatureProduct) error {
 	}
 	if p.GrantKind == "" {
 		p.GrantKind = GrantKindEntitlement
+	}
+	if p.DurationDays < 1 {
+		return gerror.NewCode(gcode.CodeInvalidParameter, "有效天数须≥1，不支持永久")
 	}
 
 	if p.ProductCode == "" {

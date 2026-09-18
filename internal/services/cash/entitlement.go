@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/gogf/gf/v2/errors/gcode"
+	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/frame/g"
 )
 
@@ -41,12 +43,15 @@ func IsVip(ctx context.Context, wxID int64) (bool, error) {
 }
 
 // ExtendEntitlement 续期：new_expire = max(now, current) + durationDays*86400。
+//
+// Args: durationDays 须≥1。小于 1 直接拒绝，不替换成 30，也不写成永久。
 func ExtendEntitlement(ctx context.Context, wxID int64, durationDays int) (int64, error) {
 	if wxID <= 0 {
 		return 0, nil
 	}
-	if durationDays <= 0 {
-		durationDays = ProductDurationD
+	if durationDays < 1 {
+		// 拒绝 0/负数，避免续期被静默换成 30 天。
+		return 0, gerror.NewCode(gcode.CodeInvalidParameter, "durationDays 须≥1")
 	}
 	now := time.Now().Unix()
 	st, err := GetVipStatus(ctx, wxID)

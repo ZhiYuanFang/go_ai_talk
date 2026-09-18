@@ -142,8 +142,8 @@
 					</div>
 					<div class="field">
 						<label>邀请/广告授予天数</label>
-						<span class="sub">invite_code 与 ad 共用；0=永久；付费看下方套餐 duration</span>
-						<input id="fDuration" type="number" value="0" min="0" />
+						<span class="sub">invite_code 与 ad 共用；须≥1；付费看下方套餐 duration</span>
+						<input id="fDuration" type="number" value="7" min="1" />
 					</div>
 					<div class="field">
 						<label>开放主体（对人 / 对机）</label>
@@ -303,7 +303,7 @@
 				</div>
 				<div class="field">
 					<label>有效天数</label>
-					<input id="vipDays" type="number" value="30" min="0" />
+					<input id="vipDays" type="number" value="30" min="1" />
 				</div>
 				<div class="field">
 					<label>Apple 商品 ID</label>
@@ -397,8 +397,8 @@
 				</div>
 				<div class="field">
 					<label>有效天数</label>
-					<span class="sub">0 = 永久；权益类常用</span>
-					<input id="pDays" type="number" value="0" min="0" />
+					<span class="sub">须≥1，不支持永久</span>
+					<input id="pDays" type="number" value="30" min="1" />
 				</div>
 				<div class="field">
 					<label>Apple 商品 ID</label>
@@ -762,7 +762,7 @@
 		pQty.value = 1;
 		pPrice.value = 600;
 		pOrig.value = 0;
-		pDays.value = 0;
+		pDays.value = 30;
 		pApple.value = '';
 		pStatus.value = '1';
 		document.getElementById('pPrice').dispatchEvent(new Event('input'));

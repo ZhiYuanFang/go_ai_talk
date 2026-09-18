@@ -355,13 +355,12 @@ func EnsureSchema(ctx context.Context) error {
 		}
 	}
 	now := time.Now().Unix()
-	// 种子 Apple 商品 ID 为空；Admin/SQL 已写入的非空值不覆盖。价格同样不覆盖已有 price_fen。
+	// 种子 Apple 商品 ID 为空；Admin/SQL 已写入的非空值不覆盖。价格与 duration_days 同样不覆盖已有行。
 	_, err := db.Exec(ctx, `
 INSERT INTO vip_product (product_code, title, price_fen, original_price_fen, duration_days, apple_product_id, status, updated_at)
 VALUES (?, 'VIP月会员', ?, ?, ?, '', 1, ?)
 ON DUPLICATE KEY UPDATE
   title=VALUES(title),
-  duration_days=VALUES(duration_days),
   apple_product_id=IF(VALUES(apple_product_id)='', apple_product_id, VALUES(apple_product_id)),
   original_price_fen=IF(original_price_fen=0, VALUES(original_price_fen), original_price_fen),
   status=1,
