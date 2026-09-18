@@ -58,18 +58,18 @@ func RegisterPushDevice(ctx context.Context, wxID int64, channel, token, deviceK
 	}
 
 	// GoFrame：OnDuplicate 仅对 Save 生效；Insert 会忽略并变成纯 INSERT，撞 uk 即 1062。
+	// OnDuplicate 的 Map/变参必须是「列名→列名」（或列名字符串），禁止传入业务值：
+	// 误用 g.Map{"token": token, "updated_at": now} 会生成 VALUES(`<token正文>`) / VALUES(`unix秒`)，
+	// 导致整句 Save 失败，出现「先 DELETE 成功、再 INSERT 失败」的只删不插。
 	_, err := g.DB().Model(pushDeviceTable).Ctx(ctx).Data(g.Map{
 		"wx_id":      wxID,
 		"channel":    channel,
 		"token":      token,
 		"device_key": deviceKey,
 		"updated_at": now,
-	}).OnDuplicate(g.Map{
-		"token":      token,
-		"updated_at": now,
-	}).Save()
+	}).OnDuplicate("token", "updated_at").Save()
 	if err != nil {
-		// 并发双注册可能撞 uk_token；可观测后由客户端重试。
+		// 常见：并发双注册撞 uk_token；也可为其它 DB 错误，客户端可重试。
 		return gerror.WrapCode(gcode.CodeDbOperationError, err, "写入推送 token 失败（可能与并发注册冲突，请重试）")
 	}
 	return nil

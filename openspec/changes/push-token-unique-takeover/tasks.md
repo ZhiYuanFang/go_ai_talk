@@ -6,6 +6,7 @@
 ## 2. 注册后来顶上
 
 - [x] 2.1 改造 `RegisterPushDevice`：写入前删除库中相同 `token` 的全部行，再按 `(wx_id, device_key, channel)` upsert
+- [x] 2.2 修正 `OnDuplicate`：改为列名形式 `OnDuplicate("token", "updated_at")`（见 design D7），避免删后增 SQL 非法导致只删不插
 - [x] 2.2 确认同用户多 token（多机）仍可并存；唯一冲突时错误可观测
 
 ## 3. Admin API（push-service）

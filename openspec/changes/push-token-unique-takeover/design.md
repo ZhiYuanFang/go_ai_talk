@@ -64,12 +64,22 @@ EnsureSchema：
 - App `register`/`unregister` 已在 `maintenance_skip`，本变更不改。
 - Admin API / 静态页属运维路径，不计入 App usage；**不**改 `maintenance_skip`（无需再问负责人：无新增对外 App 业务接口）。
 
+### D7. GoFrame `OnDuplicate` 误用说明（增写失败根因）
+
+先删再增两条独立 SQL 的产品顺序保持不变；关键是**增语句必须可执行**。
+
+- **误用**：`OnDuplicate(g.Map{"token": token, "updated_at": now})`。GoFrame 将 Map 的 **value 当作 `VALUES()` 内的列名**（官方例：`{"nickname": "passport"}` → `nickname=VALUES(passport)`），不是要写入的业务值。
+- **后果**：生成非法子句如 `` `token`=VALUES(`<整段厂商token>`) ``、`` `updated_at`=VALUES(`1736…`) ``。`Save` 无论是否撞唯一键都会附带该子句；MySQL 报 Unknown column 等错误 → **整句 INSERT 失败**。于是出现「① DELETE 已提交、② Save 失败 → 只删不插」。
+- **正确**：传列名到列名，例如 `OnDuplicate("token", "updated_at")`，生成 `` `token`=VALUES(`token`), `updated_at`=VALUES(`updated_at`) ``。删光同 token 后：无 `(wx,device,channel)` 行则纯插入；该键上仍有其它 token 旧行则靠此子句更新。
+- **非目标**：不因此改为「删插必须同事务」；并发撞 `uk_token` 仍可返回可观测错误并由客户端重试。
+
 ## Risks / Trade-offs
 
 - [并发双注册同 token] → 唯一索引 + 注册先删后写；撞唯一则返回可观测错误，客户端可重试。
 - [误删其它用户 token] → 仅当 token 字符串完全相同；符合「一机一 token」产品假设。
 - [Admin 口令回退 device] → 部署文档写明；需要隔离时设 `PUSH_ADMIN_PASSWORD`。
 - [列表暴露 token] → UI 截断；完整 token 仅服务端持有，删除按 id。
+- [OnDuplicate 误传业务值] → 见 D7；已改为列名形式，避免删后增失败空窗。
 
 ## Migration Plan
 
