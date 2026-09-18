@@ -240,6 +240,18 @@ func EnsureSchema(ctx context.Context) error {
   updated_at  BIGINT      NOT NULL DEFAULT 0,
   PRIMARY KEY (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+		// 管理端手填进账/出账。订单实付不写入本表，打开收益统计时现场求和。
+		`CREATE TABLE IF NOT EXISTS cash_manual_ledger (
+  id           BIGINT       NOT NULL AUTO_INCREMENT,
+  direction    VARCHAR(8)   NOT NULL COMMENT 'in 进账 / out 出账',
+  name         VARCHAR(128) NOT NULL,
+  amount_fen   INT          NOT NULL,
+  occurred_at  BIGINT       NOT NULL DEFAULT 0,
+  created_at   BIGINT       NOT NULL DEFAULT 0,
+  updated_at   BIGINT       NOT NULL DEFAULT 0,
+  PRIMARY KEY (id),
+  KEY idx_occurred (occurred_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 	}
 	for _, sql := range stmts {
 		if _, err := db.Exec(ctx, sql); err != nil {

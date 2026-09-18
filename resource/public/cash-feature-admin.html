@@ -279,6 +279,75 @@
 		</div>
 		</div>
 
+		<div id="secRevenue" class="hub-sec">
+		<h3 style="margin-top:22px;">收益统计</h3>
+		<p class="hint">
+			VIP 与功能付费是用户支付的<strong>标价</strong>（只计支付宝 / Apple 已支付），不是到账净额。
+			渠道抽成、服务器、模型等请记为出账。金额单位为<strong>分</strong>。结束时间不含该时刻。
+		</p>
+		<div class="form-stack">
+			<div class="form-grid">
+				<div class="field">
+					<label>起始（本地时间，可空）</label>
+					<input id="revStart" type="datetime-local" />
+				</div>
+				<div class="field">
+					<label>结束（本地时间，可空，不含）</label>
+					<input id="revEnd" type="datetime-local" />
+				</div>
+			</div>
+			<div class="btn-row">
+				<button id="revQueryBtn" type="button">按时间查询</button>
+				<button id="revAllBtn" type="button" class="secondary">看全部</button>
+			</div>
+			<div class="form-section">
+				<h4>合计</h4>
+				<p class="hint" id="revTotals">—</p>
+				<div class="table-wrap">
+					<table>
+						<thead><tr><th>功能</th><th>实付（分）</th></tr></thead>
+						<tbody id="revFeatureBody"></tbody>
+					</table>
+				</div>
+			</div>
+			<section class="form-section">
+				<h4 id="revFormTitle">新增进账 / 出账</h4>
+				<div class="form-grid">
+					<div class="field">
+						<label>方向</label>
+						<select id="revDir">
+							<option value="out">出账</option>
+							<option value="in">进账</option>
+						</select>
+					</div>
+					<div class="field">
+						<label>名称</label>
+						<input id="revName" maxlength="128" placeholder="例如 模型费用" />
+					</div>
+					<div class="field">
+						<label>金额（分）</label>
+						<span class="sub">须≥1<span id="revAmountPreview" class="price-preview"></span></span>
+						<input id="revAmount" type="number" min="1" value="100" />
+					</div>
+					<div class="field">
+						<label>发生时间（可空=现在）</label>
+						<input id="revOccurred" type="datetime-local" />
+					</div>
+				</div>
+				<div class="btn-row">
+					<button id="revSaveBtn" type="button">保存</button>
+					<button id="revResetBtn" type="button" class="secondary">清空</button>
+				</div>
+			</section>
+			<div class="table-wrap">
+				<table>
+					<thead><tr><th>时间</th><th>方向</th><th>名称</th><th>金额（分）</th><th></th></tr></thead>
+					<tbody id="revEntryBody"></tbody>
+				</table>
+			</div>
+		</div>
+		</div>
+
 		<div id="secVip" class="hub-sec">
 		<h3 style="margin-top:22px;">VIP 套餐（账号月会员）</h3>
 		<p class="hint">写 <code>vip_product.vip_monthly_19</code>，不进入 App 功能目录。Apple 商品 ID 须与 ASC 人肉对齐；支付宝金额用现价（分）。</p>
@@ -921,6 +990,7 @@
 			items.push({ id: r.featureId, label: r.title || r.featureId });
 		});
 		items.push({ id: 'qr', label: '群二维码' });
+		items.push({ id: 'revenue', label: '收益统计' });
 		bar.innerHTML = items.map(it =>
 			`<button type="button" data-panel="${esc(it.id)}" class="${it.id === currentPanel ? 'on' : ''}">${esc(it.label)}</button>`
 		).join('');
@@ -984,6 +1054,12 @@
 			showSecs(['secQr']);
 			return;
 		}
+		if (currentPanel === 'revenue') {
+			currentFeatureId = '';
+			showSecs(['secRevenue']);
+			await loadRevenue().catch(e => show(e.message || e, false));
+			return;
+		}
 		currentFeatureId = currentPanel;
 		showSecs(['secGrant', 'secDef', 'secSku']);
 		const r = defList.find(x => x.featureId === currentFeatureId);
@@ -1024,6 +1100,141 @@
 	document.getElementById('vipRefreshBtn').onclick = () => loadVipEntitlements().catch(e => show(e.message || e, false));
 	document.getElementById('vipPrevBtn').onclick = () => { if (vipPage > 1) { vipPage -= 1; loadVipEntitlements(); } };
 	document.getElementById('vipNextBtn').onclick = () => { vipPage += 1; loadVipEntitlements(); };
+
+	let revEditId = 0;
+	function localToUnix(v) {
+		if (!v) return 0;
+		const ms = new Date(v).getTime();
+		if (!ms) return 0;
+		return Math.floor(ms / 1000);
+	}
+	function unixToLocal(ts) {
+		const n = Number(ts) || 0;
+		if (n <= 0) return '';
+		const d = new Date(n * 1000);
+		const pad = x => String(x).padStart(2, '0');
+		return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) +
+			'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+	}
+	function fmtFen(n) {
+		const v = Number(n) || 0;
+		const sign = v < 0 ? '-' : '';
+		return sign + (Math.abs(v) / 100).toFixed(2) + ' 元（' + v + ' 分）';
+	}
+	function revWindowQuery() {
+		const s = localToUnix(document.getElementById('revStart').value);
+		const e = localToUnix(document.getElementById('revEnd').value);
+		const q = [];
+		if (s > 0) q.push('start=' + s);
+		if (e > 0) q.push('end=' + e);
+		return q.length ? ('?' + q.join('&')) : '';
+	}
+	function resetRevForm() {
+		revEditId = 0;
+		document.getElementById('revFormTitle').textContent = '新增进账 / 出账';
+		document.getElementById('revDir').value = 'out';
+		document.getElementById('revName').value = '';
+		document.getElementById('revAmount').value = '100';
+		document.getElementById('revOccurred').value = '';
+		document.getElementById('revAmount').dispatchEvent(new Event('input'));
+	}
+	async function loadRevenue() {
+		const q = revWindowQuery();
+		const sum = await AdminCommon.adminFetch('/cash/admin/api/revenue/summary' + q);
+		const feats = (sum && sum.features) || [];
+		let featSum = 0;
+		feats.forEach(r => { featSum += Number(r.amountFen) || 0; });
+		document.getElementById('revTotals').textContent =
+			'VIP ' + fmtFen(sum.vipFen) +
+			' · 功能付费 ' + fmtFen(featSum) +
+			' · 手填进账 ' + fmtFen(sum.manualInFen) +
+			' · 手填出账 ' + fmtFen(sum.manualOutFen) +
+			' · 差额 ' + fmtFen(sum.netFen);
+		document.getElementById('revFeatureBody').innerHTML = feats.map(r =>
+			`<tr><td>${esc(r.name || '—')}</td><td>${esc(r.amountFen)}</td></tr>`
+		).join('') || '<tr><td colspan="2">该范围内暂无功能实付</td></tr>';
+		const data = await AdminCommon.adminFetch('/cash/admin/api/revenue/entries' + q);
+		const list = (data && data.list) || [];
+		document.getElementById('revEntryBody').innerHTML = list.map(r => {
+			const dir = r.direction === 'in' ? '进账' : '出账';
+			return `<tr>
+				<td>${esc(fmtTs(r.occurredAt))}</td>
+				<td>${dir}</td>
+				<td>${esc(r.name)}</td>
+				<td>${esc(r.amountFen)}</td>
+				<td>
+					<button type="button" class="secondary rev-edit" data-id="${esc(r.id)}">改</button>
+					<button type="button" class="secondary rev-del" data-id="${esc(r.id)}">删</button>
+				</td>
+			</tr>`;
+		}).join('') || '<tr><td colspan="5">暂无手填记录</td></tr>';
+		const byId = {};
+		list.forEach(r => { byId[String(r.id)] = r; });
+		document.querySelectorAll('.rev-edit').forEach(btn => {
+			btn.onclick = () => {
+				const row = byId[btn.dataset.id];
+				if (!row) return;
+				revEditId = Number(row.id);
+				document.getElementById('revFormTitle').textContent = '修改 #' + revEditId;
+				document.getElementById('revDir').value = row.direction === 'in' ? 'in' : 'out';
+				document.getElementById('revName').value = row.name || '';
+				document.getElementById('revAmount').value = row.amountFen;
+				document.getElementById('revOccurred').value = unixToLocal(row.occurredAt);
+				document.getElementById('revAmount').dispatchEvent(new Event('input'));
+			};
+		});
+		document.querySelectorAll('.rev-del').forEach(btn => {
+			btn.onclick = async () => {
+				if (!confirm('删除这条手填记录？不影响订单。')) return;
+				try {
+					await AdminCommon.adminFetch('/cash/admin/api/revenue/entries/delete', {
+						method: 'POST', body: JSON.stringify({ id: Number(btn.dataset.id) })
+					});
+					if (revEditId === Number(btn.dataset.id)) resetRevForm();
+					show('已删除', true);
+					await loadRevenue();
+				} catch (e) { show(e.message || String(e), false); }
+			};
+		});
+	}
+	document.getElementById('revAmount').addEventListener('input', () => {
+		const n = Number(document.getElementById('revAmount').value) || 0;
+		document.getElementById('revAmountPreview').textContent = n > 0 ? '（约 ¥' + (n / 100).toFixed(2) + '）' : '';
+	});
+	document.getElementById('revAmount').dispatchEvent(new Event('input'));
+	document.getElementById('revQueryBtn').onclick = () => loadRevenue().catch(e => show(e.message || e, false));
+	document.getElementById('revAllBtn').onclick = () => {
+		document.getElementById('revStart').value = '';
+		document.getElementById('revEnd').value = '';
+		loadRevenue().catch(e => show(e.message || e, false));
+	};
+	document.getElementById('revResetBtn').onclick = () => resetRevForm();
+	document.getElementById('revSaveBtn').onclick = async () => {
+		const name = (document.getElementById('revName').value || '').trim();
+		const amountFen = Number(document.getElementById('revAmount').value);
+		const direction = document.getElementById('revDir').value;
+		const occurredAt = localToUnix(document.getElementById('revOccurred').value);
+		if (!name) { show('名称不能为空', false); return; }
+		if (!amountFen || amountFen < 1) { show('金额须≥1 分', false); return; }
+		try {
+			if (revEditId > 0) {
+				if (occurredAt < 1) { show('修改时须填写发生时间', false); return; }
+				await AdminCommon.adminFetch('/cash/admin/api/revenue/entries/update', {
+					method: 'POST',
+					body: JSON.stringify({ id: revEditId, direction, name, amountFen, occurredAt })
+				});
+				show('已修改', true);
+			} else {
+				await AdminCommon.adminFetch('/cash/admin/api/revenue/entries', {
+					method: 'POST',
+					body: JSON.stringify({ direction, name, amountFen, occurredAt })
+				});
+				show('已保存', true);
+			}
+			resetRevForm();
+			await loadRevenue();
+		} catch (e) { show(e.message || String(e), false); }
+	};
 })();
 </script>
 </body>
