@@ -35,6 +35,9 @@ func PushDispatcherInstance() *PushDispatcher {
 			NewApnsSender(),
 			NewHmsSender(),
 			NewMipushSender(),
+			// 未上架通道：有设备行也不会打厂商 API。
+			NewPlaceholderSender(PushChannelVivo),
+			NewPlaceholderSender(PushChannelOppo),
 		)
 	}
 	return defaultPushDispatcher
@@ -92,6 +95,11 @@ func (d *PushDispatcher) sendOne(ctx context.Context, dev entityPushDevice, payl
 	sender, ok := d.senders[ch]
 	if !ok || sender == nil {
 		g.Log().Warningf(ctx, "[push] skip reason=no_sender channel=%s wxId=%d bizType=%s", ch, dev.WxID, bizType)
+		return
+	}
+	// 占位通道只打日志，避免被记成 send_ok。
+	if _, placeholder := sender.(*PlaceholderSender); placeholder {
+		g.Log().Warningf(ctx, "[push] skip reason=placeholder channel=%s wxId=%d bizType=%s", ch, dev.WxID, bizType)
 		return
 	}
 	token := strings.TrimSpace(dev.Token)

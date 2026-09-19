@@ -14,8 +14,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/golang-jwt/jwt/v4"
 	"github.com/gogf/gf/v2/frame/g"
+	"github.com/golang-jwt/jwt/v4"
 )
 
 // ApnsSender sends via Apple Push Notification service (HTTP/2).
@@ -93,6 +93,7 @@ func buildApnsBody(payload PushPayload) (string, error) {
 		aps["alert"] = payload.Alert
 		aps["sound"] = "default"
 	}
+	// 自定义键放在 aps 之外，点击后出现在 userInfo 根上（含 bizType）。
 	root := map[string]interface{}{"aps": aps}
 	if len(payload.Data) > 0 {
 		for k, v := range payload.Data {

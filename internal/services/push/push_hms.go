@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -35,6 +36,8 @@ var (
 	hmsTokenMu    sync.Mutex
 	hmsTokenCache string
 	hmsTokenExp   time.Time
+	// hmsBizTypeToken 只允许业务类型常量，避免拼进 intent 时注入分号。
+	hmsBizTypeToken = regexp.MustCompile(`^[a-z0-9_]+$`)
 )
 
 // Send 向单个 HMS token 发送推送。
@@ -64,8 +67,12 @@ func (s *HmsSender) Send(ctx context.Context, token string, payload PushPayload)
 	// androidNotif := map[string]interface{}{
 	// 	"click_action": hmsClickAction(),
 	// }
+	bizType := ""
+	if payload.Data != nil {
+		bizType = strings.TrimSpace(payload.Data["bizType"])
+	}
 	androidNotif := map[string]interface{}{
-		"click_action": hmsClickAction(),
+		"click_action": hmsClickAction(bizType),
 		"priority":     "HIGH",
 		"importance":   "HIGH",
 		// "channelId":    "push_default", // 和Flutter端创建的通知渠道ID保持一致！ 部分老机子不支持
@@ -134,16 +141,32 @@ func (s *HmsSender) Send(ctx context.Context, token string, payload PushPayload)
 	return false, nil
 }
 
-// hmsClickAction 默认 type=3 打开应用；配置了 PUSH_HMS_CLICK_INTENT 则 type=1+intent。
-func hmsClickAction() map[string]interface{} {
-	intent := strings.TrimSpace(os.Getenv(envHmsClickIntent))
-	if intent != "" {
+// hmsClickAction 有 bizType 时用 type=1，把字段放进点击 Intent extras。
+// type=3 只打开应用，china_push 读不到业务字段。无 bizType 时仍 type=3（或环境变量里的自定义 intent）。
+func hmsClickAction(bizType string) map[string]interface{} {
+	bizType = strings.TrimSpace(bizType)
+	if intent := hmsBizTypeClickIntent(bizType); intent != "" {
+		return map[string]interface{}{
+			"type":   1,
+			"intent": intent,
+		}
+	}
+	if intent := strings.TrimSpace(os.Getenv(envHmsClickIntent)); intent != "" {
 		return map[string]interface{}{
 			"type":   1,
 			"intent": intent,
 		}
 	}
 	return map[string]interface{}{"type": 3}
+}
+
+// hmsBizTypeClickIntent 生成带 S.bizType 的显式打开 MainActivity 的 intent。
+// scheme/host/path 必须与 AndroidManifest 的 pangbaopush 过滤器一致。
+func hmsBizTypeClickIntent(bizType string) string {
+	if bizType == "" || !hmsBizTypeToken.MatchString(bizType) {
+		return ""
+	}
+	return "intent://click/open#Intent;scheme=pangbaopush;launchFlags=0x14000000;package=com.fzy.pangbao;component=com.fzy.pangbao/com.fzy.pangbao.MainActivity;S.bizType=" + bizType + ";end"
 }
 
 func buildHmsMessage(payload PushPayload) (string, error) {

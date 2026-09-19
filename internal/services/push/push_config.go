@@ -14,6 +14,9 @@ const (
 	PushChannelAPNs   = "apns"
 	PushChannelHMS    = "hms"
 	PushChannelMiPush = "mipush"
+	// vivo / oppo 尚未上架：仅占位，不进入 register 白名单。
+	PushChannelVivo = "vivo"
+	PushChannelOppo = "oppo"
 )
 
 type pushConfig struct {
