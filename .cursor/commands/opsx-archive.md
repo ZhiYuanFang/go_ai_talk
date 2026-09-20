@@ -2,156 +2,94 @@
 name: /opsx-archive
 id: opsx-archive
 category: Workflow
-description: Archive a completed change in the experimental workflow
+description: 按版本号收版——将活跃 OpenSpec changes 合并进目标版本基线并清空 changes
 ---
 
-Archive a completed change in the experimental workflow.
+本仓库 **收版**（不是上游「归档单个 change」）。
 
-**Input**: Optionally specify a change name after `/opsx:archive` (e.g., `/opsx:archive add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
+将 `openspec/changes/` 下全部活跃变更合并进目标版本基线 `openspec/specs/vX.Y.Z/spec.md`，**不保留** `openspec/changes/archive/` 目录内容。
+
+**Input**：必须提供目标版本号，例如 `/opsx-archive v3.0.3` 或 `/opsx:archive v3.0.3`。
+
+- 合法格式：`v` + 三段数字（`vX.Y.Z`）
+- **禁止**把参数当作单个 change-id（如 `add-auth`）去 `mv` 到 `archive/YYYY-MM-DD-*`
+- 若未提供版本号或格式非法：列出已有 `openspec/specs/v*/` 与当前活跃 changes 数量，请用户给出目标版本
 
 **Steps**
 
-1. **If no change name provided, prompt for selection**
+1. **确认目标版本**
 
-   Run `openspec list --json` to get available changes. Use the **AskUserQuestion tool** to let the user select.
+   - 解析参数为 `vX.Y.Z`
+   - 默认源基线：比目标小的最新已有版本（脚本自动推断；也可显式传第二参数）
+   - 用 `openspec list --json` 展示将要收进本版的活跃 change 列表（含未完成 tasks 的也一并收版，除非用户明确要求先排除）
 
-   Show only active changes (not already archived).
-   Include the schema used for each change if available.
-
-   **IMPORTANT**: Do NOT guess or auto-select a change. Always let the user choose.
-
-2. **Check artifact completion status**
-
-   Run `openspec status --change "<name>" --json` to check artifact completion.
-
-   Parse the JSON to understand:
-   - `schemaName`: The workflow being used
-   - `artifacts`: List of artifacts with their status (`done` or other)
-
-   **If any artifacts are not `done`:**
-   - Display warning listing incomplete artifacts
-   - Prompt user for confirmation to continue
-   - Proceed if user confirms
-
-3. **Check task completion status**
-
-   Read the tasks file (typically `tasks.md`) to check for incomplete tasks.
-
-   Count tasks marked with `- [ ]` (incomplete) vs `- [x]` (complete).
-
-   **If incomplete tasks found:**
-   - Display warning showing count of incomplete tasks
-   - Prompt user for confirmation to continue
-   - Proceed if user confirms
-
-   **If no tasks file exists:** Proceed without task-related warning.
-
-4. **Assess delta spec sync state**
-
-   Check for delta specs at `openspec/changes/<name>/specs/`. If none exist, proceed without sync prompt.
-
-   **If delta specs exist:**
-   - Compare each delta spec with its corresponding main spec at `openspec/specs/<capability>/spec.md`
-   - Determine what changes would be applied (adds, modifications, removals, renames)
-   - Show a combined summary before prompting
-
-   **Prompt options:**
-   - If changes needed: "Sync now (recommended)", "Archive without syncing"
-   - If already synced: "Archive now", "Sync anyway", "Cancel"
-
-   If user chooses sync, use Task tool (subagent_type: "general-purpose", prompt: "Use Skill tool to invoke openspec-sync-specs for change '<name>'. Delta spec analysis: <include the analyzed delta spec summary>"). Proceed to archive regardless of choice.
-
-5. **Perform the archive**
-
-   Create the archive directory if it doesn't exist:
-   ```bash
-   mkdir -p openspec/changes/archive
-   ```
-
-   Generate target name using current date: `YYYY-MM-DD-<change-name>`
-
-   **Check if target already exists:**
-   - If yes: Fail with error, suggest renaming existing archive or using different date
-   - If no: Move the change directory to archive
+2. **执行收版脚本（权威入口）**
 
    ```bash
-   mv openspec/changes/<name> openspec/changes/archive/YYYY-MM-DD-<name>
+   python hack/archive-openspec-to-version.py vX.Y.Z
+   # 可选显式源基线：
+   # python hack/archive-openspec-to-version.py vX.Y.Z v3.0.0
    ```
 
-6. **Display summary**
+   脚本流程（勿手写替代，除非脚本失败需补救）：
+   - `split-openspec-baseline.py` 拆开源基线 → capability 目录
+   - 对每个活跃 change 执行 `openspec archive <name> --yes`
+   - **删除** `openspec/changes/archive/YYYY-MM-DD-<name>/`（本仓约定不保留 archive）
+   - `merge-openspec-specs.py` 合并为 `openspec/specs/vX.Y.Z/spec.md`
+   - 清理临时 capability 目录
 
-   Show archive completion summary including:
-   - Change name
-   - Schema that was used
-   - Archive location
-   - Spec sync status (synced / sync skipped / no delta specs)
-   - Note about any warnings (incomplete artifacts/tasks)
+3. **处理脚本中途失败（MODIFIED/REMOVED 标题对不上等）**
+
+   - `openspec archive` 可能在 specs 应用 Aborted 时仍返回 0，导致 change 目录残留
+   - 核对 `openspec list`：若仍有残留，先 `split` 当前目标版本（若已部分 merge）或源版本，修正 delta 中 Requirement 标题与基线一致后重试 `openspec archive <name> --yes`
+   - 成功后删除对应 `archive/YYYY-MM-DD-*`，再 `merge-openspec-specs.py vX.Y.Z` 并清理 capability 目录
+   - 仅在用户明确同意时才对单个 change 使用 `--skip-specs`
+
+4. **更新基线引用**
+
+   将 `openspec/project.md`（及本仓 OpenSpec skill 示例若仍写旧版本）中的基线路径从上一版改为 **`openspec/specs/vX.Y.Z/spec.md`**。
+
+5. **校验**
+
+   ```bash
+   openspec validate --strict
+   openspec list   # 期望无活跃 change（或仅剩用户明确保留的）
+   ```
+
+6. **展示摘要**
 
 **Output On Success**
 
 ```
-## Archive Complete
+## 收版完成
 
-**Change:** <change-name>
-**Schema:** <schema-name>
-**Archived to:** openspec/changes/archive/YYYY-MM-DD-<name>/
-**Specs:** ✓ Synced to main specs
+**目标版本:** vX.Y.Z
+**源基线:** vA.B.C
+**规格:** openspec/specs/vX.Y.Z/spec.md
+**活跃 changes:** 已清空（或不保留 archive）
+**project.md:** 基线引用已更新为 vX.Y.Z
 
-All artifacts complete. All tasks complete.
+已跑 openspec validate --strict。
 ```
 
-**Output On Success (No Delta Specs)**
+**Output On Partial Failure**
 
 ```
-## Archive Complete
+## 收版部分完成（有残留）
 
-**Change:** <change-name>
-**Schema:** <schema-name>
-**Archived to:** openspec/changes/archive/YYYY-MM-DD-<name>/
-**Specs:** No delta specs
+**目标版本:** vX.Y.Z
+**已合并:** openspec/specs/vX.Y.Z/spec.md（若已 merge）
+**残留 changes:** <name1>, <name2>
+**原因:** openspec archive 应用 delta 失败（常见：MODIFIED/REMOVED 标题与基线不一致）
 
-All artifacts complete. All tasks complete.
-```
-
-**Output On Success With Warnings**
-
-```
-## Archive Complete (with warnings)
-
-**Change:** <change-name>
-**Schema:** <schema-name>
-**Archived to:** openspec/changes/archive/YYYY-MM-DD-<name>/
-**Specs:** Sync skipped (user chose to skip)
-
-**Warnings:**
-- Archived with 2 incomplete artifacts
-- Archived with 3 incomplete tasks
-- Delta spec sync was skipped (user chose to skip)
-
-Review the archive if this was not intentional.
-```
-
-**Output On Error (Archive Exists)**
-
-```
-## Archive Failed
-
-**Change:** <change-name>
-**Target:** openspec/changes/archive/YYYY-MM-DD-<name>/
-
-Target archive directory already exists.
-
-**Options:**
-1. Rename the existing archive
-2. Delete the existing archive if it's a duplicate
-3. Wait until a different date to archive
+下一步：修正 delta 标题后重试 archive，或经确认后 --skip-specs。
 ```
 
 **Guardrails**
-- Always prompt for change selection if not provided
-- Use artifact graph (openspec status --json) for completion checking
-- Don't block archive on warnings - just inform and confirm
-- Preserve .openspec.yaml when moving to archive (it moves with the directory)
-- Show clear summary of what happened
-- If sync is requested, use the Skill tool to invoke `openspec-sync-specs` (agent-driven)
-- If delta specs exist, always run the sync assessment and show the combined summary before prompting
+
+- **本命令 = 按版本收版**；禁止实现为「只归档某一个 change 到 archive/」
+- 不保留 `openspec/changes/archive/` 下的日期目录（脚本会删；补救路径也须删）
+- 参数必须是 `vX.Y.Z`，不是 change-id
+- 收版后必须更新 `openspec/project.md` 基线引用
+- 未完成 tasks 的 change 默认一并收版；若用户要求保留未完成项，先移出/排除再跑脚本
+- 权威实现：`hack/archive-openspec-to-version.py`；说明见 `.cursor/skills/openspec/SKILL.md`「收版」

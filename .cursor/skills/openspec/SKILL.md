@@ -45,13 +45,15 @@ description: >-
 
 ### 收版（/opsx-archive）
 
-将活跃 change 收进目标版本基线（如 `v2.0.3`），**不**保留 `openspec/changes/archive/`：
+将活跃 change 收进目标版本基线（如 `v3.0.3`），**不**保留 `openspec/changes/archive/`：
 
 ```bash
-python hack/archive-openspec-to-version.py v2.0.3
+python hack/archive-openspec-to-version.py v3.0.3
 ```
 
 收版后更新 `openspec/project.md` 基线引用，并跑 `openspec validate --strict`。
+
+**注意**：参数是 **`vX.Y.Z` 版本号**，不是单个 change-id；勿按上游「归档单个 change 到 archive/」流程执行。
 
 ## CLI 速查
 
