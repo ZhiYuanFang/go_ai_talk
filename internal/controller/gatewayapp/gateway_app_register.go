@@ -28,6 +28,11 @@ func RegisterGatewayAppHTTP(s *ghttp.Server) {
 		r.Response.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
 		r.Response.ServeFile("resource/public/privacy-policy.html")
 	})
+	// 微信域名归属校验 TXT：供公众平台业务域名等后台爬虫匿名拉取，须纯文本无业务 envelope。
+	s.BindHandler("/90fafbe9bf8308ecbd2063d7b479a309.txt", func(r *ghttp.Request) {
+		r.Response.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
+		r.Response.ServeFile("resource/public/90fafbe9bf8308ecbd2063d7b479a309.txt")
+	})
 
 	RegisterAdminStaticPages(s)
 

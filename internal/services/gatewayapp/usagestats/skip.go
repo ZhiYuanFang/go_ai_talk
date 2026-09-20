@@ -59,6 +59,8 @@ func isStaticOrShellPath(path string) bool {
 		"/device/app/version-admin.html",
 		"/user-agreement.html",
 		"/privacy-policy.html",
+		// 微信域名归属校验 TXT：维护型静态资源，不计入 App usage。
+		"/90fafbe9bf8308ecbd2063d7b479a309.txt",
 		"/apple-app-site-association",
 		"/.well-known/apple-app-site-association":
 		return true

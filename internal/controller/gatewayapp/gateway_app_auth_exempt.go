@@ -75,6 +75,8 @@ var (
 		"/device/admin/push-device-admin.html",
 		"/user-agreement.html",
 		"/privacy-policy.html",
+		// 微信域名归属校验 TXT（www.pangbao.cuplay.top 根路径）。
+		"/90fafbe9bf8308ecbd2063d7b479a309.txt",
 		"/favicon.ico",
 		"/robots.txt",
 	}
