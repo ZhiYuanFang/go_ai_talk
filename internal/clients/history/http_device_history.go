@@ -174,6 +174,33 @@ func (r *httpDeviceHistoryClient) EndLatestHistoryIfMatch(ctx context.Context, d
 	return resp.Updated, err
 }
 
+// HasOpenHistory 经 history-service HTTP 查询是否存在 end_time=0 的同类历史。
+func (r *httpDeviceHistoryClient) HasOpenHistory(ctx context.Context, deviceNo string, eventIds []int64) (bool, error) {
+	if err := r.notReady(); err != nil {
+		return false, err
+	}
+	var resp struct {
+		Open bool `json:"open"`
+	}
+	eventIdsStr := ""
+	if len(eventIds) > 0 {
+		parts := make([]string, 0, len(eventIds))
+		for _, id := range eventIds {
+			if id <= 0 {
+				continue
+			}
+			parts = append(parts, strconv.FormatInt(id, 10))
+		}
+		eventIdsStr = strings.Join(parts, ",")
+	}
+	t := r.targets
+	err := r.doJSON(ctx, http.MethodGet, r.historyBase, t.HistoryEventOpenExistsPath(), map[string]string{
+		"deviceNo": strings.TrimSpace(deviceNo),
+		"eventIds": eventIdsStr,
+	}, nil, &resp)
+	return resp.Open, err
+}
+
 func (r *httpDeviceHistoryClient) ListSuggest(ctx context.Context, deviceNo string) ([]entity.Suggest, error) {
 	if err := r.notReady(); err != nil {
 		return nil, err

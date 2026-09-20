@@ -5,7 +5,7 @@ package cash
 import "strings"
 
 // 共用邀请前置说明（兑码侧已实现）。
-const inviteCommonRulePrefix = "共用：不可使用自己的邀请码；不可使用同一宝宝（同 deviceNo）下其他账号的邀请码。"
+const inviteCommonRulePrefix = "共用：不可使用同一宝宝（同 deviceNo）下其他账号的邀请码。"
 
 // FeatureRuleSummary 按功能编号返回运维只读规则说明；未知功能返回通用提示。
 //

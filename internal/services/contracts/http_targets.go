@@ -89,6 +89,11 @@ func (t HTTPTargets) HistoryEventEndLatestPath() string {
 	return "/device/history/api/event/end-latest"
 }
 
+// HistoryEventOpenExistsPath 查询指定事件集合是否存在未闭合（end_time=0）历史。
+func (t HTTPTargets) HistoryEventOpenExistsPath() string {
+	return "/device/history/api/event/open-exists"
+}
+
 func (t HTTPTargets) DeviceProfileGetPath() string {
 	return "/device/app/api/user/get"
 }

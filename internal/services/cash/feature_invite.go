@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	deviceclient "hello/internal/clients/device"
 	ucgclient "hello/internal/clients/ucg"
 	"strings"
 	"time"
@@ -154,9 +155,10 @@ func ListInviteInvitees(ctx context.Context, ownerWxID int64) ([]InviteeRow, err
 
 // RedeemInviteCode 邀请码兑换单功能。
 //
-// 规则：不可自用；人×码×功能仅一次；InviteOncePerUser（care+growth）：人×功能任意码仅一次；
-// 经 ActivateFeature 邀请 7d；开通主体按 feature_def.activation_subject。
-// 已删除：同宝宝（同 device_no）拒绝、InviteOncePerDevice。
+// 规则：同宝宝禁兑（主人当前 device_no 与兑换者相同且均非空）；人×码×功能仅一次；
+// InviteOncePerUser（care+growth）：人×功能任意码仅一次；经 ActivateFeature 邀请 7d；
+// 开通主体按 feature_def.activation_subject。已取消自用禁兑（同 wx 异机可兑自己的码）。
+// 不恢复：一家锁定、InviteOncePerDevice。
 func RedeemInviteCode(ctx context.Context, redeemerWxID int64, deviceNo, code, featureID string) error {
 	code = strings.TrimSpace(code)
 	featureID = strings.TrimSpace(featureID)
@@ -185,8 +187,9 @@ func RedeemInviteCode(ctx context.Context, redeemerWxID int64, deviceNo, code, f
 	if peek.Code == "" || peek.Status != 1 {
 		return gerror.NewCode(gcode.CodeInvalidParameter, "邀请码无效或已停用")
 	}
-	if peek.OwnerWxId == redeemerWxID {
-		return gerror.NewCode(gcode.CodeInvalidParameter, "不可使用自己的邀请码")
+	// peek 阶段同宝宝闸（与 TX 内双检对齐旧自用结构）。
+	if err := rejectSameBabyInvite(ctx, peek.OwnerWxId, deviceNo); err != nil {
+		return err
 	}
 
 	now := time.Now().Unix()
@@ -211,8 +214,9 @@ func RedeemInviteCode(ctx context.Context, redeemerWxID int64, deviceNo, code, f
 		if codeRow.Code == "" || codeRow.Status != 1 {
 			return gerror.NewCode(gcode.CodeInvalidParameter, "邀请码无效或已停用")
 		}
-		if codeRow.OwnerWxId == redeemerWxID {
-			return gerror.NewCode(gcode.CodeInvalidParameter, "不可使用自己的邀请码")
+		// TX 内再查主人当前绑机，防 peek 后换绑竞态。
+		if err := rejectSameBabyInvite(ctx, codeRow.OwnerWxId, deviceNo); err != nil {
+			return err
 		}
 		ownerWxID = codeRow.OwnerWxId
 
@@ -305,6 +309,31 @@ func RedeemInviteCode(ctx context.Context, redeemerWxID int64, deviceNo, code, f
 		if ferr := ucgclient.NotifyUcgInviteAcquisition(ctx, ownerWxID, code); ferr != nil {
 			glog.Warningf(ctx, "[cash-invite] ucg force acquire failed owner=%d code=%s err=%v", ownerWxID, code, ferr)
 		}
+	}
+	return nil
+}
+
+// rejectSameBabyInvite 同宝宝禁兑：经 device 契约查主人当前绑机；失败 fail-closed；
+// 主人与兑换者 device_no 均非空且相等则拒绝。主人未绑机（空串）不因本规则拒绝。
+//
+// Args:
+//   - ownerWxID: 邀请码主人 wx 主键
+//   - redeemerDeviceNo: 兑换者请求头设备号（已 trim，调用方保证非空）
+//
+// Returns: 应拒绝时返回带业务文案的 error；通过返回 nil。
+func rejectSameBabyInvite(ctx context.Context, ownerWxID int64, redeemerDeviceNo string) error {
+	if ownerWxID <= 0 {
+		return gerror.NewCode(gcode.CodeInvalidParameter, "邀请码无效或已停用")
+	}
+	ownerDeviceNo, err := deviceclient.FetchDeviceNoByWxID(ctx, ownerWxID)
+	if err != nil {
+		// device 不可达时不放行，避免同机误兑。
+		return gerror.NewCode(gcode.CodeInternalError, "暂时无法校验邀请码，请稍后重试")
+	}
+	ownerDeviceNo = strings.TrimSpace(ownerDeviceNo)
+	redeemerDeviceNo = strings.TrimSpace(redeemerDeviceNo)
+	if ownerDeviceNo != "" && redeemerDeviceNo != "" && ownerDeviceNo == redeemerDeviceNo {
+		return gerror.NewCode(gcode.CodeInvalidParameter, "不可使用同一宝宝下其他账号的邀请码")
 	}
 	return nil
 }

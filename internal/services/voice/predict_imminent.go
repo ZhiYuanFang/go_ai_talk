@@ -230,6 +230,17 @@ func handlePredictImminentFire(ctx context.Context, body []byte) error {
 		return nil
 	}
 
+	// 进行中闸：end_time=0（根展开叶子）；须在五分钟去重占位之前，命中/失败均不写 dedup。
+	if open, openErr := predictImminentOpenHistoryExists(ctx, msg.DeviceNo, msg.EventId); openErr != nil {
+		glog.Warningf(ctx, "[predict-imminent] skip reason=in_progress_check_err deviceNoLen=%d eventId=%d err=%v (dedup not occupied)",
+			len(msg.DeviceNo), msg.EventId, openErr)
+		return nil
+	} else if open {
+		glog.Warningf(ctx, "[predict-imminent] skip reason=in_progress deviceNoLen=%d eventId=%d nextAt=%d",
+			len(msg.DeviceNo), msg.EventId, msg.NextAt)
+		return nil
+	}
+
 	// 五分钟去重：进入发送前占位，防止多实例/重投双推。
 	dedupKey, err := cachekit.PredictImminentPushedKey(msg.DeviceNo, msg.EventId)
 	if err != nil {
@@ -320,6 +331,15 @@ func predictImminentHistoryExists(ctx context.Context, deviceNo string, eventID 
 		return false, err
 	}
 	return len(list) > 0, nil
+}
+
+// predictImminentOpenHistoryExists 同类事件是否有进行中（end_time=0）记录；根则展开叶子后经 history 契约查询。
+func predictImminentOpenHistoryExists(ctx context.Context, deviceNo string, eventID int64) (bool, error) {
+	ids, err := expandEventIDsForHistory(ctx, eventID)
+	if err != nil {
+		return false, err
+	}
+	return DeviceHistory().HasOpenHistory(ctx, deviceNo, ids)
 }
 
 // expandEventIDsForHistory 将可能为一级根的 eventID 展开为根+全部后代叶子。

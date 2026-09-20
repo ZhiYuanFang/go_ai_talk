@@ -42,6 +42,10 @@ func (s *localService) EndLatestHistoryIfMatch(ctx context.Context, deviceNo str
 	return EndLatestDeviceHistoryIfMatch(ctx, deviceNo, eventID, endTimeUnixSec, remark)
 }
 
+func (s *localService) HasOpenHistory(ctx context.Context, deviceNo string, eventIds []int64) (bool, error) {
+	return HasOpenDeviceHistory(ctx, deviceNo, eventIds)
+}
+
 func (s *localService) ListSuggest(ctx context.Context, deviceNo string) ([]entity.Suggest, error) {
 	return ListDeviceSuggest(ctx, deviceNo)
 }
@@ -232,6 +236,45 @@ func EndLatestDeviceHistoryIfMatch(ctx context.Context, deviceNo string, eventID
 
 // errDuplicateOpenHistoryStart 同 eventId 已存在未闭合行时拒绝再次 start（进行中 insert/update）。
 const errDuplicateOpenHistoryStart = "已在进行中"
+
+// HasOpenDeviceHistory 判断 deviceNo 下 eventIds 中是否存在任一未闭合（end_time=0）历史行。
+// 空 deviceNo、空列表或无有效正 id 时返回 false；使用 One()+IsEmpty 做存在性探测（LIMIT 1），最少读。
+func HasOpenDeviceHistory(ctx context.Context, deviceNo string, eventIds []int64) (bool, error) {
+	deviceNo = strings.TrimSpace(deviceNo)
+	if deviceNo == "" || len(eventIds) == 0 {
+		return false, nil
+	}
+	ids := make([]int64, 0, len(eventIds))
+	seen := make(map[int64]struct{}, len(eventIds))
+	for _, id := range eventIds {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	if len(ids) == 0 {
+		return false, nil
+	}
+	// 仅探测是否存在：取一行主键即可，不拉全量字段列表。
+	row, err := dao.History.Ctx(ctx).
+		Fields(dao.History.Columns().Id).
+		Where(dao.History.Columns().DeviceNo, deviceNo).
+		WhereIn(dao.History.Columns().EventId, ids).
+		Where(dao.History.Columns().EndTime, 0).
+		Limit(1).
+		One()
+	if err != nil {
+		return false, err
+	}
+	if row.IsEmpty() {
+		return false, nil
+	}
+	return true, nil
+}
 
 // hasOpenHistoryForEvent 查询设备下指定 eventId 是否存在未闭合（end_time=0）历史行。
 // excludeID>0 时在查重中排除该行（用于 update 将 end_time 改回 0）。

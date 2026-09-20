@@ -187,6 +187,33 @@ func (r *historyRemoteClient) EndLatestHistoryIfMatch(ctx context.Context, devic
 	return resp.Updated, err
 }
 
+// HasOpenHistory 远程查询是否存在未闭合历史（end_time=0）。
+func (r *historyRemoteClient) HasOpenHistory(ctx context.Context, deviceNo string, eventIds []int64) (bool, error) {
+	if err := r.notReady(); err != nil {
+		return false, err
+	}
+	var resp struct {
+		Open bool `json:"open"`
+	}
+	eventIdsStr := ""
+	if len(eventIds) > 0 {
+		parts := make([]string, 0, len(eventIds))
+		for _, id := range eventIds {
+			if id <= 0 {
+				continue
+			}
+			parts = append(parts, strconv.FormatInt(id, 10))
+		}
+		eventIdsStr = strings.Join(parts, ",")
+	}
+	t := r.targets
+	err := r.doJSON(ctx, http.MethodGet, r.historyBase, t.HistoryEventOpenExistsPath(), map[string]string{
+		"deviceNo": strings.TrimSpace(deviceNo),
+		"eventIds": eventIdsStr,
+	}, nil, &resp)
+	return resp.Open, err
+}
+
 func (r *historyRemoteClient) ListSuggest(ctx context.Context, deviceNo string) ([]entity.Suggest, error) {
 	if err := r.notReady(); err != nil {
 		return nil, err
@@ -533,6 +560,18 @@ func (a *switchAdapter) EndLatestHistoryIfMatch(ctx context.Context, deviceNo st
 		}
 	}
 	return updated, err
+}
+
+// HasOpenHistory 进行中存在性：优先 remote，失败可回落 local。
+func (a *switchAdapter) HasOpenHistory(ctx context.Context, deviceNo string, eventIds []int64) (bool, error) {
+	if !a.shouldUseRemote(deviceNo) {
+		return a.local.HasOpenHistory(ctx, deviceNo, eventIds)
+	}
+	open, err := a.remote.HasOpenHistory(ctx, deviceNo, eventIds)
+	if err != nil && a.cfg.failoverToLocal {
+		return a.local.HasOpenHistory(ctx, deviceNo, eventIds)
+	}
+	return open, err
 }
 
 func (a *switchAdapter) ListSuggest(ctx context.Context, deviceNo string) ([]entity.Suggest, error) {

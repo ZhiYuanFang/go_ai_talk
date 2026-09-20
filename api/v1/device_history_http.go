@@ -171,6 +171,19 @@ type DeviceHistoryEndLatestRes struct {
 	Updated bool `json:"updated"`
 }
 
+// DeviceHistoryOpenExistsReq 查询设备在给定事件 ID 集合中是否存在未闭合（end_time=0）历史。
+// eventIds 为逗号分隔的 int64 列表（与 filter 接口风格一致）。
+type DeviceHistoryOpenExistsReq struct {
+	g.Meta   `path:"/device/history/api/event/open-exists" method:"get" tags:"device" summary:"查询是否存在进行中历史"`
+	DeviceNo string `json:"deviceNo" p:"deviceNo" dc:"设备号"`
+	EventIds string `json:"eventIds" p:"eventIds" dc:"事件ID列表，逗号分隔"`
+}
+
+// DeviceHistoryOpenExistsRes 进行中存在性结果。
+type DeviceHistoryOpenExistsRes struct {
+	Open bool `json:"open" dc:"true 表示至少一条 end_time=0"`
+}
+
 // DeviceHistoryEventBatchItem 批量写库的单条操作。
 // op：create|update|delete|end；create 可用 action=start|end|one 区分开始/结束/单次。
 type DeviceHistoryEventBatchItem struct {

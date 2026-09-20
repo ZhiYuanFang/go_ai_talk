@@ -328,6 +328,34 @@ func (c *HistoryCtrl) EventEndLatest(ctx context.Context, req *v1.DeviceHistoryE
 	return &v1.DeviceHistoryEndLatestRes{Updated: updated}, nil
 }
 
+// EventOpenExists 查询给定事件集合是否存在进行中（end_time=0）历史；内部契约，供 voice 预测临近闸使用。
+func (c *HistoryCtrl) EventOpenExists(ctx context.Context, req *v1.DeviceHistoryOpenExistsReq) (res *v1.DeviceHistoryOpenExistsRes, err error) {
+	deviceNo := strings.TrimSpace(req.DeviceNo)
+	if deviceNo == "" {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "deviceNo 不能为空")
+	}
+	var eventIds []int64
+	if raw := strings.TrimSpace(req.EventIds); raw != "" {
+		parts := strings.Split(raw, ",")
+		for _, p := range parts {
+			p = strings.TrimSpace(p)
+			if p == "" {
+				continue
+			}
+			id, parseErr := strconv.ParseInt(p, 10, 64)
+			if parseErr != nil || id <= 0 {
+				continue
+			}
+			eventIds = append(eventIds, id)
+		}
+	}
+	open, err := c.Svc.HasOpenHistory(ctx, deviceNo, eventIds)
+	if err != nil {
+		return nil, err
+	}
+	return &v1.DeviceHistoryOpenExistsRes{Open: open}, nil
+}
+
 // EventBatch 按顺序执行多条增/改/删/结束；单条失败写入 results，不整单回滚。
 func (c *HistoryCtrl) EventBatch(ctx context.Context, req *v1.DeviceHistoryEventBatchReq) (res *v1.DeviceHistoryEventBatchRes, err error) {
 	deviceNo := strings.TrimSpace(req.DeviceNo)
