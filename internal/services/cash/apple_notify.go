@@ -285,13 +285,17 @@ func loadFeatureProductAnyStatus(ctx context.Context, productCode string) (*Feat
 	if productCode == "" {
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "productCode 不能为空")
 	}
-	var r featureProductDB
-	err := g.DB().Model("feature_product").Ctx(ctx).Where("product_code", productCode).Scan(&r)
+	// 商品不存在时空集正常，返回业务 NotFound，禁止裸 ErrNoRows。
+	one, err := g.DB().Model("feature_product").Ctx(ctx).Where("product_code", productCode).One()
 	if err != nil {
 		return nil, err
 	}
-	if r.ProductCode == "" {
+	if one.IsEmpty() {
 		return nil, gerror.NewCode(gcode.CodeNotFound, "功能商品不存在")
+	}
+	var r featureProductDB
+	if err = one.Struct(&r); err != nil {
+		return nil, err
 	}
 	return mapFeatureProduct(r), nil
 }

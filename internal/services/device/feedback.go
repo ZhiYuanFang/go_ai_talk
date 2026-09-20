@@ -137,12 +137,17 @@ func (s *service) ReplyFeedback(ctx context.Context, id int64, officialReply str
 	if err != nil {
 		return err
 	}
-	var row entity.Feedback
-	if err := dao.Feedback.Ctx(ctx).Where(dao.Feedback.Columns().Id, id).Scan(&row); err != nil {
+	// 反馈可能不存在，空集返回业务 NotFound，禁止 Scan ErrNoRows。
+	one, err := dao.Feedback.Ctx(ctx).Where(dao.Feedback.Columns().Id, id).One()
+	if err != nil {
 		return err
 	}
-	if row.Id == 0 {
+	if one.IsEmpty() {
 		return ErrFeedbackNotFound
+	}
+	var row entity.Feedback
+	if err = one.Struct(&row); err != nil {
+		return err
 	}
 	if row.Status == feedbackStatusReplied || strings.TrimSpace(row.OfficialReply) != "" {
 		return ErrFeedbackAlreadyReplied

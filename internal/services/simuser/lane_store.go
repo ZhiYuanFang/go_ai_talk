@@ -95,7 +95,11 @@ func EnsureSimLLMLaneDefaultRows(ctx context.Context) error {
 			continue
 		}
 		var row simLLMLaneRow
-		if scanErr := g.DB().Model(simLLMLaneConfigTable).Ctx(ctx).Where("lane", string(lane)).Scan(&row); scanErr != nil {
+		one, scanErr := g.DB().Model(simLLMLaneConfigTable).Ctx(ctx).Where("lane", string(lane)).One()
+		if scanErr != nil || one.IsEmpty() {
+			continue
+		}
+		if scanErr = one.Struct(&row); scanErr != nil {
 			continue
 		}
 		if !aimodel.IsSeedUpdatedBy(row.UpdatedBy) {
@@ -115,8 +119,17 @@ func EnsureSimLLMLaneDefaultRows(ctx context.Context) error {
 
 func loadSimLLMLaneProfile(ctx context.Context, lane aimodel.Lane) (aimodel.Profile, error) {
 	var row simLLMLaneRow
-	err := g.DB().Model(simLLMLaneConfigTable).Ctx(ctx).Where("lane", string(lane)).Scan(&row)
-	if err == nil && strings.TrimSpace(row.Lane) != "" {
+	// lane 配置可能不存在，空集走 cold start，禁止 Scan ErrNoRows。
+	one, err := g.DB().Model(simLLMLaneConfigTable).Ctx(ctx).Where("lane", string(lane)).One()
+	if err != nil {
+		return aimodel.Profile{}, err
+	}
+	if !one.IsEmpty() {
+		if err = one.Struct(&row); err != nil {
+			return aimodel.Profile{}, err
+		}
+	}
+	if strings.TrimSpace(row.Lane) != "" {
 		if !aimodel.IsSeedUpdatedBy(row.UpdatedBy) {
 			return simRowToProfile(lane, row), nil
 		}

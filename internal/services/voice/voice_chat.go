@@ -854,14 +854,22 @@ func (s *VoiceService) StreamReplyWithBaiduTTS(
 
 // 往qa里录入问题和答案
 func (s *VoiceService) insertQa(ctx context.Context, question, answer string) error {
-	// 如果已经存在相同的问题,则更新对应问题的命中次数+1
+	// 已存在则命中次数+1；无行则插入。空集用 One，避免 Scan ErrNoRows 被忽略时也吞真错
 	existingQa := entity.Qa{}
-	dao.Qa.Ctx(ctx).Where("question", question).Scan(&existingQa)
+	one, err := dao.Qa.Ctx(ctx).Where("question", question).One()
+	if err != nil {
+		return err
+	}
+	if !one.IsEmpty() {
+		if err = one.Struct(&existingQa); err != nil {
+			return err
+		}
+	}
 	if existingQa.Id > 0 {
 		_, err := dao.Qa.Ctx(ctx).Where("question", question).Update(g.Map{"attack": existingQa.Attack + 1})
 		return err
 	}
-	_, err := dao.Qa.Ctx(ctx).Insert(entity.Qa{
+	_, err = dao.Qa.Ctx(ctx).Insert(entity.Qa{
 		Question: question,
 		Replay:   answer,
 	})
@@ -875,15 +883,24 @@ func (s *VoiceService) getOrCreateDailySuggestion(ctx context.Context, deviceNo 
 	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc).Unix()
 	endOfDay := startOfDay + 86400
 	var existing entity.Suggest
-	err := dao.Suggest.Ctx(ctx).
+	// 当日可能尚无建议：One+IsEmpty；真 DB 错才失败，空集继续生成
+	one, err := dao.Suggest.Ctx(ctx).
 		Where(dao.Suggest.Columns().DeviceNo, deviceNo).
 		WhereGTE(dao.Suggest.Columns().Time, startOfDay).
 		WhereLT(dao.Suggest.Columns().Time, endOfDay).
 		OrderDesc(dao.Suggest.Columns().Id).
 		Limit(1).
-		Scan(&existing)
-	if err == nil && existing.Id > 0 && strings.TrimSpace(existing.Suggest) != "" {
-		return existing.Suggest, nil
+		One()
+	if err != nil {
+		return "", err
+	}
+	if !one.IsEmpty() {
+		if err = one.Struct(&existing); err != nil {
+			return "", err
+		}
+		if existing.Id > 0 && strings.TrimSpace(existing.Suggest) != "" {
+			return existing.Suggest, nil
+		}
 	}
 
 	suggestion, callErr := s.callDeepSeekGrowthSuggestion(ctx, deviceNo)

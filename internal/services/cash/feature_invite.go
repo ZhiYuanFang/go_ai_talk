@@ -24,7 +24,16 @@ func EnsureInviteCode(ctx context.Context, ownerWxID int64) (string, error) {
 	var row struct {
 		Code string `json:"code"`
 	}
-	_ = g.DB().Model("feature_invite_code").Ctx(ctx).Where("owner_wx_id", ownerWxID).Scan(&row)
+	// 邀请码可能尚未创建，空集正常；One+IsEmpty 禁止 Scan ErrNoRows。
+	one, err := g.DB().Model("feature_invite_code").Ctx(ctx).Where("owner_wx_id", ownerWxID).One()
+	if err != nil {
+		return "", err
+	}
+	if !one.IsEmpty() {
+		if err = one.Struct(&row); err != nil {
+			return "", err
+		}
+	}
 	if strings.TrimSpace(row.Code) != "" {
 		return row.Code, nil
 	}
@@ -44,7 +53,15 @@ func EnsureInviteCode(ctx context.Context, ownerWxID int64) (string, error) {
 			return code, nil
 		}
 		// 唯一冲突重试（码碰撞或并发双插 owner）。
-		_ = g.DB().Model("feature_invite_code").Ctx(ctx).Where("owner_wx_id", ownerWxID).Scan(&row)
+		one, err = g.DB().Model("feature_invite_code").Ctx(ctx).Where("owner_wx_id", ownerWxID).One()
+		if err != nil {
+			return "", err
+		}
+		if !one.IsEmpty() {
+			if err = one.Struct(&row); err != nil {
+				return "", err
+			}
+		}
 		if strings.TrimSpace(row.Code) != "" {
 			return row.Code, nil
 		}
@@ -75,7 +92,15 @@ func GetInviteMine(ctx context.Context, ownerWxID int64) (*InviteMine, error) {
 	var row struct {
 		RedeemedCount int `json:"redeemed_count"`
 	}
-	_ = g.DB().Model("feature_invite_code").Ctx(ctx).Where("code", code).Scan(&row)
+	one, err := g.DB().Model("feature_invite_code").Ctx(ctx).Where("code", code).One()
+	if err != nil {
+		return nil, err
+	}
+	if !one.IsEmpty() {
+		if err = one.Struct(&row); err != nil {
+			return nil, err
+		}
+	}
 	return &InviteMine{Code: code, RedeemedCount: row.RedeemedCount}, nil
 }
 
@@ -148,7 +173,15 @@ func RedeemInviteCode(ctx context.Context, redeemerWxID int64, deviceNo, code, f
 		OwnerWxId int64  `json:"owner_wx_id"`
 		Status    int    `json:"status"`
 	}
-	_ = g.DB().Model("feature_invite_code").Ctx(ctx).Where("code", code).Scan(&peek)
+	peekOne, err := g.DB().Model("feature_invite_code").Ctx(ctx).Where("code", code).One()
+	if err != nil {
+		return err
+	}
+	if !peekOne.IsEmpty() {
+		if err = peekOne.Struct(&peek); err != nil {
+			return err
+		}
+	}
 	if peek.Code == "" || peek.Status != 1 {
 		return gerror.NewCode(gcode.CodeInvalidParameter, "邀请码无效或已停用")
 	}
@@ -158,15 +191,21 @@ func RedeemInviteCode(ctx context.Context, redeemerWxID int64, deviceNo, code, f
 
 	now := time.Now().Unix()
 	var ownerWxID int64
-	err := g.DB().Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
+	err = g.DB().Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
 		var codeRow struct {
 			Code          string `json:"code"`
 			OwnerWxId     int64  `json:"owner_wx_id"`
 			RedeemedCount int    `json:"redeemed_count"`
 			Status        int    `json:"status"`
 		}
-		err := tx.Model("feature_invite_code").Ctx(ctx).Where("code", code).LockUpdate().Scan(&codeRow)
+		codeOne, err := tx.Model("feature_invite_code").Ctx(ctx).Where("code", code).LockUpdate().One()
 		if err != nil {
+			return err
+		}
+		if codeOne.IsEmpty() {
+			return gerror.NewCode(gcode.CodeInvalidParameter, "邀请码无效或已停用")
+		}
+		if err = codeOne.Struct(&codeRow); err != nil {
 			return err
 		}
 		if codeRow.Code == "" || codeRow.Status != 1 {
@@ -194,7 +233,15 @@ func RedeemInviteCode(ctx context.Context, redeemerWxID int64, deviceNo, code, f
 			UnlockMethods string `json:"unlock_methods"`
 			Status        int    `json:"status"`
 		}
-		_ = tx.Model("feature_def").Ctx(ctx).Where("feature_id", featureID).Scan(&def)
+		defOne, err := tx.Model("feature_def").Ctx(ctx).Where("feature_id", featureID).One()
+		if err != nil {
+			return err
+		}
+		if !defOne.IsEmpty() {
+			if err = defOne.Struct(&def); err != nil {
+				return err
+			}
+		}
 		if def.FeatureId == "" || def.Status != 1 || !strings.Contains(def.UnlockMethods, UnlockMethodInviteCode) {
 			return gerror.NewCode(gcode.CodeInvalidParameter, "功能不支持邀请码开通")
 		}

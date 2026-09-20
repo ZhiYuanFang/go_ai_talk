@@ -48,14 +48,20 @@ func (localDeviceProfileAdapter) GetProfile(ctx context.Context, deviceNo string
 			Sex:      cached.Sex,
 		}, nil
 	}
-	var row entity.User
-	err := dao.User.Ctx(ctx).
+	// 设备可能尚无 user 行，空集正常返回仅 deviceNo，禁止 Scan ErrNoRows。
+	one, err := dao.User.Ctx(ctx).
 		Fields(dao.User.Columns().BabyName, dao.User.Columns().Birthday, dao.User.Columns().Sex).
 		Where(dao.User.Columns().DeviceNo, profile.DeviceNo).
 		Limit(1).
-		Scan(&row)
+		One()
 	if err != nil {
 		return DeviceProfileInfo{}, err
+	}
+	var row entity.User
+	if !one.IsEmpty() {
+		if err = one.Struct(&row); err != nil {
+			return DeviceProfileInfo{}, err
+		}
 	}
 	profile.BabyName = strings.TrimSpace(row.BabyName)
 	profile.Birthday = row.Birthday

@@ -133,7 +133,11 @@ func loadAIConfigFresh(ctx context.Context) RuntimeAIConfig {
 
 	_ = EnsureUcgAIConfigDefaultRow(ctx)
 	var row ucgAIConfigLaneRow
-	err := g.DB().Model("ucg_ai_config").Ctx(ctx).Where("id", aiConfigSingletonID).Scan(&row)
+	// Ensure 后仍可能短暂无行：One+IsEmpty 回落 yaml/冷启，禁止 Scan 空集当失败
+	one, err := g.DB().Model("ucg_ai_config").Ctx(ctx).Where("id", aiConfigSingletonID).One()
+	if err == nil && !one.IsEmpty() {
+		_ = one.Struct(&row)
+	}
 	if err == nil && row.Id == aiConfigSingletonID {
 		if m := strings.TrimSpace(row.VisionModel); m != "" {
 			cfg.VisionModel = m
@@ -187,7 +191,10 @@ type AIConfigDTO struct {
 func GetAIConfigForAdmin(ctx context.Context) AIConfigDTO {
 	_ = EnsureUcgAIConfigDefaultRow(ctx)
 	var row ucgAIConfigLaneRow
-	_ = g.DB().Model("ucg_ai_config").Ctx(ctx).Where("id", aiConfigSingletonID).Scan(&row)
+	one, err := g.DB().Model("ucg_ai_config").Ctx(ctx).Where("id", aiConfigSingletonID).One()
+	if err == nil && !one.IsEmpty() {
+		_ = one.Struct(&row)
+	}
 	if row.Id != aiConfigSingletonID {
 		fallback := loadAIConfigFresh(ctx)
 		return AIConfigDTO{

@@ -61,12 +61,16 @@ func GetFeedingEligibilityScene(ctx context.Context, sceneKey string) (FeedingEl
 		MinRecordsPerDay int    `json:"min_records_per_day"`
 		UpdatedAt        int64  `json:"updated_at"`
 	}
-	err := g.DB().Model("feeding_eligibility_scene").Ctx(ctx).Where("scene_key", sceneKey).Scan(&row)
+	// 场景未配置时空集正常，回落 defaultScene，禁止 Scan ErrNoRows。
+	one, err := g.DB().Model("feeding_eligibility_scene").Ctx(ctx).Where("scene_key", sceneKey).One()
 	if err != nil {
 		return def, err
 	}
-	if row.SceneKey == "" {
+	if one.IsEmpty() {
 		return def, nil
+	}
+	if err = one.Struct(&row); err != nil {
+		return def, err
 	}
 	sc := FeedingEligibilityScene{
 		SceneKey: row.SceneKey, RequiredDays: row.RequiredDays,

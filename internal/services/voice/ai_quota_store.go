@@ -217,17 +217,26 @@ func effectiveVoiceLimitForFeature(ctx context.Context, wxID int64, feature cont
 	case contracts.AIQuotaCareAlert:
 		limit = def.CareAlertMonthlyLimit
 	}
-	var ov voiceQuotaOverrideRow
-	_ = g.DB().Model("ai_quota_user_override").Ctx(ctx).Where("wx_id", wxID).Scan(&ov)
-	if ov.WxId == wxID {
-		if feature == contracts.AIQuotaVoiceAI && ov.VoiceAiMonthlyLimit != nil && *ov.VoiceAiMonthlyLimit > 0 {
-			limit = *ov.VoiceAiMonthlyLimit
+	// 用户 override 可能不存在，空集正常；One+IsEmpty 避免 Scan ErrNoRows，真 DB 错须上抛。
+	one, err := g.DB().Model("ai_quota_user_override").Ctx(ctx).Where("wx_id", wxID).One()
+	if err != nil {
+		return 0, err
+	}
+	if !one.IsEmpty() {
+		var ov voiceQuotaOverrideRow
+		if err = one.Struct(&ov); err != nil {
+			return 0, err
 		}
-		if feature == contracts.AIQuotaClinicAI && ov.ClinicAiMonthlyLimit != nil && *ov.ClinicAiMonthlyLimit > 0 {
-			limit = *ov.ClinicAiMonthlyLimit
-		}
-		if feature == contracts.AIQuotaCareAlert && ov.CareAlertMonthlyLimit != nil && *ov.CareAlertMonthlyLimit > 0 {
-			limit = *ov.CareAlertMonthlyLimit
+		if ov.WxId == wxID {
+			if feature == contracts.AIQuotaVoiceAI && ov.VoiceAiMonthlyLimit != nil && *ov.VoiceAiMonthlyLimit > 0 {
+				limit = *ov.VoiceAiMonthlyLimit
+			}
+			if feature == contracts.AIQuotaClinicAI && ov.ClinicAiMonthlyLimit != nil && *ov.ClinicAiMonthlyLimit > 0 {
+				limit = *ov.ClinicAiMonthlyLimit
+			}
+			if feature == contracts.AIQuotaCareAlert && ov.CareAlertMonthlyLimit != nil && *ov.CareAlertMonthlyLimit > 0 {
+				limit = *ov.CareAlertMonthlyLimit
+			}
 		}
 	}
 	return limit, nil
@@ -381,13 +390,17 @@ func GetVoiceAIQuotaUserOverrideForAdmin(ctx context.Context, wxID int64) (contr
 	if wxID <= 0 {
 		return contracts.VoiceAIQuotaUserOverrideDTO{}, errors.New("wxId 无效")
 	}
-	var row voiceQuotaOverrideRow
-	err := g.DB().Model("ai_quota_user_override").Ctx(ctx).Where("wx_id", wxID).Scan(&row)
+	// Admin 读 override：无覆盖行返回仅含 wxId 的 DTO，禁止 Scan ErrNoRows。
+	one, err := g.DB().Model("ai_quota_user_override").Ctx(ctx).Where("wx_id", wxID).One()
 	if err != nil {
 		return contracts.VoiceAIQuotaUserOverrideDTO{}, err
 	}
-	if row.WxId != wxID {
+	if one.IsEmpty() {
 		return contracts.VoiceAIQuotaUserOverrideDTO{WxId: wxID}, nil
+	}
+	var row voiceQuotaOverrideRow
+	if err = one.Struct(&row); err != nil {
+		return contracts.VoiceAIQuotaUserOverrideDTO{}, err
 	}
 	return contracts.VoiceAIQuotaUserOverrideDTO{
 		WxId:                  row.WxId,

@@ -29,14 +29,22 @@ func EnqueueProfileAuditJob(ctx context.Context, wxID int64, nickname, avatarKey
 
 	// 事务写 audit job 与 outbox
 	err = dao.UcgProfileAuditJob.Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
-		// 获取当前用户最新 pending job 用于生成 audit version 与重置 moderation_verdict 为 0
+		// 取最新 pending：空集为正常（首次提审），用 One 避免 Scan 空集 ErrNoRows 中断事务
 		var pending entity.UcgProfileAuditJob
-		_ = tx.Model(dao.UcgProfileAuditJob.Table()).Ctx(ctx).
+		one, txErr := tx.Model(dao.UcgProfileAuditJob.Table()).Ctx(ctx).
 			Where(dao.UcgProfileAuditJob.Columns().WxId, wxID).
 			Where(dao.UcgProfileAuditJob.Columns().Status, ProfileJobStatusPending).
 			OrderDesc(dao.UcgProfileAuditJob.Columns().Id).
 			Limit(1).
-			Scan(&pending)
+			One()
+		if txErr != nil {
+			return txErr
+		}
+		if !one.IsEmpty() {
+			if txErr = one.Struct(&pending); txErr != nil {
+				return txErr
+			}
+		}
 
 		// 生成 audit version
 		auditVersion = 1
@@ -93,15 +101,22 @@ func EnqueueProfileAuditJob(ctx context.Context, wxID int64, nickname, avatarKey
 }
 
 // LoadLatestPendingProfileJob 作者预览：读取 pending job 合并到 ProfileDTO。
+// 无 pending 行为正常空：用 One+IsEmpty，避免 Scan 空集返回 sql.ErrNoRows 被当成读失败。
 func LoadLatestPendingProfileJob(ctx context.Context, wxID int64) (entity.UcgProfileAuditJob, bool, error) {
 	var job entity.UcgProfileAuditJob
-	err := dao.UcgProfileAuditJob.Ctx(ctx).
+	one, err := dao.UcgProfileAuditJob.Ctx(ctx).
 		Where(dao.UcgProfileAuditJob.Columns().WxId, wxID).
 		Where(dao.UcgProfileAuditJob.Columns().Status, ProfileJobStatusPending).
 		OrderDesc(dao.UcgProfileAuditJob.Columns().Id).
 		Limit(1).
-		Scan(&job)
+		One()
 	if err != nil {
+		return job, false, err
+	}
+	if one.IsEmpty() {
+		return job, false, nil
+	}
+	if err = one.Struct(&job); err != nil {
 		return job, false, err
 	}
 	if job.Id == 0 {

@@ -109,8 +109,16 @@ func EnsureUcgAIConfigDefaultRow(ctx context.Context) error {
 		return err
 	}
 	var row ucgAIConfigLaneRow
-	if scanErr := g.DB().Model("ucg_ai_config").Ctx(ctx).Where("id", aiConfigSingletonID).Scan(&row); scanErr != nil {
+	// 无行则跳过 seed 刷新：One+IsEmpty，禁止 Scan 空集当失败并吞掉真错误
+	one, scanErr := g.DB().Model("ucg_ai_config").Ctx(ctx).Where("id", aiConfigSingletonID).One()
+	if scanErr != nil {
+		return scanErr
+	}
+	if one.IsEmpty() {
 		return nil
+	}
+	if scanErr = one.Struct(&row); scanErr != nil {
+		return scanErr
 	}
 	if !aimodel.IsSeedUpdatedBy(row.UpdatedBy) {
 		return nil

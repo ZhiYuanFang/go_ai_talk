@@ -76,3 +76,9 @@
 - 新增或改造业务读路径时，**不得默认引入 Redis**；拟引入**新的** Redis 读缓存须先做收益率评估并**向负责人确认**；**负责人已确认要加的，实现阶段不得省略**。
 - 沿用 **`cachekit`** 等同族既有模式时，在 design 说明即可；Redis 持久化格式与 HTTP 边界映射须与现有约定一致。
 - 细则见 **`openspec/project.md`**「Redis 读缓存约定」。
+
+## GoFrame 单行空结果查询（OpenSpec / 实现强制）
+- **可能无行**的单行查询 MUST 用 `.One()` + `IsEmpty()`（有行再 `Struct`）；**禁止**对空集正常的路径用 `.Scan(&singleStruct)` 并把 `sql.ErrNoRows` 当系统失败（WARN/5xx/MQ requeue）。
+- 若保留 `Scan`，MUST 显式将 `ErrNoRows` 视为无行；**禁止** `_ = Scan(...)` 吞掉真 DB 错误。
+- **允许 Scan**：`Scan(&[]T)` 列表；刚插入 / `Ensure*Row` 后必有行的回读。
+- 细则见 **`openspec/project.md`**「GoFrame 单行空结果查询约定」。

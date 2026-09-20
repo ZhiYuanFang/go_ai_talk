@@ -96,9 +96,18 @@ func effectivePolishLimit(ctx context.Context, wxID int64) (int, error) {
 	}
 	limit := def.PolishMonthlyLimit
 	var ov polishQuotaOverrideRow
-	_ = g.DB().Model("ai_quota_user_override").Ctx(ctx).Where("wx_id", wxID).Scan(&ov)
-	if ov.WxId == wxID && ov.PolishMonthlyLimit != nil && *ov.PolishMonthlyLimit > 0 {
-		limit = *ov.PolishMonthlyLimit
+	// 无 override 行为正常：One+IsEmpty 回落默认，禁止 Scan 吞错或空集当失败
+	one, err := g.DB().Model("ai_quota_user_override").Ctx(ctx).Where("wx_id", wxID).One()
+	if err != nil {
+		return 0, err
+	}
+	if !one.IsEmpty() {
+		if err = one.Struct(&ov); err != nil {
+			return 0, err
+		}
+		if ov.WxId == wxID && ov.PolishMonthlyLimit != nil && *ov.PolishMonthlyLimit > 0 {
+			limit = *ov.PolishMonthlyLimit
+		}
 	}
 	return limit, nil
 }
@@ -211,8 +220,15 @@ func GetPolishAIQuotaUserOverrideForAdmin(ctx context.Context, wxID int64) (cont
 		return contracts.PolishAIQuotaUserOverrideDTO{}, errors.New("wxId 无效")
 	}
 	var row polishQuotaOverrideRow
-	err := g.DB().Model("ai_quota_user_override").Ctx(ctx).Where("wx_id", wxID).Scan(&row)
+	// 无覆盖行为正常空：返回仅含 wxId 的 DTO，禁止 Scan 空集 ErrNoRows
+	one, err := g.DB().Model("ai_quota_user_override").Ctx(ctx).Where("wx_id", wxID).One()
 	if err != nil {
+		return contracts.PolishAIQuotaUserOverrideDTO{}, err
+	}
+	if one.IsEmpty() {
+		return contracts.PolishAIQuotaUserOverrideDTO{WxId: wxID}, nil
+	}
+	if err = one.Struct(&row); err != nil {
 		return contracts.PolishAIQuotaUserOverrideDTO{}, err
 	}
 	if row.WxId != wxID {

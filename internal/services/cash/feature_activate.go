@@ -93,7 +93,17 @@ func ActivateFeature(ctx context.Context, req ActivateFeatureRequest) error {
 			AdDurationDays     int    `json:"ad_duration_days"`
 			Status             int    `json:"status"`
 		}
-		_ = g.DB().Model("feature_def").Ctx(ctx).Where("feature_id", featureID).Scan(&def)
+		// 功能定义可能不存在：One+IsEmpty，禁止 Scan 空集 ErrNoRows 被吞掉
+		one, qErr := g.DB().Model("feature_def").Ctx(ctx).Where("feature_id", featureID).One()
+		if qErr != nil {
+			return qErr
+		}
+		if one.IsEmpty() {
+			return gerror.NewCode(gcode.CodeInvalidParameter, "功能不存在或已停用")
+		}
+		if err := one.Struct(&def); err != nil {
+			return err
+		}
 		if def.FeatureId == "" || def.Status != 1 {
 			return gerror.NewCode(gcode.CodeInvalidParameter, "功能不存在或已停用")
 		}

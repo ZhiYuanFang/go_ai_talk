@@ -360,12 +360,17 @@ func mergeProfileForAuthor(ctx context.Context, p entity.UcgProfile) (*ProfileDT
 	if !ok {
 		// apply 超限失败：固定系统文案，避免作者永久见「审核中」
 		var applyFailed entity.UcgProfileAuditJob
-		_ = dao.UcgProfileAuditJob.Ctx(ctx).
+		oneAF, afErr := dao.UcgProfileAuditJob.Ctx(ctx).
 			Where(dao.UcgProfileAuditJob.Columns().WxId, p.WxId).
 			Where(dao.UcgProfileAuditJob.Columns().Status, ProfileJobStatusApplyFailed).
 			OrderDesc(dao.UcgProfileAuditJob.Columns().Id).
 			Limit(1).
-			Scan(&applyFailed)
+			One()
+		if afErr != nil {
+			g.Log().Warningf(ctx, "[ucg-profile] 读取 apply_failed job 失败 wxId=%d err=%v", p.WxId, afErr)
+		} else if !oneAF.IsEmpty() {
+			_ = oneAF.Struct(&applyFailed)
+		}
 		if applyFailed.RejectReason != "" {
 			dto.RejectReason = applyFailed.RejectReason
 			enrichProfileForceValues(ctx, dto)
@@ -373,12 +378,17 @@ func mergeProfileForAuthor(ctx context.Context, p entity.UcgProfile) (*ProfileDT
 		}
 		// 迁移期：读最近 rejected job 的 reason
 		var rejected entity.UcgProfileAuditJob
-		_ = dao.UcgProfileAuditJob.Ctx(ctx).
+		oneRJ, rjErr := dao.UcgProfileAuditJob.Ctx(ctx).
 			Where(dao.UcgProfileAuditJob.Columns().WxId, p.WxId).
 			Where(dao.UcgProfileAuditJob.Columns().Status, ProfileJobStatusRejected).
 			OrderDesc(dao.UcgProfileAuditJob.Columns().Id).
 			Limit(1).
-			Scan(&rejected)
+			One()
+		if rjErr != nil {
+			g.Log().Warningf(ctx, "[ucg-profile] 读取 rejected job 失败 wxId=%d err=%v", p.WxId, rjErr)
+		} else if !oneRJ.IsEmpty() {
+			_ = oneRJ.Struct(&rejected)
+		}
 		if rejected.RejectReason != "" {
 			dto.RejectReason = rejected.RejectReason
 		}

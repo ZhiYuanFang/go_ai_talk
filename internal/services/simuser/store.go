@@ -48,8 +48,15 @@ func GetConfig(ctx context.Context) (ConfigDTO, error) {
 		UpdatedAt   int64  `json:"updated_at"`
 		UpdatedBy   string `json:"updated_by"`
 	}
-	err := g.DB().Model("sim_config").Ctx(ctx).Where("id", 1).Scan(&row)
+	// sim_config singleton 可能尚未 seed，空集回落默认，禁止 Scan ErrNoRows。
+	one, err := g.DB().Model("sim_config").Ctx(ctx).Where("id", 1).One()
 	if err != nil {
+		return ConfigDTO{}, err
+	}
+	if one.IsEmpty() {
+		return ConfigDTO{MaxSimUsers: 100}, nil
+	}
+	if err = one.Struct(&row); err != nil {
 		return ConfigDTO{}, err
 	}
 	if row.MaxSimUsers <= 0 {
@@ -84,8 +91,15 @@ func GetPrompt(ctx context.Context, taskType string) (PromptDTO, error) {
 		UpdatedAt          int64  `json:"updated_at"`
 		UpdatedBy          string `json:"updated_by"`
 	}
-	err := g.DB().Model("sim_prompt").Ctx(ctx).Where("task_type", taskType).Scan(&row)
+	// prompt 可能尚未配置，空集返回零值 DTO，禁止 Scan ErrNoRows。
+	one, err := g.DB().Model("sim_prompt").Ctx(ctx).Where("task_type", taskType).One()
 	if err != nil {
+		return PromptDTO{}, err
+	}
+	if one.IsEmpty() {
+		return PromptDTO{TaskType: taskType}, nil
+	}
+	if err = one.Struct(&row); err != nil {
 		return PromptDTO{}, err
 	}
 	return PromptDTO{

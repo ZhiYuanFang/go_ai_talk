@@ -118,12 +118,19 @@ func listChatMessagesMySQL(ctx context.Context, convID uint64, page, pageSize in
 
 func lastChatMessageMySQL(ctx context.Context, convID uint64) (ChatMessage, bool, error) {
 	var row entity.UcgChatMessage
-	err := dao.UcgChatMessage.Ctx(ctx).
+	// 空会话无消息为正常：One+IsEmpty，避免 Scan 空集 ErrNoRows
+	one, err := dao.UcgChatMessage.Ctx(ctx).
 		Where(dao.UcgChatMessage.Columns().ConversationId, convID).
 		OrderDesc(dao.UcgChatMessage.Columns().Id).
 		Limit(1).
-		Scan(&row)
+		One()
 	if err != nil {
+		return ChatMessage{}, false, err
+	}
+	if one.IsEmpty() {
+		return ChatMessage{}, false, nil
+	}
+	if err = one.Struct(&row); err != nil {
 		return ChatMessage{}, false, err
 	}
 	if row.Id == 0 {
@@ -204,12 +211,19 @@ func persistChatMessageRow(ctx context.Context, convID uint64, msg ChatMessage) 
 
 func maxChatMessageIDMySQL(ctx context.Context, convID uint64) (uint64, error) {
 	var row entity.UcgChatMessage
-	err := dao.UcgChatMessage.Ctx(ctx).
+	// 空会话 MAX 语义为 0：One+IsEmpty，避免 Scan 空集 ErrNoRows
+	one, err := dao.UcgChatMessage.Ctx(ctx).
 		Where(dao.UcgChatMessage.Columns().ConversationId, convID).
 		OrderDesc(dao.UcgChatMessage.Columns().Id).
 		Limit(1).
-		Scan(&row)
+		One()
 	if err != nil {
+		return 0, err
+	}
+	if one.IsEmpty() {
+		return 0, nil
+	}
+	if err = one.Struct(&row); err != nil {
 		return 0, err
 	}
 	return row.Id, nil

@@ -78,7 +78,15 @@ func persistModerationVerdictProfile(ctx context.Context, jobID uint64, auditVer
 	}
 	// 并发另一 consumer 可能已写入，读回确认
 	var job entity.UcgProfileAuditJob
-	if scanErr := dao.UcgProfileAuditJob.Ctx(ctx).Where(cols.Id, jobID).Scan(&job); scanErr != nil {
+	one, scanErr := dao.UcgProfileAuditJob.Ctx(ctx).Where(cols.Id, jobID).One()
+	if scanErr != nil {
+		return scanErr
+	}
+	// 行已删：视为无事可做，避免空集 ErrNoRows / 假 cas lost 导致 requeue
+	if one.IsEmpty() {
+		return nil
+	}
+	if scanErr = one.Struct(&job); scanErr != nil {
 		return scanErr
 	}
 	if job.ModerationVerdict == ModerationVerdictNone {
@@ -111,7 +119,14 @@ func persistModerationVerdictPost(ctx context.Context, postID uint64, auditVersi
 		return nil
 	}
 	var post entity.UcgPost
-	if scanErr := dao.UcgPost.Ctx(ctx).Where(cols.Id, postID).Scan(&post); scanErr != nil {
+	one, scanErr := dao.UcgPost.Ctx(ctx).Where(cols.Id, postID).One()
+	if scanErr != nil {
+		return scanErr
+	}
+	if one.IsEmpty() {
+		return nil // 行已删：跳过，避免空集 ErrNoRows requeue
+	}
+	if scanErr = one.Struct(&post); scanErr != nil {
 		return scanErr
 	}
 	if post.ModerationVerdict == ModerationVerdictNone {
@@ -127,7 +142,16 @@ func runProfileGreenChecks(ctx context.Context, job entity.UcgProfileAuditJob) (
 	moderator := EffectiveGreen() // enabled=false 时为 noop，不调阿里云
 	cfg := LoadOSSConfig(ctx)
 	var published entity.UcgProfile
-	_ = dao.UcgProfile.Ctx(ctx).Where(dao.UcgProfile.Columns().WxId, job.WxId).Scan(&published)
+	// 无已发布 profile 时字段为空串：One+IsEmpty，暴露真 DB 错
+	onePub, pubErr := dao.UcgProfile.Ctx(ctx).Where(dao.UcgProfile.Columns().WxId, job.WxId).One()
+	if pubErr != nil {
+		return false, "", pubErr
+	}
+	if !onePub.IsEmpty() {
+		if err = onePub.Struct(&published); err != nil {
+			return false, "", err
+		}
+	}
 	pubNick := strings.TrimSpace(published.Nickname)
 	pubBio := strings.TrimSpace(published.Bio)
 	pubAvatar := strings.TrimSpace(published.AvatarKey)
@@ -340,7 +364,14 @@ func incrementProfileApplyAttempts(ctx context.Context, jobID uint64, auditVersi
 		return 0, err
 	}
 	var job entity.UcgProfileAuditJob
-	if scanErr := dao.UcgProfileAuditJob.Ctx(ctx).Where(cols.Id, jobID).Scan(&job); scanErr != nil {
+	one, scanErr := dao.UcgProfileAuditJob.Ctx(ctx).Where(cols.Id, jobID).One()
+	if scanErr != nil {
+		return 0, scanErr
+	}
+	if one.IsEmpty() {
+		return 0, nil // 行已删
+	}
+	if scanErr = one.Struct(&job); scanErr != nil {
 		return 0, scanErr
 	}
 	return job.ApplyAttempts, nil
@@ -356,7 +387,14 @@ func incrementPostApplyAttempts(ctx context.Context, postID uint64, auditVersion
 		return 0, err
 	}
 	var post entity.UcgPost
-	if scanErr := dao.UcgPost.Ctx(ctx).Where(cols.Id, postID).Scan(&post); scanErr != nil {
+	one, scanErr := dao.UcgPost.Ctx(ctx).Where(cols.Id, postID).One()
+	if scanErr != nil {
+		return 0, scanErr
+	}
+	if one.IsEmpty() {
+		return 0, nil // 行已删
+	}
+	if scanErr = one.Struct(&post); scanErr != nil {
 		return 0, scanErr
 	}
 	return post.ApplyAttempts, nil
@@ -461,7 +499,14 @@ func persistModerationVerdictComment(ctx context.Context, commentID uint64, audi
 		return nil
 	}
 	var comment entity.UcgPostComment
-	if scanErr := dao.UcgPostComment.Ctx(ctx).Where(cols.Id, commentID).Scan(&comment); scanErr != nil {
+	one, scanErr := dao.UcgPostComment.Ctx(ctx).Where(cols.Id, commentID).One()
+	if scanErr != nil {
+		return scanErr
+	}
+	if one.IsEmpty() {
+		return nil // 行已删：跳过，避免空集 ErrNoRows requeue
+	}
+	if scanErr = one.Struct(&comment); scanErr != nil {
 		return scanErr
 	}
 	if comment.ModerationVerdict == ModerationVerdictNone {
@@ -549,7 +594,14 @@ func incrementCommentApplyAttempts(ctx context.Context, commentID uint64, auditV
 		return 0, err
 	}
 	var comment entity.UcgPostComment
-	if scanErr := dao.UcgPostComment.Ctx(ctx).Where(cols.Id, commentID).Scan(&comment); scanErr != nil {
+	one, scanErr := dao.UcgPostComment.Ctx(ctx).Where(cols.Id, commentID).One()
+	if scanErr != nil {
+		return 0, scanErr
+	}
+	if one.IsEmpty() {
+		return 0, nil // 行已删
+	}
+	if scanErr = one.Struct(&comment); scanErr != nil {
 		return 0, scanErr
 	}
 	return comment.ApplyAttempts, nil
@@ -591,8 +643,18 @@ func handleCommentApplyFailure(ctx context.Context, queueName string, comment en
 
 func loadCommentForAudit(ctx context.Context, commentID uint64) (entity.UcgPostComment, error) {
 	var comment entity.UcgPostComment
-	err := dao.UcgPostComment.Ctx(ctx).Where(dao.UcgPostComment.Columns().Id, commentID).Scan(&comment)
-	return comment, err
+	// 缺行视为已删除：返回零值供 caller Ack，避免 Scan 空集 ErrNoRows 导致 requeue
+	one, err := dao.UcgPostComment.Ctx(ctx).Where(dao.UcgPostComment.Columns().Id, commentID).One()
+	if err != nil {
+		return comment, err
+	}
+	if one.IsEmpty() {
+		return comment, nil
+	}
+	if err = one.Struct(&comment); err != nil {
+		return comment, err
+	}
+	return comment, nil
 }
 
 // --- 私信 Phase1/Phase2 ---
@@ -619,10 +681,17 @@ func persistModerationVerdictChat(ctx context.Context, conversationID, messageID
 		return nil
 	}
 	var msg entity.UcgChatMessage
-	if scanErr := dao.UcgChatMessage.Ctx(ctx).
+	one, scanErr := dao.UcgChatMessage.Ctx(ctx).
 		Where(cols.ConversationId, conversationID).
 		Where(cols.Id, messageID).
-		Scan(&msg); scanErr != nil {
+		One()
+	if scanErr != nil {
+		return scanErr
+	}
+	if one.IsEmpty() {
+		return nil // 行已删：跳过，避免空集 ErrNoRows requeue
+	}
+	if scanErr = one.Struct(&msg); scanErr != nil {
 		return scanErr
 	}
 	if msg.ModerationVerdict == ModerationVerdictNone {
@@ -744,10 +813,17 @@ func incrementChatApplyAttempts(ctx context.Context, conversationID, messageID u
 		return 0, err
 	}
 	var msg entity.UcgChatMessage
-	if scanErr := dao.UcgChatMessage.Ctx(ctx).
+	one, scanErr := dao.UcgChatMessage.Ctx(ctx).
 		Where(cols.ConversationId, conversationID).
 		Where(cols.Id, messageID).
-		Scan(&msg); scanErr != nil {
+		One()
+	if scanErr != nil {
+		return 0, scanErr
+	}
+	if one.IsEmpty() {
+		return 0, nil // 行已删
+	}
+	if scanErr = one.Struct(&msg); scanErr != nil {
 		return 0, scanErr
 	}
 	return msg.ApplyAttempts, nil
@@ -790,21 +866,51 @@ func handleChatApplyFailure(ctx context.Context, queueName string, msg entity.Uc
 
 func loadChatMessageForAudit(ctx context.Context, conversationID, messageID uint64) (entity.UcgChatMessage, error) {
 	var msg entity.UcgChatMessage
-	err := dao.UcgChatMessage.Ctx(ctx).
+	// 缺行视为已删除：返回零值供 caller Ack，避免 Scan 空集 ErrNoRows 导致 requeue
+	one, err := dao.UcgChatMessage.Ctx(ctx).
 		Where(dao.UcgChatMessage.Columns().ConversationId, conversationID).
 		Where(dao.UcgChatMessage.Columns().Id, messageID).
-		Scan(&msg)
-	return msg, err
+		One()
+	if err != nil {
+		return msg, err
+	}
+	if one.IsEmpty() {
+		return msg, nil
+	}
+	if err = one.Struct(&msg); err != nil {
+		return msg, err
+	}
+	return msg, nil
 }
 
 func loadProfileAuditJob(ctx context.Context, jobID uint64) (entity.UcgProfileAuditJob, error) {
 	var job entity.UcgProfileAuditJob
-	err := dao.UcgProfileAuditJob.Ctx(ctx).Where(dao.UcgProfileAuditJob.Columns().Id, jobID).Scan(&job)
-	return job, err
+	// 缺行视为已删除：返回零值供 caller Ack，避免 Scan 空集 ErrNoRows 导致 requeue
+	one, err := dao.UcgProfileAuditJob.Ctx(ctx).Where(dao.UcgProfileAuditJob.Columns().Id, jobID).One()
+	if err != nil {
+		return job, err
+	}
+	if one.IsEmpty() {
+		return job, nil
+	}
+	if err = one.Struct(&job); err != nil {
+		return job, err
+	}
+	return job, nil
 }
 
 func loadPostForAudit(ctx context.Context, postID uint64) (entity.UcgPost, error) {
 	var post entity.UcgPost
-	err := dao.UcgPost.Ctx(ctx).Where(dao.UcgPost.Columns().Id, postID).Scan(&post)
-	return post, err
+	// 缺行视为已删除：返回零值供 caller Ack，避免 Scan 空集 ErrNoRows 导致 requeue
+	one, err := dao.UcgPost.Ctx(ctx).Where(dao.UcgPost.Columns().Id, postID).One()
+	if err != nil {
+		return post, err
+	}
+	if one.IsEmpty() {
+		return post, nil
+	}
+	if err = one.Struct(&post); err != nil {
+		return post, err
+	}
+	return post, nil
 }

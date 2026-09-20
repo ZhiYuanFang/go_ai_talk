@@ -33,6 +33,15 @@
 - Redis KV 访问 MUST 经 `internal/platform/cachekit` 且 MUST 使用 `cachekit.WithObserver(...)`（或 `cachekit.Default()`）；Redis Pub/Sub MUST 经 `internal/platform/redismsgkit` 且 MUST 使用 `WithObserver` / `DefaultPublisher()`。业务与 controller 层禁止直接 `g.Redis()`。
 - Redis 键/频道 MUST 经 platform builder（`cachekit/keys_*.go`、`redismsgkit/channels.go`）构造，禁止业务层键字面量（策略 A：builder 返回值与线上一致，本变更不重命名键空间）。
 
+### GoFrame 单行空结果查询约定（强制）
+- **问题**：GoFrame/MySQL 对单结构体 `.Scan(&T)` 在零行匹配时，部分驱动返回 `sql.ErrNoRows`；若业务上「无行」是正常状态，却把该错误当系统失败，会出现 WARN 噪音、误 5xx、审核 MQ 误 requeue。
+- **推荐写法（可能无行）**：`.One()` → 真错误返回 → `IsEmpty()` 表示无行 → 有行再 `Struct`（或字段读取）。参考 `internal/services/device/wx.go`、`internal/services/ucg/force_store.go`。
+- **禁止**：对「空集为正常可能」的单行查询使用 `.Scan(&singleStruct)` 并把任意 `err`（含 `ErrNoRows`）当作系统失败向上抛出或打失败级日志；禁止用 `_ = ...Scan(...)` 吞掉真 DB 错误。
+- **若保留 Scan**：MUST 将 `errors.Is(err, sql.ErrNoRows)`（及驱动等价空结果）视为「无行」，MUST NOT 作为系统失败出站。
+- **排除（允许继续 Scan）**：`.Scan(&[]T)` 列表/分页/批量；同一流程中刚成功插入、或已 `Ensure*Row`/`Count>0` 保证存在后的单行回读。
+- **审核等 MQ**：按 ID 加载实体已不存在时 MUST Ack/跳过，MUST NOT 因空集读失败无限 requeue；业务上必须存在的行缺失 MUST 返回明确业务错误，禁止裸 `ErrNoRows`。
+- **评审检查**：新增/修改单行「可能无行」查询时，是否使用 `One`+`IsEmpty`（或显式处理 `ErrNoRows`）；可 `rg '\.Scan\(&' internal/services --glob '*.go'` 人工复核单结构体路径。
+
 ### 数据库连接与部署实例约定（强制）
 - 任意需求变更若**新增、调整或迁移**某进程对 MySQL 的访问，OpenSpec **proposal / design / tasks** 中必须写清：**进程名**、**库与表域**、GoFrame **配置组**（如 `default`、`app`）、以及推荐覆盖方式（yaml 内 `*.link` 或 **`HISTORY_DB_LINK` / `DEVICE_DB_LINK` / `VOICE_DB_LINK` / `APP_DB_LINK` / `UCG_DB_LINK`** 等与 `cmd/*-service/main.go` 一致的环境变量名）。
 - **`gateway-app-server`** 连 `ai_voice_app` 时**仅**通过 **`APP_DB_LINK`**（写入 `GF_DATABASE_APP_LINK`）或 `config.gateway-app-server.yaml` 的 **`database.app.link`**；不得与主网关 `gateway-service`（无 DB）混淆。
@@ -77,6 +86,7 @@
 - 评审检查项必须包含“是否引用并遵循 **`openspec/specs/v3.0.3/spec.md`** 基线”检查：涉及行为变更时必须可追溯到对应 Requirement/Scenario。
 - 评审检查项必须包含“**Redis platform 访问**”检查：业务/controller 是否 bypass `cachekit`/`redismsgkit`（见 `AGENTS.md` 与 `hack/check-redis-bypass.sh`）。
 - 评审检查项必须包含“**Redis 读缓存**”检查：涉及新读路径或 Redis 键变更时，是否已在 proposal/design 完成收益率评估、负责人确认结论，且实现与 design 一致（见「Redis 读缓存约定」）。
+- 评审检查项必须包含“**GoFrame 单行空结果查询**”检查：可能无行的单结构体查询是否使用 `.One()`+`IsEmpty()`（或显式处理 `ErrNoRows`），禁止空集 Scan 当系统失败（见「GoFrame 单行空结果查询约定」）。
 - 在没有特别要求的情况下，不用生成关于当前变更需求的md文件。当有要求生成文档时，文档必须在`docs/`文件夹内生成md文件，不要生成到`docs/runbooks/`
 
 ### gateway-app 对外 App 接口约定（强制）

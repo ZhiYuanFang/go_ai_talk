@@ -147,13 +147,20 @@ func GetLatestDeviceHistory(ctx context.Context, deviceNo string) (entity.Histor
 	if item, ok, err := historyCache.getLatestHistory(ctx, deviceNo); err == nil && ok {
 		return item, nil
 	}
-	var item entity.History
-	err := dao.History.Ctx(ctx).
+	// 设备可能尚无 history，空集正常返回零值，禁止 Scan ErrNoRows。
+	one, err := dao.History.Ctx(ctx).
 		Where(dao.History.Columns().DeviceNo, deviceNo).
 		OrderDesc(dao.History.Columns().Id).
 		Limit(1).
-		Scan(&item)
+		One()
 	if err != nil {
+		return entity.History{}, err
+	}
+	if one.IsEmpty() {
+		return entity.History{}, nil
+	}
+	var item entity.History
+	if err = one.Struct(&item); err != nil {
 		return entity.History{}, err
 	}
 	if item.Id > 0 {
@@ -182,19 +189,23 @@ func EndLatestDeviceHistoryIfMatch(ctx context.Context, deviceNo string, eventID
 	remark = strings.TrimSpace(remark)
 
 	// 权威查询：同 event 的最近未闭合行（end_time=0），而非全局最新 history。
-	var open entity.History
-	err := dao.History.Ctx(ctx).
+	// 无未闭合同 event 行时空集正常，返回 false，禁止 Scan ErrNoRows。
+	one, err := dao.History.Ctx(ctx).
 		Where(dao.History.Columns().DeviceNo, deviceNo).
 		Where(dao.History.Columns().EventId, eventID).
 		Where(dao.History.Columns().EndTime, 0).
 		OrderDesc(dao.History.Columns().Id).
 		Limit(1).
-		Scan(&open)
+		One()
 	if err != nil {
 		return false, err
 	}
-	if open.Id <= 0 {
+	if one.IsEmpty() {
 		return false, nil
+	}
+	var open entity.History
+	if err = one.Struct(&open); err != nil {
+		return false, err
 	}
 
 	data := g.Map{dao.History.Columns().EndTime: endTimeUnixSec}

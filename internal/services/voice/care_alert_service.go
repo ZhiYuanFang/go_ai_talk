@@ -507,21 +507,18 @@ func incrCareAlertDailyUsage(ctx context.Context, wxID int64) error {
 }
 
 func loadCareAlertLatest(ctx context.Context, wxID int64, deviceNo string) (careAlertLatestRow, bool, error) {
-	var row careAlertLatestRow
-	err := g.DB().Model("care_alert_latest").Ctx(ctx).
-		Where("wx_id", wxID).Where("device_no", deviceNo).Scan(&row)
+	// 尚无最新记录时空集为正常路径，须 One+IsEmpty，禁止 Scan 将 ErrNoRows 当系统失败。
+	one, err := g.DB().Model("care_alert_latest").Ctx(ctx).
+		Where("wx_id", wxID).Where("device_no", deviceNo).One()
 	if err != nil {
 		return careAlertLatestRow{}, false, err
 	}
-	if row.WxId == 0 && strings.TrimSpace(row.DeviceNo) == "" {
-		n, cErr := g.DB().Model("care_alert_latest").Ctx(ctx).
-			Where("wx_id", wxID).Where("device_no", deviceNo).Count()
-		if cErr != nil {
-			return careAlertLatestRow{}, false, cErr
-		}
-		if n == 0 {
-			return careAlertLatestRow{}, false, nil
-		}
+	if one.IsEmpty() {
+		return careAlertLatestRow{}, false, nil
+	}
+	var row careAlertLatestRow
+	if err = one.Struct(&row); err != nil {
+		return careAlertLatestRow{}, false, err
 	}
 	return row, true, nil
 }

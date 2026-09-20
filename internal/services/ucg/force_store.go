@@ -65,7 +65,17 @@ func GetForceValue(ctx context.Context, wxID int64) (int, error) {
 	var row struct {
 		ForceValue int `json:"force_value"`
 	}
-	_ = g.DB().Model("ucg_user_force").Ctx(ctx).Where("wx_id", wxID).Scan(&row)
+	// 无行则 0：One+IsEmpty，避免 Scan 空集 ErrNoRows 被忽略时也吞掉真 DB 错
+	one, err := g.DB().Model("ucg_user_force").Ctx(ctx).Where("wx_id", wxID).One()
+	if err != nil {
+		return 0, err
+	}
+	if one.IsEmpty() {
+		return 0, nil
+	}
+	if err = one.Struct(&row); err != nil {
+		return 0, err
+	}
 	return row.ForceValue, nil
 }
 

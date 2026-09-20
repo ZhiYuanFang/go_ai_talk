@@ -61,8 +61,16 @@ func GetFullConfig(ctx context.Context) (FullConfigDTO, error) {
 		UpdatedAt   int64  `json:"updated_at"`
 		UpdatedBy   string `json:"updated_by"`
 	}
-	err := g.DB().Model("sim_config").Ctx(ctx).Where("id", 1).Scan(&row)
+	// sim_config singleton 可能尚未 seed，空集回落默认，禁止 Scan ErrNoRows。
+	one, err := g.DB().Model("sim_config").Ctx(ctx).Where("id", 1).One()
 	if err != nil {
+		return FullConfigDTO{}, err
+	}
+	if one.IsEmpty() {
+		rt, _ := LoadRuntimeFromDB(ctx)
+		return FullConfigDTO{MaxSimUsers: 100, Runtime: rt}, nil
+	}
+	if err = one.Struct(&row); err != nil {
 		return FullConfigDTO{}, err
 	}
 	rt, _ := LoadRuntimeFromDB(ctx)

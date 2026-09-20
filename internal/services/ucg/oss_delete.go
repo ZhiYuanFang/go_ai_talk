@@ -104,8 +104,15 @@ func DeleteOwnedMedia(ctx context.Context, wxID int64, objectKeys []string) (del
 func findMediaBlobByObjectKey(ctx context.Context, objectKey string) (*entity.UcgMediaBlob, error) {
 	cols := dao.UcgMediaBlob.Columns()
 	var blob entity.UcgMediaBlob
-	err := dao.UcgMediaBlob.Ctx(ctx).Where(cols.ObjectKey, objectKey).Scan(&blob)
+	// 无 blob 行为正常 miss：返回 nil,nil；禁止 Scan 空集 ErrNoRows 冒充内部错误
+	one, err := dao.UcgMediaBlob.Ctx(ctx).Where(cols.ObjectKey, objectKey).One()
 	if err != nil {
+		return nil, gerror.WrapCode(gcode.CodeInternalError, err, "查询 blob 失败")
+	}
+	if one.IsEmpty() {
+		return nil, nil
+	}
+	if err = one.Struct(&blob); err != nil {
 		return nil, gerror.WrapCode(gcode.CodeInternalError, err, "查询 blob 失败")
 	}
 	if blob.Id == 0 {

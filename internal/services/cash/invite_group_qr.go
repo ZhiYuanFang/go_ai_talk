@@ -36,7 +36,16 @@ func GetInviteGroupQrAdmin(ctx context.Context) (*InviteGroupQrAdmin, error) {
 		UpdatedAt int64  `json:"updated_at"`
 		FileName  string `json:"file_name"`
 	}
-	_ = g.DB().Model("invite_group_qr").Ctx(ctx).Where("id", inviteGroupQrRowID).Scan(&row)
+	// singleton 可能尚未插入，空集返回零值模板，禁止 Scan ErrNoRows。
+	one, err := g.DB().Model("invite_group_qr").Ctx(ctx).Where("id", inviteGroupQrRowID).One()
+	if err != nil {
+		return nil, err
+	}
+	if !one.IsEmpty() {
+		if err = one.Struct(&row); err != nil {
+			return nil, err
+		}
+	}
 	fn := strings.TrimSpace(row.FileName)
 	if fn == "" {
 		fn = InviteGroupQrFileName
@@ -107,8 +116,14 @@ func ResolveInviteGroupQrURLForApp(ctx context.Context) (string, error) {
 		ExpiresAt int64 `json:"expires_at"`
 		UpdatedAt int64 `json:"updated_at"`
 	}
-	err := g.DB().Model("invite_group_qr").Ctx(ctx).Where("id", inviteGroupQrRowID).Scan(&row)
+	one, err := g.DB().Model("invite_group_qr").Ctx(ctx).Where("id", inviteGroupQrRowID).One()
 	if err != nil {
+		return "", err
+	}
+	if one.IsEmpty() {
+		return "", nil
+	}
+	if err = one.Struct(&row); err != nil {
 		return "", err
 	}
 	now := time.Now().Unix()

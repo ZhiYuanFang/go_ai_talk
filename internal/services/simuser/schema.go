@@ -110,7 +110,11 @@ func seedDefaults(ctx context.Context) error {
 		var row struct {
 			RuntimeJSON string `json:"runtime_json"`
 		}
-		_ = g.DB().Model("sim_config").Ctx(ctx).Fields("runtime_json").Where("id", 1).Scan(&row)
+		// seed 路径：读已有 runtime_json，空集视为未初始化。
+		one, scanErr := g.DB().Model("sim_config").Ctx(ctx).Fields("runtime_json").Where("id", 1).One()
+		if scanErr == nil && !one.IsEmpty() {
+			_ = one.Struct(&row)
+		}
 		if row.RuntimeJSON == "" || row.RuntimeJSON == "{}" {
 			_, _ = g.DB().Model("sim_config").Ctx(ctx).Where("id", 1).Data(g.Map{
 				"runtime_json": string(runtimeSeed),

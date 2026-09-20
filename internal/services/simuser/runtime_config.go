@@ -198,8 +198,15 @@ func loadRuntimeJSONRaw(ctx context.Context) (string, error) {
 	var row struct {
 		RuntimeJSON string `json:"runtime_json"`
 	}
-	err := g.DB().Model("sim_config").Ctx(ctx).Fields("runtime_json").Where("id", 1).Scan(&row)
+	// runtime_json 可能尚无行，空集返回空串，禁止 Scan ErrNoRows。
+	one, err := g.DB().Model("sim_config").Ctx(ctx).Fields("runtime_json").Where("id", 1).One()
 	if err != nil {
+		return "", err
+	}
+	if one.IsEmpty() {
+		return "", nil
+	}
+	if err = one.Struct(&row); err != nil {
 		return "", err
 	}
 	return row.RuntimeJSON, nil
