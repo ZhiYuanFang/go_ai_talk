@@ -1,3 +1,8 @@
+// APNs 通道：经 Apple HTTP/2 API 下发通知/静默推送。
+//
+// 业务说明：使用 .p8 私钥签发 Provider Authentication JWT（非设备 device token）。
+// Apple 限制同一 Key 下 Provider JWT 更新不得过频（约 20 分钟），故进程内缓存复用 JWT，
+// 对齐 HMS 的 hmsAccessToken 模式。运维轮换 .p8 / keyId 后须重启 push-service 以清空缓存。
 package push
 
 import (
@@ -18,18 +23,33 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 )
 
-// ApnsSender sends via Apple Push Notification service (HTTP/2).
+// ApnsSender 经 Apple Push Notification service (HTTP/2) 向单个 device token 发送。
 type ApnsSender struct{}
 
 func NewApnsSender() *ApnsSender { return &ApnsSender{} }
 
 func (s *ApnsSender) Channel() string { return PushChannelAPNs }
 
+// apnsJWTReuseTTL 为 Provider JWT 进程内复用窗口。
+// Apple JWT 最长约 1h，且更换间隔不宜短于约 20min；取 45min 兼顾两者。
+const apnsJWTReuseTTL = 45 * time.Minute
+
 var (
 	apnsClientOnce sync.Once
 	apnsHTTPClient *http.Client
+
+	// Provider JWT 进程内缓存（与设备 device token 无关）。
+	apnsJWTMu     sync.Mutex
+	apnsJWTCache  string
+	apnsJWTExp    time.Time
+	apnsJWTKeyID  string
+	apnsJWTTeamID string
 )
 
+// Send 向单个 APNs device token 发送推送。
+//
+// Returns: invalidToken 表示应删除本地设备 token；err 非 nil 时 dispatcher 记 send_failed。
+// Side Effects: 可能读 .p8 并更新进程内 Provider JWT 缓存；不写库。
 func (s *ApnsSender) Send(ctx context.Context, token string, payload PushPayload) (invalidToken bool, err error) {
 	cfg := loadPushConfig(ctx)
 	if !apnsConfigured(cfg) {
@@ -118,12 +138,21 @@ func parseApnsReason(body []byte) string {
 	return ""
 }
 
+// isApnsInvalidToken 判断是否应删除本地设备 device token。
+//
+// 业务：仅设备侧失效（410 / BadDeviceToken 等）才返回 true。
+// Provider JWT 限流（429 TooManyProviderTokenUpdates）或其它 Provider 鉴权问题
+// MUST NOT 当作设备 token 无效，否则会误删 push_device 行。
 func isApnsInvalidToken(status int, reason string) bool {
+	// Provider token 更新过频：发送失败，但不删设备。
+	if status == http.StatusTooManyRequests {
+		return false
+	}
 	if status == http.StatusGone {
 		return true
 	}
 	switch strings.ToUpper(reason) {
-	case "BADDEVICE_TOKEN", "UNREGISTERED", "DEVICE_TOKEN_NOT_FOR_TOPIC", "INVALIDPROVIDER_TOKEN":
+	case "BADDEVICE_TOKEN", "BADDEVICETOKEN", "UNREGISTERED", "DEVICE_TOKEN_NOT_FOR_TOPIC", "DEVICETOKENNOTFORTOPIC":
 		return true
 	default:
 		return false
@@ -137,7 +166,27 @@ func apnsHTTPClientFor(cfg pushConfig) *http.Client {
 	return apnsHTTPClient
 }
 
+// apnsBearerToken 返回可复用的 APNs Provider JWT。
+//
+// 业务逻辑：缓存命中（未过期且 keyId/teamId 未变）直接返回，避免每次 Send 换 iat
+// 触发 Apple TooManyProviderTokenUpdates。未命中时读 .p8 签发并写入进程缓存。
+// 运维轮换密钥文件后须重启本进程，否则可能继续使用旧 JWT 直至 TTL 到期。
+//
+// Args: cfg 含 ApnsKeyPath / KeyID / TeamID。
+// Returns: bearer 字符串（不含 "bearer " 前缀）；签发失败时 error。
+// Side Effects: 更新包级 apnsJWT* 缓存变量。
 func apnsBearerToken(cfg pushConfig) (string, error) {
+	apnsJWTMu.Lock()
+	defer apnsJWTMu.Unlock()
+
+	now := time.Now()
+	if apnsJWTCache != "" &&
+		now.Before(apnsJWTExp) &&
+		apnsJWTKeyID == cfg.ApnsKeyID &&
+		apnsJWTTeamID == cfg.ApnsTeamID {
+		return apnsJWTCache, nil
+	}
+
 	keyData, err := os.ReadFile(cfg.ApnsKeyPath)
 	if err != nil {
 		return "", err
@@ -156,9 +205,18 @@ func apnsBearerToken(cfg pushConfig) (string, error) {
 	}
 	claims := jwt.MapClaims{
 		"iss": cfg.ApnsTeamID,
-		"iat": time.Now().Unix(),
+		"iat": now.Unix(),
 	}
 	t := jwt.NewWithClaims(jwt.SigningMethodES256, claims)
 	t.Header["kid"] = cfg.ApnsKeyID
-	return t.SignedString(ecKey)
+	signed, err := t.SignedString(ecKey)
+	if err != nil {
+		return "", err
+	}
+
+	apnsJWTCache = signed
+	apnsJWTExp = now.Add(apnsJWTReuseTTL)
+	apnsJWTKeyID = cfg.ApnsKeyID
+	apnsJWTTeamID = cfg.ApnsTeamID
+	return apnsJWTCache, nil
 }
