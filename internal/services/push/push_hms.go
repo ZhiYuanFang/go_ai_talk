@@ -77,6 +77,10 @@ func (s *HmsSender) Send(ctx context.Context, token string, payload PushPayload)
 		"importance":   "HIGH",
 		// "channelId":    "push_default", // 和Flutter端创建的通知渠道ID保持一致！ 部分老机子不支持
 	}
+	// 华为云通知自分类：仅已知可见 bizType 写入 category；静默/未知省略键。
+	if cat := hmsCategoryForBizType(bizType); cat != "" {
+		androidNotif["category"] = cat
+	}
 	if payload.Badge > 0 {
 		androidNotif["badge"] = map[string]interface{}{
 			"class":   hmsBadgeClass,
@@ -139,6 +143,25 @@ func (s *HmsSender) Send(ctx context.Context, token string, payload PushPayload)
 		return false, fmt.Errorf("hms biz code=%s msg=%s", code, truncateHmsLog(msg, 256))
 	}
 	return false, nil
+}
+
+// hmsCategoryForBizType 按业务类型返回华为云通知 category（大写枚举）。
+//
+// 业务：华为对未分类/营销类消息有日限额与展示限制；预测临近属工作提醒(WORK)，
+// UCG 可见内容属即时通讯(IM)。静默角标与未知类型不传 category，避免误标。
+//
+// Args: bizType — payload.Data["bizType"]（比较前 trim + 小写规范化）。
+// Returns: "WORK" / "IM"；空字符串表示调用方 MUST NOT 写入 category 键。
+func hmsCategoryForBizType(bizType string) string {
+	switch strings.ToLower(strings.TrimSpace(bizType)) {
+	case PushBizPredictImminent:
+		return "WORK"
+	case PushBizUcgAlert:
+		return "IM"
+	default:
+		// ucg_silent_badge、空、未知：省略 category
+		return ""
+	}
 }
 
 // hmsClickAction 有 bizType 时用 type=1，把字段放进点击 Intent extras。
