@@ -594,6 +594,9 @@ async function loadDeviceRecordList(page){
 }
 
 function buildEventRowData(it){
+	// 列表行必须保留接口字段；漏拷 isAppointment 会导致预约列恒为「否」。
+	const apptRaw = it.isAppointment != null ? it.isAppointment : it.is_appointment;
+	const isAppointment = (apptRaw === true || apptRaw === 1 || apptRaw === '1') ? 1 : 0;
 	return {
 		id: Number(it.id||0),
 		name: String(it.name||''),
@@ -601,7 +604,9 @@ function buildEventRowData(it){
 		extraNames: String(it.extraNames||''),
 		color: String(it.color||''),
 		logo: String(it.logo||''),
-		eventType: normalizeEventType(it.eventType)
+		unit: String(it.unit||''),
+		eventType: normalizeEventType(it.eventType),
+		isAppointment: isAppointment
 	};
 }
 
