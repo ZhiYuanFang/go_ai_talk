@@ -30,6 +30,14 @@ func main() {
 		glog.Fatalf(ctx, "wx schema ensure failed: %v", err)
 		return
 	}
+	if err := device.EnsureEventIsAppointmentColumn(ctx); err != nil {
+		glog.Fatalf(ctx, "event is_appointment schema ensure failed: %v", err)
+		return
+	}
+	if err := device.EnsureAppointmentNextTable(ctx); err != nil {
+		glog.Fatalf(ctx, "appointment_next schema ensure failed: %v", err)
+		return
+	}
 	s := g.Server("device-service")
 	applyDeviceServiceAddress(s)
 	controller.RegisterDeviceServiceHTTP(s)

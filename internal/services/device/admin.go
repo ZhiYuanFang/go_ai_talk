@@ -240,8 +240,16 @@ func (s *service) List(ctx context.Context) ([]entity.User, error) {
 func eventListFields() []interface{} {
 	c := dao.Event.Columns()
 	return []interface{}{
-		c.Id, c.Name, c.EventType, c.Unit, c.ExtraNames, c.Logo, c.Color, c.ParentId,
+		c.Id, c.Name, c.EventType, c.Unit, c.ExtraNames, c.Logo, c.Color, c.ParentId, c.IsAppointment,
 	}
+}
+
+// normalizeIsAppointment 将预约标志规范为 0/1。
+func normalizeIsAppointment(v int) int {
+	if v != 0 {
+		return 1
+	}
+	return 0
 }
 
 // NormalizeEventParentIDForAPI 将 parent_id 规范为非负；0 表示根节点（供 HTTP 层解析表单）。
@@ -329,7 +337,7 @@ func normalizeEventRows(rows []entity.Event) {
 	}
 }
 
-func (s *service) AddEvent(ctx context.Context, name string, eventType string, extraNames, color, unit, logoPath string, parentID int64) (int64, error) {
+func (s *service) AddEvent(ctx context.Context, name string, eventType string, extraNames, color, unit, logoPath string, parentID int64, isAppointment int) (int64, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return 0, errors.New("事件名称不能为空")
@@ -342,6 +350,7 @@ func (s *service) AddEvent(ctx context.Context, name string, eventType string, e
 	}
 	eventType = NormalizeEventType(eventType)
 	parentID = normalizeEventParentID(parentID)
+	isAppointment = normalizeIsAppointment(isAppointment)
 	if parentID > 0 {
 		parentCount, err := dao.Event.Ctx(ctx).Where(dao.Event.Columns().Id, parentID).Count()
 		if err != nil {
@@ -360,13 +369,14 @@ func (s *service) AddEvent(ctx context.Context, name string, eventType string, e
 	}
 	logoPath = NormalizeEventLogoStored(logoPath)
 	result, err := dao.Event.Ctx(ctx).Data(g.Map{
-		dao.Event.Columns().Name:       name,
-		dao.Event.Columns().EventType:  eventType,
-		dao.Event.Columns().Unit:       strings.TrimSpace(unit),
-		dao.Event.Columns().ExtraNames: strings.TrimSpace(extraNames),
-		dao.Event.Columns().Color:      strings.TrimSpace(color),
-		dao.Event.Columns().Logo:       logoPath,
-		dao.Event.Columns().ParentId:   parentID,
+		dao.Event.Columns().Name:          name,
+		dao.Event.Columns().EventType:     eventType,
+		dao.Event.Columns().Unit:          strings.TrimSpace(unit),
+		dao.Event.Columns().ExtraNames:    strings.TrimSpace(extraNames),
+		dao.Event.Columns().Color:         strings.TrimSpace(color),
+		dao.Event.Columns().Logo:          logoPath,
+		dao.Event.Columns().ParentId:      parentID,
+		dao.Event.Columns().IsAppointment: isAppointment,
 	}).Insert()
 	if err != nil {
 		msg := strings.ToLower(err.Error())
@@ -409,7 +419,8 @@ func (s *service) CountNonLeafEvents(ctx context.Context) (int, error) {
 }
 
 // UpdateEvent 更新事件字典；parentID 非 nil 时同时修改 parent_id（0 表示升为根）。
-func (s *service) UpdateEvent(ctx context.Context, id int64, name string, eventType string, extraNames, color, unit, logoPath string, parentID *int64) error {
+// isAppointment 为 0/1 预约标志（与 eventType 正交）。
+func (s *service) UpdateEvent(ctx context.Context, id int64, name string, eventType string, extraNames, color, unit, logoPath string, parentID *int64, isAppointment int) error {
 	if id <= 0 {
 		return errors.New("事件ID无效")
 	}
@@ -424,6 +435,7 @@ func (s *service) UpdateEvent(ctx context.Context, id int64, name string, eventT
 		return err
 	}
 	eventType = NormalizeEventType(eventType)
+	isAppointment = normalizeIsAppointment(isAppointment)
 	idCount, err := dao.Event.Ctx(ctx).Where(dao.Event.Columns().Id, id).Count()
 	if err != nil {
 		return err
@@ -454,11 +466,12 @@ func (s *service) UpdateEvent(ctx context.Context, id int64, name string, eventT
 		return ErrEventExists
 	}
 	data := g.Map{
-		dao.Event.Columns().Name:       name,
-		dao.Event.Columns().EventType:  eventType,
-		dao.Event.Columns().Unit:       strings.TrimSpace(unit),
-		dao.Event.Columns().ExtraNames: strings.TrimSpace(extraNames),
-		dao.Event.Columns().Color:      strings.TrimSpace(color),
+		dao.Event.Columns().Name:          name,
+		dao.Event.Columns().EventType:     eventType,
+		dao.Event.Columns().Unit:          strings.TrimSpace(unit),
+		dao.Event.Columns().ExtraNames:    strings.TrimSpace(extraNames),
+		dao.Event.Columns().Color:         strings.TrimSpace(color),
+		dao.Event.Columns().IsAppointment: isAppointment,
 	}
 	if parentID != nil {
 		data[dao.Event.Columns().ParentId] = targetParent

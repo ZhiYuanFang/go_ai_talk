@@ -43,6 +43,9 @@ var maintenanceExactAPI = map[string]struct{}{
 	"GET /ucg/app/api/notifications/comments":  {},
 	"GET /cash/app/api/vip/status":             {},
 	"PUT /device/api/predict/imminent/pending": {},
+	// 预约下次约定读写：负责人确认不计入 usage（appointment-event-next-at；客户端日历备忘同步）。
+	"GET /device/app/api/appointment/next": {},
+	"PUT /device/app/api/appointment/next": {},
 }
 
 var maintenancePathPrefixes = []string{

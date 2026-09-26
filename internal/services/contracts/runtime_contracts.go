@@ -91,9 +91,9 @@ type DeviceAdminContract interface {
 	ListWxPage(ctx context.Context, page, pageSize int, q string) (WxPageResult, error)
 	// TouchLastAPIAccess 记录设备最近一次对外 HTTP API（网关边缘或 internal 调用）。
 	TouchLastAPIAccess(ctx context.Context, deviceNo, apiPath string, atUnixSec int64) error
-	AddEvent(ctx context.Context, name string, eventType string, extraNames, color, unit, logoPath string, parentID int64) (int64, error)
+	AddEvent(ctx context.Context, name string, eventType string, extraNames, color, unit, logoPath string, parentID int64, isAppointment int) (int64, error)
 	ListEvents(ctx context.Context) ([]entity.Event, error)
-	UpdateEvent(ctx context.Context, id int64, name string, eventType string, extraNames, color, unit, logoPath string, parentID *int64) error
+	UpdateEvent(ctx context.Context, id int64, name string, eventType string, extraNames, color, unit, logoPath string, parentID *int64, isAppointment int) error
 	DeleteEvent(ctx context.Context, id int64) error
 	ListQAPage(ctx context.Context, page, pageSize int) (QaPageResult, error)
 	DeleteQA(ctx context.Context, id int64) error

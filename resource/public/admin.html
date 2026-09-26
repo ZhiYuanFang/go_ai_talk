@@ -103,6 +103,7 @@
 						<th>Logo</th>
 						<th>色调</th>
 						<th>事件类型</th>
+						<th>预约</th>
 						<th>单位</th>
 						<th>事件扩展</th>
 						<th>操作</th>
@@ -205,6 +206,10 @@
 				<div style="font-size:13px;color:#444;margin-bottom:6px;">事件扩展（别名等，可选）</div>
 				<textarea id="eventFormExtraNames" placeholder="多个别名可用逗号、顿号等分隔" style="width:100%;box-sizing:border-box;"></textarea>
 			</div>
+			<label style="display:flex;align-items:center;gap:8px;margin-top:10px;">
+				<input type="checkbox" id="eventFormIsAppointment" />
+				<span>预约事件（如疫苗；不按作息间隔预测）</span>
+			</label>
 			<div id="eventFormParentWrap" class="hidden" style="margin-top:10px;">
 				<label style="font-size:13px;color:#444;display:block;margin-bottom:6px;">父事件
 					<select id="eventFormParentSelect" style="display:block;margin-top:6px;min-width:260px;max-width:100%;"></select>
@@ -287,6 +292,7 @@ const eventFormName = document.getElementById('eventFormName');
 const eventFormEventType = document.getElementById('eventFormEventType');
 const eventFormExtraNames = document.getElementById('eventFormExtraNames');
 const eventFormUnit = document.getElementById('eventFormUnit');
+const eventFormIsAppointment = document.getElementById('eventFormIsAppointment');
 const eventFormColor = document.getElementById('eventFormColor');
 const eventFormLogo = document.getElementById('eventFormLogo');
 const eventFormLogoPreview = document.getElementById('eventFormLogoPreview');
@@ -485,6 +491,7 @@ async function submitEventRowUpdate(row, opts){
 		fd.append('extraNames', row.extraNames || '');
 		fd.append('color', opts && opts.color != null ? opts.color : normalizeEventColor(row.color));
 		fd.append('parentId', String(Number(row.parentId || 0)));
+		fd.append('isAppointment', row.isAppointment ? '1' : '0');
 		if(opts && opts.logoFile){ fd.append('logo', opts.logoFile); }
 		await apiForm('/device/admin/api/event/update', fd);
 		setMsg(eventMsg, '已更新', true);
@@ -680,6 +687,7 @@ function openEventAddModal(parentRow){
 	eventFormEventType.value = 'time';
 	eventFormUnit.value = '';
 	eventFormExtraNames.value = '';
+	if(eventFormIsAppointment) eventFormIsAppointment.checked = false;
 	eventFormLogo.value = '';
 	eventFormMsg.textContent = '';
 	updateEventFormVisual(null);
@@ -743,6 +751,8 @@ function appendEventTableRow(tbody, row, depth){
 
 	const tdType = document.createElement('td');
 	tdType.textContent = eventTypeLabel(row.eventType);
+	const tdAppt = document.createElement('td');
+	tdAppt.textContent = row.isAppointment ? '是' : '否';
 	const tdUnit = document.createElement('td');
 	tdUnit.textContent = row.unit || '';
 	const tdExtra = document.createElement('td');
@@ -767,6 +777,7 @@ function appendEventTableRow(tbody, row, depth){
 		eventFormEventType.value = normalizeEventType(row.eventType);
 		eventFormUnit.value = row.unit || '';
 		eventFormExtraNames.value = row.extraNames;
+		if(eventFormIsAppointment) eventFormIsAppointment.checked = !!row.isAppointment;
 		eventFormLogo.value = '';
 		eventFormMsg.textContent = '';
 		updateEventFormVisual(row);
@@ -794,7 +805,7 @@ function appendEventTableRow(tbody, row, depth){
 	tdAct.appendChild(document.createTextNode(' '));
 	tdAct.appendChild(btnDel);
 
-	tr.append(tdId, tdName, tdLogo, tdColor, tdType, tdUnit, tdExtra, tdAct);
+	tr.append(tdId, tdName, tdLogo, tdColor, tdType, tdAppt, tdUnit, tdExtra, tdAct);
 	tbody.appendChild(tr);
 }
 
@@ -1109,6 +1120,7 @@ eventFormSubmitBtn.addEventListener('click', async () => {
 		fd.append('extraNames', extraNames);
 		fd.append('unit', unit);
 		fd.append('color', color);
+		fd.append('isAppointment', (eventFormIsAppointment && eventFormIsAppointment.checked) ? '1' : '0');
 		if(eventFormLogo.files && eventFormLogo.files[0]){
 			fd.append('logo', eventFormLogo.files[0]);
 		}

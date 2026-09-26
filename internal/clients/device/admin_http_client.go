@@ -181,15 +181,19 @@ func (c *httpDeviceAdminClient) TouchLastAPIAccess(ctx context.Context, deviceNo
 	}, nil)
 }
 
-func (c *httpDeviceAdminClient) AddEvent(ctx context.Context, name string, eventType string, extraNames, color, unit, logoPath string, parentID int64) (int64, error) {
+func (c *httpDeviceAdminClient) AddEvent(ctx context.Context, name string, eventType string, extraNames, color, unit, logoPath string, parentID int64, isAppointment int) (int64, error) {
+	if isAppointment != 0 {
+		isAppointment = 1
+	}
 	err := c.doJSON(ctx, http.MethodPost, "/device/internal/api/event/add", nil, map[string]interface{}{
-		"name":       strings.TrimSpace(name),
-		"eventType":  normalizeEventType(eventType),
-		"extraNames": strings.TrimSpace(extraNames),
-		"color":      strings.TrimSpace(color),
-		"unit":       strings.TrimSpace(unit),
-		"logo":       strings.TrimSpace(logoPath),
-		"parentId":   parentID,
+		"name":          strings.TrimSpace(name),
+		"eventType":     normalizeEventType(eventType),
+		"extraNames":    strings.TrimSpace(extraNames),
+		"color":         strings.TrimSpace(color),
+		"unit":          strings.TrimSpace(unit),
+		"logo":          strings.TrimSpace(logoPath),
+		"parentId":      parentID,
+		"isAppointment": isAppointment,
 	}, nil)
 	return 0, err
 }
@@ -202,15 +206,19 @@ func (c *httpDeviceAdminClient) ListEvents(ctx context.Context) ([]entity.Event,
 	return out.List, err
 }
 
-func (c *httpDeviceAdminClient) UpdateEvent(ctx context.Context, id int64, name string, eventType string, extraNames, color, unit, logoPath string, parentID *int64) error {
+func (c *httpDeviceAdminClient) UpdateEvent(ctx context.Context, id int64, name string, eventType string, extraNames, color, unit, logoPath string, parentID *int64, isAppointment int) error {
+	if isAppointment != 0 {
+		isAppointment = 1
+	}
 	body := map[string]interface{}{
-		"id":         id,
-		"name":       strings.TrimSpace(name),
-		"eventType":  normalizeEventType(eventType),
-		"extraNames": strings.TrimSpace(extraNames),
-		"color":      strings.TrimSpace(color),
-		"unit":       strings.TrimSpace(unit),
-		"logo":       strings.TrimSpace(logoPath),
+		"id":            id,
+		"name":          strings.TrimSpace(name),
+		"eventType":     normalizeEventType(eventType),
+		"extraNames":    strings.TrimSpace(extraNames),
+		"color":         strings.TrimSpace(color),
+		"unit":          strings.TrimSpace(unit),
+		"logo":          strings.TrimSpace(logoPath),
+		"isAppointment": isAppointment,
 	}
 	if parentID != nil {
 		body["parentId"] = normalizeEventParentID(*parentID)

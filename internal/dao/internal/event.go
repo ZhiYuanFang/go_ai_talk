@@ -20,26 +20,28 @@ type EventDao struct {
 
 // EventColumns defines and stores column names for table event.
 type EventColumns struct {
-	Id         string //
-	Name       string // 吃奶/睡觉/尿/屎等
-	EventType  string // 事件类型，number: 计数，time:计时，one:一次性
-	Unit       string // 计数单位，如 ml、次
-	ExtraNames string // name的其它表达方式
-	Color      string //
-	Logo       string //
-	ParentId   string // 父类ID
+	Id            string //
+	Name          string // 吃奶/睡觉/尿/屎等
+	EventType     string // 事件类型，number: 计数，time:计时，one:一次性
+	Unit          string // 计数单位，如 ml、次
+	ExtraNames    string // name的其它表达方式
+	Color         string //
+	Logo          string //
+	ParentId      string // 父类ID
+	IsAppointment string // 1=预约事件（不按作息间隔预测）
 }
 
 // eventColumns holds the columns for table event.
 var eventColumns = EventColumns{
-	Id:         "id",
-	Name:       "name",
-	EventType:  "event_type",
-	Unit:       "unit",
-	ExtraNames: "extra_names",
-	Color:      "color",
-	Logo:       "logo",
-	ParentId:   "parent_id",
+	Id:            "id",
+	Name:          "name",
+	EventType:     "event_type",
+	Unit:          "unit",
+	ExtraNames:    "extra_names",
+	Color:         "color",
+	Logo:          "logo",
+	ParentId:      "parent_id",
+	IsAppointment: "is_appointment",
 }
 
 // NewEventDao creates and returns a new DAO object for table data access.

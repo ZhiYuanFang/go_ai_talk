@@ -21,6 +21,7 @@ func RegisterDeviceServiceHTTP(s *ghttp.Server) {
 		group.Bind(admin)
 		group.Bind(devicectrl.NewDeviceAppUserCtrl())
 		group.Bind(devicectrl.NewDeviceAppFeedbackCtrl())
+		group.Bind(devicectrl.NewDeviceAppAppointmentCtrl())
 		group.Bind(devicectrl.NewDeviceInternalCtrl())
 	})
 	s.Group("/", func(group *ghttp.RouterGroup) {

@@ -98,12 +98,13 @@ type DeviceInternalUserTouchAPIAccessRes struct{}
 // --- 事件 ---
 
 type DeviceInternalEventAddReq struct {
-	g.Meta     `path:"/device/internal/api/event/add" method:"post" tags:"device" summary:"内部-新增事件"`
-	Name       string `json:"name"`
-	EventType  string `json:"eventType"`
-	ExtraNames string `json:"extraNames"`
-	Unit       string `json:"unit"`
-	ParentId   int64  `json:"parentId"`
+	g.Meta        `path:"/device/internal/api/event/add" method:"post" tags:"device" summary:"内部-新增事件"`
+	Name          string `json:"name"`
+	EventType     string `json:"eventType"`
+	ExtraNames    string `json:"extraNames"`
+	Unit          string `json:"unit"`
+	ParentId      int64  `json:"parentId"`
+	IsAppointment int    `json:"isAppointment" dc:"1=预约事件，默认 0"`
 }
 
 type DeviceInternalEventAddRes struct{}
@@ -116,7 +117,8 @@ type DeviceInternalEventUpdateReq struct {
 	ExtraNames string `json:"extraNames"`
 	Unit       string `json:"unit"`
 	// ParentId 非空时修改 parent_id；省略或 null 表示不修改父节点。
-	ParentId *int64 `json:"parentId"`
+	ParentId      *int64 `json:"parentId"`
+	IsAppointment int    `json:"isAppointment" dc:"1=预约事件，默认 0"`
 }
 
 type DeviceInternalEventUpdateRes struct{}
