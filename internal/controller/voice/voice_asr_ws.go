@@ -62,6 +62,8 @@ func voiceAsrWS(r *ghttp.Request) {
 	// sessionCommitted：引擎句末已锁定的全文；sessionUnstable：当前句未锁定草稿
 	sessionCommitted := ""
 	sessionUnstable := ""
+	// lastCommittedFrag：上一句定稿原文，用于识别引擎重复推送（避免 HasSuffix 误伤短新句）
+	lastCommittedFrag := ""
 
 	// joinTranscript 中文听写直接拼接（段已各自 trim）
 	joinTranscript := func(a, b string) string {
@@ -75,9 +77,61 @@ func voiceAsrWS(r *ghttp.Request) {
 		}
 		return a + b
 	}
-	// sessionFull 当前会话草稿全文
+	// preferLongerSame 同句伸长：取 rune 更长者
+	preferLongerSame := func(a, b string) string {
+		a = strings.TrimSpace(a)
+		b = strings.TrimSpace(b)
+		if a == "" {
+			return b
+		}
+		if b == "" {
+			return a
+		}
+		if utf8.RuneCountInString(b) > utf8.RuneCountInString(a) {
+			return b
+		}
+		return a
+	}
+	// sessionFull 当前会话草稿全文（committed 与 unstable 同句重叠时不重复拼）
 	sessionFull := func() string {
-		return joinTranscript(sessionCommitted, sessionUnstable)
+		c := strings.TrimSpace(sessionCommitted)
+		u := strings.TrimSpace(sessionUnstable)
+		if u == "" {
+			return c
+		}
+		if c == "" {
+			return u
+		}
+		// 句末后引擎若再推同句 partial → 只回 committed
+		if u == c || (lastCommittedFrag != "" && u == lastCommittedFrag) {
+			return c
+		}
+		// 引擎 partial 已带全文前缀
+		if strings.HasPrefix(u, c) {
+			return u
+		}
+		return joinTranscript(c, u)
+	}
+	// appendCommittedFrag 将一句定稿并入 committed（已在末尾则跳过，防 AA）
+	appendCommittedFrag := func(frag string) {
+		frag = strings.TrimSpace(frag)
+		if frag == "" {
+			return
+		}
+		c := strings.TrimSpace(sessionCommitted)
+		if c == "" {
+			sessionCommitted = frag
+			return
+		}
+		if frag == c || strings.HasSuffix(c, frag) {
+			return
+		}
+		// 引擎句末 text 已是含前缀的全文
+		if strings.HasPrefix(frag, c) {
+			sessionCommitted = frag
+			return
+		}
+		sessionCommitted = joinTranscript(c, frag)
 	}
 	// mergeFinalizeText 将 Commit 返回与 session 全文去重合并
 	mergeFinalizeText := func(commitText string) string {
@@ -89,12 +143,17 @@ func voiceAsrWS(r *ghttp.Request) {
 		if commitText == "" {
 			return pending
 		}
-		// 引擎若已返回覆盖全文，取更长/包含方
-		if strings.HasPrefix(commitText, pending) || strings.Contains(commitText, pending) {
+		if commitText == pending || strings.HasSuffix(pending, commitText) {
+			return pending
+		}
+		if strings.HasPrefix(commitText, pending) {
 			return commitText
 		}
-		if strings.HasPrefix(pending, commitText) || strings.Contains(pending, commitText) {
+		if strings.Contains(pending, commitText) {
 			return pending
+		}
+		if strings.Contains(commitText, pending) {
+			return commitText
 		}
 		return joinTranscript(pending, commitText)
 	}
@@ -137,6 +196,7 @@ func voiceAsrWS(r *ghttp.Request) {
 		lastEmittedFull = ""
 		sessionCommitted = ""
 		sessionUnstable = ""
+		lastCommittedFrag = ""
 	}
 
 	var resetStreamASRUntilNextValid func()
@@ -186,25 +246,41 @@ func voiceAsrWS(r *ghttp.Request) {
 		streamASRBroken = false
 		sess, sErr := voice.Voice().CreateStreamASRSession(ctx, voice.STTProfileDictation, meta,
 			func(text string) {
-				// 当前句中间结果：刷新 unstable，下行会话全文
+				// 当前句中间结果：刷新 unstable，下行会话全文（与已锁定句去重）
 				text = strings.TrimSpace(text)
 				if text == "" {
+					return
+				}
+				c := strings.TrimSpace(sessionCommitted)
+				// 与已锁定全文相同，或引擎重复推送上一句定稿 → 忽略
+				if c != "" && (text == c || (lastCommittedFrag != "" && text == lastCommittedFrag)) {
+					return
+				}
+				// 引擎若直接推「已锁定前缀 + 新内容」的全文，只把后缀放入 unstable
+				if c != "" && strings.HasPrefix(text, c) {
+					sessionUnstable = strings.TrimSpace(strings.TrimPrefix(text, c))
+					emitAsrPartial(sessionFull())
 					return
 				}
 				sessionUnstable = text
 				emitAsrPartial(sessionFull())
 			},
-			// 引擎 onFinal（句末）：锁定进 committed，仍只发 asr_partial（全文），不发 asr_final、不关 ASR。
+			// 引擎 onFinal（句末）：锁定进 committed（去重），仍只发 asr_partial（全文），不发 asr_final、不关 ASR。
 			func(text string) {
 				text = strings.TrimSpace(text)
 				if text == "" {
 					return
 				}
-				sessionCommitted = joinTranscript(sessionCommitted, text)
+				// 本句 frag：unstable 与 onFinal text 取更长（同句）
+				frag := preferLongerSame(sessionUnstable, text)
 				sessionUnstable = ""
-				emitAsrPartial(sessionCommitted)
-				glog.Infof(ctx, "[听写WS] 引擎句末并入会话全文。deviceNo=%s textLen=%d fullLen=%d",
-					deviceNo, utf8.RuneCountInString(text), utf8.RuneCountInString(sessionCommitted))
+				beforeLen := utf8.RuneCountInString(strings.TrimSpace(sessionCommitted))
+				appendCommittedFrag(frag)
+				lastCommittedFrag = frag
+				emitAsrPartial(strings.TrimSpace(sessionCommitted))
+				afterLen := utf8.RuneCountInString(strings.TrimSpace(sessionCommitted))
+				glog.Infof(ctx, "[听写WS] 引擎句末并入会话全文。deviceNo=%s fragLen=%d fullLen=%d appended=%v",
+					deviceNo, utf8.RuneCountInString(frag), afterLen, afterLen > beforeLen)
 			},
 		)
 		if sErr != nil {
@@ -260,6 +336,7 @@ func voiceAsrWS(r *ghttp.Request) {
 				lastEmittedFull = ""
 				sessionCommitted = ""
 				sessionUnstable = ""
+				lastCommittedFrag = ""
 				audioPassThroughLogged = false
 				resetStreamASRUntilNextValid()
 
