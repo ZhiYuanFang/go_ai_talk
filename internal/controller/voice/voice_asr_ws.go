@@ -115,7 +115,7 @@ func voiceAsrWS(r *ghttp.Request) {
 		streamASRBroken = false
 	}
 
-	// runAsrFinalize 仅由前端 commit/end 调用：向百度发送 FINISH 并下发 asr_final。
+	// runAsrFinalize 仅由前端 commit/end 调用：对当前流式 ASR 执行 Commit（百炼 finish-task / 百度 FINISH）并下发 asr_final。
 	runAsrFinalize := func(source string) {
 		transcript := ""
 		if streamASR != nil && !streamASRBroken {

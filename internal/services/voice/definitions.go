@@ -92,7 +92,7 @@ type VoiceChatConfig struct {
 	STT STTProfileConfig `json:"stt"`
 	// STTChat 对话 WebSocket（/voice/chat/ws）专用 STT，默认百炼远场模型。
 	STTChat STTProfileConfig `json:"sttChat"`
-	// STTDictation 听写 WebSocket（/voice/asr/ws）专用 STT，默认百度近场。
+	// STTDictation 听写 WebSocket（/voice/asr/ws）专用 STT，默认百炼（与 sttChat 对齐）；可配置回滚 baidu。
 	STTDictation STTProfileConfig `json:"sttDictation"`
 	DeepSeek struct {
 		Endpoint       string `json:"endpoint"`

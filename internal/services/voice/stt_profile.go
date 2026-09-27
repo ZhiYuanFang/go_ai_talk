@@ -127,7 +127,7 @@ func buildDashScopeStreamWSURL(cfg STTProfileConfig) (string, error) {
 	}
 	workspaceID := resolveDashScopeWorkspaceID(cfg)
 	if workspaceID == "" {
-		return "", StageError{Stage: "stt", Detail: "DashScope Workspace ID 未配置（sttChat.workspaceId 或 DASHSCOPE_WORKSPACE_ID）"}
+		return "", StageError{Stage: "stt", Detail: "DashScope Workspace ID 未配置（sttChat/sttDictation.workspaceId 或 DASHSCOPE_WORKSPACE_ID）"}
 	}
 	return "wss://" + workspaceID + "." + defaultDashScopeWorkspaceRegion + ".maas.aliyuncs.com/api-ws/v1/inference", nil
 }

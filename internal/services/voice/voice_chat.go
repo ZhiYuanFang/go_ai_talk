@@ -429,7 +429,8 @@ func (s *VoiceService) TranscribeAudioRaw(ctx context.Context, meta AudioMeta, a
 	return strings.TrimSpace(text), nil
 }
 
-// CreateStreamASRSession 创建流式 ASR 会话；profile=chat 走百炼远场，profile=dictation 走百度听写。
+// CreateStreamASRSession 创建流式 ASR 会话；按 profile 读取 sttChat/sttDictation，再按 provider 分发。
+// 默认配置下 chat 与 dictation 均为百炼；若 fallbackProvider=baidu，降级 MUST 使用 legacy stt（百度块）。
 func (s *VoiceService) CreateStreamASRSession(ctx context.Context, profile STTProfile, meta AudioMeta, onPartial func(text string), onFinal func(text string)) (StreamASRSession, error) {
 	sttCfg := s.sttConfigForProfile(profile)
 	provider := strings.ToLower(strings.TrimSpace(sttCfg.Provider))
@@ -442,8 +443,9 @@ func (s *VoiceService) CreateStreamASRSession(ctx context.Context, profile STTPr
 	case "dashscope":
 		sess, err := newDashScopeStreamASRSession(ctx, sttCfg, meta, onPartial, onFinal)
 		if err != nil && strings.ToLower(strings.TrimSpace(sttCfg.FallbackProvider)) == "baidu" {
-			glog.Warningf(ctx, "[流式ASR] DashScope建连失败，降级百度。profile=%s err=%v", profile, err)
-			return newBaiduStreamASRSession(ctx, s, s.cfg.STTDictation, meta, onPartial, onFinal)
+			// 听写默认已是 dashscope，降级不能再读 sttDictation，须用仍为百度的 legacy stt。
+			glog.Warningf(ctx, "[流式ASR] DashScope建连失败，降级百度(legacy stt)。profile=%s err=%v", profile, err)
+			return newBaiduStreamASRSession(ctx, s, s.cfg.STT, meta, onPartial, onFinal)
 		}
 		return sess, err
 	case "baidu":
@@ -524,7 +526,7 @@ func (s *VoiceService) validateAudio(meta AudioMeta) error {
 	return nil
 }
 
-// transcribe 根据配置分发到不同 STT 实现（整段非流式；当前仍走 legacy stt 块，听写/回退路径用百度）。
+// transcribe 根据配置分发到不同 STT 实现（整段非流式；当前仍走 legacy stt 块，默认百度）。
 func (s *VoiceService) transcribe(ctx context.Context, meta AudioMeta, audioBase64 string) (string, error) {
 	release := s.acquireLimiter(s.sttLimiter)
 	defer release()
