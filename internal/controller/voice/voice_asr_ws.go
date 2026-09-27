@@ -23,8 +23,11 @@ func RegisterVoiceAsrWS(s *ghttp.Server) {
 // voiceAsrWS 处理实时听写：上行 PCM，下行 asr_partial / asr_final。
 //
 // 与 /voice/chat/ws 的差异：听写线不做服务端静音截句（无 silence/auto_commit），
-// 引擎 onFinal 仅再发 asr_partial 纠正预览，不作为 asr_final、不关 ASR；
+// 引擎 onFinal（如百炼 sentence_end）仅再发 asr_partial，不作为业务 asr_final、不关 ASR；
 // 业务定稿 asr_final 仅由前端 commit/end 触发。
+//
+// 下行 text 为「本次 start…commit 会话全文」：引擎分句后在服务端拼接，供 Flutter 听写预览/定稿，
+// 避免静音后 partial 只带末句导致客户端「变成 B、松手变 A」。
 // 不注册 VoiceWSManager，不调用 LLM/TTS/UpdateLastTalk。
 func voiceAsrWS(r *ghttp.Request) {
 	ctx := r.Context()
@@ -54,22 +57,46 @@ func voiceAsrWS(r *ghttp.Request) {
 	chunkCount := 0
 	streamASRBroken := false
 	audioPassThroughLogged := false
-	lastPartialText := ""
-	latestTranscript := ""
+	// lastEmittedFull：上次已下发的会话全文，用于去重
+	lastEmittedFull := ""
+	// sessionCommitted：引擎句末已锁定的全文；sessionUnstable：当前句未锁定草稿
+	sessionCommitted := ""
+	sessionUnstable := ""
 
-	preferLongerTranscript := func(current, candidate string) string {
-		current = strings.TrimSpace(current)
-		candidate = strings.TrimSpace(candidate)
-		if candidate == "" {
-			return current
+	// joinTranscript 中文听写直接拼接（段已各自 trim）
+	joinTranscript := func(a, b string) string {
+		a = strings.TrimSpace(a)
+		b = strings.TrimSpace(b)
+		if a == "" {
+			return b
 		}
-		if current == "" {
-			return candidate
+		if b == "" {
+			return a
 		}
-		if utf8.RuneCountInString(candidate) > utf8.RuneCountInString(current) {
-			return candidate
+		return a + b
+	}
+	// sessionFull 当前会话草稿全文
+	sessionFull := func() string {
+		return joinTranscript(sessionCommitted, sessionUnstable)
+	}
+	// mergeFinalizeText 将 Commit 返回与 session 全文去重合并
+	mergeFinalizeText := func(commitText string) string {
+		pending := sessionFull()
+		commitText = strings.TrimSpace(commitText)
+		if pending == "" {
+			return commitText
 		}
-		return current
+		if commitText == "" {
+			return pending
+		}
+		// 引擎若已返回覆盖全文，取更长/包含方
+		if strings.HasPrefix(commitText, pending) || strings.Contains(commitText, pending) {
+			return commitText
+		}
+		if strings.HasPrefix(pending, commitText) || strings.Contains(pending, commitText) {
+			return pending
+		}
+		return joinTranscript(pending, commitText)
 	}
 
 	wsWriteMu := sync.Mutex{}
@@ -82,6 +109,11 @@ func voiceAsrWS(r *ghttp.Request) {
 		writeWSError(safeWriteMessage, stage, detail)
 	}
 	emitAsrPartial := func(text string) {
+		text = strings.TrimSpace(text)
+		if text == "" || text == lastEmittedFull {
+			return
+		}
+		lastEmittedFull = text
 		payload, _ := json.Marshal(map[string]interface{}{
 			"type": "asr_partial",
 			"code": 0,
@@ -102,8 +134,9 @@ func voiceAsrWS(r *ghttp.Request) {
 	resetStreamBuffers := func() {
 		audioBuffer.Reset()
 		chunkCount = 0
-		lastPartialText = ""
-		latestTranscript = ""
+		lastEmittedFull = ""
+		sessionCommitted = ""
+		sessionUnstable = ""
 	}
 
 	var resetStreamASRUntilNextValid func()
@@ -115,7 +148,7 @@ func voiceAsrWS(r *ghttp.Request) {
 		streamASRBroken = false
 	}
 
-	// runAsrFinalize 仅由前端 commit/end 调用：对当前流式 ASR 执行 Commit（百炼 finish-task / 百度 FINISH）并下发 asr_final。
+	// runAsrFinalize 仅由前端 commit/end 调用：对当前流式 ASR 执行 Commit（百炼 finish-task / 百度 FINISH）并下发会话全文 asr_final。
 	runAsrFinalize := func(source string) {
 		transcript := ""
 		if streamASR != nil && !streamASRBroken {
@@ -129,15 +162,10 @@ func voiceAsrWS(r *ghttp.Request) {
 				streamASR = nil
 			}
 		}
-		transcript = strings.TrimSpace(transcript)
-		if transcript == "" {
-			transcript = strings.TrimSpace(latestTranscript)
-		}
-		if transcript != "" {
-			latestTranscript = transcript
-			lastPartialText = transcript
-			emitAsrFinal(transcript, source)
-			glog.Infof(ctx, "[听写WS] finalize。deviceNo=%s source=%s textLen=%d", deviceNo, source, utf8.RuneCountInString(transcript))
+		full := mergeFinalizeText(transcript)
+		if full != "" {
+			emitAsrFinal(full, source)
+			glog.Infof(ctx, "[听写WS] finalize。deviceNo=%s source=%s textLen=%d", deviceNo, source, utf8.RuneCountInString(full))
 		} else {
 			noResultPayload, _ := json.Marshal(map[string]interface{}{
 				"type":    "asr_no_result",
@@ -158,27 +186,25 @@ func voiceAsrWS(r *ghttp.Request) {
 		streamASRBroken = false
 		sess, sErr := voice.Voice().CreateStreamASRSession(ctx, voice.STTProfileDictation, meta,
 			func(text string) {
+				// 当前句中间结果：刷新 unstable，下行会话全文
 				text = strings.TrimSpace(text)
-				if text == "" || text == lastPartialText {
+				if text == "" {
 					return
 				}
-				lastPartialText = text
-				latestTranscript = preferLongerTranscript(latestTranscript, text)
-				emitAsrPartial(text)
+				sessionUnstable = text
+				emitAsrPartial(sessionFull())
 			},
-			// 引擎 onFinal：再发 asr_partial 纠正预览（对齐 chat WS），不发 asr_final、不关 ASR。
+			// 引擎 onFinal（句末）：锁定进 committed，仍只发 asr_partial（全文），不发 asr_final、不关 ASR。
 			func(text string) {
 				text = strings.TrimSpace(text)
 				if text == "" {
 					return
 				}
-				if text == lastPartialText {
-					return
-				}
-				lastPartialText = text
-				latestTranscript = text
-				emitAsrPartial(text)
-				glog.Infof(ctx, "[听写WS] 引擎 final 转发为 partial。deviceNo=%s textLen=%d", deviceNo, utf8.RuneCountInString(text))
+				sessionCommitted = joinTranscript(sessionCommitted, text)
+				sessionUnstable = ""
+				emitAsrPartial(sessionCommitted)
+				glog.Infof(ctx, "[听写WS] 引擎句末并入会话全文。deviceNo=%s textLen=%d fullLen=%d",
+					deviceNo, utf8.RuneCountInString(text), utf8.RuneCountInString(sessionCommitted))
 			},
 		)
 		if sErr != nil {
@@ -231,8 +257,9 @@ func voiceAsrWS(r *ghttp.Request) {
 				audioBuffer.Reset()
 				chunkCount = 0
 				streamASRBroken = false
-				lastPartialText = ""
-				latestTranscript = ""
+				lastEmittedFull = ""
+				sessionCommitted = ""
+				sessionUnstable = ""
 				audioPassThroughLogged = false
 				resetStreamASRUntilNextValid()
 
