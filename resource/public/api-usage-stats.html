@@ -93,6 +93,13 @@
 						<option value="no">无宝宝名</option>
 					</select>
 				</label>
+				<label>每页
+					<select id="wxPageSizeSelect">
+						<option value="20" selected>20</option>
+						<option value="50">50</option>
+						<option value="100">100</option>
+					</select>
+				</label>
 			</div>
 			<p class="hint" style="margin-top:8px;">宝宝名筛选与「最近使用时间」排序仅作用于<strong>当前页</strong>已加载行。</p>
 			<div class="table-wrap" style="margin-top:12px;">
@@ -112,6 +119,13 @@
 					</thead>
 					<tbody id="wxListTbody"></tbody>
 				</table>
+			</div>
+			<div class="pager" id="wxListPager" style="flex-wrap:wrap;gap:8px;">
+				<button id="wxPrevBtn" type="button">上一页</button>
+				<button id="wxNextBtn" type="button">下一页</button>
+				<span id="wxPagerInfo"></span>
+				<label>页码 <input id="wxPageInput" type="number" min="1" style="width:64px;" /></label>
+				<button id="wxGotoBtn" type="button">跳转</button>
 			</div>
 			<p class="hint" style="margin-top:8px;">点击 wx 账号行查看该用户的 API 调用明细；点击设备号进入设备数据运维</p>
 			<h4 id="userDetailTitle" style="margin:16px 0 8px;font-size:15px;color:#333;">未选择用户</h4>
@@ -152,6 +166,9 @@ let userApisCache = [];
 let userApisPage = 1;
 let wxListCache = [];
 let wxSortByLastAt = false;
+let wxPage = 1;
+let wxPageSize = 20;
+let wxTotal = 0;
 
 const mainCard = document.getElementById('mainCard');
 const mainMsg = document.getElementById('mainMsg');
@@ -173,6 +190,12 @@ const apiDetailNextBtn = document.getElementById('apiDetailNextBtn');
 const userApisPagerInfo = document.getElementById('userApisPagerInfo');
 const userApisPrevBtn = document.getElementById('userApisPrevBtn');
 const userApisNextBtn = document.getElementById('userApisNextBtn');
+const wxPrevBtn = document.getElementById('wxPrevBtn');
+const wxNextBtn = document.getElementById('wxNextBtn');
+const wxPagerInfo = document.getElementById('wxPagerInfo');
+const wxPageInput = document.getElementById('wxPageInput');
+const wxGotoBtn = document.getElementById('wxGotoBtn');
+const wxPageSizeSelect = document.getElementById('wxPageSizeSelect');
 
 function setMsg(el, text, ok){
 	el.textContent = text || '';
@@ -306,10 +329,12 @@ function filteredWxRows(){
 			const la = Number(a.lastAt || 0);
 			const lb = Number(b.lastAt || 0);
 			if(lb !== la) return lb - la;
-			return Number(a.id || 0) - Number(b.id || 0);
+			// lastAt 相同时 wxId 降序，与默认列表一致
+			return Number(b.id || 0) - Number(a.id || 0);
 		});
 	} else {
-		rows.sort((a, b) => Number(a.id || 0) - Number(b.id || 0));
+		// 默认按 wxId 降序（与 device wx/list OrderDesc 一致）
+		rows.sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
 	}
 	return rows;
 }
@@ -318,6 +343,22 @@ function updateWxLastAtThLabel(){
 	const th = document.getElementById('wxLastAtTh');
 	if(!th) return;
 	th.textContent = wxSortByLastAt ? '最近使用时间 ↓' : '最近使用时间';
+}
+
+function wxTotalPages(){
+	return Math.max(1, Math.ceil((wxTotal || 0) / (wxPageSize || 20)));
+}
+
+function clampWxPage(page){
+	return Math.min(Math.max(1, page), wxTotalPages());
+}
+
+function updateWxPager(){
+	const tp = wxTotalPages();
+	wxPagerInfo.textContent = wxTotal ? ('第 '+ wxPage +' / '+ tp +' 页，共 '+ wxTotal +' 条') : '暂无数据';
+	wxPrevBtn.disabled = wxPage <= 1;
+	wxNextBtn.disabled = wxPage >= tp || wxTotal === 0;
+	if(wxPageInput) wxPageInput.value = String(wxPage);
 }
 
 function renderWxList(){
@@ -349,6 +390,7 @@ function renderWxList(){
 		wxListTbody.appendChild(tr);
 	});
 	updateWxLastAtThLabel();
+	updateWxPager();
 }
 
 async function loadApiList(){
@@ -366,13 +408,25 @@ async function loadApiList(){
 
 async function loadWxList(){
 	const q = document.getElementById('wxSearchInput').value.trim();
-	const qs = 'page=1&pageSize=50&days='+encodeURIComponent(daysParam()) + (q ? '&q='+encodeURIComponent(q) : '');
+	const qs = 'page='+encodeURIComponent(wxPage)+
+		'&pageSize='+encodeURIComponent(wxPageSize)+
+		'&days='+encodeURIComponent(daysParam()) +
+		(q ? '&q='+encodeURIComponent(q) : '');
 	const d = await api('/device/admin/api/usage/wx-list?'+qs);
 	wxListCache = d.list || [];
+	wxTotal = typeof d.total === 'number' ? d.total : wxListCache.length;
+	if(typeof d.page === 'number' && d.page > 0) wxPage = d.page;
+	if(typeof d.pageSize === 'number' && d.pageSize > 0) wxPageSize = d.pageSize;
+	// 若当前页超出总页（删数据/改条件后），夹紧后重拉一次
+	const clamped = clampWxPage(wxPage);
+	if(clamped !== wxPage && wxTotal > 0){
+		wxPage = clamped;
+		return loadWxList();
+	}
 	wxSortByLastAt = false;
 	renderWxList();
 	if(activeTab === 'user' && !selectedWxId){
-		setMsg(mainMsg, '已加载 '+ wxListCache.length +' 个 wx 账号，请点击一行查看 API 明细', true);
+		setMsg(mainMsg, '已加载本页 '+ wxListCache.length +' 个 wx 账号（共 '+ wxTotal +'），请点击一行查看 API 明细', true);
 	}
 }
 
@@ -458,11 +512,35 @@ userApisNextBtn.addEventListener('click', () => { userApisPage++; renderUserApis
 
 document.getElementById('tabApiBtn').addEventListener('click', () => switchTab('api'));
 document.getElementById('tabUserBtn').addEventListener('click', () => switchTab('user'));
-document.getElementById('wxSearchBtn').addEventListener('click', () => loadWxList().catch(e => setMsg(mainMsg, e.message || '搜索失败')));
+document.getElementById('wxSearchBtn').addEventListener('click', () => {
+	wxPage = 1;
+	loadWxList().catch(e => setMsg(mainMsg, e.message || '搜索失败'));
+});
 document.getElementById('babyNameFilter').addEventListener('change', () => renderWxList());
 document.getElementById('wxLastAtTh').addEventListener('click', () => {
 	wxSortByLastAt = !wxSortByLastAt;
 	renderWxList();
+});
+wxPrevBtn.addEventListener('click', () => {
+	if(wxPage <= 1) return;
+	wxPage--;
+	loadWxList().catch(e => setMsg(mainMsg, e.message || '加载失败'));
+});
+wxNextBtn.addEventListener('click', () => {
+	if(wxPage >= wxTotalPages()) return;
+	wxPage++;
+	loadWxList().catch(e => setMsg(mainMsg, e.message || '加载失败'));
+});
+wxGotoBtn.addEventListener('click', () => {
+	const raw = parseInt(wxPageInput.value, 10);
+	wxPage = clampWxPage(Number.isFinite(raw) ? raw : 1);
+	loadWxList().catch(e => setMsg(mainMsg, e.message || '加载失败'));
+});
+wxPageSizeSelect.addEventListener('change', () => {
+	const n = parseInt(wxPageSizeSelect.value, 10);
+	wxPageSize = (n === 50 || n === 100) ? n : 20;
+	wxPage = 1;
+	loadWxList().catch(e => setMsg(mainMsg, e.message || '加载失败'));
 });
 
 if(AdminCommon.requireAdmin()){
