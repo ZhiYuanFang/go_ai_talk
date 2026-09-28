@@ -117,6 +117,9 @@ func (c *GatewayAppUsageAdminCtrl) UsageWxList(ctx context.Context, req *v1.Devi
 		wxIDs = append(wxIDs, row.Id)
 	}
 	nickMap := usagestats.FetchProfileNicknames(ctx, wxIDs)
+	// 本页补最近使用时间（受 days 窗口约束）。
+	queryDays := queryDaysFromReq(req.Days)
+	lastMap := usagestats.MaxLastAtForWxIDs(ctx, queryDays, wxIDs)
 	list := make([]v1.DeviceAdminUsageWxListItem, 0, len(rows))
 	for _, row := range rows {
 		list = append(list, v1.DeviceAdminUsageWxListItem{
@@ -127,6 +130,8 @@ func (c *GatewayAppUsageAdminCtrl) UsageWxList(ctx context.Context, req *v1.Devi
 			Account:   row.Account,
 			CreatedAt: row.CreatedAt,
 			Nickname:  nickMap[row.Id],
+			BabyName:  row.BabyName,
+			LastAt:    lastMap[row.Id],
 		})
 	}
 	return &v1.DeviceAdminUsageWxListRes{

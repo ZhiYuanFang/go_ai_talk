@@ -102,6 +102,7 @@ type DeviceAdminClientUsageWxListReq struct {
 	Page     int    `json:"page" p:"page"`
 	PageSize int    `json:"pageSize" p:"pageSize"`
 	Q        string `json:"q" p:"q"`
+	Days     int    `json:"days" p:"days" d:"7" dc:"统计天数，用于 lastAt 窗口；≤0 按 30 天"`
 }
 
 // DeviceAdminClientUsageWxListItem wx 行。
@@ -113,6 +114,8 @@ type DeviceAdminClientUsageWxListItem struct {
 	Account   string `json:"account"`
 	CreatedAt int64  `json:"createdAt"`
 	Nickname  string `json:"nickname"`
+	BabyName  string `json:"babyName" dc:"宝宝名字，透传 device wx/list"`
+	LastAt    int64  `json:"lastAt" dc:"窗口内最近客户端上报 Unix 秒；无则 0"`
 }
 
 // DeviceAdminClientUsageWxListRes wx 列表。

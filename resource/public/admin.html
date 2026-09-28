@@ -72,6 +72,31 @@
 		</div>
 	</div>
 
+	<div class="card glass hidden" id="feedbackCard">
+		<div class="card-head">
+			<h3>用户反馈</h3>
+			<div class="card-actions">
+				<button id="refreshFeedbackBtn" type="button">刷新</button>
+				<a id="feedbackMoreLink" class="link-btn" href="/device/admin/feedback-records">查看全部</a>
+			</div>
+		</div>
+		<div id="feedbackMsg" class="msg"></div>
+		<div class="table-wrap">
+			<table>
+				<thead>
+					<tr>
+						<th>ID</th>
+						<th>用户 wxId</th>
+						<th>问题</th>
+						<th>官方回复</th>
+						<th>状态</th>
+					</tr>
+				</thead>
+				<tbody id="feedbackTbody"></tbody>
+			</table>
+		</div>
+	</div>
+
 	<div class="card glass hidden" id="eventCard">
 		<div class="card-head">
 			<h3>事件管理</h3>
@@ -134,31 +159,6 @@
 					</tr>
 				</thead>
 				<tbody id="qaTbody"></tbody>
-			</table>
-		</div>
-	</div>
-
-	<div class="card glass hidden" id="feedbackCard">
-		<div class="card-head">
-			<h3>用户反馈</h3>
-			<div class="card-actions">
-				<button id="refreshFeedbackBtn" type="button">刷新</button>
-				<a id="feedbackMoreLink" class="link-btn hidden" href="/device/admin/feedback-records">展开更多</a>
-			</div>
-		</div>
-		<div id="feedbackMsg" class="msg"></div>
-		<div class="table-wrap">
-			<table>
-				<thead>
-					<tr>
-						<th>ID</th>
-						<th>用户 wxId</th>
-						<th>问题</th>
-						<th>官方回复</th>
-						<th>状态</th>
-					</tr>
-				</thead>
-				<tbody id="feedbackTbody"></tbody>
 			</table>
 		</div>
 	</div>
@@ -952,19 +952,12 @@ async function loadFeedbackList(){
 		const tr = document.createElement('tr');
 		tr.innerHTML = '<td>'+ escapeHtml(it.id||'') +'</td>' +
 			'<td>'+ escapeHtml(it.wxId ?? '') +'</td>' +
-			'<td class="wrapcell">'+ escapeHtml(it.question||'') +'</td>' +
+			'<td class="wrapcell feedback-question-cell">'+ escapeHtml(it.question||'') +'</td>' +
 			'<td class="wrapcell">'+ escapeHtml(it.officialReply || '—') +'</td>' +
 			'<td>'+ escapeHtml(feedbackStatusLabel(it.status)) +'</td>';
 		tbody.appendChild(tr);
 	});
-	const moreLink = document.getElementById('feedbackMoreLink');
-	if(moreLink){
-		if(paged.total > 10){
-			moreLink.classList.remove('hidden');
-		} else {
-			moreLink.classList.add('hidden');
-		}
-	}
+	// 「查看全部」常驻，不再依赖 total>10
 }
 
 async function loadActionList(){

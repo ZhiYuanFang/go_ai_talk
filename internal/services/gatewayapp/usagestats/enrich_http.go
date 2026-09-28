@@ -127,12 +127,14 @@ func DeviceWxListPage(ctx context.Context, page, pageSize int, q string) (list [
 			Platform:  ri.Get("platform").String(),
 			Account:   ri.Get("account").String(),
 			CreatedAt: ri.Get("createdAt").Int64(),
+			// 透传 device 已返回的宝宝名，供运维页「有无宝宝名」筛选。
+			BabyName: strings.TrimSpace(ri.Get("babyName").String()),
 		})
 	}
 	return list, total, outPage, outPageSize, nil
 }
 
-// deviceWxListPageItem device wx/list 单行（gateway 编排中间结构）。
+// deviceWxListItem device wx/list 单行（gateway 编排中间结构）。
 type deviceWxListItem struct {
 	Id        int64
 	DeviceNo  string
@@ -140,4 +142,5 @@ type deviceWxListItem struct {
 	Platform  string
 	Account   string
 	CreatedAt int64
+	BabyName  string // user.baby_name，无则空串
 }

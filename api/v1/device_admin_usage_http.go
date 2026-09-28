@@ -81,6 +81,7 @@ type DeviceAdminUsageWxListReq struct {
 	Page     int    `json:"page" p:"page" dc:"页码，从 1 开始"`
 	PageSize int    `json:"pageSize" p:"pageSize" dc:"每页条数，默认 20，最大 100"`
 	Q        string `json:"q" p:"q" dc:"id/deviceNo/unionid/account 模糊搜索"`
+	Days     int    `json:"days" p:"days" d:"7" dc:"统计天数，用于 lastAt 窗口；默认 7；0 表示 TTL 内全部"`
 }
 
 // DeviceAdminUsageWxListItem 使用统计 wx 列表项。
@@ -92,6 +93,8 @@ type DeviceAdminUsageWxListItem struct {
 	Account   string `json:"account"`
 	CreatedAt int64  `json:"createdAt"`
 	Nickname  string `json:"nickname"`
+	BabyName  string `json:"babyName" dc:"宝宝名字，透传 device wx/list"`
+	LastAt    int64  `json:"lastAt" dc:"窗口内最近成功 API 调用 Unix 秒；无则 0"`
 }
 
 // DeviceAdminUsageWxListRes wx 列表响应。

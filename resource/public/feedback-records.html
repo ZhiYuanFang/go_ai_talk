@@ -102,7 +102,7 @@ async function loadFeedbackPage(page){
 			: '<td class="wrapcell muted">待回复</td>';
 		tr.innerHTML = '<td>'+ escapeHtml(id) +'</td>' +
 			'<td>'+ escapeHtml(it.wxId ?? '') +'</td>' +
-			'<td class="wrapcell">'+ escapeHtml(it.question||'') +'</td>' +
+			'<td class="wrapcell feedback-question-cell">'+ escapeHtml(it.question||'') +'</td>' +
 			replyCell +
 			'<td>'+ formatTime(it.createdAt) +'</td>' +
 			'<td class="action-cell"></td>';

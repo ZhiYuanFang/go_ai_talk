@@ -141,12 +141,15 @@ func (c *GatewayAppClientUsageCtrl) ClientUsageWxList(ctx context.Context, req *
 		wxIDs = append(wxIDs, row.Id)
 	}
 	nickMap := usagestats.FetchProfileNicknames(ctx, wxIDs)
+	lastMap := clientusage.MaxLastAtForWxIDs(ctx, req.Days, wxIDs)
 	list := make([]v1.DeviceAdminClientUsageWxListItem, 0, len(rows))
 	for _, row := range rows {
 		list = append(list, v1.DeviceAdminClientUsageWxListItem{
 			Id: row.Id, DeviceNo: row.DeviceNo, Unionid: row.Unionid,
 			Platform: row.Platform, Account: row.Account, CreatedAt: row.CreatedAt,
 			Nickname: nickMap[row.Id],
+			BabyName: row.BabyName,
+			LastAt:   lastMap[row.Id],
 		})
 	}
 	return &v1.DeviceAdminClientUsageWxListRes{

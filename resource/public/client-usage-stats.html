@@ -80,14 +80,24 @@
 			<div class="card-actions">
 				<input id="wxSearchInput" placeholder="搜索 wxId / 设备号 / unionid / 账号" style="min-width:220px;" />
 				<button id="wxSearchBtn" type="button">搜索</button>
+				<label>宝宝名
+					<select id="babyNameFilter">
+						<option value="all" selected>全部</option>
+						<option value="yes">有宝宝名</option>
+						<option value="no">无宝宝名</option>
+					</select>
+				</label>
 			</div>
+			<p class="hint" style="margin-top:8px;">宝宝名筛选与「最近使用时间」排序仅作用于<strong>当前页</strong>已加载行。</p>
 			<div class="table-wrap" style="margin-top:12px;">
 				<table>
 					<thead>
 						<tr>
+							<th>#</th>
 							<th>wxId</th>
 							<th>UCG昵称</th>
 							<th>注册时间</th>
+							<th id="wxLastAtTh" class="sortable-th" title="点击按最近使用时间排序（仅当前页）" style="cursor:pointer;">最近使用时间</th>
 							<th>设备号</th>
 							<th>unionid</th>
 							<th>平台</th>
@@ -97,7 +107,7 @@
 					<tbody id="wxListTbody"></tbody>
 				</table>
 			</div>
-			<p class="hint" style="margin-top:8px;">点击 wx 行查看该用户功能汇总与操作时间线</p>
+			<p class="hint" style="margin-top:8px;">点击 wx 行查看该用户功能汇总与操作时间线；点击设备号进入设备数据运维</p>
 			<h4 id="userDetailTitle" style="margin:16px 0 8px;font-size:15px;color:#333;">未选择用户</h4>
 			<div class="table-wrap">
 				<table>
@@ -137,6 +147,8 @@ let featListCache = [];
 let featPage = 1;
 let featDetailCache = [];
 let currentFeatureId = '';
+let wxListCache = [];
+let wxSortByLastAt = false;
 
 const mainCard = document.getElementById('mainCard');
 const mainMsg = document.getElementById('mainMsg');
@@ -172,6 +184,16 @@ function daysParam(){ return document.getElementById('daysSelect').value; }
 function sortParam(){ return document.getElementById('sortSelect').value; }
 function qSuffix(){ return 'days='+encodeURIComponent(daysParam())+'&sortBy='+encodeURIComponent(sortParam()); }
 function api(path, options={}){ return AdminCommon.adminFetch(path, options); }
+function historyPageUrl(deviceNo){
+	const dn = String(deviceNo || '').trim();
+	if(!dn) return '#';
+	return '/device/admin/history/' + encodeURIComponent(dn);
+}
+function deviceNoCellHtml(deviceNo){
+	const dn = String(deviceNo || '').trim();
+	if(!dn) return '-';
+	return '<a class="device-link" href="'+ escapeHtml(historyPageUrl(dn)) +'">'+ escapeHtml(dn) +'</a>';
+}
 function totalPages(total){ return Math.max(1, Math.ceil(total / pageSize)); }
 function clampPage(page, total){ return Math.min(Math.max(1, page), totalPages(total)); }
 function pageSlice(list, page){
@@ -216,6 +238,66 @@ function renderFeatDetail(){
 	});
 }
 
+function babyNameFilterValue(){
+	const el = document.getElementById('babyNameFilter');
+	return el ? el.value : 'all';
+}
+function filteredWxRows(){
+	const mode = babyNameFilterValue();
+	let rows = wxListCache.slice();
+	if(mode === 'yes'){
+		rows = rows.filter(it => String(it.babyName || '').trim() !== '');
+	} else if(mode === 'no'){
+		rows = rows.filter(it => String(it.babyName || '').trim() === '');
+	}
+	if(wxSortByLastAt){
+		rows.sort((a, b) => {
+			const la = Number(a.lastAt || 0);
+			const lb = Number(b.lastAt || 0);
+			if(lb !== la) return lb - la;
+			return Number(a.id || 0) - Number(b.id || 0);
+		});
+	} else {
+		rows.sort((a, b) => Number(a.id || 0) - Number(b.id || 0));
+	}
+	return rows;
+}
+function updateWxLastAtThLabel(){
+	const th = document.getElementById('wxLastAtTh');
+	if(!th) return;
+	th.textContent = wxSortByLastAt ? '最近使用时间 ↓' : '最近使用时间';
+}
+function renderWxList(){
+	const rows = filteredWxRows();
+	wxListTbody.innerHTML = '';
+	rows.forEach((it, idx) => {
+		const tr = document.createElement('tr');
+		tr.style.cursor = 'pointer';
+		if(Number(it.id) === selectedWxId) tr.classList.add('row-selected');
+		tr.innerHTML =
+			'<td>'+ (idx + 1) +'</td>' +
+			'<td>'+ escapeHtml(it.id) +'</td>' +
+			'<td>'+ escapeHtml(it.nickname || '-') +'</td>' +
+			'<td>'+ escapeHtml(formatTime(it.createdAt)) +'</td>' +
+			'<td>'+ escapeHtml(formatTime(it.lastAt)) +'</td>' +
+			'<td>'+ deviceNoCellHtml(it.deviceNo) +'</td>' +
+			'<td class="wrapcell">'+ escapeHtml(it.unionid||'-') +'</td>' +
+			'<td>'+ escapeHtml(it.platform||'') +'</td>' +
+			'<td>'+ escapeHtml(it.account||'-') +'</td>';
+		const link = tr.querySelector('a.device-link');
+		if(link){
+			link.addEventListener('click', (e) => { e.stopPropagation(); });
+		}
+		tr.addEventListener('click', () => {
+			selectedWxId = Number(it.id);
+			renderWxList();
+			loadUserDetail(it.id).catch(e => setMsg(mainMsg, e.message || '加载失败'));
+		});
+		wxListTbody.appendChild(tr);
+	});
+	updateWxLastAtThLabel();
+}
+
 async function loadFeatList(){
 	const d = await api('/device/admin/api/client-usage/features?'+qSuffix());
 	featListCache = d.list || [];
@@ -237,28 +319,11 @@ async function loadFeatDetail(featureId){
 
 async function loadWxList(){
 	const q = document.getElementById('wxSearchInput').value.trim();
-	const qs = 'page=1&pageSize=50' + (q ? '&q='+encodeURIComponent(q) : '');
+	const qs = 'page=1&pageSize=50&days='+encodeURIComponent(daysParam()) + (q ? '&q='+encodeURIComponent(q) : '');
 	const d = await api('/device/admin/api/client-usage/wx-list?'+qs);
-	wxListTbody.innerHTML = '';
-	(d.list || []).forEach(it => {
-		const tr = document.createElement('tr');
-		tr.style.cursor = 'pointer';
-		if(Number(it.id) === selectedWxId) tr.classList.add('row-selected');
-		tr.innerHTML =
-			'<td>'+ escapeHtml(it.id) +'</td>' +
-			'<td>'+ escapeHtml(it.nickname || '-') +'</td>' +
-			'<td>'+ escapeHtml(formatTime(it.createdAt)) +'</td>' +
-			'<td>'+ escapeHtml(it.deviceNo||'') +'</td>' +
-			'<td class="wrapcell">'+ escapeHtml(it.unionid||'-') +'</td>' +
-			'<td>'+ escapeHtml(it.platform||'') +'</td>' +
-			'<td>'+ escapeHtml(it.account||'-') +'</td>';
-		tr.addEventListener('click', () => {
-			selectedWxId = Number(it.id);
-			loadWxList().catch(() => {});
-			loadUserDetail(it.id).catch(e => setMsg(mainMsg, e.message || '加载失败'));
-		});
-		wxListTbody.appendChild(tr);
-	});
+	wxListCache = d.list || [];
+	wxSortByLastAt = false;
+	renderWxList();
 }
 
 async function loadUserDetail(wxId){
@@ -308,7 +373,10 @@ document.getElementById('refreshBtn').addEventListener('click', async () => {
 document.getElementById('daysSelect').addEventListener('change', async () => {
 	try {
 		if(activeTab === 'feat') await loadFeatList();
-		else if(selectedWxId) await loadUserDetail();
+		else {
+			await loadWxList();
+			if(selectedWxId) await loadUserDetail();
+		}
 	} catch (e) { setMsg(mainMsg, e.message || '加载失败'); }
 });
 document.getElementById('sortSelect').addEventListener('change', async () => {
@@ -324,6 +392,11 @@ featNextBtn.addEventListener('click', () => { featPage++; renderFeatListPage(); 
 document.getElementById('tabFeatBtn').addEventListener('click', () => switchTab('feat'));
 document.getElementById('tabUserBtn').addEventListener('click', () => switchTab('user'));
 document.getElementById('wxSearchBtn').addEventListener('click', () => loadWxList().catch(e => setMsg(mainMsg, e.message || '搜索失败')));
+document.getElementById('babyNameFilter').addEventListener('change', () => renderWxList());
+document.getElementById('wxLastAtTh').addEventListener('click', () => {
+	wxSortByLastAt = !wxSortByLastAt;
+	renderWxList();
+});
 
 if(AdminCommon.requireAdmin()){
 	mainCard.classList.remove('hidden');

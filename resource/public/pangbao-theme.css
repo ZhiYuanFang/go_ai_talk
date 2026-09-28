@@ -409,6 +409,11 @@ td a.device-link:hover {
 	gap: 8px;
 }
 
+/* 反馈「问题」列：多行时顶对齐，避免相对单元格纵向居中 */
+td.feedback-question-cell {
+	vertical-align: top;
+}
+
 .muted {
 	color: var(--muted);
 	font-size: 12px;
