@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>意图向量缓存</title>
+	<link rel="stylesheet" href="/resource/public/pangbao-theme.css" />
+	<link rel="stylesheet" href="/resource/public/admin-pages.css" />
+	<style>
+		.hint { font-size: 12px; color: #64748b; line-height: 1.55; margin: 0 0 14px; }
+		.table-wrap { overflow-x: auto; }
+		table { width: 100%; border-collapse: collapse; font-size: 13px; }
+		th, td { border-bottom: 1px solid rgba(0,0,0,.06); padding: 8px 6px; text-align: left; vertical-align: top; }
+		td.doc { max-width: 220px; word-break: break-all; }
+		td.payload { max-width: 320px; font-family: ui-monospace, monospace; font-size: 11px; word-break: break-all; white-space: pre-wrap; }
+		textarea.json { width: 100%; min-height: 160px; font-family: ui-monospace, monospace; font-size: 12px; }
+		.danger { background: #dc2626; color: #fff; border: none; }
+	</style>
+</head>
+<body>
+<div class="page">
+	<header class="admin-header glass">
+		<div class="logo">Intent</div>
+		<div>
+			<h1>意图向量缓存</h1>
+			<p>Chroma <code>feeding_intents</code> · 须先在 <a href="/device/admin">运维 Hub</a> 登录 · 不写 MySQL</p>
+		</div>
+	</header>
+	<div class="card glass hidden" id="mainCard">
+		<p class="hint">列表来自 Python 向量库。批量上传 JSON 数组，每项含 <code>document</code> 与 <code>payload</code>（含 events）。create 骨架勿带绝对 start_time。删除错误向量后该说法不再免确认命中。</p>
+		<div class="row" style="margin-bottom:12px;">
+			<button id="reloadBtn" type="button" class="secondary">刷新列表</button>
+			<span id="listMeta" class="msg" style="color:#64748b;"></span>
+		</div>
+		<div class="table-wrap">
+			<table>
+				<thead>
+					<tr>
+						<th>id</th>
+						<th>document</th>
+						<th>quality</th>
+						<th>payload</th>
+						<th></th>
+					</tr>
+				</thead>
+				<tbody id="listBody"></tbody>
+			</table>
+		</div>
+		<hr class="divider" />
+		<h4 style="margin:0 0 8px;font-size:15px;">批量上传种子</h4>
+		<p class="hint">粘贴 JSON 数组，例如：<code>[{"document":"记录吃了120毫升配方奶","payload":{"target_type":"feeding","events":[{"op":"create","action":"one","event_id":"123","event_name":"配方奶","quantity":120}]}}]</code></p>
+		<textarea id="bulkJson" class="json" placeholder='[{"document":"...","payload":{...}}]'></textarea>
+		<div class="row" style="margin-top:10px;">
+			<button id="bulkBtn" type="button">提交批量写入</button>
+		</div>
+		<div id="mainMsg" class="msg"></div>
+	</div>
+	<div class="card glass" id="gateCard">
+		<p>请先打开 <a href="/device/admin">运维 Hub</a> 登录后再访问本页。</p>
+	</div>
+</div>
+<script src="/resource/public/admin-common.js"></script>
+<script>
+function api(path, options={}) { return AdminCommon.adminFetch(path, options); }
+
+function setMsg(text, ok) {
+	const el = document.getElementById('mainMsg');
+	el.textContent = text || '';
+	el.style.color = ok === false ? '#dc2626' : (ok ? '#16a34a' : '#64748b');
+}
+
+async function loadList() {
+	setMsg('加载中…');
+	const d = await api('/voice/admin/api/intent-vectors?offset=0&limit=200');
+	const body = document.getElementById('listBody');
+	body.innerHTML = '';
+	const items = (d && d.items) || [];
+	document.getElementById('listMeta').textContent = '共 ' + ((d && d.total) || items.length) + ' 条';
+	items.forEach(it => {
+		const tr = document.createElement('tr');
+		const id = it.id || '';
+		const doc = it.document || '';
+		const q = it.quality_score != null ? it.quality_score : '';
+		const payload = JSON.stringify(it.payload || {}, null, 0);
+		tr.innerHTML =
+			'<td><code>' + escapeHtml(id) + '</code></td>' +
+			'<td class="doc">' + escapeHtml(doc) + '</td>' +
+			'<td>' + escapeHtml(String(q)) + '</td>' +
+			'<td class="payload">' + escapeHtml(payload) + '</td>' +
+			'<td><button type="button" class="danger del-btn" data-id="' + escapeAttr(id) + '">删除</button></td>';
+		body.appendChild(tr);
+	});
+	body.querySelectorAll('.del-btn').forEach(btn => {
+		btn.addEventListener('click', () => deleteOne(btn.getAttribute('data-id')));
+	});
+	setMsg('已刷新', true);
+}
+
+async function deleteOne(id) {
+	if (!id) return;
+	if (!confirm('确认删除向量 ' + id + '？删除后不可恢复。')) return;
+	try {
+		await api('/voice/admin/api/intent-vectors/' + encodeURIComponent(id), { method: 'DELETE' });
+		setMsg('已删除 ' + id, true);
+		await loadList();
+	} catch (e) {
+		setMsg(String(e && e.message || e), false);
+	}
+}
+
+async function bulkUpload() {
+	const raw = (document.getElementById('bulkJson').value || '').trim();
+	if (!raw) { setMsg('请粘贴 JSON 数组', false); return; }
+	let items;
+	try {
+		items = JSON.parse(raw);
+	} catch (e) {
+		setMsg('JSON 解析失败: ' + e.message, false);
+		return;
+	}
+	if (!Array.isArray(items)) {
+		setMsg('顶层必须是数组', false);
+		return;
+	}
+	try {
+		const d = await api('/voice/admin/api/intent-vectors/bulk', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ items })
+		});
+		const failed = (d && d.failed) || [];
+		setMsg('写入成功 ' + (d && d.ok) + ' 条' + (failed.length ? '，失败 ' + failed.length : ''), failed.length === 0);
+		await loadList();
+	} catch (e) {
+		setMsg(String(e && e.message || e), false);
+	}
+}
+
+function escapeHtml(s) {
+	return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function escapeAttr(s) {
+	return String(s).replace(/"/g, '&quot;');
+}
+
+document.getElementById('reloadBtn').addEventListener('click', () => loadList().catch(e => setMsg(String(e), false)));
+document.getElementById('bulkBtn').addEventListener('click', () => bulkUpload());
+
+if (AdminCommon.requireAdmin()) {
+	document.getElementById('gateCard').classList.add('hidden');
+	document.getElementById('mainCard').classList.remove('hidden');
+	loadList().catch(e => setMsg(String(e), false));
+}
+</script>
+</body>
+</html>

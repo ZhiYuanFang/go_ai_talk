@@ -25,6 +25,12 @@ window.ADMIN_MODULES = [
 		showInNav: true
 	},
 	{
+		id: 'intent-vector-admin',
+		title: '意图向量缓存',
+		pagePath: '/device/admin/intent-vector-admin.html',
+		showInNav: true
+	},
+	{
 		id: 'sim-admin',
 		title: '模拟用户管理',
 		pagePath: '/device/admin/sim-admin.html',

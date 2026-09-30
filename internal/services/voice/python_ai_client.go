@@ -774,3 +774,93 @@ func (c *PythonAIClient) GrowthTrajectoryTurnStream(ctx context.Context, req *Gr
 	glog.Debugf(ctx, "[Python AI] 成长轨迹 turn 完成。deviceNo=%s action=%s", req.DeviceNo, req.Action)
 	return nil
 }
+
+// IntentCacheListResult Python /v1/admin/intent-cache 列表响应。
+type IntentCacheListResult struct {
+	Total  int                      `json:"total"`
+	Offset int                      `json:"offset"`
+	Limit  int                      `json:"limit"`
+	Items  []map[string]interface{} `json:"items"`
+}
+
+// IntentCacheBulkItem 批量种子条目。
+type IntentCacheBulkItem struct {
+	Document string                 `json:"document"`
+	Payload  map[string]interface{} `json:"payload"`
+}
+
+// IntentCacheBulkResult 批量写入结果。
+type IntentCacheBulkResult struct {
+	Ok     int                      `json:"ok"`
+	Failed []map[string]interface{} `json:"failed"`
+	Ids    []string                 `json:"ids"`
+}
+
+// ListIntentCache 列出 feeding_intents。
+func (c *PythonAIClient) ListIntentCache(ctx context.Context, offset, limit int) (*IntentCacheListResult, error) {
+	url := fmt.Sprintf("%s/v1/admin/intent-cache?offset=%d&limit=%d", c.baseURL, offset, limit)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("创建意图缓存列表请求失败: %w", err)
+	}
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("调用 Python 意图缓存列表失败: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Python 意图缓存列表错误 %d: %s", resp.StatusCode, string(body))
+	}
+	var out IntentCacheListResult
+	if err := json.Unmarshal(body, &out); err != nil {
+		return nil, fmt.Errorf("解析意图缓存列表失败: %w", err)
+	}
+	return &out, nil
+}
+
+// BulkUpsertIntentCache 批量写入意图种子。
+func (c *PythonAIClient) BulkUpsertIntentCache(ctx context.Context, items []IntentCacheBulkItem) (*IntentCacheBulkResult, error) {
+	payload, _ := json.Marshal(map[string]interface{}{"items": items})
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/admin/intent-cache/bulk", strings.NewReader(string(payload)))
+	if err != nil {
+		return nil, fmt.Errorf("创建意图缓存 bulk 请求失败: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("调用 Python 意图缓存 bulk 失败: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Python 意图缓存 bulk 错误 %d: %s", resp.StatusCode, string(body))
+	}
+	var out IntentCacheBulkResult
+	if err := json.Unmarshal(body, &out); err != nil {
+		return nil, fmt.Errorf("解析意图缓存 bulk 失败: %w", err)
+	}
+	return &out, nil
+}
+
+// DeleteIntentCache 按向量 id 删除。
+func (c *PythonAIClient) DeleteIntentCache(ctx context.Context, vectorID string) error {
+	vid := strings.TrimSpace(vectorID)
+	if vid == "" {
+		return fmt.Errorf("vector id 为空")
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.baseURL+"/v1/admin/intent-cache/"+vid, nil)
+	if err != nil {
+		return fmt.Errorf("创建意图缓存删除请求失败: %w", err)
+	}
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("调用 Python 意图缓存删除失败: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("Python 意图缓存删除错误 %d: %s", resp.StatusCode, string(body))
+	}
+	return nil
+}
