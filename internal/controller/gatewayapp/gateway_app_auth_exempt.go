@@ -67,6 +67,7 @@ var (
 		"/device/app/version-admin.html",
 		"/device/admin/ucg-admin.html",
 		"/device/admin/voice-admin.html",
+		"/device/admin/intent-vector-admin.html",
 		"/device/admin/ai-model-admin.html",
 		"/device/admin/sim-admin.html",
 		"/device/admin/cash-vip-admin.html",
