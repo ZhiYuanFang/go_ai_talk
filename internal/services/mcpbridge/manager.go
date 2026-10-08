@@ -35,13 +35,19 @@ type Manager struct {
 	mu           sync.Mutex
 	sessions     map[string]*bridgeSession // key = mcp token
 	connected    map[string]bool           // key = mcp token；true 仅当读循环中
+	rootCtx      context.Context           // Bridge 生命周期父 ctx（进程级；禁止用 HTTP 请求 ctx）
 	baseURL      string
 	reconnectMin time.Duration
 	reconnectMax time.Duration
 }
 
 // NewManager 构造 Manager。
-func NewManager(baseURL string, reconnectMin, reconnectMax time.Duration) *Manager {
+// rootCtx：进程级 context（如 signal.NotifyContext）；Bridge 挂在此下，随进程退出而停。
+// 切勿传入 HTTP 请求 ctx，否则写路径 Upsert 响应结束后桥会被立刻 cancel。
+func NewManager(rootCtx context.Context, baseURL string, reconnectMin, reconnectMax time.Duration) *Manager {
+	if rootCtx == nil {
+		rootCtx = context.Background()
+	}
 	if reconnectMin <= 0 {
 		reconnectMin = defaultReconnectMin
 	}
@@ -51,6 +57,7 @@ func NewManager(baseURL string, reconnectMin, reconnectMax time.Duration) *Manag
 	return &Manager{
 		sessions:     make(map[string]*bridgeSession),
 		connected:    make(map[string]bool),
+		rootCtx:      rootCtx,
 		baseURL:      baseURL,
 		reconnectMin: reconnectMin,
 		reconnectMax: reconnectMax,
@@ -198,10 +205,11 @@ func (m *Manager) markConnected(token string, on bool) {
 }
 
 // startLocked 在已持锁前提下启动会话。
-func (m *Manager) startLocked(parent context.Context, spec BindingSpec) {
+// logCtx 仅用于日志；Bridge 的 runCtx 必须派生自 m.rootCtx，避免 HTTP Upsert 请求结束连带 cancel。
+func (m *Manager) startLocked(logCtx context.Context, spec BindingSpec) {
 	token := strings.TrimSpace(spec.McpToken)
 	deviceNo := strings.TrimSpace(spec.DeviceNo)
-	runCtx, cancel := context.WithCancel(parent)
+	runCtx, cancel := context.WithCancel(m.rootCtx)
 	sess := &bridgeSession{
 		cancel:   cancel,
 		id:       spec.Id,
@@ -215,14 +223,14 @@ func (m *Manager) startLocked(parent context.Context, spec BindingSpec) {
 	bridge.SetOnConnectionChange(func(on bool) {
 		m.markConnected(tokenCopy, on)
 	})
-	glog.Infof(parent, "[mcp-manager] start bridge id=%d token=%s deviceNo=%s", spec.Id, maskTokenValue(token), deviceNo)
+	glog.Infof(logCtx, "[mcp-manager] start bridge id=%d token=%s deviceNo=%s", spec.Id, maskTokenValue(token), deviceNo)
 	go func() {
 		if err := bridge.Run(runCtx); err != nil {
 			if runCtx.Err() != nil {
-				glog.Infof(runCtx, "[mcp-manager] bridge stopped id=%d err=%v", spec.Id, err)
+				glog.Infof(context.Background(), "[mcp-manager] bridge stopped id=%d err=%v", spec.Id, err)
 				return
 			}
-			glog.Errorf(runCtx, "[mcp-manager] bridge exited id=%d err=%v", spec.Id, err)
+			glog.Errorf(context.Background(), "[mcp-manager] bridge exited id=%d err=%v", spec.Id, err)
 		}
 	}()
 }

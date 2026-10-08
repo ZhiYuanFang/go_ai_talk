@@ -86,6 +86,7 @@ func (h *InternalHTTP) handleUpsert(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, jsonEnv{Code: 50, Message: "manager not ready"})
 		return
 	}
+	// r.Context 仅作日志；Bridge 生命周期挂 Manager.rootCtx，不随本请求结束而取消。
 	h.Manager.Upsert(r.Context(), BindingSpec{
 		Id:       body.Id,
 		McpToken: body.McpToken,

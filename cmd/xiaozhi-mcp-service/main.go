@@ -59,7 +59,8 @@ func main() {
 	}
 	reconcileEvery := parseDurationMsEnvAllowZero(envReconcileMs, defaultReconcileMs)
 
-	mgr := mcpbridge.NewManager(baseURL, reconnectMin, reconnectMax)
+	// rootCtx=进程 ctx：写路径 HTTP Upsert 不得把请求 ctx 当作 Bridge 父级（否则响应后立刻 cancel）。
+	mgr := mcpbridge.NewManager(ctx, baseURL, reconnectMin, reconnectMax)
 	glog.Infof(ctx, "[xiaozhi-mcp-service] starting baseURL=%s internalAddr=%s reconcile=%v",
 		baseURL, internalAddr, reconcileEvery)
 
