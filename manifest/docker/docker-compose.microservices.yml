@@ -464,38 +464,38 @@ services:
 
   # xiaozhi-mcp-service：小智 MCP 多设备接入（Manager + 内部 HTTP :9809），replicas 语义上单实例。
   # 绑定权威在 device-service；本进程拉全量 + 接受 Upsert/Remove；喂养经 voice chat WS。
-  xiaozhi-mcp-service:
-    build:
-      context: ../..
-      dockerfile: manifest/docker/Dockerfile.xiaozhi-mcp-service
-    image: go-ai-talk/xiaozhi-mcp-service:local
-    container_name: go-ai-talk-xiaozhi-mcp-service
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    restart: on-failure:1
-    environment:
-      <<: *logger-env
-      TZ: Asia/Shanghai
-      GF_GCFG_FILE: manifest/config/config.xiaozhi-mcp-service.yaml
-      XIAOZHI_MCP_INTERNAL_ADDR: ":9809"
-      XIAOZHI_MCP_RECONCILE_INTERVAL_MS: "${XIAOZHI_MCP_RECONCILE_INTERVAL_MS:-600000}"
-      XIAOZHI_MCP_BASE_URL: "${XIAOZHI_MCP_BASE_URL:-wss://api.xiaozhi.me/mcp/}"
-      XIAOZHI_MCP_RECONNECT_MIN_MS: "${XIAOZHI_MCP_RECONNECT_MIN_MS:-2000}"
-      XIAOZHI_MCP_RECONNECT_MAX_MS: "${XIAOZHI_MCP_RECONNECT_MAX_MS:-60000}"
-      # 可选迁移 fallback（DB 绑定为空时）
-      XIAOZHI_MCP_TOKEN: "${XIAOZHI_MCP_TOKEN:-}"
-      XIAOZHI_MCP_DEVICE_NO: "${XIAOZHI_MCP_DEVICE_NO:-}"
-      VOICE_SERVICE_URL: "http://voice-service:9802"
-      DEVICE_SERVICE_URL: "http://device-service:9803"
-      DEVICE_GATEWAY_INTERNAL_SECRET: "${DEVICE_GATEWAY_INTERNAL_SECRET:-gateway-internal-change-me}"
-    depends_on:
-      voice-service:
-        condition: service_healthy
-      device-service:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:9809/xiaozhi-mcp/internal/api/health > /dev/null || exit 1"]
-      interval: 30s
-      timeout: 3s
-      retries: 3
-    logging: *docker-logging
+  # xiaozhi-mcp-service:
+  #   build:
+  #     context: ../..
+  #     dockerfile: manifest/docker/Dockerfile.xiaozhi-mcp-service
+  #   image: go-ai-talk/xiaozhi-mcp-service:local
+  #   container_name: go-ai-talk-xiaozhi-mcp-service
+  #   extra_hosts:
+  #     - "host.docker.internal:host-gateway"
+  #   restart: on-failure:1
+  #   environment:
+  #     <<: *logger-env
+  #     TZ: Asia/Shanghai
+  #     GF_GCFG_FILE: manifest/config/config.xiaozhi-mcp-service.yaml
+  #     XIAOZHI_MCP_INTERNAL_ADDR: ":9809"
+  #     XIAOZHI_MCP_RECONCILE_INTERVAL_MS: "${XIAOZHI_MCP_RECONCILE_INTERVAL_MS:-600000}"
+  #     XIAOZHI_MCP_BASE_URL: "${XIAOZHI_MCP_BASE_URL:-wss://api.xiaozhi.me/mcp/}"
+  #     XIAOZHI_MCP_RECONNECT_MIN_MS: "${XIAOZHI_MCP_RECONNECT_MIN_MS:-2000}"
+  #     XIAOZHI_MCP_RECONNECT_MAX_MS: "${XIAOZHI_MCP_RECONNECT_MAX_MS:-60000}"
+  #     # 可选迁移 fallback（DB 绑定为空时）
+  #     XIAOZHI_MCP_TOKEN: "${XIAOZHI_MCP_TOKEN:-}"
+  #     XIAOZHI_MCP_DEVICE_NO: "${XIAOZHI_MCP_DEVICE_NO:-}"
+  #     VOICE_SERVICE_URL: "http://voice-service:9802"
+  #     DEVICE_SERVICE_URL: "http://device-service:9803"
+  #     DEVICE_GATEWAY_INTERNAL_SECRET: "${DEVICE_GATEWAY_INTERNAL_SECRET:-gateway-internal-change-me}"
+  #   depends_on:
+  #     voice-service:
+  #       condition: service_healthy
+  #     device-service:
+  #       condition: service_healthy
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:9809/xiaozhi-mcp/internal/api/health > /dev/null || exit 1"]
+  #     interval: 30s
+  #     timeout: 3s
+  #     retries: 3
+  #   logging: *docker-logging
