@@ -24,20 +24,22 @@ import (
 
 const (
 	predictImminentLeadSecondsDefault = 300 // 默认提前 5 分钟；可由 VOICE_PREDICT_IMMINENT_LEAD_SECONDS 覆盖
-	predictImminentPushDedupTTL       = 5 * time.Minute
-	predictImminentHistoryWindowSec   = 1800
+	predictImminentHistoryWindowSec   = 1800 // 近有操作不推：固定 30 分钟，不跟随 lead
 	predictImminentSyncLockTTL        = 5 * time.Second
 	predictImminentQueueName          = "voice.predict.imminent.q"
 	predictImminentConsumerEnabledEnv = "VOICE_PREDICT_IMMINENT_MQ_CONSUMER_ENABLED"
 	predictImminentPrefetchEnv        = "VOICE_PREDICT_IMMINENT_MQ_PREFETCH"
 	predictImminentLeadSecondsEnv     = "VOICE_PREDICT_IMMINENT_LEAD_SECONDS"
+	// predictImminentMaxDelayMs 对齐 rabbitmq_delayed_message_exchange 的 ERL_MAX_T（2^32−1 毫秒，约 49.7 天）。
+	// 超过该值插件会 nodelay 立刻投递，导致疫苗等远 nextAt 误推；超限时只写 Redis、不发 MQ。
+	predictImminentMaxDelayMs = 4294967295
 )
 
 var predictImminentCache = cachekit.Default()
 
 // predictImminentLeadSeconds 读取提前叫醒秒数；非法或未配置时回退默认 300。
 // Args: 无（读环境变量 VOICE_PREDICT_IMMINENT_LEAD_SECONDS）
-// Returns: 正整数秒；最小按 0 处理（立即发延时消息）。
+// Returns: 非负整数秒；0 表示立即发延时消息（火点已过或配置为 0）。
 func predictImminentLeadSeconds() int64 {
 	v := strings.TrimSpace(os.Getenv(predictImminentLeadSecondsEnv))
 	if v == "" {
@@ -48,6 +50,17 @@ func predictImminentLeadSeconds() int64 {
 		return predictImminentLeadSecondsDefault
 	}
 	return n
+}
+
+// predictImminentPushDedupTTL 推送去重键 TTL，与 leadSeconds 对齐（同一 VOICE_PREDICT_IMMINENT_LEAD_SECONDS）。
+// 业务：LEAD=0 时仍至少 1 秒，避免 Redis EX 0 / 去重瞬时失效。
+// Returns: 正 duration，最小 1s。
+func predictImminentPushDedupTTL() time.Duration {
+	sec := predictImminentLeadSeconds()
+	if sec < 1 {
+		sec = 1
+	}
+	return time.Duration(sec) * time.Second
 }
 
 // PredictImminentPendingItem Redis / MQ 共用待办项。
@@ -65,10 +78,10 @@ type predictImminentFirePayload struct {
 	Title    string `json:"title,omitempty"`
 }
 
-// SyncPredictImminentPending 全量替换宝宝待办并按条发延时叫醒。
+// SyncPredictImminentPending 全量替换宝宝待办并为可调度条目发延时叫醒。
 // Args: wxID 触发用户；deviceNo 宝宝；items 全量列表（可空=清空）。
 // Returns: 写入条数、错误。
-// Side Effects: Redis 写；非空时 PublishDelayed；不主动 cancel 旧 MQ。
+// Side Effects: Redis 写；delayMs 在插件上限内时 PublishDelayed；超限跳过 MQ 仍算成功；不主动 cancel 旧 MQ。
 func SyncPredictImminentPending(ctx context.Context, wxID int64, deviceNo string, items []PredictImminentPendingItem) (int, error) {
 	deviceNo = strings.TrimSpace(deviceNo)
 	if wxID <= 0 {
@@ -142,6 +155,12 @@ func SyncPredictImminentPending(ctx context.Context, wxID int64, deviceNo string
 		delayMs := (it.NextAt - leadSec - now) * 1000
 		if delayMs < 0 {
 			delayMs = 0
+		}
+		// 远端：超过插件可表达 delay 则不发 MQ，避免 nodelay 立刻投递误推；条目已在 Redis。
+		if delayMs > predictImminentMaxDelayMs {
+			glog.Warningf(ctx, "[predict-imminent] skip PublishDelayed reason=delay_exceeds_plugin_max deviceNoLen=%d eventId=%d nextAt=%d delayMs=%d maxDelayMs=%d",
+				len(deviceNo), it.EventId, it.NextAt, delayMs, predictImminentMaxDelayMs)
+			continue
 		}
 		payload := predictImminentFirePayload{
 			DeviceNo: deviceNo,
@@ -230,7 +249,7 @@ func handlePredictImminentFire(ctx context.Context, body []byte) error {
 		return nil
 	}
 
-	// 进行中闸：end_time=0（根展开叶子）；须在五分钟去重占位之前，命中/失败均不写 dedup。
+	// 进行中闸：end_time=0（根展开叶子）；须在 lead 对齐去重占位之前，命中/失败均不写 dedup。
 	if open, openErr := predictImminentOpenHistoryExists(ctx, msg.DeviceNo, msg.EventId); openErr != nil {
 		glog.Warningf(ctx, "[predict-imminent] skip reason=in_progress_check_err deviceNoLen=%d eventId=%d err=%v (dedup not occupied)",
 			len(msg.DeviceNo), msg.EventId, openErr)
@@ -241,14 +260,14 @@ func handlePredictImminentFire(ctx context.Context, body []byte) error {
 		return nil
 	}
 
-	// 五分钟去重：进入发送前占位，防止多实例/重投双推。
+	// leadSeconds 对齐去重：进入发送前占位，防止多实例/重投双推（TTL 跟 VOICE_PREDICT_IMMINENT_LEAD_SECONDS）。
 	dedupKey, err := cachekit.PredictImminentPushedKey(msg.DeviceNo, msg.EventId)
 	if err != nil {
 		glog.Warningf(ctx, "[predict-imminent] skip reason=dedup_key_err deviceNoLen=%d eventId=%d err=%v",
 			len(msg.DeviceNo), msg.EventId, err)
 		return nil
 	}
-	ok, nxErr := predictImminentCache.SetNXEX(ctx, dedupKey, "1", predictImminentPushDedupTTL)
+	ok, nxErr := predictImminentCache.SetNXEX(ctx, dedupKey, "1", predictImminentPushDedupTTL())
 	if nxErr != nil {
 		glog.Warningf(ctx, "[predict-imminent] skip reason=dedup_setnx_err deviceNoLen=%d eventId=%d err=%v",
 			len(msg.DeviceNo), msg.EventId, nxErr)
@@ -262,7 +281,7 @@ func handlePredictImminentFire(ctx context.Context, body []byte) error {
 
 	// 30 分钟历史闸：根事件展开叶子后 filter。
 	if recent, histErr := predictImminentHistoryExists(ctx, msg.DeviceNo, msg.EventId); histErr != nil {
-		// 历史不可达时不推，避免误扰；去重键已占，五分钟内不会再推。
+		// 历史不可达时不推，避免误扰；去重键已占，leadSeconds 窗口内不会再推。
 		glog.Warningf(ctx, "[predict-imminent] skip reason=history_check_err deviceNoLen=%d eventId=%d err=%v (dedup occupied)",
 			len(msg.DeviceNo), msg.EventId, histErr)
 		return nil

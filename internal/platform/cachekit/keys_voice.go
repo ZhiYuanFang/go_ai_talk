@@ -76,7 +76,7 @@ func PredictImminentSyncLockKey(deviceNo string) (string, error) {
 	return Key(DomainVoice, "predict", "synclock", strings.TrimSpace(deviceNo))
 }
 
-// PredictImminentPushedKey 同一 (deviceNo,eventId) 五分钟推送去重；TTL=5min；跨 consumer 实例共享。
+// PredictImminentPushedKey 同一 (deviceNo,eventId) 推送去重；TTL 由业务按 VOICE_PREDICT_IMMINENT_LEAD_SECONDS（leadSeconds，至少 1s）传入；跨 consumer 实例共享。
 func PredictImminentPushedKey(deviceNo string, eventID int64) (string, error) {
 	id := fmt.Sprintf("%s:%d", strings.TrimSpace(deviceNo), eventID)
 	return Key(DomainVoice, "predict", "pushed", id)
