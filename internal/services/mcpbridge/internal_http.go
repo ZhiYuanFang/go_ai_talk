@@ -36,6 +36,7 @@ func (h *InternalHTTP) Handler() http.Handler {
 	mux.HandleFunc("/xiaozhi-mcp/internal/api/health", h.handleHealth)
 	mux.HandleFunc("/xiaozhi-mcp/internal/api/bindings/upsert", h.withSecret(h.handleUpsert))
 	mux.HandleFunc("/xiaozhi-mcp/internal/api/bindings/remove", h.withSecret(h.handleRemove))
+	mux.HandleFunc("/xiaozhi-mcp/internal/api/bindings/connection-status", h.withSecret(h.handleConnectionStatus))
 	return mux
 }
 
@@ -112,6 +113,29 @@ func (h *InternalHTTP) handleRemove(w http.ResponseWriter, r *http.Request) {
 	}
 	h.Manager.Remove(r.Context(), body.Id, body.McpToken)
 	writeJSON(w, http.StatusOK, jsonEnv{Code: 0, Message: "OK"})
+}
+
+// handleConnectionStatus 批量查询 token 是否已连通小智 MCP WebSocket。
+func (h *InternalHTTP) handleConnectionStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, jsonEnv{Code: 405, Message: "method not allowed"})
+		return
+	}
+	var body struct {
+		Tokens []string `json:"tokens"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeJSON(w, http.StatusBadRequest, jsonEnv{Code: 400, Message: "invalid json"})
+		return
+	}
+	if h.Manager == nil {
+		writeJSON(w, http.StatusOK, jsonEnv{Code: 50, Message: "manager not ready"})
+		return
+	}
+	statuses := h.Manager.ConnectionStatus(body.Tokens)
+	writeJSON(w, http.StatusOK, jsonEnv{Code: 0, Message: "OK", Data: map[string]interface{}{
+		"statuses": statuses,
+	}})
 }
 
 func readJSON(r *http.Request, dst interface{}) error {

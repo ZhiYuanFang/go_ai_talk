@@ -42,6 +42,10 @@ func main() {
 		glog.Fatalf(ctx, "xiaozhi_mcp_binding schema ensure failed: %v", err)
 		return
 	}
+	if err := device.EnsureXiaozhiMcpSpeakerMacColumn(ctx); err != nil {
+		glog.Fatalf(ctx, "xiaozhi_mcp_binding speaker_mac ensure failed: %v", err)
+		return
+	}
 	s := g.Server("device-service")
 	applyDeviceServiceAddress(s)
 	controller.RegisterDeviceServiceHTTP(s)

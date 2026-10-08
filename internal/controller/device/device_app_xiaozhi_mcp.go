@@ -39,13 +39,15 @@ func (c *DeviceAppXiaozhiMcpCtrl) List(ctx context.Context, req *v1.DeviceAppXia
 	out := make([]v1.DeviceAppXiaozhiMcpBindingItem, 0, len(list))
 	for _, it := range list {
 		out = append(out, v1.DeviceAppXiaozhiMcpBindingItem{
-			Id:        it.Id,
-			Alias:     it.Alias,
-			TokenMask: it.TokenMask,
-			DeviceNo:  it.DeviceNo,
-			Status:    it.Status,
-			CreatedAt: it.CreatedAt,
-			UpdatedAt: it.UpdatedAt,
+			Id:         it.Id,
+			Alias:      it.Alias,
+			TokenMask:  it.TokenMask,
+			SpeakerMac: it.SpeakerMac,
+			DeviceNo:   it.DeviceNo,
+			Status:     it.Status,
+			Connected:  it.Connected,
+			CreatedAt:  it.CreatedAt,
+			UpdatedAt:  it.UpdatedAt,
 		})
 	}
 	return &v1.DeviceAppXiaozhiMcpBindingListRes{List: out}, nil
@@ -58,19 +60,28 @@ func (c *DeviceAppXiaozhiMcpCtrl) Add(ctx context.Context, req *v1.DeviceAppXiao
 	if err != nil {
 		return nil, err
 	}
-	full, err := device.AddXiaozhiMcpBinding(ctx, wxID, req.McpToken, req.Alias)
+	result, err := device.AddXiaozhiMcpBinding(ctx, wxID, req.McpToken, req.Alias, req.SpeakerMac)
 	if err != nil {
 		return nil, err
 	}
-	// 写路径推送：失败不回滚，依赖 mcp reconcile 兜底。
-	if err := xiaozhimcpclient.BindingUpsert(ctx, full.Id, full.McpToken, full.DeviceNo); err != nil {
-		glog.Warningf(ctx, "[xiaozhi-mcp-binding] upsert notify failed id=%d err=%v", full.Id, err)
+	full := result.Binding
+	// token 变更：先停旧桥再启新桥；仅 alias 变更可跳过通知。
+	if result.TokenChanged {
+		if result.PrevMcpToken != "" && result.PrevMcpToken != full.McpToken {
+			if err := xiaozhimcpclient.BindingRemove(ctx, full.Id, result.PrevMcpToken); err != nil {
+				glog.Warningf(ctx, "[xiaozhi-mcp-binding] remove old notify failed id=%d err=%v", full.Id, err)
+			}
+		}
+		if err := xiaozhimcpclient.BindingUpsert(ctx, full.Id, full.McpToken, full.DeviceNo); err != nil {
+			glog.Warningf(ctx, "[xiaozhi-mcp-binding] upsert notify failed id=%d err=%v", full.Id, err)
+		}
 	}
 	return &v1.DeviceAppXiaozhiMcpBindingAddRes{
-		Id:        full.Id,
-		Alias:     full.Alias,
-		TokenMask: device.MaskXiaozhiMcpToken(full.McpToken),
-		DeviceNo:  full.DeviceNo,
+		Id:         full.Id,
+		Alias:      full.Alias,
+		TokenMask:  device.MaskXiaozhiMcpToken(full.McpToken),
+		SpeakerMac: full.SpeakerMac,
+		DeviceNo:   full.DeviceNo,
 	}, nil
 }
 

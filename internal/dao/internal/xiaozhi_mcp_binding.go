@@ -21,25 +21,27 @@ type XiaozhiMcpBindingDao struct {
 
 // XiaozhiMcpBindingColumns 列名。
 type XiaozhiMcpBindingColumns struct {
-	Id        string
-	WxId      string
-	DeviceNo  string
-	McpToken  string
-	Alias     string
-	Status    string
-	CreatedAt string
-	UpdatedAt string
+	Id         string
+	WxId       string
+	DeviceNo   string
+	McpToken   string
+	SpeakerMac string
+	Alias      string
+	Status     string
+	CreatedAt  string
+	UpdatedAt  string
 }
 
 var xiaozhiMcpBindingColumns = XiaozhiMcpBindingColumns{
-	Id:        "id",
-	WxId:      "wx_id",
-	DeviceNo:  "device_no",
-	McpToken:  "mcp_token",
-	Alias:     "alias",
-	Status:    "status",
-	CreatedAt: "created_at",
-	UpdatedAt: "updated_at",
+	Id:         "id",
+	WxId:       "wx_id",
+	DeviceNo:   "device_no",
+	McpToken:   "mcp_token",
+	SpeakerMac: "speaker_mac",
+	Alias:      "alias",
+	Status:     "status",
+	CreatedAt:  "created_at",
+	UpdatedAt:  "updated_at",
 }
 
 // NewXiaozhiMcpBindingDao creates and returns a new DAO object.

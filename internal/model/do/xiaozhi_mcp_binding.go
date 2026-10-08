@@ -10,13 +10,14 @@ import (
 
 // XiaozhiMcpBinding is the golang structure of table xiaozhi_mcp_binding for DAO operations.
 type XiaozhiMcpBinding struct {
-	g.Meta    `orm:"table:xiaozhi_mcp_binding, do:true"`
-	Id        interface{} //
-	WxId      interface{} //
-	DeviceNo  interface{} //
-	McpToken  interface{} //
-	Alias     interface{} //
-	Status    interface{} //
-	CreatedAt interface{} //
-	UpdatedAt interface{} //
+	g.Meta     `orm:"table:xiaozhi_mcp_binding, do:true"`
+	Id         interface{} //
+	WxId       interface{} //
+	DeviceNo   interface{} //
+	McpToken   interface{} //
+	SpeakerMac interface{} //
+	Alias      interface{} //
+	Status     interface{} //
+	CreatedAt  interface{} //
+	UpdatedAt  interface{} //
 }

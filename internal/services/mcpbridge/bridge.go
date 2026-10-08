@@ -41,7 +41,20 @@ type Bridge struct {
 	reconnectMin time.Duration
 	reconnectMax time.Duration
 	dialer       *websocket.Dialer
-	writeMu      sync.Mutex // 串行化 WebSocket 写，避免帧交错
+	writeMu      sync.Mutex           // 串行化 WebSocket 写，避免帧交错
+	onConnChange func(connected bool) // 读循环进出时上报连接态（可为 nil）
+}
+
+// SetOnConnectionChange 设置连接态回调：true=进入读循环，false=离开读循环。
+func (b *Bridge) SetOnConnectionChange(fn func(connected bool)) {
+	b.onConnChange = fn
+}
+
+// reportConn 安全调用连接态回调。
+func (b *Bridge) reportConn(on bool) {
+	if b.onConnChange != nil {
+		b.onConnChange(on)
+	}
 }
 
 // NewBridge 构造 Bridge。
@@ -146,6 +159,9 @@ func (b *Bridge) dialAndServe(ctx context.Context) (bool, error) {
 	// 成功路径下 resp.Body 由 Dial 内部处理，无需手动关闭。
 	defer conn.Close()
 	glog.Infof(ctx, "[mcp-bridge] connected, entering read loop")
+	// 进入读循环即标绿；退出（断线/取消）标红。
+	b.reportConn(true)
+	defer b.reportConn(false)
 	// 启动 ping 维活 goroutine：定时发 Ping，避免 NAT/中间件超时回收连接。
 	// pingCtx 在 readLoop 退出后随 defer cancel 取消，避免 goroutine 泄漏。
 	pingCtx, pingCancel := context.WithCancel(ctx)

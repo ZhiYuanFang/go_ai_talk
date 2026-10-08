@@ -9,13 +9,15 @@ type DeviceAppXiaozhiMcpBindingListReq struct {
 
 // DeviceAppXiaozhiMcpBindingItem 列表项。
 type DeviceAppXiaozhiMcpBindingItem struct {
-	Id        int64  `json:"id" dc:"绑定主键"`
-	Alias     string `json:"alias" dc:"备注名"`
-	TokenMask string `json:"tokenMask" dc:"脱敏 token"`
-	DeviceNo  string `json:"deviceNo" dc:"喂养落点宝宝设备号"`
-	Status    int    `json:"status" dc:"1=active"`
-	CreatedAt int64  `json:"createdAt" dc:"创建 unix 秒"`
-	UpdatedAt int64  `json:"updatedAt" dc:"更新 unix 秒"`
+	Id         int64  `json:"id" dc:"绑定主键"`
+	Alias      string `json:"alias" dc:"备注名"`
+	TokenMask  string `json:"tokenMask" dc:"脱敏 token"`
+	SpeakerMac string `json:"speakerMac" dc:"音箱 MAC（规范化）"`
+	DeviceNo   string `json:"deviceNo" dc:"喂养落点宝宝设备号"`
+	Status     int    `json:"status" dc:"1=active"`
+	Connected  bool   `json:"connected" dc:"是否已连接小智 MCP WebSocket"`
+	CreatedAt  int64  `json:"createdAt" dc:"创建 unix 秒"`
+	UpdatedAt  int64  `json:"updatedAt" dc:"更新 unix 秒"`
 }
 
 // DeviceAppXiaozhiMcpBindingListRes 列表响应。
@@ -23,19 +25,21 @@ type DeviceAppXiaozhiMcpBindingListRes struct {
 	List []DeviceAppXiaozhiMcpBindingItem `json:"list"`
 }
 
-// DeviceAppXiaozhiMcpBindingAddReq 添加小智绑定；deviceNo 由服务端取当前绑机。
+// DeviceAppXiaozhiMcpBindingAddReq 添加小智绑定；deviceNo 由服务端取当前绑机；同 MAC 再添加更新 token。
 type DeviceAppXiaozhiMcpBindingAddReq struct {
-	g.Meta   `path:"/device/app/api/xiaozhi-mcp/bindings" method:"post" tags:"device" summary:"添加小智音箱绑定"`
-	McpToken string `json:"mcpToken" v:"required" dc:"小智 MCP token；可粘贴完整 wss://…/mcp/?token=xxx，服务端只取 token"`
-	Alias    string `json:"alias" v:"required" dc:"备注名（如客厅音箱）"`
+	g.Meta     `path:"/device/app/api/xiaozhi-mcp/bindings" method:"post" tags:"device" summary:"添加小智音箱绑定"`
+	McpToken   string `json:"mcpToken" v:"required" dc:"小智 MCP token；可粘贴完整 wss://…/mcp/?token=xxx，服务端只取 token"`
+	SpeakerMac string `json:"speakerMac" v:"required" dc:"音箱 MAC；如 3c:dc:75:fc:7f:c4"`
+	Alias      string `json:"alias" v:"required" dc:"备注名（如客厅音箱）"`
 }
 
 // DeviceAppXiaozhiMcpBindingAddRes 添加成功。
 type DeviceAppXiaozhiMcpBindingAddRes struct {
-	Id        int64  `json:"id" dc:"绑定主键"`
-	Alias     string `json:"alias"`
-	TokenMask string `json:"tokenMask"`
-	DeviceNo  string `json:"deviceNo"`
+	Id         int64  `json:"id" dc:"绑定主键"`
+	Alias      string `json:"alias"`
+	TokenMask  string `json:"tokenMask"`
+	SpeakerMac string `json:"speakerMac"`
+	DeviceNo   string `json:"deviceNo"`
 }
 
 // DeviceAppXiaozhiMcpBindingAliasPutReq 更新备注。

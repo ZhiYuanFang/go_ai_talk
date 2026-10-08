@@ -4,6 +4,7 @@ package mcpbridge
 //
 // 业务：每条 active 小智绑定对应一条出站 MCP Bridge；Upsert/Remove/Reconcile 热更新。
 // 约束：部署 replicas=1，避免同 token 多进程拨号。
+// 连接态：进程内存 token→connected（真连通=读循环中）；供内部 HTTP 查询。
 
 import (
 	"context"
@@ -29,10 +30,11 @@ type bridgeSession struct {
 	deviceNo string
 }
 
-// Manager 维护 token → Bridge 会话。
+// Manager 维护 token → Bridge 会话与连接态。
 type Manager struct {
 	mu           sync.Mutex
 	sessions     map[string]*bridgeSession // key = mcp token
+	connected    map[string]bool           // key = mcp token；true 仅当读循环中
 	baseURL      string
 	reconnectMin time.Duration
 	reconnectMax time.Duration
@@ -48,6 +50,7 @@ func NewManager(baseURL string, reconnectMin, reconnectMax time.Duration) *Manag
 	}
 	return &Manager{
 		sessions:     make(map[string]*bridgeSession),
+		connected:    make(map[string]bool),
 		baseURL:      baseURL,
 		reconnectMin: reconnectMin,
 		reconnectMax: reconnectMax,
@@ -75,6 +78,7 @@ func (m *Manager) Upsert(parent context.Context, spec BindingSpec) {
 		glog.Infof(parent, "[mcp-manager] upsert rebuild token=%s oldDevice=%s newDevice=%s", maskTokenValue(token), cur.deviceNo, deviceNo)
 		cur.cancel()
 		delete(m.sessions, token)
+		delete(m.connected, token)
 	}
 	m.startLocked(parent, spec)
 }
@@ -89,6 +93,7 @@ func (m *Manager) Remove(ctx context.Context, id int64, token string) {
 			glog.Infof(ctx, "[mcp-manager] remove by token=%s id=%d", maskTokenValue(token), cur.id)
 			cur.cancel()
 			delete(m.sessions, token)
+			delete(m.connected, token)
 		}
 		return
 	}
@@ -100,6 +105,7 @@ func (m *Manager) Remove(ctx context.Context, id int64, token string) {
 			glog.Infof(ctx, "[mcp-manager] remove by id=%d token=%s", id, maskTokenValue(k))
 			cur.cancel()
 			delete(m.sessions, k)
+			delete(m.connected, k)
 			return
 		}
 	}
@@ -126,6 +132,7 @@ func (m *Manager) Reconcile(parent context.Context, desired []BindingSpec) {
 			glog.Infof(parent, "[mcp-manager] reconcile remove token=%s", maskTokenValue(token))
 			cur.cancel()
 			delete(m.sessions, token)
+			delete(m.connected, token)
 		}
 	}
 	// 启/更需要的
@@ -139,6 +146,7 @@ func (m *Manager) Reconcile(parent context.Context, desired []BindingSpec) {
 			glog.Infof(parent, "[mcp-manager] reconcile rebuild token=%s", maskTokenValue(token))
 			cur.cancel()
 			delete(m.sessions, token)
+			delete(m.connected, token)
 			m.startLocked(parent, spec)
 			continue
 		}
@@ -154,6 +162,41 @@ func (m *Manager) ActiveCount() int {
 	return len(m.sessions)
 }
 
+// ConnectionStatus 批量查询 token 是否已连通小智（读循环中）。
+// 未知 / 无会话 / 重连中 → false。
+func (m *Manager) ConnectionStatus(tokens []string) map[string]bool {
+	out := make(map[string]bool, len(tokens))
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, raw := range tokens {
+		t := strings.TrimSpace(raw)
+		if t == "" {
+			continue
+		}
+		out[t] = m.connected[t]
+	}
+	return out
+}
+
+// markConnected 由 Bridge 回调：仅当会话仍存在时写入；否则清理。
+func (m *Manager) markConnected(token string, on bool) {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.sessions[token]; !ok {
+		delete(m.connected, token)
+		return
+	}
+	if on {
+		m.connected[token] = true
+	} else {
+		delete(m.connected, token)
+	}
+}
+
 // startLocked 在已持锁前提下启动会话。
 func (m *Manager) startLocked(parent context.Context, spec BindingSpec) {
 	token := strings.TrimSpace(spec.McpToken)
@@ -166,7 +209,12 @@ func (m *Manager) startLocked(parent context.Context, spec BindingSpec) {
 		deviceNo: deviceNo,
 	}
 	m.sessions[token] = sess
+	delete(m.connected, token) // 新会话初始未连通
 	bridge := NewBridge(m.baseURL, token, deviceNo, m.reconnectMin, m.reconnectMax)
+	tokenCopy := token
+	bridge.SetOnConnectionChange(func(on bool) {
+		m.markConnected(tokenCopy, on)
+	})
 	glog.Infof(parent, "[mcp-manager] start bridge id=%d token=%s deviceNo=%s", spec.Id, maskTokenValue(token), deviceNo)
 	go func() {
 		if err := bridge.Run(runCtx); err != nil {
