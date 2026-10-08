@@ -26,7 +26,7 @@ type DeviceAppXiaozhiMcpBindingListRes struct {
 // DeviceAppXiaozhiMcpBindingAddReq 添加小智绑定；deviceNo 由服务端取当前绑机。
 type DeviceAppXiaozhiMcpBindingAddReq struct {
 	g.Meta   `path:"/device/app/api/xiaozhi-mcp/bindings" method:"post" tags:"device" summary:"添加小智音箱绑定"`
-	McpToken string `json:"mcpToken" v:"required" dc:"小智 MCP 接入点 token"`
+	McpToken string `json:"mcpToken" v:"required" dc:"小智 MCP token；可粘贴完整 wss://…/mcp/?token=xxx，服务端只取 token"`
 	Alias    string `json:"alias" v:"required" dc:"备注名（如客厅音箱）"`
 }
 

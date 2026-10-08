@@ -10,6 +10,7 @@ package device
 
 import (
 	"context"
+	"net/url"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -59,6 +60,61 @@ func MaskXiaozhiMcpToken(token string) string {
 	return token[:6] + "***" + token[n-4:]
 }
 
+// NormalizeXiaozhiMcpToken 将用户粘贴的接入点字符串规范为裸 MCP token。
+// 业务：小智后台常复制整段 wss://api.xiaozhi.me/mcp/?token=xxx（等号后可能有空格/引号）；
+// 入库与拨号只应保存 query 中的 token 值。已是裸 token 时原样 trim。
+//
+// Args: raw 用户输入。
+// Returns: 规范化后的 token；无法解析时返回业务错误。
+func NormalizeXiaozhiMcpToken(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", gerror.NewCode(gcode.CodeInvalidParameter, "mcpToken 不能为空")
+	}
+	// 优先标准 URL 解析（无异常空格时最干净）。
+	if u, err := url.Parse(raw); err == nil && u.Scheme != "" && u.RawQuery != "" {
+		if t := strings.TrimSpace(u.Query().Get("token")); t != "" {
+			t = strings.Trim(t, "\"'")
+			if t != "" && !looksLikeXiaozhiMcpURL(t) {
+				return t, nil
+			}
+		}
+	}
+	// 兼容 token= 后带空格、整段非严格 URL：手工截取。
+	lower := strings.ToLower(raw)
+	const marker = "token="
+	if idx := strings.Index(lower, marker); idx >= 0 {
+		rest := strings.TrimSpace(raw[idx+len(marker):])
+		rest = strings.Trim(rest, "\"'")
+		if amp := strings.Index(rest, "&"); amp >= 0 {
+			rest = rest[:amp]
+		}
+		rest = strings.TrimSpace(strings.Trim(rest, "\"'"))
+		if rest == "" {
+			return "", gerror.NewCode(gcode.CodeInvalidParameter, "mcpToken 无效：未解析到 token 值")
+		}
+		if looksLikeXiaozhiMcpURL(rest) {
+			return "", gerror.NewCode(gcode.CodeInvalidParameter, "mcpToken 无效：请粘贴含 token= 的接入点或裸 token")
+		}
+		return rest, nil
+	}
+	// 无 token=：若仍像 URL 则拒绝，避免把整段 wss:// 当 token 入库。
+	if looksLikeXiaozhiMcpURL(raw) {
+		return "", gerror.NewCode(gcode.CodeInvalidParameter, "mcpToken 无效：请粘贴含 token= 的接入点或裸 token")
+	}
+	return raw, nil
+}
+
+// looksLikeXiaozhiMcpURL 粗判是否仍为接入点 URL（而非裸 token）。
+func looksLikeXiaozhiMcpURL(s string) bool {
+	s = strings.TrimSpace(strings.ToLower(s))
+	return strings.Contains(s, "://") ||
+		strings.HasPrefix(s, "wss:") ||
+		strings.HasPrefix(s, "ws:") ||
+		strings.HasPrefix(s, "http:") ||
+		strings.HasPrefix(s, "https:")
+}
+
 // ListXiaozhiMcpBindingsForWx 列出当前用户的小智绑定（脱敏）。
 // Args: wxID 当前登录 wx。
 // Returns: 视图列表；错误。
@@ -102,11 +158,13 @@ func AddXiaozhiMcpBinding(ctx context.Context, wxID int64, mcpToken, alias strin
 	if wxID <= 0 {
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "缺少登录用户")
 	}
-	mcpToken = strings.TrimSpace(mcpToken)
 	alias = strings.TrimSpace(alias)
-	if mcpToken == "" {
-		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "mcpToken 不能为空")
+	// 粘贴完整接入点 URL 时只保留 token 字段，再参与去重与入库。
+	normalized, err := NormalizeXiaozhiMcpToken(mcpToken)
+	if err != nil {
+		return nil, err
 	}
+	mcpToken = normalized
 	if utf8.RuneCountInString(mcpToken) > xiaozhiMcpTokenMaxRunes {
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "mcpToken 过长")
 	}
