@@ -62,6 +62,7 @@ func installDeviceProxyMiddleware(s *ghttp.Server) {
 		"/device/app/api/user/*",
 		"/device/app/api/feedback/*",
 		"/device/app/api/appointment/*",
+		"/device/app/api/xiaozhi-mcp/*",
 	} {
 		s.BindMiddleware(pattern, serve)
 	}

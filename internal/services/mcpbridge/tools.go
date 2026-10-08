@@ -68,7 +68,10 @@ func (h *ChatHandler) Handle(ctx context.Context, arguments map[string]any) *Too
 	if transcript == "" {
 		return NewErrorCallResult("transcript 不能为空")
 	}
-	glog.Infof(ctx, "小智设备号：%s", arguments["xzDeviceNo"])
+	// xzDeviceNo 仅观测日志；喂养落点 MUST 使用 Bridge 绑定的 h.deviceNo，禁止被工具入参覆盖。
+	if raw, ok := arguments["xzDeviceNo"]; ok && raw != nil {
+		glog.Infof(ctx, "[mcp-bridge] tools/call xzDeviceNo=%v boundDeviceNo=%s", raw, h.deviceNo)
+	}
 	reply, err := ChatViaVoiceWS(ctx, h.deviceNo, transcript)
 	if err != nil {
 		wsURL := os.Getenv("VOICE_CHAT_WS_URL")

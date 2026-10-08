@@ -11,6 +11,7 @@ resources:
 - voice-service.yaml
 - device-deployment.yaml
 - device-service.yaml
-# mcp-service 仅作为 WebSocket 客户端拨号连接小智接入点，不监听 HTTP 端口，故无对应 Service 资源。
-- mcp-deployment.yaml
+# xiaozhi-mcp-service：出站连小智 + 内部 HTTP :9809（供 device 写路径）；replicas=1。
+- xiaozhi-mcp-deployment.yaml
+- xiaozhi-mcp-service.yaml
 - ingress.yaml

@@ -33,6 +33,9 @@ spec:
             # 管理后台问答库列表委派到 voice（qa 表仅在 voice 库）
             - name: VOICE_SERVICE_URL
               value: http://voice-service:9802
+            # 小智绑定写路径通知 xiaozhi-mcp-service Manager
+            - name: XIAOZHI_MCP_SERVICE_URL
+              value: http://xiaozhi-mcp-service:9809
           livenessProbe:
             httpGet:
               path: /api.json

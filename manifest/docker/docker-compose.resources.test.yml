@@ -30,7 +30,7 @@ services:
   notify-service:
     mem_limit: 64m
     cpus: "0.1"
-  # mcp-service：仅 WebSocket 客户端 + HTTP 委派，无 DB/Redis，资源占用与 notify-service 同级。
-  mcp-service:
+  # xiaozhi-mcp-service：出站 MCP + 轻量内部 HTTP，无 DB；资源与 notify 同级。
+  xiaozhi-mcp-service:
     mem_limit: 64m
     cpus: "0.1"

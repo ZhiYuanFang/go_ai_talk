@@ -1,6 +1,6 @@
 ## 部署与运行指南
 
-适用范围：gateway / gateway-app / voice-service / device-service / history-service / ucg-service / **sim-user-service** / **mcp-service**。
+适用范围：gateway / gateway-app / voice-service / device-service / history-service / ucg-service / **sim-user-service** / **xiaozhi-mcp-service**。
 
 **Redis 容灾与恢复**（容器重启、volume 备份/还原、数据分层）：见 [redis-disaster-recovery.md](./redis-disaster-recovery.md)。
 
@@ -1353,49 +1353,38 @@ docker network create go-ai-talk-test-net 2>/dev/null || true
 
 ---
 
-## E. mcp-service（小智 MCP 接入服务）
+## E. xiaozhi-mcp-service（小智 MCP 多设备接入）
 
-mcp-service 是小智 AI 平台（xiaozhi.me）MCP 接入点桥接进程：作为 MCP Server 通过 WebSocket 主动拨号连接 `wss://api.xiaozhi.me/mcp/?token=<XIAOZHI_MCP_TOKEN>`，向小智暴露 `baby_feeding_advisor` 工具；小智调用该工具时，本进程连接 voice-service 的 **`/voice/chat/ws` 文模式**（`inputModality=text` / `outputModality=text`）完成一轮喂养对话并返回 `answer`。
+`xiaozhi-mcp-service`（由原 `mcp-service` 改名）维护 **N 条**出站 MCP Bridge：绑定权威在 **device-service**（App CRUD `/device/app/api/xiaozhi-mcp/bindings*`），写路径经内部 HTTP 通知本进程 Upsert/Remove；启动全量拉取 + 低频 reconcile。小智调用 `baby_feeding_advisor` 时，按该 Bridge 的 `deviceNo` 走 voice **`/voice/chat/ws` 文模式**。
 
 **与其他服务的差异**：
 
 | 维度 | 说明 |
 |------|------|
-| MySQL | **不连库**（不配 `*_DB_LINK`） |
-| Redis | **不连**（不配 `GF_REDIS_DEFAULT_ADDRESS`） |
-| HTTP 端口 | **不监听**（无 `*_SERVICE_ADDR`、无 `/api.json`、无 healthcheck HTTP） |
-| 依赖 | 仅依赖 voice-service 可达 + `DEVICE_GATEWAY_INTERNAL_SECRET` 一致 |
-| K8s Service | 无（无入站流量，仅 Deployment） |
-| Compose 端口映射 | 无（local/test/prod overlay 均不映射端口） |
+| MySQL | **不连库**（绑定在 device DB） |
+| Redis | **不连** |
+| HTTP | 内部 `:9809`（Upsert/Remove/health）；**replicas=1** |
+| 依赖 | `DEVICE_SERVICE_URL` + `DEVICE_GATEWAY_INTERNAL_SECRET` + voice WS |
+| K8s | Deployment + ClusterIP Service |
+| Compose 宿主机端口 | 通常不映射（集群内访问） |
 
-**环境变量**（`.env.local` / `.env.test` / `.env.prod`）：
+**环境变量**：
 
 | 变量 | 必填 | 说明 |
 |------|------|------|
-| `XIAOZHI_MCP_TOKEN` | 是 | 小智接入点 token，从 xiaozhi.me 控制台智能体配置页获取 |
-| `XIAOZHI_MCP_DEVICE_NO` | 是 | 绑定的设备号（单设备场景） |
-| `XIAOZHI_MCP_BASE_URL` | 否 | 接入点基址，默认 `wss://api.xiaozhi.me/mcp/` |
-| `XIAOZHI_MCP_RECONNECT_MIN_MS` | 否 | 重连初始退避，默认 2000 |
-| `XIAOZHI_MCP_RECONNECT_MAX_MS` | 否 | 重连退避上限，默认 60000 |
-| `VOICE_SERVICE_URL` | 是* | voice-service HTTP 基址；未设 `VOICE_CHAT_WS_URL` 时用于推导 `ws(s)://…/voice/chat/ws`（compose 内 `http://voice-service:9802`） |
-| `VOICE_CHAT_WS_URL` | 否 | 直接指定喂养 chat WS 完整 URL（优先于从 `VOICE_SERVICE_URL` 推导） |
+| `DEVICE_SERVICE_URL` | 是 | 拉全量绑定 |
+| `DEVICE_GATEWAY_INTERNAL_SECRET` | 是 | 内部鉴权（与 device 一致） |
+| `VOICE_SERVICE_URL` / `VOICE_CHAT_WS_URL` | 是* | 喂养 chat WS |
+| `XIAOZHI_MCP_INTERNAL_ADDR` | 否 | 默认 `:9809` |
+| `XIAOZHI_MCP_RECONCILE_INTERVAL_MS` | 否 | 默认 600000；`0`=关闭周期 reconcile |
+| `XIAOZHI_MCP_TOKEN` / `DEVICE_NO` | 否 | 迁移 fallback（DB 为空时） |
+| `XIAOZHI_MCP_BASE_URL` 等 | 否 | 接入点与重连退避 |
 
-\*喂养对话改经 WS 后，mcp-service **不再**依赖 `DEVICE_GATEWAY_INTERNAL_SECRET` 调 internal text HTTP。
+device-service 另需 `XIAOZHI_MCP_SERVICE_URL`（如 `http://xiaozhi-mcp-service:9809`）用于写路径通知。
 
-**启动校验**：`XIAOZHI_MCP_TOKEN` 或 `XIAOZHI_MCP_DEVICE_NO` 为空时进程 fail-fast 退出（非 0），不进入重连循环。
+**日志关键字**：`[xiaozhi-mcp-service] starting`、`[mcp-manager]`、`[mcp-bridge] dialing`、`[xiaozhi-mcp] reconcile`。
 
-**日志关键字**（排查用）：
-
-| 关键字 | 含义 |
-|--------|------|
-| `[mcp-service] starting` | 进程启动 |
-| `[mcp-bridge] dialing` | 正在拨号连接小智接入点（token 已脱敏） |
-| `[mcp-bridge] connected` | 连接建立，进入读循环 |
-| `[mcp-bridge] reconnect in` | 即将重连，等待时长 |
-| `[mcp-bridge] chat WS failed` | 喂养工具经 chat WS 失败 |
-| `[mcp-service] shutdown` | 收到 SIGTERM 优雅退出 |
-
-**本地联调**：mcp-service 不映射宿主机端口，启动后通过 `docker logs go-ai-talk-mcp-service -f` 观察日志；小智控制台配置好 MCP 接入点后，对智能体发起对话即可触发本服务喂养工具。
+**本地联调**：`docker logs go-ai-talk-xiaozhi-mcp-service -f`；App 添加绑定后应对齐 Bridge；稳态不再依赖单一 env token。
 
 ---
 
@@ -1707,7 +1696,7 @@ docker compose -f manifest/docker/docker-compose.redis-cluster.yml up -d --force
 | `v1.0.0-rc.3+sim` | 仅 `sim-user-service` | 仅 `sim-user-service:v1.0.0-rc.3` |
 | `v1.0.0-rc.5+cash` | 仅 `cash-service` | 仅 `cash-service:v1.0.0-rc.5` |
 
-别名：`gateway`、`gateway-app`、`history`/`history-service`、`voice`/`voice-service`、`device`/`device-service`、`ucg`/`ucg-service`、`push`/`push-service`、`sim`/`sim-user`/`sim-user-service`、`notify`/`notify-service`、`mcp`/`mcp-service`、`cash`/`cash-service`、`all`（全量）。`.env` 中 `IMAGE_TAG` 用 **`+` 前 base tag**。
+别名：`gateway`、`gateway-app`、`history`/`history-service`、`voice`/`voice-service`、`device`/`device-service`、`ucg`/`ucg-service`、`push`/`push-service`、`sim`/`sim-user`/`sim-user-service`、`notify`/`notify-service`、`mcp`/`xiaozhi-mcp`/`xiaozhi-mcp-service`、`cash`/`cash-service`、`all`（全量）。`.env` 中 `IMAGE_TAG` 用 **`+` 前 base tag**。
 
 手动触发：Actions → **docker-acr** → Run workflow → 选择 `target_env`、`image_tag`（base tag）；可选 `services`（如 `cash` 或 `ucg`，留空=全量 10 服务）。
 

@@ -69,10 +69,9 @@ services:
       - "9807:9807"
     networks: [go-ai-talk-net]
 
-  # mcp-service 不监听 HTTP 端口（WebSocket 客户端），无需 ports 映射；
-  # 仅需接入 go-ai-talk-net 以访问 voice-service。
-  mcp-service:
-    image: ${REGISTRY}/mcp-service:${IMAGE_TAG}
+  # xiaozhi-mcp-service 内部 HTTP :9809（集群内），无需宿主机 ports。
+  xiaozhi-mcp-service:
+    image: ${REGISTRY}/xiaozhi-mcp-service:${IMAGE_TAG}
     networks: [go-ai-talk-net]
 
 networks:

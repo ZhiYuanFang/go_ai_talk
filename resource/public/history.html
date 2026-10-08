@@ -124,6 +124,39 @@
         </div>
     </div>
 
+    <div class="card glass" id="xiaozhiMcpCard">
+        <div class="section-head">
+            <h3>小智 MCP 绑定</h3>
+        </div>
+        <p class="muted" style="margin:0 0 10px;">
+            须先在上方 <strong>AI 调试台</strong> 完成 App 登录（共用登录态）。列表为当前登录账号下的绑定（脱敏 token）；添加时服务端使用该账号已绑宝宝设备号。
+            登录设备与当前页不一致时<strong>禁止添加</strong>，避免串号。
+        </p>
+        <p id="xiaozhiMcpGateTip" class="muted" style="margin:0 0 10px;">请先 App 登录后再管理小智绑定。</p>
+        <div class="meta-row" style="flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px;">
+            <input id="xiaozhiAliasInput" type="text" placeholder="备注（如客厅音箱）" style="max-width:160px;" disabled />
+            <input id="xiaozhiTokenInput" type="text" placeholder="小智 MCP token" style="flex:1;min-width:200px;" disabled autocomplete="off" />
+            <button id="xiaozhiAddBtn" class="btn-primary" type="button" disabled>添加绑定</button>
+            <button id="xiaozhiRefreshBtn" class="btn-secondary" type="button" disabled>刷新列表</button>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>备注</th>
+                        <th>Token（脱敏）</th>
+                        <th>deviceNo</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="xiaozhiMcpTbody">
+                    <tr><td colspan="5" class="muted">未加载</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
     <div id="historyModal" class="modal">
         <div class="modal-card">
             <h3 id="historyModalTitle">新增历史事件</h3>
@@ -729,19 +762,125 @@
             else { sessionStorage.removeItem(APP_META_KEY); }
             refreshAppLoginStatus();
         }
+        function getAppMeta(){
+            try { return JSON.parse(sessionStorage.getItem(APP_META_KEY) || '{}'); } catch(_){ return {}; }
+        }
+        function appDeviceMatchesPage(){
+            const bound = String((getAppMeta().deviceNo || '')).trim();
+            return !!(bound && deviceNo && bound === deviceNo);
+        }
         function refreshAppLoginStatus(){
             const el = document.getElementById('appLoginStatus');
             if(!el) return;
             const tok = getAppToken();
-            if(!tok){ el.textContent = '未登录'; return; }
-            let metaObj = {};
-            try { metaObj = JSON.parse(sessionStorage.getItem(APP_META_KEY) || '{}'); } catch(_){}
+            if(!tok){
+                el.textContent = '未登录';
+                syncXiaozhiMcpGate();
+                loadXiaozhiMcpBindings().catch(function(){});
+                return;
+            }
+            const metaObj = getAppMeta();
             const bound = (metaObj.deviceNo || '').trim();
             let tip = '已登录 wxId=' + (metaObj.wxId || '?') + ' deviceNo=' + (bound || '（空）');
             if(bound && deviceNo && bound !== deviceNo){
                 tip += ' ⚠ 与当前页设备不一致';
             }
             el.textContent = tip;
+            syncXiaozhiMcpGate();
+        }
+        // —— 小智 MCP 绑定：复用 App token；串号禁止添加 ——
+        function syncXiaozhiMcpGate(){
+            const tip = document.getElementById('xiaozhiMcpGateTip');
+            const aliasIn = document.getElementById('xiaozhiAliasInput');
+            const tokenIn = document.getElementById('xiaozhiTokenInput');
+            const addBtn = document.getElementById('xiaozhiAddBtn');
+            const refreshBtn = document.getElementById('xiaozhiRefreshBtn');
+            if(!tip || !addBtn) return;
+            const tok = getAppToken();
+            const match = appDeviceMatchesPage();
+            if(!tok){
+                tip.textContent = '请先在上方 AI 调试台完成 App 登录后再管理小智绑定。';
+                aliasIn.disabled = true;
+                tokenIn.disabled = true;
+                addBtn.disabled = true;
+                refreshBtn.disabled = true;
+                const tbody = document.getElementById('xiaozhiMcpTbody');
+                if(tbody){ tbody.innerHTML = '<tr><td colspan="5" class="muted">请先 App 登录</td></tr>'; }
+                return;
+            }
+            refreshBtn.disabled = false;
+            if(!match){
+                tip.textContent = '登录账号设备与当前页不一致，已禁止添加绑定（可刷新查看该账号自己的列表）。';
+                aliasIn.disabled = true;
+                tokenIn.disabled = true;
+                addBtn.disabled = true;
+                return;
+            }
+            tip.textContent = '已登录且设备一致，可添加/改备注/删除。列表仅展示脱敏 token。';
+            aliasIn.disabled = false;
+            tokenIn.disabled = false;
+            addBtn.disabled = false;
+        }
+        async function appFetchJson(method, url, bodyObj){
+            const tok = getAppToken();
+            if(!tok){ throw new Error('请先 App 登录'); }
+            const headers = {'Authorization': 'Bearer ' + tok};
+            let body;
+            if(bodyObj !== undefined){
+                headers['Content-Type'] = 'application/json';
+                body = JSON.stringify(bodyObj);
+            }
+            const res = await fetch(url, {method: method, headers: headers, body: body});
+            const data = await res.json().catch(() => ({}));
+            if(!res.ok || data.code !== 0){
+                throw new Error(data.message || ('HTTP ' + res.status));
+            }
+            return data.data;
+        }
+        async function loadXiaozhiMcpBindings(){
+            const tbody = document.getElementById('xiaozhiMcpTbody');
+            if(!tbody) return;
+            if(!getAppToken()){
+                tbody.innerHTML = '<tr><td colspan="5" class="muted">请先 App 登录</td></tr>';
+                return;
+            }
+            tbody.innerHTML = '<tr><td colspan="5" class="muted">加载中…</td></tr>';
+            try {
+                const data = await appFetchJson('GET', '/device/app/api/xiaozhi-mcp/bindings');
+                const list = (data && data.list) || [];
+                if(!list.length){
+                    tbody.innerHTML = '<tr><td colspan="5" class="muted">暂无绑定</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = list.map(function(it){
+                    const id = it.id;
+                    const alias = (it.alias || '').replace(/</g, '&lt;');
+                    const mask = (it.tokenMask || '***').replace(/</g, '&lt;');
+                    const dn = (it.deviceNo || '').replace(/</g, '&lt;');
+                    return '<tr data-id="' + id + '">' +
+                        '<td>' + id + '</td>' +
+                        '<td>' + alias + '</td>' +
+                        '<td><code>' + mask + '</code></td>' +
+                        '<td>' + dn + '</td>' +
+                        '<td>' +
+                        '<button type="button" class="btn-secondary xiaozhi-alias-btn" data-id="' + id + '">改备注</button> ' +
+                        '<button type="button" class="btn-danger xiaozhi-del-btn" data-id="' + id + '">删除</button>' +
+                        '</td></tr>';
+                }).join('');
+            } catch(e){
+                tbody.innerHTML = '<tr><td colspan="5" class="muted">加载失败：' + (e.message || e) + '</td></tr>';
+            }
+        }
+        async function addXiaozhiMcpBinding(){
+            if(!getAppToken()){ throw new Error('请先 App 登录'); }
+            if(!appDeviceMatchesPage()){ throw new Error('登录设备与当前页不一致，禁止添加'); }
+            const alias = (document.getElementById('xiaozhiAliasInput').value || '').trim();
+            const mcpToken = (document.getElementById('xiaozhiTokenInput').value || '').trim();
+            if(!alias){ throw new Error('请填写备注'); }
+            if(!mcpToken){ throw new Error('请填写小智 MCP token'); }
+            await appFetchJson('POST', '/device/app/api/xiaozhi-mcp/bindings', {mcpToken: mcpToken, alias: alias});
+            document.getElementById('xiaozhiTokenInput').value = '';
+            await loadXiaozhiMcpBindings();
         }
         async function appLogin(){
             const username = (document.getElementById('appLoginUser').value || '').trim();
@@ -760,8 +899,9 @@
             if(!d.accessToken){ throw new Error('登录响应缺少 accessToken'); }
             setAppSession(d.accessToken, {wxId: d.wxId, deviceNo: d.deviceNo});
             if(d.deviceNo && deviceNo && String(d.deviceNo).trim() !== deviceNo){
-                alert('登录账号绑定设备 ' + d.deviceNo + ' 与当前页 ' + deviceNo + ' 不一致，调试可能串号');
+                alert('登录账号绑定设备 ' + d.deviceNo + ' 与当前页 ' + deviceNo + ' 不一致，调试可能串号；小智绑定将禁止添加');
             }
+            loadXiaozhiMcpBindings().catch(function(){});
         }
         function appendLog(el, line){
             if(!el) return;
@@ -851,7 +991,37 @@
             }
             document.getElementById('careAlertLoadBtn').addEventListener('click', () => loadCareAlert(false));
             document.getElementById('careAlertForceBtn').addEventListener('click', () => loadCareAlert(true));
+            const xiaozhiAddBtn = document.getElementById('xiaozhiAddBtn');
+            if(xiaozhiAddBtn){
+                xiaozhiAddBtn.addEventListener('click', async () => {
+                    try { await addXiaozhiMcpBinding(); } catch(e){ alert(e.message || e); }
+                });
+                document.getElementById('xiaozhiRefreshBtn').addEventListener('click', () => {
+                    loadXiaozhiMcpBindings().catch(e => alert(e.message || e));
+                });
+                document.getElementById('xiaozhiMcpTbody').addEventListener('click', async (ev) => {
+                    const t = ev.target;
+                    if(!(t instanceof HTMLElement)) return;
+                    const id = parseInt(t.getAttribute('data-id') || '0', 10);
+                    if(!id) return;
+                    try {
+                        if(t.classList.contains('xiaozhi-del-btn')){
+                            if(!confirm('确认删除该小智绑定？')) return;
+                            await appFetchJson('DELETE', '/device/app/api/xiaozhi-mcp/bindings/' + id);
+                            await loadXiaozhiMcpBindings();
+                        } else if(t.classList.contains('xiaozhi-alias-btn')){
+                            const next = prompt('新备注名');
+                            if(next === null) return;
+                            const alias = String(next).trim();
+                            if(!alias){ alert('备注不能为空'); return; }
+                            await appFetchJson('PUT', '/device/app/api/xiaozhi-mcp/bindings/' + id + '/alias', {alias: alias});
+                            await loadXiaozhiMcpBindings();
+                        }
+                    } catch(e){ alert(e.message || e); }
+                });
+            }
             refreshAppLoginStatus();
+            if(getAppToken()){ loadXiaozhiMcpBindings().catch(function(){}); }
         }
         window.handleVoiceWSMessage = function(data){ console.log('[voice-ws]', data); };
 

@@ -1,0 +1,27 @@
+FROM m.daocloud.io/docker.io/library/golang:1.23-alpine AS builder
+
+ENV GOPROXY=https://goproxy.cn,https://goproxy.io,direct
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/xiaozhi-mcp-service ./cmd/xiaozhi-mcp-service
+
+FROM m.daocloud.io/docker.io/library/alpine:3.19
+
+RUN apk add --no-cache tzdata
+ENV TZ=Asia/Shanghai
+
+# 内部 HTTP :9809（Upsert/Remove/health）；出站 WebSocket 连小智接入点。
+ENV WORKDIR=/app
+ENV GF_GCFG_FILE=manifest/config/config.xiaozhi-mcp-service.yaml
+WORKDIR ${WORKDIR}
+
+COPY --from=builder /out/xiaozhi-mcp-service ${WORKDIR}/xiaozhi-mcp-service
+COPY manifest/config/config.xiaozhi-mcp-service.yaml ${WORKDIR}/manifest/config/config.xiaozhi-mcp-service.yaml
+
+EXPOSE 9809
+HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
+  CMD wget -q -O - http://127.0.0.1:9809/xiaozhi-mcp/internal/api/health > /dev/null || exit 1
+CMD ["./xiaozhi-mcp-service"]

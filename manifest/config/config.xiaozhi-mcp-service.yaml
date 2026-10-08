@@ -1,0 +1,17 @@
+# xiaozhi-mcp-service：小智 MCP 多设备接入（Manager + 内部 HTTP）。
+# 不连 MySQL；经 DEVICE_SERVICE_URL 拉绑定；经 VOICE_* 走 /voice/chat/ws。
+# 运行时依赖：
+#   - DEVICE_SERVICE_URL：device-service 基址（全量绑定 list）
+#   - DEVICE_GATEWAY_INTERNAL_SECRET：内部 HTTP 鉴权（与 device 一致）
+#   - VOICE_SERVICE_URL 或 VOICE_CHAT_WS_URL：喂养对话 WS
+#   - XIAOZHI_MCP_INTERNAL_ADDR：内部监听，默认 :9809
+#   - XIAOZHI_MCP_RECONCILE_INTERVAL_MS：reconcile 周期，默认 600000；0=关闭
+# 可选迁移 fallback：
+#   - XIAOZHI_MCP_TOKEN / XIAOZHI_MCP_DEVICE_NO：DB 为空时单设备拨号
+# 可选：
+#   - XIAOZHI_MCP_BASE_URL：默认 wss://api.xiaozhi.me/mcp/
+#   - XIAOZHI_MCP_RECONNECT_MIN_MS / XIAOZHI_MCP_RECONNECT_MAX_MS
+
+logger:
+  level: "all"
+  stdout: true
