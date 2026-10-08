@@ -70,9 +70,9 @@ services:
     networks: [go-ai-talk-net]
 
   # xiaozhi-mcp-service 内部 HTTP :9809（集群内），无需宿主机 ports。
-  xiaozhi-mcp-service:
-    image: ${REGISTRY}/xiaozhi-mcp-service:${IMAGE_TAG}
-    networks: [go-ai-talk-net]
+  # xiaozhi-mcp-service:
+  #   image: ${REGISTRY}/xiaozhi-mcp-service:${IMAGE_TAG}
+  #   networks: [go-ai-talk-net]
 
 networks:
   go-ai-talk-net:
