@@ -266,19 +266,23 @@ func (b *Bridge) dispatch(ctx context.Context, req *JSONRPCRequest) *JSONRPCResp
 
 // handleInitialize 响应 initialize 请求。
 // 不解析 params（小智 clientInfo 不影响本服务行为），直接返回 server 声明。
-func (b *Bridge) handleInitialize(_ context.Context, req *JSONRPCRequest) *JSONRPCResponse {
+func (b *Bridge) handleInitialize(ctx context.Context, req *JSONRPCRequest) *JSONRPCResponse {
+	glog.Infof(ctx, "[mcp-bridge] handleInitialize method=%s params=%s", req.Method, string(req.Params))
 	return NewSuccessResponse(req.ID, NewInitializeResult(ServerName(), ServerVersion()))
 }
 
 // handleToolsList 响应 tools/list 请求。
 // 静态返回 chat 工具定义。
-func (b *Bridge) handleToolsList(_ context.Context, req *JSONRPCRequest) *JSONRPCResponse {
+func (b *Bridge) handleToolsList(ctx context.Context, req *JSONRPCRequest) *JSONRPCResponse {
+	glog.Infof(ctx, "[mcp-bridge] handleToolsList method=%s params=%s", req.Method, string(req.Params))
 	return NewSuccessResponse(req.ID, &ToolsListResult{Tools: ListTools()})
 }
 
 // handleToolsCall 响应 tools/call 请求。
 // 仅支持 chat 工具；其他工具名返回 -32601。
 func (b *Bridge) handleToolsCall(ctx context.Context, req *JSONRPCRequest) *JSONRPCResponse {
+	// 打印日志
+	glog.Infof(ctx, "[mcp-bridge] handleToolsCall method=%s params=%s", req.Method, string(req.Params))
 	var params ToolsCallParams
 	if err := json.Unmarshal(req.Params, &params); err != nil {
 		return NewErrorResponse(req.ID, -32602, fmt.Sprintf("invalid tools/call params: %v", err))
