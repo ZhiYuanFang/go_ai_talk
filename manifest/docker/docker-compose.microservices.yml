@@ -488,6 +488,7 @@ services:
       XIAOZHI_MCP_DEVICE_NO: "${XIAOZHI_MCP_DEVICE_NO:-}"
       VOICE_SERVICE_URL: "http://voice-service:9802"
       DEVICE_SERVICE_URL: "http://device-service:9803"
+      CASH_SERVICE_URL: "http://cash-service:9807"
       DEVICE_GATEWAY_INTERNAL_SECRET: "${DEVICE_GATEWAY_INTERNAL_SECRET:-gateway-internal-change-me}"
     depends_on:
       voice-service:
