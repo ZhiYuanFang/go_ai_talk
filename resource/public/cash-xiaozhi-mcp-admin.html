@@ -43,7 +43,7 @@
 				</div>
 				<div class="field">
 					<label>标题</label>
-					<input id="title" type="text" maxlength="128" />
+					<input id="skuTitle" type="text" maxlength="128" />
 				</div>
 				<div class="field">
 					<label>现价（分）</label>
@@ -60,7 +60,8 @@
 				</div>
 				<div class="field">
 					<label>上下架</label>
-					<select id="status">
+					<!-- 禁止 id=status：会与 window.status 冲突，导致上下架读写失效 -->
+					<select id="skuStatus">
 						<option value="1">上架</option>
 						<option value="0">下架</option>
 					</select>
@@ -104,14 +105,21 @@
 		document.getElementById('mainCard').classList.remove('hidden');
 	} catch (e) { return; }
 
+	const elProductCode = document.getElementById('productCode');
+	const elSkuTitle = document.getElementById('skuTitle');
+	const elPriceFen = document.getElementById('priceFen');
+	const elOrigFen = document.getElementById('origFen');
+	const elApplePid = document.getElementById('applePid');
+	const elSkuStatus = document.getElementById('skuStatus');
+
 	async function loadSku() {
 		const d = await AdminCommon.adminFetch('/cash/admin/api/xiaozhi-mcp/product');
-		productCode.value = d.productCode || '';
-		title.value = d.title || '';
-		priceFen.value = d.priceFen ?? 0;
-		origFen.value = d.originalPriceFen ?? 0;
-		applePid.value = d.appleProductId || '';
-		status.value = String(d.status ?? 1);
+		elProductCode.value = d.productCode || '';
+		elSkuTitle.value = d.title || '';
+		elPriceFen.value = d.priceFen ?? 0;
+		elOrigFen.value = d.originalPriceFen ?? 0;
+		elApplePid.value = d.appleProductId || '';
+		elSkuStatus.value = String(d.status ?? 1);
 	}
 
 	document.getElementById('reloadSkuBtn').onclick = () => loadSku().then(() => show('已刷新', true)).catch(e => show(e.message || e, false));
@@ -120,11 +128,11 @@
 			await AdminCommon.adminFetch('/cash/admin/api/xiaozhi-mcp/product', {
 				method: 'POST',
 				body: JSON.stringify({
-					title: title.value,
-					priceFen: Number(priceFen.value) || 0,
-					originalPriceFen: Number(origFen.value) || 0,
-					appleProductId: applePid.value,
-					status: Number(status.value)
+					title: elSkuTitle.value,
+					priceFen: Number(elPriceFen.value) || 0,
+					originalPriceFen: Number(elOrigFen.value) || 0,
+					appleProductId: elApplePid.value,
+					status: Number(elSkuStatus.value)
 				})
 			});
 			show('SKU 已保存', true);
