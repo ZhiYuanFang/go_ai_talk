@@ -72,6 +72,7 @@ var (
 		"/device/admin/sim-admin.html",
 		"/device/admin/cash-vip-admin.html",
 		"/device/admin/cash-feature-admin.html",
+		"/device/admin/cash-xiaozhi-mcp-admin.html",
 		"/device/admin/cash-feeding-eligibility-admin.html",
 		"/device/admin/push-device-admin.html",
 		"/user-agreement.html",
