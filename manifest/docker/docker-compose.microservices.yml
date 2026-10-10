@@ -290,6 +290,7 @@ services:
       GF_GCFG_FILE: manifest/config/config.device-service.yaml
       DEVICE_DB_LINK: "${DEVICE_DB_LINK:-}"
       MYSQL_TCP_HOST: "${MYSQL_TCP_HOST:-}"
+      CASH_SERVICE_URL: "http://cash-service:9807"
       DEVICE_SERVICE_ADDR: ":9803"
       VOICE_SERVICE_URL: "http://voice-service:9802"
       MQ_HTTP_API_BASE: "http://rabbitmq:15672/api"

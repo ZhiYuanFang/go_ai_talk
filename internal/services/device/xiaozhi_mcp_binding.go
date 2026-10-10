@@ -237,7 +237,16 @@ func AddXiaozhiMcpBinding(ctx context.Context, wxID int64, mcpToken, alias, spea
 	// Add 前确保有效权益：可触发首次试用 claim；失败 fail-closed。
 	if unlockErr := cashclient.RemoteEnsureXiaozhiMcpAccessForAdd(ctx, wxID); unlockErr != nil {
 		glog.Warningf(ctx, "[xiaozhi-mcp-binding] ensure access failed wxId=%d err=%v", wxID, unlockErr)
-		return nil, gerror.WrapCode(gcode.CodeNotAuthorized, unlockErr, "请先开通或体验小智 MCP 后再添加绑定")
+		// 连通/配置类失败：对用户只提示接入点错误，不暴露内网 URL。
+		if isXiaozhiMcpEnsureInfraError(unlockErr) {
+			return nil, gerror.NewCode(gcode.CodeOperationFailed, "小智MCP接入点错误")
+		}
+		// 业务拒绝（试用用尽等）：用 cash 文案，去掉多余包装。
+		msg := strings.TrimSpace(unlockErr.Error())
+		if msg == "" {
+			msg = "请先开通或体验小智 MCP 后再添加绑定"
+		}
+		return nil, gerror.NewCode(gcode.CodeNotAuthorized, msg)
 	}
 	alias = strings.TrimSpace(alias)
 	mac, err := NormalizeSpeakerMac(speakerMac)
@@ -447,6 +456,28 @@ func ListActiveXiaozhiMcpBindingsFull(ctx context.Context) ([]XiaozhiMcpBindingF
 		})
 	}
 	return out, nil
+}
+
+// isXiaozhiMcpEnsureInfraError 是否为 cash 连通/配置类失败（应对用户隐藏内网细节）。
+func isXiaozhiMcpEnsureInfraError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if gerror.Code(err) == gcode.CodeInternalError {
+		return true
+	}
+	s := err.Error()
+	switch {
+	case strings.Contains(s, "不可达"),
+		strings.Contains(s, "未配置"),
+		strings.Contains(s, "非 JSON"),
+		strings.Contains(s, "ensure HTTP"),
+		strings.Contains(s, "connection refused"),
+		strings.Contains(s, "dial tcp"):
+		return true
+	default:
+		return false
+	}
 }
 
 // WxIDBoundDeviceNoOrReject 取当前 wx 已绑 deviceNo；空则拒绝。
