@@ -166,3 +166,35 @@ func (c *CashXiaozhiMcpController) AdminRevoke(ctx context.Context, req *v1.Cash
 	}
 	return &v1.CashAdminXiaozhiMcpRevokeRes{}, nil
 }
+
+// AdminEntitlements GET /cash/admin/api/xiaozhi-mcp/entitlements — 开通人员快照。
+func (c *CashXiaozhiMcpController) AdminEntitlements(ctx context.Context, req *v1.CashAdminXiaozhiMcpEntitlementsReq) (*v1.CashAdminXiaozhiMcpEntitlementsRes, error) {
+	if err := requireCashAdmin(ctx); err != nil {
+		return nil, err
+	}
+	page, err := cash.AdminListXiaozhiMcpEntitlements(ctx, req.Limit, req.Offset)
+	if err != nil {
+		return nil, err
+	}
+	res := &v1.CashAdminXiaozhiMcpEntitlementsRes{
+		Note:  page.Note,
+		Total: page.Total,
+		List:  make([]v1.CashAdminXiaozhiMcpEntitlementItem, 0, len(page.List)),
+	}
+	for _, it := range page.List {
+		res.List = append(res.List, v1.CashAdminXiaozhiMcpEntitlementItem{
+			WxId:             it.WxId,
+			Nickname:         it.Nickname,
+			UnlockMethod:     it.UnlockMethod,
+			ChannelRef:       it.ChannelRef,
+			UnlockedAt:       it.UnlockedAt,
+			ExpiresAt:        it.ExpiresAt,
+			Active:           it.Active,
+			RemainingSeconds: it.RemainingSeconds,
+			Status:           it.Status,
+			RevokedAt:        it.RevokedAt,
+			UpdatedAt:        it.UpdatedAt,
+		})
+	}
+	return res, nil
+}

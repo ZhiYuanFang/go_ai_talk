@@ -119,3 +119,32 @@ type CashAdminXiaozhiMcpRevokeReq struct {
 
 // CashAdminXiaozhiMcpRevokeRes 空 data。
 type CashAdminXiaozhiMcpRevokeRes struct{}
+
+// CashAdminXiaozhiMcpEntitlementsReq GET 已开通人员快照列表。
+type CashAdminXiaozhiMcpEntitlementsReq struct {
+	g.Meta `path:"/cash/admin/api/xiaozhi-mcp/entitlements" method:"get" tags:"cash-admin" summary:"管理端小智 MCP 开通人员列表"`
+	Limit  int `json:"limit" in:"query" d:"50"`
+	Offset int `json:"offset" in:"query" d:"0"`
+}
+
+// CashAdminXiaozhiMcpEntitlementItem 开通快照行。
+type CashAdminXiaozhiMcpEntitlementItem struct {
+	WxId             int64  `json:"wxId"`
+	Nickname         string `json:"nickname,omitempty"`
+	UnlockMethod     string `json:"unlockMethod"`
+	ChannelRef       string `json:"channelRef,omitempty"`
+	UnlockedAt       int64  `json:"unlockedAt"`
+	ExpiresAt        int64  `json:"expiresAt" dc:"0=永久；>0=试用截止 Unix 秒"`
+	Active           bool   `json:"active"`
+	RemainingSeconds int64  `json:"remainingSeconds,omitempty"`
+	Status           int    `json:"status" dc:"1有效 0已撤销"`
+	RevokedAt        int64  `json:"revokedAt,omitempty"`
+	UpdatedAt        int64  `json:"updatedAt"`
+}
+
+// CashAdminXiaozhiMcpEntitlementsRes 开通人员列表 data。
+type CashAdminXiaozhiMcpEntitlementsRes struct {
+	Note  string                               `json:"note"`
+	Total int                                  `json:"total"`
+	List  []CashAdminXiaozhiMcpEntitlementItem `json:"list"`
+}

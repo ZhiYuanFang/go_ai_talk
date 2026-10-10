@@ -13,10 +13,17 @@
 		.field label { font-size: 12px; color: #334155; font-weight: 600; }
 		.field .sub { font-size: 11px; color: #94a3b8; line-height: 1.35; }
 		.field input, .field select { font-size: 13px; padding: 6px 8px; max-width: 360px; }
-		.btn-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+		.btn-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; align-items: center; }
 		.btn-row button { min-width: 120px; }
 		.hub-sec { margin-top: 22px; padding-top: 12px; border-top: 1px solid #e2e8f0; }
 		.hub-sec h3 { margin: 0 0 8px; font-size: 15px; }
+		.badge-on { color: #059669; font-weight: 600; }
+		.badge-off { color: #94a3b8; font-weight: 600; }
+		.table-wrap { overflow-x: auto; max-width: 100%; }
+		.table-wrap table { width: 100%; border-collapse: collapse; font-size: 12px; }
+		.table-wrap th, .table-wrap td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; text-align: left; white-space: nowrap; }
+		.table-wrap th { color: #64748b; font-weight: 600; }
+		.pager-meta { font-size: 12px; color: #64748b; }
 	</style>
 </head>
 <body>
@@ -25,12 +32,13 @@
 		<div class="logo">MCP</div>
 		<div>
 			<h1>小智 MCP 开通</h1>
-			<p>永久买断 SKU 与手工授 · 独立于开通功能管理 · <a href="/device/admin">运维 Hub</a></p>
+			<p>永久买断 SKU、手工授与已开通列表 · 独立于开通功能管理 · <a href="/device/admin">运维 Hub</a></p>
 		</div>
 	</header>
 	<div class="card glass hidden" id="mainCard">
 		<p class="hint">
 			区 A 配置唯一永久商品（编码只读）。区 B 向 wx 手工授永久能力或撤销最近一笔手工授。
+			区 C 展示权益快照（含已撤销/试用过期）；仅有效手工授可在行内撤销。
 			Flutter / Hub 添加绑定均须已开通。静态页样式不对请 <strong>Ctrl+F5</strong>。
 		</p>
 
@@ -92,6 +100,35 @@
 			</div>
 		</section>
 
+		<section class="hub-sec">
+			<h3>区 C · 已开通</h3>
+			<p class="hint" id="entNote">当前权益快照；含已撤销与试用过期行。支付/试用开通不可行内撤销。</p>
+			<div class="table-wrap">
+				<table>
+					<thead>
+						<tr>
+							<th>wxId</th>
+							<th>昵称</th>
+							<th>方式</th>
+							<th>状态</th>
+							<th>到期/剩余</th>
+							<th>开通时间</th>
+							<th>更新时间</th>
+							<th>痕迹</th>
+							<th>操作</th>
+						</tr>
+					</thead>
+					<tbody id="entBody"></tbody>
+				</table>
+			</div>
+			<div class="btn-row">
+				<button id="entReloadBtn" type="button" class="secondary">刷新列表</button>
+				<button id="entPrevBtn" type="button" class="secondary">上一页</button>
+				<button id="entNextBtn" type="button" class="secondary">下一页</button>
+				<span class="pager-meta" id="entPagerMeta"></span>
+			</div>
+		</section>
+
 		<div id="msg" class="msg"></div>
 	</div>
 </div>
@@ -112,6 +149,42 @@
 	const elApplePid = document.getElementById('applePid');
 	const elSkuStatus = document.getElementById('skuStatus');
 
+	const ENT_LIMIT = 50;
+	let entOffset = 0;
+	let entTotal = 0;
+
+	function esc(s) {
+		return String(s == null ? '' : s)
+			.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+			.replace(/"/g, '&quot;');
+	}
+	function fmtTs(ts) {
+		const n = Number(ts) || 0;
+		if (!n) return '—';
+		const d = new Date(n * 1000);
+		if (Number.isNaN(d.getTime())) return String(n);
+		const p = (x) => String(x).padStart(2, '0');
+		return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' +
+			p(d.getHours()) + ':' + p(d.getMinutes());
+	}
+	function fmtRemain(it) {
+		const exp = Number(it.expiresAt) || 0;
+		if (exp === 0) return '永久';
+		if (it.active && it.remainingSeconds > 0) {
+			const s = Number(it.remainingSeconds) || 0;
+			const h = Math.floor(s / 3600);
+			const m = Math.floor((s % 3600) / 60);
+			return '剩余 ' + h + 'h' + m + 'm（至 ' + fmtTs(exp) + '）';
+		}
+		return '已过期（' + fmtTs(exp) + '）';
+	}
+	function methodLabel(m) {
+		if (m === 'admin') return '手工授';
+		if (m === 'payment') return '支付';
+		if (m === 'trial') return '试用';
+		return m || '—';
+	}
+
 	async function loadSku() {
 		const d = await AdminCommon.adminFetch('/cash/admin/api/xiaozhi-mcp/product');
 		elProductCode.value = d.productCode || '';
@@ -120,6 +193,58 @@
 		elOrigFen.value = d.originalPriceFen ?? 0;
 		elApplePid.value = d.appleProductId || '';
 		elSkuStatus.value = String(d.status ?? 1);
+	}
+
+	async function loadEntitlements() {
+		const qs = 'limit=' + ENT_LIMIT + '&offset=' + entOffset;
+		const data = await AdminCommon.adminFetch('/cash/admin/api/xiaozhi-mcp/entitlements?' + qs);
+		entTotal = Number(data.total) || 0;
+		if (data.note) document.getElementById('entNote').textContent = data.note;
+		const list = data.list || [];
+		const tb = document.getElementById('entBody');
+		tb.innerHTML = list.map(it => {
+			const st = it.active
+				? '<span class="badge-on">有效</span>'
+				: '<span class="badge-off">无效</span>';
+			const canRevoke = it.active && it.unlockMethod === 'admin';
+			const op = canRevoke
+				? '<button type="button" class="secondary revoke-ent" data-wx="' + esc(it.wxId) + '">撤销</button>'
+				: '—';
+			return '<tr>' +
+				'<td><code>' + esc(it.wxId) + '</code></td>' +
+				'<td>' + esc(it.nickname || '—') + '</td>' +
+				'<td>' + esc(methodLabel(it.unlockMethod)) + '</td>' +
+				'<td>' + st + '</td>' +
+				'<td>' + esc(fmtRemain(it)) + '</td>' +
+				'<td>' + esc(fmtTs(it.unlockedAt)) + '</td>' +
+				'<td>' + esc(fmtTs(it.updatedAt)) + '</td>' +
+				'<td><code>' + esc(it.channelRef || '—') + '</code></td>' +
+				'<td>' + op + '</td>' +
+				'</tr>';
+		}).join('') || '<tr><td colspan="9">暂无开通记录</td></tr>';
+
+		tb.querySelectorAll('.revoke-ent').forEach(btn => {
+			btn.onclick = async () => {
+				const wxId = Number(btn.dataset.wx);
+				if (!wxId) return;
+				if (!confirm('确认撤销 wxId=' + wxId + ' 的最近手工授？')) return;
+				try {
+					await AdminCommon.adminFetch('/cash/admin/api/xiaozhi-mcp/grants/revoke', {
+						method: 'POST',
+						body: JSON.stringify({ wxId })
+					});
+					show('已撤销手工授', true);
+					await loadEntitlements();
+				} catch (e) { show(e.message || String(e), false); }
+			};
+		});
+
+		const from = entTotal === 0 ? 0 : entOffset + 1;
+		const to = Math.min(entOffset + ENT_LIMIT, entTotal);
+		document.getElementById('entPagerMeta').textContent =
+			'共 ' + entTotal + ' 人 · 本页 ' + from + '-' + to;
+		document.getElementById('entPrevBtn').disabled = entOffset <= 0;
+		document.getElementById('entNextBtn').disabled = entOffset + ENT_LIMIT >= entTotal;
 	}
 
 	document.getElementById('reloadSkuBtn').onclick = () => loadSku().then(() => show('已刷新', true)).catch(e => show(e.message || e, false));
@@ -149,6 +274,8 @@
 				body: JSON.stringify({ wxId, reason: grantReason.value })
 			});
 			show('已授予 orderNo=' + (data.orderNo || ''), true);
+			entOffset = 0;
+			await loadEntitlements();
 		} catch (e) { show(e.message || String(e), false); }
 	};
 	document.getElementById('revokeBtn').onclick = async () => {
@@ -161,10 +288,24 @@
 				body: JSON.stringify({ wxId })
 			});
 			show('已撤销手工授', true);
+			await loadEntitlements();
 		} catch (e) { show(e.message || String(e), false); }
 	};
 
+	document.getElementById('entReloadBtn').onclick = () =>
+		loadEntitlements().then(() => show('列表已刷新', true)).catch(e => show(e.message || e, false));
+	document.getElementById('entPrevBtn').onclick = async () => {
+		entOffset = Math.max(0, entOffset - ENT_LIMIT);
+		try { await loadEntitlements(); } catch (e) { show(e.message || e, false); }
+	};
+	document.getElementById('entNextBtn').onclick = async () => {
+		if (entOffset + ENT_LIMIT >= entTotal) return;
+		entOffset += ENT_LIMIT;
+		try { await loadEntitlements(); } catch (e) { show(e.message || e, false); }
+	};
+
 	await loadSku().catch(e => show(e.message || e, false));
+	await loadEntitlements().catch(e => show(e.message || e, false));
 })();
 </script>
 </body>
