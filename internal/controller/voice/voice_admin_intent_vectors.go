@@ -71,10 +71,35 @@ func (c *VoiceAdminIntentVectorsCtrl) Bulk(ctx context.Context, req *v1.VoiceAdm
 	if err != nil {
 		return nil, gerror.NewCode(gcode.CodeInternalError, err.Error())
 	}
+	added := out.Added
+	if added == 0 && out.Ok > 0 {
+		// 兼容旧 Python 仅回 ok 的情况
+		added = out.Ok
+	}
 	return &v1.VoiceAdminIntentVectorsBulkRes{
-		Ok:     out.Ok,
-		Failed: out.Failed,
-		Ids:    out.Ids,
+		Ok:      out.Ok,
+		Added:   added,
+		Skipped: out.Skipped,
+		Failed:  out.Failed,
+		Ids:     out.Ids,
+	}, nil
+}
+
+// Dedupe POST /voice/admin/api/intent-vectors/dedupe
+func (c *VoiceAdminIntentVectorsCtrl) Dedupe(ctx context.Context, req *v1.VoiceAdminIntentVectorsDedupeReq) (res *v1.VoiceAdminIntentVectorsDedupeRes, err error) {
+	if err = c.requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	_ = req
+	client := voice.PythonAIClientFromCfg()
+	out, err := client.DedupeIntentCache(ctx)
+	if err != nil {
+		return nil, gerror.NewCode(gcode.CodeInternalError, err.Error())
+	}
+	return &v1.VoiceAdminIntentVectorsDedupeRes{
+		Kept:    out.Kept,
+		Deleted: out.Deleted,
+		Groups:  out.Groups,
 	}, nil
 }
 
