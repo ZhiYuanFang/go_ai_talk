@@ -404,6 +404,37 @@ func UpdateXiaozhiMcpBindingAlias(ctx context.Context, wxID, id int64, alias str
 	return nil
 }
 
+// ReconnectXiaozhiMcpBinding 对归属当前 wx 的 active 绑定触发 mcpbridge 强制重连。
+// 业务：不改 DB；不调用 cash EnsureAccessForAdd（与 List/Delete 已有绑定一致）；
+// entitlement 过期仍允许触发，后续若被 Manager lazy-remove 属既有行为。
+//
+// Args: wxID 当前登录用户；id 绑定主键。
+// Returns: 归属/状态/通知错误；成功仅表示已触发 ForceRestart，不保证立即 connected。
+// Side Effects: 经 clients/xiaozhimcp 调用内部 reconnect。
+func ReconnectXiaozhiMcpBinding(ctx context.Context, wxID, id int64) error {
+	if wxID <= 0 || id <= 0 {
+		return gerror.NewCode(gcode.CodeInvalidParameter, "参数无效")
+	}
+	row, err := getOwnedXiaozhiBinding(ctx, wxID, id)
+	if err != nil {
+		return err
+	}
+	// 非 active 行禁止重连，避免对已停用绑定打 dial。
+	if row.Status != xiaozhiMcpStatusActive {
+		return gerror.NewCode(gcode.CodeInvalidOperation, "小智绑定未激活，无法重连")
+	}
+	token := strings.TrimSpace(row.McpToken)
+	deviceNo := strings.TrimSpace(row.DeviceNo)
+	if token == "" || deviceNo == "" {
+		return gerror.NewCode(gcode.CodeInvalidParameter, "绑定缺少 token 或 deviceNo")
+	}
+	if err := xiaozhimcpclient.BindingReconnect(ctx, row.Id, token, deviceNo, row.WxId); err != nil {
+		glog.Warningf(ctx, "[xiaozhi-mcp-binding] reconnect notify failed id=%d err=%v", row.Id, err)
+		return err
+	}
+	return nil
+}
+
 // DeleteXiaozhiMcpBinding 删除属于当前用户的绑定；返回被删完整行（供 Remove 通知）。
 func DeleteXiaozhiMcpBinding(ctx context.Context, wxID, id int64) (*XiaozhiMcpBindingFull, error) {
 	if wxID <= 0 || id <= 0 {

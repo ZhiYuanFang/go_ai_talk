@@ -889,6 +889,10 @@
                     const on = !!it.connected;
                     const light = '<span title="' + (on ? '已连接' : '未连接') + '" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' +
                         (on ? '#22c55e' : '#ef4444') + ';"></span>';
+                    // 未连接且已 App 登录：显示「重连」（不依赖开通门禁；与添加写操作不同）
+                    const reconnectBtn = (!on && getAppToken())
+                        ? '<button type="button" class="btn-secondary xiaozhi-reconnect-btn" data-id="' + id + '">重连</button> '
+                        : '';
                     return '<tr data-id="' + id + '">' +
                         '<td>' + light + '</td>' +
                         '<td>' + id + '</td>' +
@@ -897,6 +901,7 @@
                         '<td><code>' + mask + '</code></td>' +
                         '<td>' + dn + '</td>' +
                         '<td>' +
+                        reconnectBtn +
                         '<button type="button" class="btn-secondary xiaozhi-alias-btn" data-id="' + id + '">改备注</button> ' +
                         '<button type="button" class="btn-danger xiaozhi-del-btn" data-id="' + id + '">删除</button>' +
                         '</td></tr>';
@@ -1043,7 +1048,16 @@
                     const id = parseInt(t.getAttribute('data-id') || '0', 10);
                     if(!id) return;
                     try {
-                        if(t.classList.contains('xiaozhi-del-btn')){
+                        if(t.classList.contains('xiaozhi-reconnect-btn')){
+                            if(!getAppToken()){ alert('请先 App 登录'); return; }
+                            t.disabled = true;
+                            try {
+                                await appFetchJson('POST', '/device/app/api/xiaozhi-mcp/bindings/' + id + '/reconnect');
+                                await loadXiaozhiMcpBindings();
+                            } finally {
+                                t.disabled = false;
+                            }
+                        } else if(t.classList.contains('xiaozhi-del-btn')){
                             if(!confirm('确认删除该小智绑定？')) return;
                             await appFetchJson('DELETE', '/device/app/api/xiaozhi-mcp/bindings/' + id);
                             await loadXiaozhiMcpBindings();

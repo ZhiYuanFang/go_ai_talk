@@ -1,9 +1,10 @@
 package devicectrl
 
-// device_app_xiaozhi_mcp.go：App 小智 MCP 绑定 CRUD。
+// device_app_xiaozhi_mcp.go：App 小智 MCP 绑定 CRUD 与强制重连。
 //
 // 鉴权：gateway-app Bearer → X-Internal-Wx-Id。
 // 写路径成功后通知 xiaozhi-mcp-service；通知失败仅告警，不回滚 DB。
+// Reconnect：归属校验后触发 ForceRestart，不改 DB、不调开通门禁。
 
 import (
 	"context"
@@ -113,4 +114,18 @@ func (c *DeviceAppXiaozhiMcpCtrl) Delete(ctx context.Context, req *v1.DeviceAppX
 		glog.Warningf(ctx, "[xiaozhi-mcp-binding] remove notify failed id=%d err=%v", full.Id, err)
 	}
 	return &v1.DeviceAppXiaozhiMcpBindingDeleteRes{}, nil
+}
+
+// Reconnect POST /device/app/api/xiaozhi-mcp/bindings/{id}/reconnect
+// 业务：归属校验后触发 mcpbridge ForceRestart；快速返回，客户端再刷列表看 connected。
+func (c *DeviceAppXiaozhiMcpCtrl) Reconnect(ctx context.Context, req *v1.DeviceAppXiaozhiMcpBindingReconnectReq) (res *v1.DeviceAppXiaozhiMcpBindingReconnectRes, err error) {
+	r := ghttp.RequestFromCtx(ctx)
+	wxID, err := wxIDFromAppUserHeader(r)
+	if err != nil {
+		return nil, err
+	}
+	if err := device.ReconnectXiaozhiMcpBinding(ctx, wxID, req.Id); err != nil {
+		return nil, err
+	}
+	return &v1.DeviceAppXiaozhiMcpBindingReconnectRes{}, nil
 }

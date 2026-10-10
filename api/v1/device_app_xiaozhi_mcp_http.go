@@ -60,3 +60,12 @@ type DeviceAppXiaozhiMcpBindingDeleteReq struct {
 
 // DeviceAppXiaozhiMcpBindingDeleteRes 删除成功。
 type DeviceAppXiaozhiMcpBindingDeleteRes struct{}
+
+// DeviceAppXiaozhiMcpBindingReconnectReq 强制重连小智 MCP Bridge（不改 DB；不等待 WS 已连通）。
+type DeviceAppXiaozhiMcpBindingReconnectReq struct {
+	g.Meta `path:"/device/app/api/xiaozhi-mcp/bindings/{id}/reconnect" method:"post" tags:"device" summary:"强制重连小智音箱绑定"`
+	Id     int64 `json:"id" in:"path" v:"required|min:1" dc:"绑定主键"`
+}
+
+// DeviceAppXiaozhiMcpBindingReconnectRes 已触发重连（客户端应再刷列表看 connected）。
+type DeviceAppXiaozhiMcpBindingReconnectRes struct{}

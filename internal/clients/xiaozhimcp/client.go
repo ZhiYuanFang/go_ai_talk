@@ -1,7 +1,8 @@
 // Package xiaozhimcp 出站调用 xiaozhi-mcp-service 内部 HTTP 的中立客户端。
 //
 // 业务：device-service 在小智绑定增删成功后通知 Manager Upsert/Remove；
-// 列表时批量查询 token 连接态。调用方 import clients，禁止 import services/mcpbridge。
+// 断连时 BindingReconnect 强制 cancel+redial；列表时批量查询 token 连接态。
+// 调用方 import clients，禁止 import services/mcpbridge。
 package xiaozhimcp
 
 import (
@@ -34,6 +35,29 @@ func BindingUpsert(ctx context.Context, id int64, token, deviceNo string, wxId i
 		return gerror.NewCode(gcode.CodeInvalidParameter, "wxId 无效")
 	}
 	_, err := postJSON(ctx, "/xiaozhi-mcp/internal/api/bindings/upsert", map[string]interface{}{
+		"id":       id,
+		"mcpToken": token,
+		"deviceNo": deviceNo,
+		"wxId":     wxId,
+	})
+	return err
+}
+
+// BindingReconnect 通知 mcp Manager 强制重连（cancel + startLocked，即使 key 未变）。
+// 业务：App/Hub「重连」；失败语义与 Upsert/Remove 一致，调用方不应改 DB。
+//
+// Args: id 绑定主键；token；deviceNo；wxId 开通主体。
+// Returns: 参数/网络/鉴权/业务错误。
+func BindingReconnect(ctx context.Context, id int64, token, deviceNo string, wxId int64) error {
+	token = strings.TrimSpace(token)
+	deviceNo = strings.TrimSpace(deviceNo)
+	if token == "" || deviceNo == "" {
+		return gerror.NewCode(gcode.CodeInvalidParameter, "token/deviceNo 不能为空")
+	}
+	if wxId <= 0 {
+		return gerror.NewCode(gcode.CodeInvalidParameter, "wxId 无效")
+	}
+	_, err := postJSON(ctx, "/xiaozhi-mcp/internal/api/bindings/reconnect", map[string]interface{}{
 		"id":       id,
 		"mcpToken": token,
 		"deviceNo": deviceNo,

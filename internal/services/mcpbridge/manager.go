@@ -32,15 +32,19 @@ type bridgeSession struct {
 	wxId     int64
 }
 
+// forceRestartMinInterval 同 binding id 强制重连的轻量节流窗口（防连点打爆 dial）。
+const forceRestartMinInterval = 3 * time.Second
+
 // Manager 维护 token → Bridge 会话与连接态。
 type Manager struct {
-	mu           sync.Mutex
-	sessions     map[string]*bridgeSession // key = mcp token
-	connected    map[string]bool           // key = mcp token；true 仅当读循环中
-	rootCtx      context.Context           // Bridge 生命周期父 ctx（进程级；禁止用 HTTP 请求 ctx）
-	baseURL      string
-	reconnectMin time.Duration
-	reconnectMax time.Duration
+	mu               sync.Mutex
+	sessions         map[string]*bridgeSession // key = mcp token
+	connected        map[string]bool           // key = mcp token；true 仅当读循环中
+	lastForceRestart map[int64]time.Time       // binding id → 上次 ForceRestart；节流用
+	rootCtx          context.Context           // Bridge 生命周期父 ctx（进程级；禁止用 HTTP 请求 ctx）
+	baseURL          string
+	reconnectMin     time.Duration
+	reconnectMax     time.Duration
 }
 
 // NewManager 构造 Manager。
@@ -57,12 +61,13 @@ func NewManager(rootCtx context.Context, baseURL string, reconnectMin, reconnect
 		reconnectMax = defaultReconnectMax
 	}
 	return &Manager{
-		sessions:     make(map[string]*bridgeSession),
-		connected:    make(map[string]bool),
-		rootCtx:      rootCtx,
-		baseURL:      baseURL,
-		reconnectMin: reconnectMin,
-		reconnectMax: reconnectMax,
+		sessions:         make(map[string]*bridgeSession),
+		connected:        make(map[string]bool),
+		lastForceRestart: make(map[int64]time.Time),
+		rootCtx:          rootCtx,
+		baseURL:          baseURL,
+		reconnectMin:     reconnectMin,
+		reconnectMax:     reconnectMax,
 	}
 }
 
@@ -89,6 +94,42 @@ func (m *Manager) Upsert(parent context.Context, spec BindingSpec) {
 		delete(m.sessions, token)
 		delete(m.connected, token)
 	}
+	m.startLocked(parent, spec)
+}
+
+// ForceRestart 强制取消既有会话并立即 redial（即使 token/deviceNo/wxId 未变）。
+// 业务：App/Hub「重连」专用；与 Upsert 同 key noop 不同，本方法 MUST 始终 cancel + startLocked。
+// 副作用：新 Bridge 自带初始退避，等价于重置重连等待；同 binding id 在 forceRestartMinInterval 内重复调用直接成功返回（不二次 dial）。
+//
+// Args: parent 仅日志；spec 含 id/mcpToken/deviceNo/wxId。
+func (m *Manager) ForceRestart(parent context.Context, spec BindingSpec) {
+	token := strings.TrimSpace(spec.McpToken)
+	deviceNo := strings.TrimSpace(spec.DeviceNo)
+	if token == "" || deviceNo == "" {
+		glog.Warningf(parent, "[mcp-manager] force-restart skip empty token/deviceNo id=%d", spec.Id)
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	// 轻量节流：同 id 数秒内连点视为已触发，避免打爆出站 dial。
+	if spec.Id > 0 {
+		if last, ok := m.lastForceRestart[spec.Id]; ok && time.Since(last) < forceRestartMinInterval {
+			glog.Infof(parent, "[mcp-manager] force-restart throttled id=%d token=%s", spec.Id, maskTokenValue(token))
+			return
+		}
+		m.lastForceRestart[spec.Id] = time.Now()
+	}
+	if cur, ok := m.sessions[token]; ok {
+		glog.Infof(parent, "[mcp-manager] force-restart cancel token=%s id=%d deviceNo=%s wxId=%d",
+			maskTokenValue(token), cur.id, cur.deviceNo, cur.wxId)
+		cur.cancel()
+		delete(m.sessions, token)
+		delete(m.connected, token)
+	} else {
+		glog.Infof(parent, "[mcp-manager] force-restart no-session token=%s id=%d deviceNo=%s wxId=%d",
+			maskTokenValue(token), spec.Id, deviceNo, spec.WxId)
+	}
+	// 新会话自 reconnectMin 起拨，不等待旧退避。
 	m.startLocked(parent, spec)
 }
 
