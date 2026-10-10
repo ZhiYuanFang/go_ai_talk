@@ -789,11 +789,20 @@ type IntentCacheBulkItem struct {
 	Payload  map[string]interface{} `json:"payload"`
 }
 
-// IntentCacheBulkResult 批量写入结果。
+// IntentCacheBulkResult 批量写入结果（管理端：同 document 跳过）。
 type IntentCacheBulkResult struct {
-	Ok     int                      `json:"ok"`
-	Failed []map[string]interface{} `json:"failed"`
-	Ids    []string                 `json:"ids"`
+	Ok      int                      `json:"ok"`
+	Added   int                      `json:"added"`
+	Skipped []map[string]interface{} `json:"skipped"`
+	Failed  []map[string]interface{} `json:"failed"`
+	Ids     []string                 `json:"ids"`
+}
+
+// IntentCacheDedupeResult 整理 document 全等重复的结果。
+type IntentCacheDedupeResult struct {
+	Kept    int                      `json:"kept"`
+	Deleted []map[string]interface{} `json:"deleted"`
+	Groups  int                      `json:"groups"`
 }
 
 // ListIntentCache 列出 feeding_intents。
@@ -863,4 +872,26 @@ func (c *PythonAIClient) DeleteIntentCache(ctx context.Context, vectorID string)
 		return fmt.Errorf("Python 意图缓存删除错误 %d: %s", resp.StatusCode, string(body))
 	}
 	return nil
+}
+
+// DedupeIntentCache 整理 feeding_intents 中 document 原文全等的重复条。
+func (c *PythonAIClient) DedupeIntentCache(ctx context.Context) (*IntentCacheDedupeResult, error) {
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/admin/intent-cache/dedupe", nil)
+	if err != nil {
+		return nil, fmt.Errorf("创建意图缓存 dedupe 请求失败: %w", err)
+	}
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("调用 Python 意图缓存 dedupe 失败: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Python 意图缓存 dedupe 错误 %d: %s", resp.StatusCode, string(body))
+	}
+	var out IntentCacheDedupeResult
+	if err := json.Unmarshal(body, &out); err != nil {
+		return nil, fmt.Errorf("解析意图缓存 dedupe 失败: %w", err)
+	}
+	return &out, nil
 }

@@ -11,6 +11,7 @@
 		.table-wrap { overflow-x: auto; }
 		table { width: 100%; border-collapse: collapse; font-size: 13px; }
 		th, td { border-bottom: 1px solid rgba(0,0,0,.06); padding: 8px 6px; text-align: left; vertical-align: top; }
+		th.num, td.num { width: 48px; text-align: right; color: #64748b; font-variant-numeric: tabular-nums; }
 		td.doc { max-width: 220px; word-break: break-all; }
 		td.payload { max-width: 320px; font-family: ui-monospace, monospace; font-size: 11px; word-break: break-all; white-space: pre-wrap; }
 		textarea.json { width: 100%; min-height: 160px; font-family: ui-monospace, monospace; font-size: 12px; }
@@ -27,15 +28,17 @@
 		</div>
 	</header>
 	<div class="card glass hidden" id="mainCard">
-		<p class="hint">列表来自 Python 向量库。批量上传 JSON 数组，每项含 <code>document</code> 与 <code>payload</code>（含 events）。create 骨架勿带绝对 start_time。删除错误向量后该说法不再免确认命中。</p>
+		<p class="hint">列表来自 Python 向量库。重复判定为 document 去空白后完全相同。批量上传遇相同文案会跳过不覆盖。create 骨架勿带绝对 start_time。</p>
 		<div class="row" style="margin-bottom:12px;">
 			<button id="reloadBtn" type="button" class="secondary">刷新列表</button>
+			<button id="dedupeBtn" type="button" class="secondary">整理重复</button>
 			<span id="listMeta" class="msg" style="color:#64748b;"></span>
 		</div>
 		<div class="table-wrap">
 			<table>
 				<thead>
 					<tr>
+						<th class="num">#</th>
 						<th>id</th>
 						<th>document</th>
 						<th>quality</th>
@@ -61,6 +64,9 @@
 </div>
 <script src="/resource/public/admin-common.js"></script>
 <script>
+/** 当前列表请求的 offset，用于序号 = offset + i + 1 */
+let listOffset = 0;
+
 function api(path, options={}) { return AdminCommon.adminFetch(path, options); }
 
 function setMsg(text, ok) {
@@ -71,18 +77,23 @@ function setMsg(text, ok) {
 
 async function loadList() {
 	setMsg('加载中…');
+	listOffset = 0;
 	const d = await api('/voice/admin/api/intent-vectors?offset=0&limit=200');
 	const body = document.getElementById('listBody');
 	body.innerHTML = '';
 	const items = (d && d.items) || [];
+	const offset = (d && d.offset != null) ? Number(d.offset) : listOffset;
+	listOffset = offset;
 	document.getElementById('listMeta').textContent = '共 ' + ((d && d.total) || items.length) + ' 条';
-	items.forEach(it => {
+	items.forEach((it, i) => {
 		const tr = document.createElement('tr');
+		const num = offset + i + 1;
 		const id = it.id || '';
 		const doc = it.document || '';
 		const q = it.quality_score != null ? it.quality_score : '';
 		const payload = JSON.stringify(it.payload || {}, null, 0);
 		tr.innerHTML =
+			'<td class="num">' + num + '</td>' +
 			'<td><code>' + escapeHtml(id) + '</code></td>' +
 			'<td class="doc">' + escapeHtml(doc) + '</td>' +
 			'<td>' + escapeHtml(String(q)) + '</td>' +
@@ -102,6 +113,29 @@ async function deleteOne(id) {
 	try {
 		await api('/voice/admin/api/intent-vectors/' + encodeURIComponent(id), { method: 'DELETE' });
 		setMsg('已删除 ' + id, true);
+		await loadList();
+	} catch (e) {
+		setMsg(String(e && e.message || e), false);
+	}
+}
+
+/** 整理重复：服务端按 document 全等留一条，弹窗列出被删项 */
+async function runDedupe() {
+	if (!confirm('将删除 document 文案完全相同的多余条目（每组保留一条）。继续？')) return;
+	setMsg('整理中…');
+	try {
+		const d = await api('/voice/admin/api/intent-vectors/dedupe', { method: 'POST' });
+		const deleted = (d && d.deleted) || [];
+		if (!deleted.length) {
+			alert('无重复：没有 document 文案完全相同的多余条目。');
+			setMsg('无重复可删', true);
+		} else {
+			const lines = deleted.map((it, i) =>
+				(i + 1) + '. ' + (it.id || '') + '\n   ' + (it.document || '')
+			);
+			alert('已删除 ' + deleted.length + ' 条重复：\n\n' + lines.join('\n\n'));
+			setMsg('已删除重复 ' + deleted.length + ' 条', true);
+		}
 		await loadList();
 	} catch (e) {
 		setMsg(String(e && e.message || e), false);
@@ -128,8 +162,26 @@ async function bulkUpload() {
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ items })
 		});
+		const added = (d && (d.added != null ? d.added : d.ok)) || 0;
+		const skipped = (d && d.skipped) || [];
 		const failed = (d && d.failed) || [];
-		setMsg('写入成功 ' + (d && d.ok) + ' 条' + (failed.length ? '，失败 ' + failed.length : ''), failed.length === 0);
+		const skipDocs = skipped.map((s, i) =>
+			(i + 1) + '. ' + (s.document || '') + (s.existing_id ? ' （已有 ' + s.existing_id + '）' : '')
+		);
+		let dialog = '新增 ' + added + ' 条';
+		if (skipped.length) {
+			dialog += '\n跳过重复 ' + skipped.length + ' 条（文案相同，未覆盖）：\n\n' + skipDocs.join('\n');
+		} else {
+			dialog += '\n无跳过。';
+		}
+		if (failed.length) {
+			dialog += '\n\n失败 ' + failed.length + ' 条。';
+		}
+		alert(dialog);
+		setMsg(
+			'新增 ' + added + (skipped.length ? '，跳过 ' + skipped.length : '') + (failed.length ? '，失败 ' + failed.length : ''),
+			failed.length === 0
+		);
 		await loadList();
 	} catch (e) {
 		setMsg(String(e && e.message || e), false);
@@ -144,6 +196,7 @@ function escapeAttr(s) {
 }
 
 document.getElementById('reloadBtn').addEventListener('click', () => loadList().catch(e => setMsg(String(e), false)));
+document.getElementById('dedupeBtn').addEventListener('click', () => runDedupe());
 document.getElementById('bulkBtn').addEventListener('click', () => bulkUpload());
 
 if (AdminCommon.requireAdmin()) {

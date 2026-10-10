@@ -29,17 +29,31 @@ type VoiceAdminIntentVectorsBulkReq struct {
 	Items  []VoiceAdminIntentVectorBulkItem `json:"items"`
 }
 
-// VoiceAdminIntentVectorsBulkRes 批量写入结果。
+// VoiceAdminIntentVectorsBulkRes 批量写入结果（同 document 跳过）。
 type VoiceAdminIntentVectorsBulkRes struct {
-	Ok     int                      `json:"ok"`
-	Failed []map[string]interface{} `json:"failed"`
-	Ids    []string                 `json:"ids"`
+	Ok      int                      `json:"ok"`
+	Added   int                      `json:"added"`
+	Skipped []map[string]interface{} `json:"skipped"`
+	Failed  []map[string]interface{} `json:"failed"`
+	Ids     []string                 `json:"ids"`
+}
+
+// VoiceAdminIntentVectorsDedupeReq 整理 document 全等重复。
+type VoiceAdminIntentVectorsDedupeReq struct {
+	g.Meta `path:"/voice/admin/api/intent-vectors/dedupe" method:"post" tags:"voice-admin" summary:"整理意图向量重复文案"`
+}
+
+// VoiceAdminIntentVectorsDedupeRes 整理结果（透传 Python）。
+type VoiceAdminIntentVectorsDedupeRes struct {
+	Kept    int                      `json:"kept"`
+	Deleted []map[string]interface{} `json:"deleted"`
+	Groups  int                      `json:"groups"`
 }
 
 // VoiceAdminIntentVectorsDeleteReq 按向量 id 删除。
 type VoiceAdminIntentVectorsDeleteReq struct {
-	g.Meta   `path:"/voice/admin/api/intent-vectors/{id}" method:"delete" tags:"voice-admin" summary:"删除意图向量"`
-	Id       string `json:"id" in:"path" v:"required"`
+	g.Meta `path:"/voice/admin/api/intent-vectors/{id}" method:"delete" tags:"voice-admin" summary:"删除意图向量"`
+	Id     string `json:"id" in:"path" v:"required"`
 }
 
 // VoiceAdminIntentVectorsDeleteRes 删除结果。
