@@ -252,6 +252,38 @@ func EnsureSchema(ctx context.Context) error {
   PRIMARY KEY (id),
   KEY idx_occurred (occurred_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+		// 小智 MCP 永久买断 SKU（独立于 feature_product；开通功能管理不可见）。
+		`CREATE TABLE IF NOT EXISTS xiaozhi_mcp_product (
+  product_code         VARCHAR(64)  NOT NULL COMMENT '商品编码，种子固定',
+  title                VARCHAR(128) NOT NULL DEFAULT '' COMMENT '展示名',
+  price_fen            INT          NOT NULL DEFAULT 0 COMMENT '现价（分）',
+  original_price_fen   INT          NOT NULL DEFAULT 0 COMMENT '划线原价（分）；0 不展示',
+  apple_product_id     VARCHAR(128) NOT NULL DEFAULT '' COMMENT 'ASC Apple 商品 ID',
+  status               TINYINT      NOT NULL DEFAULT 1 COMMENT '1=上架 0=下架',
+  updated_at           BIGINT       NOT NULL DEFAULT 0,
+  PRIMARY KEY (product_code)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+		// 小智 MCP 账号维能力（永久 expires_at=0；试用为未来截止；不走 ActivateFeature）。
+		`CREATE TABLE IF NOT EXISTS xiaozhi_mcp_entitlement (
+  wx_id          BIGINT       NOT NULL COMMENT '开通主体 wx',
+  status         TINYINT      NOT NULL DEFAULT 1 COMMENT '1=有效 0=已撤销',
+  unlock_method  VARCHAR(32)  NOT NULL DEFAULT '' COMMENT 'payment|admin|trial',
+  channel_ref    VARCHAR(64)  NOT NULL DEFAULT '' COMMENT '订单号等痕迹',
+  unlocked_at    BIGINT       NOT NULL DEFAULT 0 COMMENT '开通时间',
+  expires_at     BIGINT       NOT NULL DEFAULT 0 COMMENT '0=永久；>0=试用截止 Unix 秒',
+  revoked_at     BIGINT       NOT NULL DEFAULT 0 COMMENT '撤销时间；未撤销为 0',
+  updated_at     BIGINT       NOT NULL DEFAULT 0,
+  PRIMARY KEY (wx_id),
+  KEY idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+		// 小智 MCP 试用记账：每 wx 仅 unused→used 一次。
+		`CREATE TABLE IF NOT EXISTS xiaozhi_mcp_trial (
+  wx_id       BIGINT       NOT NULL COMMENT '账号',
+  status      VARCHAR(16)  NOT NULL DEFAULT 'unused' COMMENT 'unused|used',
+  used_at     BIGINT       NOT NULL DEFAULT 0,
+  updated_at  BIGINT       NOT NULL DEFAULT 0,
+  PRIMARY KEY (wx_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 	}
 	for _, sql := range stmts {
 		if _, err := db.Exec(ctx, sql); err != nil {
@@ -270,6 +302,8 @@ func EnsureSchema(ctx context.Context) error {
 		// Apple ASN：建单写入 UUID，通知用 appAccountToken 反查；可空以兼容历史/支付宝行。
 		`ALTER TABLE vip_order ADD COLUMN app_account_token CHAR(36) NULL DEFAULT NULL COMMENT 'Apple appAccountToken UUID；仅 apple_iap'`,
 		`ALTER TABLE feature_order ADD COLUMN app_account_token CHAR(36) NULL DEFAULT NULL COMMENT 'Apple appAccountToken UUID；仅 apple_iap'`,
+		// 小智 MCP：试用截止列；已有永久行保持 expires_at=0。
+		`ALTER TABLE xiaozhi_mcp_entitlement ADD COLUMN expires_at BIGINT NOT NULL DEFAULT 0 COMMENT '0=永久；>0=试用截止'`,
 	}
 	for _, alterSQL := range alterCols {
 		if _, err := db.Exec(ctx, alterSQL); err != nil {
@@ -435,5 +469,13 @@ VALUES (?, ?, 'entitlement', 1, 1900, 0, 30, '', 1, ?)`,
 INSERT IGNORE INTO feeding_eligibility_scene (scene_key, required_days, min_records_per_day, updated_at)
 VALUES (?, 7, 10, ?), (?, 2, 10, ?)`,
 		SceneKeyUCGEntry, now, SceneKeyCareAlertEntry, now)
+	if err != nil {
+		return err
+	}
+	// 小智 MCP 永久 SKU：INSERT IGNORE 不覆盖运维改价/Apple ID。
+	_, err = db.Exec(ctx, `
+INSERT IGNORE INTO xiaozhi_mcp_product (product_code, title, price_fen, original_price_fen, apple_product_id, status, updated_at)
+VALUES (?, '小智 MCP 永久开通', 1900, 0, '', 1, ?)`,
+		XiaozhiMcpProductCodePerm, now)
 	return err
 }

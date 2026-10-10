@@ -49,6 +49,12 @@ window.ADMIN_MODULES = [
 		showInNav: true
 	},
 	{
+		id: 'cash-xiaozhi-mcp-admin',
+		title: '小智 MCP 开通',
+		pagePath: '/device/admin/cash-xiaozhi-mcp-admin.html',
+		showInNav: true
+	},
+	{
 		id: 'cash-feeding-eligibility-admin',
 		title: '喂养资格门槛',
 		pagePath: '/device/admin/cash-feeding-eligibility-admin.html',

@@ -77,6 +77,7 @@ func (h *InternalHTTP) handleUpsert(w http.ResponseWriter, r *http.Request) {
 		Id       int64  `json:"id"`
 		McpToken string `json:"mcpToken"`
 		DeviceNo string `json:"deviceNo"`
+		WxId     int64  `json:"wxId"`
 	}
 	if err := readJSON(r, &body); err != nil {
 		writeJSON(w, http.StatusBadRequest, jsonEnv{Code: 400, Message: "invalid json"})
@@ -91,6 +92,7 @@ func (h *InternalHTTP) handleUpsert(w http.ResponseWriter, r *http.Request) {
 		Id:       body.Id,
 		McpToken: body.McpToken,
 		DeviceNo: body.DeviceNo,
+		WxId:     body.WxId,
 	})
 	writeJSON(w, http.StatusOK, jsonEnv{Code: 0, Message: "OK"})
 }

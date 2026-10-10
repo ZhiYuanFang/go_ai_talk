@@ -17,6 +17,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	cashclient "hello/internal/clients/cash"
 	xiaozhimcpclient "hello/internal/clients/xiaozhimcp"
 	"hello/internal/dao"
 	"hello/internal/model/entity"
@@ -232,6 +233,11 @@ func ListXiaozhiMcpBindingsForWx(ctx context.Context, wxID int64) ([]XiaozhiMcpB
 func AddXiaozhiMcpBinding(ctx context.Context, wxID int64, mcpToken, alias, speakerMac string) (*XiaozhiMcpAddResult, error) {
 	if wxID <= 0 {
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "缺少登录用户")
+	}
+	// Add 前确保有效权益：可触发首次试用 claim；失败 fail-closed。
+	if unlockErr := cashclient.RemoteEnsureXiaozhiMcpAccessForAdd(ctx, wxID); unlockErr != nil {
+		glog.Warningf(ctx, "[xiaozhi-mcp-binding] ensure access failed wxId=%d err=%v", wxID, unlockErr)
+		return nil, gerror.WrapCode(gcode.CodeNotAuthorized, unlockErr, "请先开通或体验小智 MCP 后再添加绑定")
 	}
 	alias = strings.TrimSpace(alias)
 	mac, err := NormalizeSpeakerMac(speakerMac)

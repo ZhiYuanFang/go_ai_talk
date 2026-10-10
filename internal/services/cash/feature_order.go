@@ -279,6 +279,10 @@ func FulfillFeaturePaid(ctx context.Context, orderNo, channel, channelTxnID stri
 	if order.Status != OrderCreated {
 		return gerror.NewCode(gcode.CodeInvalidOperation, "订单状态不可支付")
 	}
+	// 小智 MCP 永久买断：独立履约，不走 ActivateFeature。
+	if IsXiaozhiMcpProductCode(order.ProductCode) {
+		return FulfillXiaozhiMcpPaid(ctx, orderNo, channel, channelTxnID, amountFen)
+	}
 	prod, err := GetActiveFeatureProduct(ctx, order.ProductCode)
 	if err != nil {
 		return err

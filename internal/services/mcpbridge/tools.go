@@ -6,6 +6,8 @@ import (
 	"os"
 	"strings"
 
+	cashclient "hello/internal/clients/cash"
+
 	"github.com/gogf/gf/v2/os/glog"
 )
 
@@ -53,20 +55,38 @@ func chatToolInputSchema() map[string]any {
 }
 
 // ChatHandler 封装 chat 工具的执行逻辑。
-// deviceNo 在构造时从环境变量注入（单设备绑定场景）。
 type ChatHandler struct {
-	deviceNo string
+	deviceNo             string
+	wxId                 int64
+	onEntitlementDenied  func() // 明确未开通时懒停桥
 }
 
 // NewChatHandler 构造 chat 工具 handler。
-// deviceNo 不能为空，由调用方（main.go）在启动阶段校验后传入。
-func NewChatHandler(deviceNo string) *ChatHandler {
-	return &ChatHandler{deviceNo: deviceNo}
+func NewChatHandler(deviceNo string, wxId int64) *ChatHandler {
+	return &ChatHandler{deviceNo: deviceNo, wxId: wxId}
 }
 
 // Handle 执行 chat 工具调用。
-// 流程：校验 transcript → 经 /voice/chat/ws 文模式对话 → 返回 answer。
+// 流程：校验开通 → transcript → /voice/chat/ws 文模式 → answer。
 func (h *ChatHandler) Handle(ctx context.Context, arguments map[string]any) *ToolsCallResult {
+	// 硬闸门：wx 须有效权益；缺 wxId 或未开通 fail-closed。
+	if h.wxId <= 0 {
+		glog.Warningf(ctx, "[mcp-bridge] tools/call missing wxId deviceNo=%s", h.deviceNo)
+		return NewErrorCallResult("绑定缺少账号信息，无法校验开通状态")
+	}
+	unlocked, err := cashclient.RemoteXiaozhiMcpUnlocked(ctx, h.wxId)
+	if err != nil {
+		glog.Warningf(ctx, "[mcp-bridge] entitlement check failed wxId=%d err=%v", h.wxId, err)
+		return NewErrorCallResult("暂时无法校验小智 MCP 开通状态，请稍后重试")
+	}
+	if !unlocked {
+		glog.Infof(ctx, "[mcp-bridge] entitlement denied wxId=%d deviceNo=%s", h.wxId, h.deviceNo)
+		if h.onEntitlementDenied != nil {
+			go h.onEntitlementDenied()
+		}
+		return NewErrorCallResult("小智 MCP 未开通或试用已过期，请先开通后再使用")
+	}
+
 	transcript := readTranscriptArg(arguments)
 	if transcript == "" {
 		return NewErrorCallResult("transcript 不能为空")

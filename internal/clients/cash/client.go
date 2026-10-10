@@ -256,6 +256,109 @@ func RemoteGrowthTrajectoryAccess(ctx context.Context, deviceNo string, wxID int
 	return &data, nil
 }
 
+// RemoteEnsureXiaozhiMcpAccessForAdd Add 前确保开通（可 claim 试用）；失败 fail-closed。
+func RemoteEnsureXiaozhiMcpAccessForAdd(ctx context.Context, wxID int64) error {
+	if wxID <= 0 {
+		return gerror.NewCode(gcode.CodeInvalidParameter, "wxId 无效")
+	}
+	c := remoteHTTP()
+	if c == nil || c.base == "" {
+		return gerror.NewCode(gcode.CodeInternalError, "CASH_SERVICE_URL 未配置")
+	}
+	if strings.TrimSpace(c.secret) == "" {
+		return gerror.NewCode(gcode.CodeInternalError, "DEVICE_GATEWAY_INTERNAL_SECRET 未配置")
+	}
+	body, _ := json.Marshal(map[string]interface{}{"wxId": wxID})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		c.base+"/cash/internal/api/xiaozhi-mcp/ensure-access-for-add",
+		strings.NewReader(string(body)))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(httpmeta.HeaderDeviceGatewayInternalSecret, c.secret)
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return gerror.NewCode(gcode.CodeOperationFailed, fmt.Sprintf("cash-service 不可达: %v", err))
+	}
+	defer resp.Body.Close()
+	rawBody, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+	if err != nil {
+		return err
+	}
+	var env gfEnvelope
+	if len(rawBody) > 0 {
+		if err = json.Unmarshal(rawBody, &env); err != nil {
+			return gerror.NewCode(gcode.CodeInternalError, "cash xiaozhi-mcp ensure 响应非 JSON")
+		}
+	}
+	if resp.StatusCode >= 400 || env.Code != 0 {
+		msg := strings.TrimSpace(env.Message)
+		if msg == "" {
+			msg = fmt.Sprintf("cash xiaozhi-mcp ensure HTTP %d", resp.StatusCode)
+		}
+		return gerror.NewCode(gcode.CodeOperationFailed, msg)
+	}
+	return nil
+}
+
+// RemoteXiaozhiMcpUnlocked 供 device/mcp 校验小智 MCP 有效能力（fail-closed：err 时调用方应拒绝）。
+func RemoteXiaozhiMcpUnlocked(ctx context.Context, wxID int64) (bool, error) {
+	if wxID <= 0 {
+		return false, gerror.NewCode(gcode.CodeInvalidParameter, "wxId 无效")
+	}
+	c := remoteHTTP()
+	if c == nil || c.base == "" {
+		return false, gerror.NewCode(gcode.CodeInternalError, "CASH_SERVICE_URL 未配置")
+	}
+	if strings.TrimSpace(c.secret) == "" {
+		return false, gerror.NewCode(gcode.CodeInternalError, "DEVICE_GATEWAY_INTERNAL_SECRET 未配置")
+	}
+	u, err := url.Parse(c.base + "/cash/internal/api/xiaozhi-mcp/entitlement")
+	if err != nil {
+		return false, err
+	}
+	q := u.Query()
+	q.Set("wxId", strconv.FormatInt(wxID, 10))
+	u.RawQuery = q.Encode()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return false, err
+	}
+	req.Header.Set(httpmeta.HeaderDeviceGatewayInternalSecret, c.secret)
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return false, gerror.NewCode(gcode.CodeOperationFailed, fmt.Sprintf("cash-service 不可达: %v", err))
+	}
+	defer resp.Body.Close()
+	rawBody, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+	if err != nil {
+		return false, err
+	}
+	var env gfEnvelope
+	if len(rawBody) > 0 {
+		if err = json.Unmarshal(rawBody, &env); err != nil {
+			return false, gerror.NewCode(gcode.CodeInternalError, "cash xiaozhi-mcp 响应非 JSON")
+		}
+	}
+	if resp.StatusCode >= 400 || env.Code != 0 {
+		msg := strings.TrimSpace(env.Message)
+		if msg == "" {
+			msg = fmt.Sprintf("cash xiaozhi-mcp HTTP %d", resp.StatusCode)
+		}
+		return false, gerror.NewCode(gcode.CodeOperationFailed, msg)
+	}
+	var data struct {
+		Unlocked bool `json:"unlocked"`
+	}
+	if len(env.Data) > 0 && string(env.Data) != "null" {
+		if err = json.Unmarshal(env.Data, &data); err != nil {
+			return false, gerror.NewCode(gcode.CodeInternalError, "解析 cash xiaozhi-mcp 响应失败")
+		}
+	}
+	return data.Unlocked, nil
+}
+
 // RemoteClaimFeatureTrial 供 voice 在成功落库后 claim 试用（幂等）。
 func RemoteClaimFeatureTrial(ctx context.Context, wxID int64, featureID string) error {
 	featureID = strings.TrimSpace(featureID)

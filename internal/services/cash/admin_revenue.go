@@ -199,14 +199,35 @@ func AdminRevenueSummary(ctx context.Context, win RevenueWindow) (RevenueSummary
 		return out, err
 	}
 	out.Features = features
+	mcpFen, err := sumXiaozhiMcpPaid(ctx, win)
+	if err != nil {
+		return out, err
+	}
+	if mcpFen > 0 {
+		out.Features = append(out.Features, RevenueFeatureLine{Name: "小智 MCP", AmountFen: mcpFen})
+	}
 	inFen, outFen, err := sumManualByDirection(ctx, win)
 	if err != nil {
 		return out, err
 	}
 	out.ManualInFen = inFen
 	out.ManualOutFen = outFen
-	out.NetFen = vip + featureSum + inFen - outFen
+	out.NetFen = vip + featureSum + mcpFen + inFen - outFen
 	return out, nil
+}
+
+// sumXiaozhiMcpPaid 小智 MCP 专用商品实付合计（独立于 feature 分组，单独一行展示）。
+func sumXiaozhiMcpPaid(ctx context.Context, win RevenueWindow) (int, error) {
+	sql := `SELECT COALESCE(SUM(amount_fen),0) FROM feature_order
+WHERE status=? AND channel IN (?,?) AND product_code=?
+AND (?=0 OR paid_at>=?) AND (?=0 OR paid_at<?)`
+	v, err := g.DB().GetValue(ctx, sql,
+		OrderPaid, ChannelAlipay, ChannelAppleIAP, XiaozhiMcpProductCodePerm,
+		win.Start, win.Start, win.End, win.End)
+	if err != nil {
+		return 0, err
+	}
+	return v.Int(), nil
 }
 
 func normalizeLedgerFields(direction, name string, amountFen int) (string, string, error) {
@@ -249,12 +270,13 @@ FROM feature_order fo
 LEFT JOIN feature_product fp ON fp.product_code = fo.product_code
 LEFT JOIN feature_def fd ON fd.feature_id = fp.feature_id
 WHERE fo.status=? AND fo.channel IN (?,?)
+AND fo.product_code <> ?
 AND (?=0 OR fo.paid_at>=?) AND (?=0 OR fo.paid_at<?)
 GROUP BY
   IF(IFNULL(fp.feature_id,'')='', fo.product_code, fp.feature_id),
   IF(IFNULL(fp.feature_id,'')='', fo.product_code, IF(IFNULL(fd.title,'')='', fp.feature_id, fd.title))
 ORDER BY amount_fen DESC`
-	rows, err := g.DB().GetAll(ctx, sql, paidSumArgs(win)...)
+	rows, err := g.DB().GetAll(ctx, sql, paidSumArgsFeature(win)...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -294,6 +316,15 @@ GROUP BY direction`
 func paidSumArgs(win RevenueWindow) []interface{} {
 	return []interface{}{
 		OrderPaid, ChannelAlipay, ChannelAppleIAP,
+		win.Start, win.Start, win.End, win.End,
+	}
+}
+
+// paidSumArgsFeature 功能实付求和：排除小智 MCP 专用 product_code（独立商品，不进开通功能汇总）。
+func paidSumArgsFeature(win RevenueWindow) []interface{} {
+	return []interface{}{
+		OrderPaid, ChannelAlipay, ChannelAppleIAP,
+		XiaozhiMcpProductCodePerm,
 		win.Start, win.Start, win.End, win.End,
 	}
 }

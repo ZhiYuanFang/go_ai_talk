@@ -20,6 +20,7 @@ type BindingSpec struct {
 	Id       int64
 	McpToken string
 	DeviceNo string
+	WxId     int64 // 开通主体；tools/call 校验用
 }
 
 // bridgeSession 单条绑定的运行态。
@@ -28,6 +29,7 @@ type bridgeSession struct {
 	id       int64
 	token    string
 	deviceNo string
+	wxId     int64
 }
 
 // Manager 维护 token → Bridge 会话与连接态。
@@ -65,7 +67,7 @@ func NewManager(rootCtx context.Context, baseURL string, reconnectMin, reconnect
 }
 
 // Upsert 启动或更新一条 Bridge。
-// 同 token 且 deviceNo 不变：仅刷新 binding id；deviceNo 变化：重建会话。
+// 同 token 且 deviceNo/wxId 不变：仅刷新 binding id；变化则重建会话。
 func (m *Manager) Upsert(parent context.Context, spec BindingSpec) {
 	token := strings.TrimSpace(spec.McpToken)
 	deviceNo := strings.TrimSpace(spec.DeviceNo)
@@ -76,13 +78,13 @@ func (m *Manager) Upsert(parent context.Context, spec BindingSpec) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if cur, ok := m.sessions[token]; ok {
-		if cur.deviceNo == deviceNo {
+		if cur.deviceNo == deviceNo && cur.wxId == spec.WxId {
 			cur.id = spec.Id
-			glog.Infof(parent, "[mcp-manager] upsert noop token=%s deviceNo=%s id=%d", maskTokenValue(token), deviceNo, spec.Id)
+			glog.Infof(parent, "[mcp-manager] upsert noop token=%s deviceNo=%s wxId=%d id=%d", maskTokenValue(token), deviceNo, spec.WxId, spec.Id)
 			return
 		}
-		// deviceNo 变更：停旧桥再启新桥。
-		glog.Infof(parent, "[mcp-manager] upsert rebuild token=%s oldDevice=%s newDevice=%s", maskTokenValue(token), cur.deviceNo, deviceNo)
+		glog.Infof(parent, "[mcp-manager] upsert rebuild token=%s oldDevice=%s newDevice=%s oldWx=%d newWx=%d",
+			maskTokenValue(token), cur.deviceNo, deviceNo, cur.wxId, spec.WxId)
 		cur.cancel()
 		delete(m.sessions, token)
 		delete(m.connected, token)
@@ -149,7 +151,7 @@ func (m *Manager) Reconcile(parent context.Context, desired []BindingSpec) {
 			m.startLocked(parent, spec)
 			continue
 		}
-		if cur.deviceNo != spec.DeviceNo {
+		if cur.deviceNo != spec.DeviceNo || cur.wxId != spec.WxId {
 			glog.Infof(parent, "[mcp-manager] reconcile rebuild token=%s", maskTokenValue(token))
 			cur.cancel()
 			delete(m.sessions, token)
@@ -215,15 +217,21 @@ func (m *Manager) startLocked(logCtx context.Context, spec BindingSpec) {
 		id:       spec.Id,
 		token:    token,
 		deviceNo: deviceNo,
+		wxId:     spec.WxId,
 	}
 	m.sessions[token] = sess
 	delete(m.connected, token) // 新会话初始未连通
-	bridge := NewBridge(m.baseURL, token, deviceNo, m.reconnectMin, m.reconnectMax)
+	bridge := NewBridge(m.baseURL, token, deviceNo, spec.WxId, m.reconnectMin, m.reconnectMax)
 	tokenCopy := token
 	bridge.SetOnConnectionChange(func(on bool) {
 		m.markConnected(tokenCopy, on)
 	})
-	glog.Infof(logCtx, "[mcp-manager] start bridge id=%d token=%s deviceNo=%s", spec.Id, maskTokenValue(token), deviceNo)
+	// 明确未开通时懒停：tools 拒答后回调 Remove。
+	bridge.SetOnEntitlementDenied(func() {
+		m.Remove(context.Background(), spec.Id, tokenCopy)
+	})
+	glog.Infof(logCtx, "[mcp-manager] start bridge id=%d token=%s deviceNo=%s wxId=%d",
+		spec.Id, maskTokenValue(token), deviceNo, spec.WxId)
 	go func() {
 		if err := bridge.Run(runCtx); err != nil {
 			if runCtx.Err() != nil {

@@ -28,6 +28,7 @@ func PullAndReconcile(ctx context.Context, m *Manager) error {
 			Id:       it.Id,
 			McpToken: it.McpToken,
 			DeviceNo: it.DeviceNo,
+			WxId:     it.WxId,
 		})
 	}
 	m.Reconcile(ctx, desired)

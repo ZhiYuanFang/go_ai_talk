@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>小智 MCP 开通</title>
+	<link rel="stylesheet" href="/resource/public/pangbao-theme.css" />
+	<link rel="stylesheet" href="/resource/public/admin-pages.css" />
+	<style>
+		.hint { font-size: 12px; color: #64748b; line-height: 1.55; margin: 0 0 14px; }
+		.form-stack { display: flex; flex-direction: column; gap: 12px; max-width: 640px; margin-bottom: 14px; }
+		.field { display: flex; flex-direction: column; gap: 4px; }
+		.field label { font-size: 12px; color: #334155; font-weight: 600; }
+		.field .sub { font-size: 11px; color: #94a3b8; line-height: 1.35; }
+		.field input, .field select { font-size: 13px; padding: 6px 8px; max-width: 360px; }
+		.btn-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+		.btn-row button { min-width: 120px; }
+		.hub-sec { margin-top: 22px; padding-top: 12px; border-top: 1px solid #e2e8f0; }
+		.hub-sec h3 { margin: 0 0 8px; font-size: 15px; }
+	</style>
+</head>
+<body>
+<div class="page">
+	<header class="admin-header glass">
+		<div class="logo">MCP</div>
+		<div>
+			<h1>小智 MCP 开通</h1>
+			<p>永久买断 SKU 与手工授 · 独立于开通功能管理 · <a href="/device/admin">运维 Hub</a></p>
+		</div>
+	</header>
+	<div class="card glass hidden" id="mainCard">
+		<p class="hint">
+			区 A 配置唯一永久商品（编码只读）。区 B 向 wx 手工授永久能力或撤销最近一笔手工授。
+			Flutter / Hub 添加绑定均须已开通。静态页样式不对请 <strong>Ctrl+F5</strong>。
+		</p>
+
+		<section class="hub-sec" style="border-top:none;margin-top:0;padding-top:0;">
+			<h3>区 A · SKU</h3>
+			<div class="form-stack">
+				<div class="field">
+					<label>商品编码（只读）</label>
+					<input id="productCode" readonly />
+				</div>
+				<div class="field">
+					<label>标题</label>
+					<input id="title" type="text" maxlength="128" />
+				</div>
+				<div class="field">
+					<label>现价（分）</label>
+					<input id="priceFen" type="number" min="0" />
+				</div>
+				<div class="field">
+					<label>原价（分）</label>
+					<span class="sub">0 表示不展示划线价</span>
+					<input id="origFen" type="number" min="0" />
+				</div>
+				<div class="field">
+					<label>Apple 商品 ID</label>
+					<input id="applePid" type="text" maxlength="128" placeholder="ASC Product ID" />
+				</div>
+				<div class="field">
+					<label>上下架</label>
+					<select id="status">
+						<option value="1">上架</option>
+						<option value="0">下架</option>
+					</select>
+				</div>
+				<div class="btn-row">
+					<button id="saveSkuBtn" type="button">保存 SKU</button>
+					<button id="reloadSkuBtn" type="button" class="secondary">刷新</button>
+				</div>
+			</div>
+		</section>
+
+		<section class="hub-sec">
+			<h3>区 B · 手工授</h3>
+			<p class="hint">写入 admin 订单痕迹 + 永久权益。撤销仅作用于最近一笔仍有效的手工授（支付开通不可由此撤销）。</p>
+			<div class="form-stack">
+				<div class="field">
+					<label>wxId</label>
+					<input id="grantWxId" type="text" inputmode="numeric" placeholder="账号 wx 主键" />
+				</div>
+				<div class="field">
+					<label>授权理由（必填）</label>
+					<input id="grantReason" type="text" maxlength="256" placeholder="补单/赠送等原因" />
+				</div>
+				<div class="btn-row">
+					<button id="grantBtn" type="button">授予永久开通</button>
+					<button id="revokeBtn" type="button" class="secondary">撤销最近手工授</button>
+				</div>
+			</div>
+		</section>
+
+		<div id="msg" class="msg"></div>
+	</div>
+</div>
+<script src="/resource/public/admin-common.js"></script>
+<script>
+(async function () {
+	const msg = document.getElementById('msg');
+	const show = (t, ok) => { msg.textContent = t; msg.style.color = ok ? '#059669' : '#dc2626'; };
+	try {
+		await AdminCommon.requireAdmin();
+		document.getElementById('mainCard').classList.remove('hidden');
+	} catch (e) { return; }
+
+	async function loadSku() {
+		const d = await AdminCommon.adminFetch('/cash/admin/api/xiaozhi-mcp/product');
+		productCode.value = d.productCode || '';
+		title.value = d.title || '';
+		priceFen.value = d.priceFen ?? 0;
+		origFen.value = d.originalPriceFen ?? 0;
+		applePid.value = d.appleProductId || '';
+		status.value = String(d.status ?? 1);
+	}
+
+	document.getElementById('reloadSkuBtn').onclick = () => loadSku().then(() => show('已刷新', true)).catch(e => show(e.message || e, false));
+	document.getElementById('saveSkuBtn').onclick = async () => {
+		try {
+			await AdminCommon.adminFetch('/cash/admin/api/xiaozhi-mcp/product', {
+				method: 'POST',
+				body: JSON.stringify({
+					title: title.value,
+					priceFen: Number(priceFen.value) || 0,
+					originalPriceFen: Number(origFen.value) || 0,
+					appleProductId: applePid.value,
+					status: Number(status.value)
+				})
+			});
+			show('SKU 已保存', true);
+			await loadSku();
+		} catch (e) { show(e.message || String(e), false); }
+	};
+
+	document.getElementById('grantBtn').onclick = async () => {
+		try {
+			const wxId = Number(grantWxId.value);
+			if (!wxId) throw new Error('请填写 wxId');
+			const data = await AdminCommon.adminFetch('/cash/admin/api/xiaozhi-mcp/grants', {
+				method: 'POST',
+				body: JSON.stringify({ wxId, reason: grantReason.value })
+			});
+			show('已授予 orderNo=' + (data.orderNo || ''), true);
+		} catch (e) { show(e.message || String(e), false); }
+	};
+	document.getElementById('revokeBtn').onclick = async () => {
+		try {
+			const wxId = Number(grantWxId.value);
+			if (!wxId) throw new Error('请填写 wxId');
+			if (!confirm('确认撤销 wxId=' + wxId + ' 的最近手工授？')) return;
+			await AdminCommon.adminFetch('/cash/admin/api/xiaozhi-mcp/grants/revoke', {
+				method: 'POST',
+				body: JSON.stringify({ wxId })
+			});
+			show('已撤销手工授', true);
+		} catch (e) { show(e.message || String(e), false); }
+	};
+
+	await loadSku().catch(e => show(e.message || e, false));
+})();
+</script>
+</body>
+</html>

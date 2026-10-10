@@ -222,6 +222,14 @@ func refundFeatureOrder(ctx context.Context, order *FeatureOrder) error {
 	if !wasPaid {
 		return nil
 	}
+	// 小智 MCP 订单退款：撤永久能力，不走 feature 权益表。
+	if IsXiaozhiMcpProductCode(order.ProductCode) {
+		if err := RevokeXiaozhiMcpGrantForOrder(ctx, order); err != nil {
+			return err
+		}
+		glog.Infof(ctx, "[cash] apple refund xiaozhi-mcp orderNo=%s", order.OrderNo)
+		return nil
+	}
 	if err := RevokeFeatureGrantForOrder(ctx, order); err != nil {
 		return err
 	}
@@ -231,6 +239,9 @@ func refundFeatureOrder(ctx context.Context, order *FeatureOrder) error {
 
 // RevokeFeatureGrantForOrder 按付款订单撤销功能权益（幂等：已过期/已扣减可重复调用）。
 func RevokeFeatureGrantForOrder(ctx context.Context, order *FeatureOrder) error {
+	if order != nil && IsXiaozhiMcpProductCode(order.ProductCode) {
+		return RevokeXiaozhiMcpGrantForOrder(ctx, order)
+	}
 	prod, err := loadFeatureProductAnyStatus(ctx, order.ProductCode)
 	if err != nil {
 		return err

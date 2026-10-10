@@ -130,7 +130,7 @@
         </div>
         <p class="muted" style="margin:0 0 10px;">
             须先在上方 <strong>AI 调试台</strong> 完成 App 登录（共用登录态）。列表为当前登录账号下的绑定（脱敏 token）；添加时服务端使用该账号已绑宝宝设备号。
-            登录设备与当前页不一致时<strong>禁止添加</strong>，避免串号。
+            登录设备与当前页不一致时<strong>禁止添加</strong>，避免串号。添加还须该账号已开通小智 MCP（付费或运维手工授）。
         </p>
         <p id="xiaozhiMcpGateTip" class="muted" style="margin:0 0 10px;">请先 App 登录后再管理小智绑定。</p>
         <div class="meta-row" style="flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px;">
@@ -772,12 +772,13 @@
             const bound = String((getAppMeta().deviceNo || '')).trim();
             return !!(bound && deviceNo && bound === deviceNo);
         }
-        function refreshAppLoginStatus(){
+        async function refreshAppLoginStatus(){
             const el = document.getElementById('appLoginStatus');
             if(!el) return;
             const tok = getAppToken();
             if(!tok){
                 el.textContent = '未登录';
+                xiaozhiMcpUnlocked = false;
                 syncXiaozhiMcpGate();
                 loadXiaozhiMcpBindings().catch(function(){});
                 return;
@@ -789,9 +790,21 @@
                 tip += ' ⚠ 与当前页设备不一致';
             }
             el.textContent = tip;
+            await fetchXiaozhiMcpUnlock();
             syncXiaozhiMcpGate();
         }
-        // —— 小智 MCP 绑定：复用 App token；串号禁止添加 ——
+        // —— 小智 MCP 绑定：复用 App token；串号禁止添加；须已开通永久能力 ——
+        let xiaozhiMcpUnlocked = false;
+        async function fetchXiaozhiMcpUnlock(){
+            if(!getAppToken()){ xiaozhiMcpUnlocked = false; return false; }
+            try {
+                const data = await appFetchJson('GET', '/cash/app/api/xiaozhi-mcp/unlock');
+                xiaozhiMcpUnlocked = !!(data && data.unlocked);
+            } catch(e){
+                xiaozhiMcpUnlocked = false;
+            }
+            return xiaozhiMcpUnlocked;
+        }
         function syncXiaozhiMcpGate(){
             const tip = document.getElementById('xiaozhiMcpGateTip');
             const aliasIn = document.getElementById('xiaozhiAliasInput');
@@ -822,7 +835,15 @@
                 addBtn.disabled = true;
                 return;
             }
-            tip.textContent = '已登录且设备一致，可添加/改备注/删除。同 MAC 再添加将更新 token。绿灯=已连小智，红灯=未连接。';
+            if(!xiaozhiMcpUnlocked){
+                tip.textContent = '当前账号未开通小智 MCP：可查看/删除已有绑定，但禁止添加。可在 App 体验一次（24h）或付费永久开通，或由运维在「小智 MCP 开通」页手工授。';
+                aliasIn.disabled = true;
+                if(macIn) macIn.disabled = true;
+                tokenIn.disabled = true;
+                addBtn.disabled = true;
+                return;
+            }
+            tip.textContent = '已开通且设备一致，可添加/改备注/删除。同 MAC 再添加将更新 token。绿灯=已连小智，红灯=未连接。';
             aliasIn.disabled = false;
             if(macIn) macIn.disabled = false;
             tokenIn.disabled = false;
@@ -916,6 +937,8 @@
             if(d.deviceNo && deviceNo && String(d.deviceNo).trim() !== deviceNo){
                 alert('登录账号绑定设备 ' + d.deviceNo + ' 与当前页 ' + deviceNo + ' 不一致，调试可能串号；小智绑定将禁止添加');
             }
+            await fetchXiaozhiMcpUnlock();
+            syncXiaozhiMcpGate();
             loadXiaozhiMcpBindings().catch(function(){});
         }
         function appendLog(el, line){
@@ -1035,8 +1058,9 @@
                     } catch(e){ alert(e.message || e); }
                 });
             }
-            refreshAppLoginStatus();
-            if(getAppToken()){ loadXiaozhiMcpBindings().catch(function(){}); }
+            refreshAppLoginStatus().then(function(){
+                if(getAppToken()){ loadXiaozhiMcpBindings().catch(function(){}); }
+            }).catch(function(){});
         }
         window.handleVoiceWSMessage = function(data){ console.log('[voice-ws]', data); };
 

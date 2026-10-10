@@ -37,17 +37,27 @@ type Bridge struct {
 	baseURL      string // 接入点基址，如 wss://api.xiaozhi.me/mcp/
 	token        string // 接入点 token（拼接到 baseURL 的 query）
 	deviceNo     string // 绑定的设备号（注入 chat handler）
+	wxId         int64  // 开通主体（注入 chat handler）
 	chat         *ChatHandler
 	reconnectMin time.Duration
 	reconnectMax time.Duration
 	dialer       *websocket.Dialer
 	writeMu      sync.Mutex           // 串行化 WebSocket 写，避免帧交错
 	onConnChange func(connected bool) // 读循环进出时上报连接态（可为 nil）
+	onEntDenied  func()               // 明确未开通拒答后懒停（可为 nil）
 }
 
 // SetOnConnectionChange 设置连接态回调：true=进入读循环，false=离开读循环。
 func (b *Bridge) SetOnConnectionChange(fn func(connected bool)) {
 	b.onConnChange = fn
+}
+
+// SetOnEntitlementDenied 设置「明确未开通」回调，供懒停桥。
+func (b *Bridge) SetOnEntitlementDenied(fn func()) {
+	b.onEntDenied = fn
+	if b.chat != nil {
+		b.chat.onEntitlementDenied = fn
+	}
 }
 
 // reportConn 安全调用连接态回调。
@@ -58,9 +68,8 @@ func (b *Bridge) reportConn(on bool) {
 }
 
 // NewBridge 构造 Bridge。
-// baseURL / token / deviceNo 由 main.go 从环境变量读取并校验后传入。
 // reconnectMin / reconnectMax 为 0 时使用默认值。
-func NewBridge(baseURL, token, deviceNo string, reconnectMin, reconnectMax time.Duration) *Bridge {
+func NewBridge(baseURL, token, deviceNo string, wxId int64, reconnectMin, reconnectMax time.Duration) *Bridge {
 	if reconnectMin <= 0 {
 		reconnectMin = defaultReconnectMin
 	}
@@ -73,7 +82,8 @@ func NewBridge(baseURL, token, deviceNo string, reconnectMin, reconnectMax time.
 		baseURL:      baseURL,
 		token:        strings.TrimSpace(token),
 		deviceNo:     strings.TrimSpace(deviceNo),
-		chat:         NewChatHandler(deviceNo),
+		wxId:         wxId,
+		chat:         NewChatHandler(deviceNo, wxId),
 		reconnectMin: reconnectMin,
 		reconnectMax: reconnectMax,
 		// 复用 gorilla/websocket 默认 Dialer，仅覆盖握手超时。

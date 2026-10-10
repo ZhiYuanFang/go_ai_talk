@@ -66,7 +66,7 @@ func VerifyAppleIAP(ctx context.Context, wxID int64, in AppleVerifyInput) error 
 		return gerror.NewCode(gcode.CodeInvalidParameter, "生产环境须提交 signedTransaction（JWS）；开发可设 CASH_PAYMENT_DEV_BYPASS=1")
 	}
 
-	// 功能订单优先：已有 orderNo 属于 feature_order，或 Apple ID 命中功能 SKU。
+	// 功能/小智 MCP 订单优先：已有 orderNo 属于 feature_order，或 Apple ID 命中 SKU。
 	if orderNo != "" {
 		if ok, _ := EnsureFeatureOrderExists(ctx, orderNo); ok {
 			fo, err := loadFeatureOrderByNo(ctx, orderNo)
@@ -75,6 +75,16 @@ func VerifyAppleIAP(ctx context.Context, wxID int64, in AppleVerifyInput) error 
 			}
 			if fo.WxId != wxID && fo.WxId != 0 {
 				return gerror.NewCode(gcode.CodeNotAuthorized, "订单不属于当前账号")
+			}
+			if IsXiaozhiMcpProductCode(fo.ProductCode) {
+				prod, err := GetXiaozhiMcpProduct(ctx, fo.ProductCode)
+				if err != nil {
+					return err
+				}
+				if expect := strings.TrimSpace(prod.AppleProductId); expect != "" && productID != expect {
+					return gerror.NewCode(gcode.CodeInvalidParameter, "productId 与小智 MCP 商品不匹配")
+				}
+				return FulfillXiaozhiMcpPaid(ctx, orderNo, ChannelAppleIAP, txn, prod.PriceFen)
 			}
 			prod, err := GetActiveFeatureProduct(ctx, fo.ProductCode)
 			if err != nil {
@@ -85,6 +95,12 @@ func VerifyAppleIAP(ctx context.Context, wxID int64, in AppleVerifyInput) error 
 			}
 			return FulfillFeaturePaid(ctx, orderNo, ChannelAppleIAP, txn, prod.PriceFen)
 		}
+	}
+	if mp, err := GetXiaozhiMcpProductByAppleID(ctx, productID); err == nil && mp != nil {
+		if orderNo == "" {
+			return gerror.NewCode(gcode.CodeInvalidParameter, "小智 MCP Apple 验单须提供 orderNo")
+		}
+		return FulfillXiaozhiMcpPaid(ctx, orderNo, ChannelAppleIAP, txn, mp.PriceFen)
 	}
 	if fp, err := GetFeatureProductByAppleID(ctx, productID); err == nil && fp != nil {
 		if orderNo == "" {

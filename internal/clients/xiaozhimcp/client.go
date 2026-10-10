@@ -22,18 +22,22 @@ import (
 )
 
 // BindingUpsert 通知 mcp Manager 启动或更新一条 Bridge。
-// Args: id 绑定主键；token 小智 MCP token；deviceNo 喂养落点。
+// Args: id 绑定主键；token；deviceNo 喂养落点；wxId 开通主体（tools 校验用）。
 // Returns: 网络/鉴权/业务错误；调用方失败时不应回滚 DB。
-func BindingUpsert(ctx context.Context, id int64, token, deviceNo string) error {
+func BindingUpsert(ctx context.Context, id int64, token, deviceNo string, wxId int64) error {
 	token = strings.TrimSpace(token)
 	deviceNo = strings.TrimSpace(deviceNo)
 	if token == "" || deviceNo == "" {
 		return gerror.NewCode(gcode.CodeInvalidParameter, "token/deviceNo 不能为空")
 	}
+	if wxId <= 0 {
+		return gerror.NewCode(gcode.CodeInvalidParameter, "wxId 无效")
+	}
 	_, err := postJSON(ctx, "/xiaozhi-mcp/internal/api/bindings/upsert", map[string]interface{}{
 		"id":       id,
 		"mcpToken": token,
 		"deviceNo": deviceNo,
+		"wxId":     wxId,
 	})
 	return err
 }

@@ -72,7 +72,7 @@ func (c *DeviceAppXiaozhiMcpCtrl) Add(ctx context.Context, req *v1.DeviceAppXiao
 				glog.Warningf(ctx, "[xiaozhi-mcp-binding] remove old notify failed id=%d err=%v", full.Id, err)
 			}
 		}
-		if err := xiaozhimcpclient.BindingUpsert(ctx, full.Id, full.McpToken, full.DeviceNo); err != nil {
+		if err := xiaozhimcpclient.BindingUpsert(ctx, full.Id, full.McpToken, full.DeviceNo, full.WxId); err != nil {
 			glog.Warningf(ctx, "[xiaozhi-mcp-binding] upsert notify failed id=%d err=%v", full.Id, err)
 		}
 	}

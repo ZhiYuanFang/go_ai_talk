@@ -12,6 +12,7 @@ func RegisterCashServiceHTTP(s *ghttp.Server) {
 		group.Middleware(ghttp.MiddlewareHandlerResponse)
 		group.Bind(&cashctrl.CashVipController{})
 		group.Bind(&cashctrl.CashFeatureController{})
+		group.Bind(&cashctrl.CashXiaozhiMcpController{})
 	})
 	cashctrl.RegisterAlipayNotify(s)
 	cashctrl.RegisterAppleNotifications(s)
