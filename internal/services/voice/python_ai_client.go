@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -892,6 +893,96 @@ func (c *PythonAIClient) DedupeIntentCache(ctx context.Context) (*IntentCacheDed
 	var out IntentCacheDedupeResult
 	if err := json.Unmarshal(body, &out); err != nil {
 		return nil, fmt.Errorf("解析意图缓存 dedupe 失败: %w", err)
+	}
+	return &out, nil
+}
+
+// RuleGapsListResult Python /v1/admin/rule-gaps 列表响应。
+type RuleGapsListResult struct {
+	Total  int                      `json:"total"`
+	Offset int                      `json:"offset"`
+	Limit  int                      `json:"limit"`
+	Items  []map[string]interface{} `json:"items"`
+}
+
+// RuleGapPatchResult Python PATCH rule-gaps 响应。
+type RuleGapPatchResult struct {
+	Ok     bool   `json:"ok"`
+	Id     string `json:"id"`
+	Status string `json:"status"`
+}
+
+// ListRuleGaps 分页列出规则缺口收件箱（透传 Python JSONL 行字段）。
+//
+// Args: offset/limit；dimension/status 空串表示不过滤（与 Python 一致）。
+func (c *PythonAIClient) ListRuleGaps(ctx context.Context, offset, limit int, dimension, status string) (*RuleGapsListResult, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	q := fmt.Sprintf("offset=%d&limit=%d", offset, limit)
+	if d := strings.TrimSpace(dimension); d != "" {
+		q += "&dimension=" + url.QueryEscape(d)
+	}
+	if s := strings.TrimSpace(status); s != "" {
+		q += "&status=" + url.QueryEscape(s)
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/v1/admin/rule-gaps?"+q, nil)
+	if err != nil {
+		return nil, fmt.Errorf("创建规则缺口列表请求失败: %w", err)
+	}
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("调用 Python 规则缺口列表失败: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Python 规则缺口列表错误 %d: %s", resp.StatusCode, string(body))
+	}
+	var out RuleGapsListResult
+	if err := json.Unmarshal(body, &out); err != nil {
+		return nil, fmt.Errorf("解析规则缺口列表失败: %w", err)
+	}
+	if out.Items == nil {
+		out.Items = []map[string]interface{}{}
+	}
+	return &out, nil
+}
+
+// PatchRuleGapStatus 更新缺口 status（如 dismissed）。
+func (c *PythonAIClient) PatchRuleGapStatus(ctx context.Context, gapID, status string) (*RuleGapPatchResult, error) {
+	gid := strings.TrimSpace(gapID)
+	st := strings.TrimSpace(status)
+	if gid == "" {
+		return nil, fmt.Errorf("gap id 为空")
+	}
+	if st == "" {
+		return nil, fmt.Errorf("status 为空")
+	}
+	payload, _ := json.Marshal(map[string]string{"status": st})
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPatch, c.baseURL+"/v1/admin/rule-gaps/"+url.PathEscape(gid), strings.NewReader(string(payload)))
+	if err != nil {
+		return nil, fmt.Errorf("创建规则缺口 PATCH 请求失败: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("调用 Python 规则缺口 PATCH 失败: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, fmt.Errorf("缺口不存在")
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Python 规则缺口 PATCH 错误 %d: %s", resp.StatusCode, string(body))
+	}
+	var out RuleGapPatchResult
+	if err := json.Unmarshal(body, &out); err != nil {
+		return nil, fmt.Errorf("解析规则缺口 PATCH 失败: %w", err)
 	}
 	return &out, nil
 }
