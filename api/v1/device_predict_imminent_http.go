@@ -40,3 +40,15 @@ type VoiceInternalPredictImminentPendingGetReq struct {
 type VoiceInternalPredictImminentPendingGetRes struct {
 	Events []PredictImminentPendingEventItem `json:"events" dc:"当前待办列表；无键时为空数组"`
 }
+
+// VoiceAdminPredictImminentPendingGetReq Hub 管理端按 deviceNo 只读 imminent 待办。
+// 须经 voice Admin 口令（gateway 注入 X-Admin-Password）；缺键返回空 events；不改写 Redis。
+type VoiceAdminPredictImminentPendingGetReq struct {
+	g.Meta   `path:"/voice/admin/api/predict/imminent/pending" method:"get" tags:"voice-admin" summary:"管理端-预测临近待办列表"`
+	DeviceNo string `json:"deviceNo" in:"query" v:"required" dc:"宝宝设备号"`
+}
+
+// VoiceAdminPredictImminentPendingGetRes 管理端读响应；字段与 App PUT / internal GET 对齐。
+type VoiceAdminPredictImminentPendingGetRes struct {
+	Events []PredictImminentPendingEventItem `json:"events" dc:"当前待办列表；无键时为空数组"`
+}

@@ -22,6 +22,8 @@ func RegisterVoiceServiceHTTP(s *ghttp.Server) {
 		group.Bind(voicectrl.NewVoiceAdminIntentVectorsCtrl())
 		group.Bind(voicectrl.NewVoiceAdminTypeVectorsCtrl())
 		group.Bind(voicectrl.NewVoiceAdminRuleGapsCtrl())
+		// Hub 预测上报只读：imminent + active-eta（Admin 口令；非 InternalSecret）。
+		group.Bind(voicectrl.NewVoiceAdminPredictReportCtrl())
 		// tip SSE / clinic|tip HTTP 飞轮已下线（remove-tip-and-clinic-feedback）；care-alert / growth-trajectory 保留。
 		group.Bind(&voicectrl.DeviceCareAlertController{})
 		group.Bind(&voicectrl.DeviceGrowthTrajectoryController{})

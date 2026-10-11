@@ -38,3 +38,15 @@ type VoiceInternalPredictActiveEtaGetReq struct {
 type VoiceInternalPredictActiveEtaGetRes struct {
 	Items []PredictActiveEtaItem `json:"items" dc:"当前 ETA 列表；无键时为空数组"`
 }
+
+// VoiceAdminPredictActiveEtaGetReq Hub 管理端按 deviceNo 只读进行中 ETA。
+// 须经 voice Admin 口令（gateway 注入 X-Admin-Password）；缺键返回空 items；不改写 Redis。
+type VoiceAdminPredictActiveEtaGetReq struct {
+	g.Meta   `path:"/voice/admin/api/predict/active-eta" method:"get" tags:"voice-admin" summary:"管理端-进行中计时 ETA 列表"`
+	DeviceNo string `json:"deviceNo" in:"query" v:"required" dc:"宝宝设备号"`
+}
+
+// VoiceAdminPredictActiveEtaGetRes 管理端读响应；字段与 App PUT / internal GET 对齐。
+type VoiceAdminPredictActiveEtaGetRes struct {
+	Items []PredictActiveEtaItem `json:"items" dc:"当前 ETA 列表；无键时为空数组"`
+}

@@ -39,6 +39,55 @@
         </div>
     </div>
 
+    <div class="card glass" id="predictReportCard">
+        <div class="section-head">
+            <h3>预测上报</h3>
+            <div class="meta-row">
+                <button id="refreshPredictReportBtn" class="btn-secondary" type="button">刷新</button>
+            </div>
+        </div>
+        <p class="muted" style="margin:0 0 10px;">
+            只读展示 App 最后一次全量同步到 Redis 的值（临近待办 / 进行中 ETA）。空列表表示无键或已清空，不当作故障。
+        </p>
+        <h4 style="margin:0 0 6px;">临近待办</h4>
+        <div id="predictImminentEmpty" class="muted" style="display:none;margin:0 0 10px;">暂无上报（Redis 无键或空列表）</div>
+        <div class="table-wrap scroll-max-20" id="predictImminentWrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>eventId</th>
+                        <th>nextAt</th>
+                        <th>title</th>
+                        <th>expectKind</th>
+                        <th>expectDurationSec</th>
+                        <th>expectAmount</th>
+                        <th>expectUnit</th>
+                        <th>expectLeafTitle</th>
+                    </tr>
+                </thead>
+                <tbody id="predictImminentBody"></tbody>
+            </table>
+        </div>
+        <h4 style="margin:14px 0 6px;">进行中 ETA</h4>
+        <div id="predictActiveEtaEmpty" class="muted" style="display:none;margin:0 0 10px;">暂无上报（Redis 无键或空列表）</div>
+        <div class="table-wrap scroll-max-20" id="predictActiveEtaWrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>rootEventId</th>
+                        <th>leafEventId</th>
+                        <th>historyId</th>
+                        <th>title</th>
+                        <th>startAt</th>
+                        <th>expectEndAt</th>
+                    </tr>
+                </thead>
+                <tbody id="predictActiveEtaBody"></tbody>
+            </table>
+        </div>
+        <p id="predictReportStatus" class="muted" style="margin:8px 0 0;"></p>
+    </div>
+
     <div class="card glass">
         <div class="section-head">
             <h3>历史事件</h3>
@@ -535,6 +584,100 @@
             });
         }
 
+        // 预测上报：unix 秒 → 本地可读 + title 保留原值便于核对
+        function formatPredictUnix(sec){
+            const n = Number(sec);
+            if(!n || n <= 0){
+                return { text: '', title: '' };
+            }
+            return {
+                text: new Date(n * 1000).toLocaleString(),
+                title: String(n)
+            };
+        }
+
+        function cellWithUnix(sec){
+            const f = formatPredictUnix(sec);
+            if(!f.text){
+                return '<td></td>';
+            }
+            return '<td title="unix=' + escapeHtml(f.title) + '">' + escapeHtml(f.text) + '</td>';
+        }
+
+        function renderPredictImminent(events){
+            const body = document.getElementById('predictImminentBody');
+            const empty = document.getElementById('predictImminentEmpty');
+            const wrap = document.getElementById('predictImminentWrap');
+            body.innerHTML = '';
+            const list = Array.isArray(events) ? events : [];
+            if(list.length === 0){
+                empty.style.display = 'block';
+                wrap.style.display = 'none';
+                return;
+            }
+            empty.style.display = 'none';
+            wrap.style.display = '';
+            list.forEach(function(it){
+                const tr = document.createElement('tr');
+                const amount = (it.expectAmount != null && it.expectAmount !== '') ? it.expectAmount : '';
+                tr.innerHTML =
+                    '<td>' + escapeHtml(it.eventId) + '</td>' +
+                    cellWithUnix(it.nextAt) +
+                    '<td>' + escapeHtml(it.title) + '</td>' +
+                    '<td>' + escapeHtml(it.expectKind) + '</td>' +
+                    '<td>' + escapeHtml(it.expectDurationSec) + '</td>' +
+                    '<td>' + escapeHtml(amount) + '</td>' +
+                    '<td>' + escapeHtml(it.expectUnit) + '</td>' +
+                    '<td>' + escapeHtml(it.expectLeafTitle) + '</td>';
+                body.appendChild(tr);
+            });
+        }
+
+        function renderPredictActiveEta(items){
+            const body = document.getElementById('predictActiveEtaBody');
+            const empty = document.getElementById('predictActiveEtaEmpty');
+            const wrap = document.getElementById('predictActiveEtaWrap');
+            body.innerHTML = '';
+            const list = Array.isArray(items) ? items : [];
+            if(list.length === 0){
+                empty.style.display = 'block';
+                wrap.style.display = 'none';
+                return;
+            }
+            empty.style.display = 'none';
+            wrap.style.display = '';
+            list.forEach(function(it){
+                const tr = document.createElement('tr');
+                tr.innerHTML =
+                    '<td>' + escapeHtml(it.rootEventId) + '</td>' +
+                    '<td>' + escapeHtml(it.leafEventId) + '</td>' +
+                    '<td>' + escapeHtml(it.historyId) + '</td>' +
+                    '<td>' + escapeHtml(it.title) + '</td>' +
+                    cellWithUnix(it.startAt) +
+                    cellWithUnix(it.expectEndAt);
+                body.appendChild(tr);
+            });
+        }
+
+        async function loadPredictReport(){
+            const statusEl = document.getElementById('predictReportStatus');
+            if(!deviceNo){
+                renderPredictImminent([]);
+                renderPredictActiveEta([]);
+                statusEl.textContent = '未指定设备号';
+                return;
+            }
+            statusEl.textContent = '加载中…';
+            const qs = 'deviceNo=' + encodeURIComponent(deviceNo);
+            const [imminent, activeEta] = await Promise.all([
+                api('/voice/admin/api/predict/imminent/pending?' + qs),
+                api('/voice/admin/api/predict/active-eta?' + qs)
+            ]);
+            renderPredictImminent(imminent && imminent.events);
+            renderPredictActiveEta(activeEta && activeEta.items);
+            statusEl.textContent = '已刷新 · ' + new Date().toLocaleString();
+        }
+
         async function loadBirthday(){
             const data = await api('/device/admin/api/history/birthday?deviceNo=' + encodeURIComponent(deviceNo));
             currentBabyName = String((data && data.babyName) || '').trim();
@@ -674,6 +817,9 @@
                 saveBirthdayBtn.disabled = true;
                 historyBody.innerHTML = '<tr><td colspan="7">未指定设备号</td></tr>';
                 suggestWrap.innerHTML = '<div class="muted">未指定设备号</div>';
+                renderPredictImminent([]);
+                renderPredictActiveEta([]);
+                document.getElementById('predictReportStatus').textContent = '未指定设备号';
                 return;
             }
             try {
@@ -683,6 +829,13 @@
                 await loadSuggest();
             } catch (e) {
                 meta.textContent = '生日信息加载失败：' + (e.message || '未知错误');
+            }
+            // 预测上报独立拉取，失败不阻断档案区
+            try {
+                await loadPredictReport();
+            } catch (pe) {
+                document.getElementById('predictReportStatus').textContent =
+                    '预测上报加载失败：' + (pe.message || '未知错误');
             }
         }
         saveBirthdayBtn.addEventListener('click', async () => {
@@ -701,6 +854,14 @@
                 meta.textContent = '历史事件已刷新';
             }catch(e){
                 meta.textContent = '刷新历史事件失败：' + (e.message || '未知错误');
+            }
+        });
+        document.getElementById('refreshPredictReportBtn').addEventListener('click', async () => {
+            try{
+                await loadPredictReport();
+            }catch(e){
+                document.getElementById('predictReportStatus').textContent =
+                    '刷新失败：' + (e.message || '未知错误');
             }
         });
         historyPageSizeSelect.addEventListener('change', async () => {
