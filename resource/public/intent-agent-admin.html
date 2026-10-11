@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>意图智能体</title>
+	<link rel="stylesheet" href="/resource/public/pangbao-theme.css" />
+	<link rel="stylesheet" href="/resource/public/admin-pages.css" />
+	<style>
+		.portal-grid {
+			display: grid;
+			grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+			gap: 14px;
+			margin-top: 8px;
+		}
+		.portal-card {
+			display: block;
+			padding: 18px 16px;
+			border-radius: 16px;
+			background: rgba(255,255,255,.45);
+			border: 1px solid rgba(255,255,255,.55);
+			text-decoration: none;
+			color: inherit;
+			transition: transform .12s ease, box-shadow .12s ease;
+		}
+		.portal-card:hover {
+			transform: translateY(-2px);
+			box-shadow: 0 8px 24px rgba(15,23,42,.08);
+		}
+		.portal-card h3 { margin: 0 0 8px; font-size: 17px; }
+		.portal-card p { margin: 0; font-size: 13px; color: #64748b; line-height: 1.55; }
+		.portal-card code { font-size: 11px; }
+	</style>
+</head>
+<body>
+<div class="page">
+	<header class="admin-header glass">
+		<div class="logo">意图</div>
+		<div>
+			<h1>意图智能体</h1>
+			<p>喂养意图相关向量与规则缺口 · <a href="/device/admin">返回运维 Hub</a></p>
+		</div>
+	</header>
+	<div class="card glass hidden" id="mainCard">
+		<p class="hint" style="font-size:13px;color:#64748b;margin:0 0 14px;line-height:1.55;">
+			以下工具均经 voice 代理 Python；不写 MySQL。TIME/QTY 无独立向量库，缺口请看「规则缺口」。
+		</p>
+		<div class="portal-grid">
+			<a class="portal-card" href="/device/admin/intent-vector-admin.html">
+				<h3>事件向量</h3>
+				<p>短说法 → 事件 · Chroma <code>feeding_intents</code></p>
+			</a>
+			<a class="portal-card" href="/device/admin/type-vector-admin.html">
+				<h3>类型向量</h3>
+				<p>类型关键字 · Chroma <code>feeding_type_cues</code></p>
+			</a>
+			<a class="portal-card" href="/device/admin/history-speak-vector-admin.html">
+				<h3>查史播报向量</h3>
+				<p>点查策略 · Chroma <code>feeding_history_speak_cues</code></p>
+			</a>
+			<a class="portal-card" href="/device/admin/rule-gaps-admin.html">
+				<h3>规则缺口</h3>
+				<p>TIME/QTY 本地规则未覆盖收件箱 · JSONL</p>
+			</a>
+		</div>
+	</div>
+	<div class="card glass" id="gateCard">
+		<p>请先打开 <a href="/device/admin">运维 Hub</a> 登录后再访问本页。</p>
+	</div>
+</div>
+<script src="/resource/public/admin-common.js"></script>
+<script>
+if (AdminCommon.requireAdmin()) {
+	document.getElementById('gateCard').classList.add('hidden');
+	document.getElementById('mainCard').classList.remove('hidden');
+}
+</script>
+</body>
+</html>

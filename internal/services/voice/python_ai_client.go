@@ -1032,6 +1032,122 @@ func (c *PythonAIClient) DedupeTypeCache(ctx context.Context) (*TypeCacheDedupeR
 	return &out, nil
 }
 
+// HistorySpeakCacheListResult Python /v1/admin/history-speak-cache 列表响应（feeding_history_speak_cues）。
+// 字段形同 type-cache，复用 TypeCache* 结构体亦可；独立类型便于日志与演进。
+type HistorySpeakCacheListResult = TypeCacheListResult
+
+// HistorySpeakCacheBulkItem 查史播报批量种子（payload: point_pick/open_speak）。
+type HistorySpeakCacheBulkItem = TypeCacheBulkItem
+
+// HistorySpeakCacheBulkResult 批量写入结果。
+type HistorySpeakCacheBulkResult = TypeCacheBulkResult
+
+// HistorySpeakCacheDedupeResult 整理 document 全等重复的结果。
+type HistorySpeakCacheDedupeResult = TypeCacheDedupeResult
+
+// ListHistorySpeakCache 列出 feeding_history_speak_cues 查史播报策略向量。
+func (c *PythonAIClient) ListHistorySpeakCache(ctx context.Context, offset, limit int) (*HistorySpeakCacheListResult, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	url := fmt.Sprintf("%s/v1/admin/history-speak-cache?offset=%d&limit=%d", c.baseURL, offset, limit)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("创建查史播报缓存列表请求失败: %w", err)
+	}
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("调用 Python 查史播报缓存列表失败: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Python 查史播报缓存列表错误 %d: %s", resp.StatusCode, string(body))
+	}
+	var out HistorySpeakCacheListResult
+	if err := json.Unmarshal(body, &out); err != nil {
+		return nil, fmt.Errorf("解析查史播报缓存列表失败: %w", err)
+	}
+	if out.Items == nil {
+		out.Items = []map[string]interface{}{}
+	}
+	return &out, nil
+}
+
+// BulkUpsertHistorySpeakCache 批量写入查史播报策略种子（同 document 跳过由上游保证）。
+func (c *PythonAIClient) BulkUpsertHistorySpeakCache(ctx context.Context, items []HistorySpeakCacheBulkItem) (*HistorySpeakCacheBulkResult, error) {
+	payload, _ := json.Marshal(map[string]interface{}{"items": items})
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/admin/history-speak-cache/bulk", strings.NewReader(string(payload)))
+	if err != nil {
+		return nil, fmt.Errorf("创建查史播报缓存 bulk 请求失败: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("调用 Python 查史播报缓存 bulk 失败: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Python 查史播报缓存 bulk 错误 %d: %s", resp.StatusCode, string(body))
+	}
+	var out HistorySpeakCacheBulkResult
+	if err := json.Unmarshal(body, &out); err != nil {
+		return nil, fmt.Errorf("解析查史播报缓存 bulk 失败: %w", err)
+	}
+	return &out, nil
+}
+
+// DeleteHistorySpeakCache 按向量 id 删除查史播报策略关键字。
+func (c *PythonAIClient) DeleteHistorySpeakCache(ctx context.Context, vectorID string) error {
+	vid := strings.TrimSpace(vectorID)
+	if vid == "" {
+		return fmt.Errorf("vector id 为空")
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.baseURL+"/v1/admin/history-speak-cache/"+url.PathEscape(vid), nil)
+	if err != nil {
+		return fmt.Errorf("创建查史播报缓存删除请求失败: %w", err)
+	}
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("调用 Python 查史播报缓存删除失败: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode == http.StatusNotFound {
+		return fmt.Errorf("向量不存在")
+	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("Python 查史播报缓存删除错误 %d: %s", resp.StatusCode, string(body))
+	}
+	return nil
+}
+
+// DedupeHistorySpeakCache 整理 feeding_history_speak_cues 中 document 原文全等的重复条。
+func (c *PythonAIClient) DedupeHistorySpeakCache(ctx context.Context) (*HistorySpeakCacheDedupeResult, error) {
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/admin/history-speak-cache/dedupe", nil)
+	if err != nil {
+		return nil, fmt.Errorf("创建查史播报缓存 dedupe 请求失败: %w", err)
+	}
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("调用 Python 查史播报缓存 dedupe 失败: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Python 查史播报缓存 dedupe 错误 %d: %s", resp.StatusCode, string(body))
+	}
+	var out HistorySpeakCacheDedupeResult
+	if err := json.Unmarshal(body, &out); err != nil {
+		return nil, fmt.Errorf("解析查史播报缓存 dedupe 失败: %w", err)
+	}
+	return &out, nil
+}
+
 // RuleGapsListResult Python /v1/admin/rule-gaps 列表响应。
 type RuleGapsListResult struct {
 	Total  int                      `json:"total"`

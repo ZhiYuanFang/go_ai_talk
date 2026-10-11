@@ -25,22 +25,34 @@ window.ADMIN_MODULES = [
 		showInNav: true
 	},
 	{
-		id: 'intent-vector-admin',
-		title: '意图向量缓存',
-		pagePath: '/device/admin/intent-vector-admin.html',
+		id: 'intent-agent-admin',
+		title: '意图智能体',
+		pagePath: '/device/admin/intent-agent-admin.html',
 		showInNav: true
+	},
+	{
+		id: 'intent-vector-admin',
+		title: '事件向量',
+		pagePath: '/device/admin/intent-vector-admin.html',
+		showInNav: false
 	},
 	{
 		id: 'type-vector-admin',
 		title: '类型向量',
 		pagePath: '/device/admin/type-vector-admin.html',
-		showInNav: true
+		showInNav: false
+	},
+	{
+		id: 'history-speak-vector-admin',
+		title: '查史播报向量',
+		pagePath: '/device/admin/history-speak-vector-admin.html',
+		showInNav: false
 	},
 	{
 		id: 'rule-gaps-admin',
 		title: '规则缺口',
 		pagePath: '/device/admin/rule-gaps-admin.html',
-		showInNav: true
+		showInNav: false
 	},
 	{
 		id: 'sim-admin',
