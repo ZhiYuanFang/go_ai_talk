@@ -129,6 +129,18 @@
 			</div>
 		</section>
 
+		<section class="hub-sec">
+			<h3>区 D · 引导视频</h3>
+			<p class="hint">
+				固定两槽：能力宣传（promo）与绑定教学（tutorial）。须上传与 App 同规的 mp4（H.264+AAC，约 ≤25MB），不合规将直接拒绝（无服务端转码）。
+				双槽皆空时 Flutter 不展示入口。静态页样式不对请 <strong>Ctrl+F5</strong>。
+			</p>
+			<div id="guideSlots" class="form-stack"></div>
+			<div class="btn-row">
+				<button id="guideReloadBtn" type="button" class="secondary">刷新视频区</button>
+			</div>
+		</section>
+
 		<div id="msg" class="msg"></div>
 	</div>
 </div>
@@ -304,8 +316,81 @@
 		try { await loadEntitlements(); } catch (e) { show(e.message || e, false); }
 	};
 
+	async function loadGuides() {
+		const d = await AdminCommon.adminFetch('/cash/admin/api/xiaozhi-mcp/guide-videos');
+		const list = (d && d.list) || [];
+		const root = document.getElementById('guideSlots');
+		root.innerHTML = '';
+		list.forEach((it) => {
+			const slot = it.slot || '';
+			const wrap = document.createElement('div');
+			wrap.className = 'field';
+			wrap.style.border = '1px solid #e2e8f0';
+			wrap.style.padding = '10px';
+			wrap.style.borderRadius = '8px';
+			const status = it.configured
+				? '<span class="badge-on">已配置</span>'
+				: '<span class="badge-off">未配置</span>';
+			const preview = it.videoCdnUrl
+				? '<a href="' + esc(it.videoCdnUrl) + '" target="_blank" rel="noopener">打开 CDN</a>' +
+					(it.coverCdnUrl ? ' · <img src="' + esc(it.coverCdnUrl) + '" alt="封面" style="max-height:64px;vertical-align:middle;margin-left:6px;" />' : '')
+				: '<span class="sub">暂无视频</span>';
+			wrap.innerHTML =
+				'<label>槽 ' + esc(slot) + ' ' + status + '</label>' +
+				'<span class="sub">标题（Flutter 入口文案）</span>' +
+				'<input type="text" maxlength="128" data-role="title" value="' + esc(it.title || '') + '" />' +
+				'<div class="btn-row" style="margin-top:6px;">' +
+				'<button type="button" data-role="save-title">保存标题</button>' +
+				'<input type="file" accept="video/mp4,.mp4" data-role="file" style="max-width:220px;" />' +
+				'<button type="button" data-role="upload">上传/覆盖</button>' +
+				'<button type="button" class="secondary" data-role="clear">清空视频</button>' +
+				'</div>' +
+				'<div class="sub" style="margin-top:6px;">' + preview + '</div>';
+			wrap.querySelector('[data-role="save-title"]').onclick = async () => {
+				try {
+					const title = wrap.querySelector('[data-role="title"]').value;
+					await AdminCommon.adminFetch('/cash/admin/api/xiaozhi-mcp/guide-videos/' + encodeURIComponent(slot), {
+						method: 'PUT',
+						body: JSON.stringify({ title: title })
+					});
+					show('标题已保存（' + slot + '）', true);
+					await loadGuides();
+				} catch (e) { show(e.message || String(e), false); }
+			};
+			wrap.querySelector('[data-role="upload"]').onclick = async () => {
+				try {
+					const inp = wrap.querySelector('[data-role="file"]');
+					if (!inp.files || !inp.files[0]) throw new Error('请先选择 mp4 文件');
+					const fd = new FormData();
+					fd.append('file', inp.files[0]);
+					await AdminCommon.adminFetchForm(
+						'/cash/admin/api/xiaozhi-mcp/guide-videos/' + encodeURIComponent(slot) + '/upload',
+						fd
+					);
+					show('上传成功（' + slot + '）', true);
+					await loadGuides();
+				} catch (e) { show(e.message || String(e), false); }
+			};
+			wrap.querySelector('[data-role="clear"]').onclick = async () => {
+				try {
+					if (!confirm('确认清空槽 ' + slot + ' 的视频？')) return;
+					await AdminCommon.adminFetch('/cash/admin/api/xiaozhi-mcp/guide-videos/' + encodeURIComponent(slot), {
+						method: 'DELETE'
+					});
+					show('已清空（' + slot + '）', true);
+					await loadGuides();
+				} catch (e) { show(e.message || String(e), false); }
+			};
+			root.appendChild(wrap);
+		});
+	}
+
+	document.getElementById('guideReloadBtn').onclick = () =>
+		loadGuides().then(() => show('视频区已刷新', true)).catch(e => show(e.message || e, false));
+
 	await loadSku().catch(e => show(e.message || e, false));
 	await loadEntitlements().catch(e => show(e.message || e, false));
+	await loadGuides().catch(e => show(e.message || e, false));
 })();
 </script>
 </body>

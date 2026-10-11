@@ -31,7 +31,7 @@ type videoProbeResult struct {
 }
 
 // ValidateVideoBytes 对内存字节按 transformVersion 验真（v1 宽规 / v2 严规）。
-// Web 代理上传：v1 通过则直传；v1 失败时由 ProbeVideoDecodable 决定是否进入服务端转码（Phase 2 B 分支）。
+// Web/internal 代理上传：v1 通过则直传，失败直接拒绝（不再转码兜底）。
 func ValidateVideoBytes(version string, data []byte) error {
 	if len(data) == 0 {
 		return videoInvalidErr("视频为空")
@@ -55,7 +55,9 @@ func ValidateVideoBytes(version string, data []byte) error {
 }
 
 // ProbeVideoDecodable 探测上传字节是否可被 ffprobe 解析且含视频轨。
-// 仅用于 Web Phase 2：v1 验真失败后判断是否进入 NormalizeVideo 转码兜底；不替代 v1/v2 合规验真。
+//
+// 历史：曾用于转码 B 分支门禁；服务端转码已删除，上传路径不再调用本函数。
+// 保留供排查/潜在工具使用，MUST NOT 再接入上传成功路径。
 func ProbeVideoDecodable(data []byte) error {
 	if len(data) == 0 {
 		return videoInvalidErr("视频为空")

@@ -198,3 +198,111 @@ func (c *CashXiaozhiMcpController) AdminEntitlements(ctx context.Context, req *v
 	}
 	return res, nil
 }
+
+func mapXiaozhiGuideItem(it cash.XiaozhiGuideVideoSlot) v1.CashXiaozhiMcpGuideVideoItem {
+	return v1.CashXiaozhiMcpGuideVideoItem{
+		Slot:        it.Slot,
+		Title:       it.Title,
+		ObjectKey:   it.ObjectKey,
+		VideoCdnUrl: it.VideoCdnURL,
+		CoverCdnUrl: it.CoverCdnURL,
+		Configured:  it.Configured,
+		UpdatedAt:   it.UpdatedAt,
+	}
+}
+
+// GuideVideos GET /cash/app/api/xiaozhi-mcp/guide-videos — 仅已配置槽（计入 usage）。
+func (c *CashXiaozhiMcpController) GuideVideos(ctx context.Context, _ *v1.CashAppXiaozhiMcpGuideVideosReq) (*v1.CashAppXiaozhiMcpGuideVideosRes, error) {
+	if _, err := cashWxIDFromHeader(ctx); err != nil {
+		return nil, err
+	}
+	list, err := cash.ListXiaozhiGuideVideosApp(ctx)
+	if err != nil {
+		return nil, err
+	}
+	res := &v1.CashAppXiaozhiMcpGuideVideosRes{List: make([]v1.CashXiaozhiMcpGuideVideoItem, 0, len(list))}
+	for _, it := range list {
+		res.List = append(res.List, mapXiaozhiGuideItem(it))
+	}
+	return res, nil
+}
+
+// AdminGuideVideosGet GET /cash/admin/api/xiaozhi-mcp/guide-videos
+func (c *CashXiaozhiMcpController) AdminGuideVideosGet(ctx context.Context, _ *v1.CashAdminXiaozhiMcpGuideVideosGetReq) (*v1.CashAdminXiaozhiMcpGuideVideosGetRes, error) {
+	if err := requireCashAdmin(ctx); err != nil {
+		return nil, err
+	}
+	list, err := cash.ListXiaozhiGuideVideosAdmin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	res := &v1.CashAdminXiaozhiMcpGuideVideosGetRes{List: make([]v1.CashXiaozhiMcpGuideVideoItem, 0, len(list))}
+	for _, it := range list {
+		res.List = append(res.List, mapXiaozhiGuideItem(it))
+	}
+	return res, nil
+}
+
+// AdminGuideVideoPut PUT /cash/admin/api/xiaozhi-mcp/guide-videos/{slot}
+func (c *CashXiaozhiMcpController) AdminGuideVideoPut(ctx context.Context, req *v1.CashAdminXiaozhiMcpGuideVideoPutReq) (*v1.CashAdminXiaozhiMcpGuideVideoPutRes, error) {
+	if err := requireCashAdmin(ctx); err != nil {
+		return nil, err
+	}
+	if err := cash.UpdateXiaozhiGuideVideoTitle(ctx, req.Slot, req.Title); err != nil {
+		return nil, err
+	}
+	return &v1.CashAdminXiaozhiMcpGuideVideoPutRes{}, nil
+}
+
+// AdminGuideVideoUpload POST /cash/admin/api/xiaozhi-mcp/guide-videos/{slot}/upload — multipart file。
+func (c *CashXiaozhiMcpController) AdminGuideVideoUpload(ctx context.Context, req *v1.CashAdminXiaozhiMcpGuideVideoUploadReq) (*v1.CashAdminXiaozhiMcpGuideVideoUploadRes, error) {
+	if err := requireCashAdmin(ctx); err != nil {
+		return nil, err
+	}
+	r := ghttp.RequestFromCtx(ctx)
+	if r == nil {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "无效请求")
+	}
+	// 与 UCG 视频上限对齐（25MB + 表单余量）。
+	if err := r.ParseMultipartForm((25 << 20) + (1 << 20)); err != nil {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "multipart 解析失败")
+	}
+	file, hdr, err := r.Request.FormFile("file")
+	if err != nil || file == nil {
+		file, hdr, err = r.Request.FormFile("video")
+	}
+	if err != nil || file == nil {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "缺少 file 或 video 字段")
+	}
+	defer file.Close()
+	filename := ""
+	var size int64
+	if hdr != nil {
+		filename = hdr.Filename
+		size = hdr.Size
+	}
+	slot := strings.TrimSpace(req.Slot)
+	out, err := cash.UploadXiaozhiGuideVideo(ctx, slot, filename, file, size)
+	if err != nil {
+		return nil, err
+	}
+	return &v1.CashAdminXiaozhiMcpGuideVideoUploadRes{
+		Slot:        out.Slot,
+		Title:       out.Title,
+		ObjectKey:   out.ObjectKey,
+		VideoCdnUrl: out.VideoCdnURL,
+		CoverCdnUrl: out.CoverCdnURL,
+		UpdatedAt:   out.UpdatedAt,
+	}, nil
+}
+
+// AdminGuideVideoDelete DELETE /cash/admin/api/xiaozhi-mcp/guide-videos/{slot}
+func (c *CashXiaozhiMcpController) AdminGuideVideoDelete(ctx context.Context, req *v1.CashAdminXiaozhiMcpGuideVideoDeleteReq) (*v1.CashAdminXiaozhiMcpGuideVideoDeleteRes, error) {
+	if err := requireCashAdmin(ctx); err != nil {
+		return nil, err
+	}
+	if err := cash.ClearXiaozhiGuideVideo(ctx, req.Slot); err != nil {
+		return nil, err
+	}
+	return &v1.CashAdminXiaozhiMcpGuideVideoDeleteRes{}, nil
+}

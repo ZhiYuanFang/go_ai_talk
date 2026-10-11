@@ -28,15 +28,20 @@ const EventLogoObjectKeyPrefix = "event/"
 // FeatureLogoObjectKeyPrefix 功能开通 logo OSS 前缀。
 const FeatureLogoObjectKeyPrefix = "feature/"
 
+// XiaozhiGuideObjectKeyPrefix 小智引导视频 OSS 前缀（Hub 运营片）。
+const XiaozhiGuideObjectKeyPrefix = "xiaozhi-guide/"
+
 // UploadMediaResult 服务端直传 OSS 结果。
 type UploadMediaResult struct {
-	ObjectKey         string
-	CdnURL            string
-	ContentHash       string // 视频：OSS 最终对象字节 SHA-256 hex（直传为原始字节，转码为 v2 字节）
-	TransformVersion  string // 视频：v1 直传 | v2 服务端转码，供 register 配对 contentHash
+	ObjectKey        string
+	CdnURL           string
+	ContentHash      string // 视频：OSS 最终对象字节 SHA-256 hex（直传为原始合规字节）
+	TransformVersion string // 视频：直传成功时为 v1，供 register 配对 contentHash
 }
 
 // UploadMediaObject 服务端直传 OSS（供 Web 同域代理上传）；不写 ownership，由 register 负责。
+//
+// 业务：mediaKind=2 仅 v1 验真通过后直传；不合规直接拒绝，不做服务端转码。
 func UploadMediaObject(ctx context.Context, wxID int64, mediaKind int, ext string, body io.Reader, size int64) (*UploadMediaResult, error) {
 	_ = wxID
 	if size <= 0 || size > MaxMediaUploadBytes {
@@ -59,17 +64,9 @@ func UploadMediaObject(ctx context.Context, wxID int64, mediaKind int, ext strin
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "读取上传文件失败")
 	}
 	if mediaKind == 2 {
-		// Web 视频三分支：A v1 直传 | B v1 失败且可解码→转码 v2 | C 不可解码 4xx
+		// 两分支：v1 通过→直传；否则 4xx（无转码兜底）
 		if err := ValidateVideoBytes(VideoTransformV1, data); err != nil {
-			if probeErr := ProbeVideoDecodable(data); probeErr != nil {
-				return nil, probeErr
-			}
-			result, transErr := UploadVideoTranscodedObject(ctx, data)
-			if transErr != nil {
-				return nil, transErr
-			}
-			result.TransformVersion = VideoTransformV2
-			return result, nil
+			return nil, err
 		}
 		ext = "mp4"
 	}
@@ -87,30 +84,44 @@ func UploadMediaObject(ctx context.Context, wxID int64, mediaKind int, ext strin
 	return res, nil
 }
 
-// UploadVideoTranscodedObject internal 转码上传：NormalizeVideo → PUT mp4（v2 canonical）。
-func UploadVideoTranscodedObject(ctx context.Context, input []byte) (*UploadMediaResult, error) {
+// UploadValidatedVideoObject v1 验真通过后按指定前缀直传 mp4（无转码）。
+//
+// Args: prefix 为空时使用配置 ObjectKeyPrefix。
+// Returns: objectKey/cdnUrl/contentHash/transformVersion=v1。
+func UploadValidatedVideoObject(ctx context.Context, prefix string, input []byte) (*UploadMediaResult, error) {
 	if len(input) == 0 {
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "视频为空")
 	}
-	out, err := NormalizeVideo(ctx, input)
-	if err != nil {
+	if len(input) > MaxMediaUploadBytes {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "视频超过大小上限")
+	}
+	if err := ValidateVideoBytes(VideoTransformV1, input); err != nil {
 		return nil, err
 	}
 	cfg := LoadOSSConfig(ctx)
-	if err = validateOSSConfig(cfg); err != nil {
+	if err := validateOSSConfig(cfg); err != nil {
 		return nil, err
 	}
-	objectKey := buildObjectKey(cfg.ObjectKeyPrefix, "mp4")
-	objectKey, cdnURL, err := putOSSObjectBytes(ctx, cfg, objectKey, 2, "mp4", out)
+	p := strings.TrimSpace(prefix)
+	if p == "" {
+		p = cfg.ObjectKeyPrefix
+	}
+	objectKey := buildObjectKey(p, "mp4")
+	objectKey, cdnURL, err := putOSSObjectBytes(ctx, cfg, objectKey, 2, "mp4", input)
 	if err != nil {
 		return nil, err
 	}
 	return &UploadMediaResult{
 		ObjectKey:        objectKey,
 		CdnURL:           cdnURL,
-		ContentHash:      sha256HexBytes(out),
-		TransformVersion: VideoTransformV2,
+		ContentHash:      sha256HexBytes(input),
+		TransformVersion: VideoTransformV1,
 	}, nil
+}
+
+// UploadXiaozhiGuideVideoObject 小智引导视频：v1 验真 + xiaozhi-guide/ 前缀直传。
+func UploadXiaozhiGuideVideoObject(ctx context.Context, input []byte) (*UploadMediaResult, error) {
+	return UploadValidatedVideoObject(ctx, XiaozhiGuideObjectKeyPrefix, input)
 }
 
 // UploadEventLogoObject 服务端直传事件 logo 至 event/ 前缀（device internal 调用）。

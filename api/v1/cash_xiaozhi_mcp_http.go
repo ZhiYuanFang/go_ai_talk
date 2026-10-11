@@ -148,3 +148,71 @@ type CashAdminXiaozhiMcpEntitlementsRes struct {
 	Total int                                  `json:"total"`
 	List  []CashAdminXiaozhiMcpEntitlementItem `json:"list"`
 }
+
+// —— 引导视频（双固定槽）——
+
+// CashXiaozhiMcpGuideVideoItem 引导视频项（Admin 含未配置；App 仅已配置）。
+type CashXiaozhiMcpGuideVideoItem struct {
+	Slot        string `json:"slot"`
+	Title       string `json:"title"`
+	ObjectKey   string `json:"objectKey,omitempty"`
+	VideoCdnUrl string `json:"videoCdnUrl,omitempty"`
+	CoverCdnUrl string `json:"coverCdnUrl,omitempty"`
+	Configured  bool   `json:"configured"`
+	UpdatedAt   int64  `json:"updatedAt,omitempty"`
+}
+
+// CashAppXiaozhiMcpGuideVideosReq GET App 已配置引导视频列表。
+type CashAppXiaozhiMcpGuideVideosReq struct {
+	g.Meta `path:"/cash/app/api/xiaozhi-mcp/guide-videos" method:"get" tags:"cash" summary:"小智引导视频清单"`
+}
+
+// CashAppXiaozhiMcpGuideVideosRes App 列表 data。
+type CashAppXiaozhiMcpGuideVideosRes struct {
+	List []CashXiaozhiMcpGuideVideoItem `json:"list"`
+}
+
+// CashAdminXiaozhiMcpGuideVideosGetReq GET Admin 两槽状态。
+type CashAdminXiaozhiMcpGuideVideosGetReq struct {
+	g.Meta `path:"/cash/admin/api/xiaozhi-mcp/guide-videos" method:"get" tags:"cash-admin" summary:"管理端小智引导视频两槽"`
+}
+
+// CashAdminXiaozhiMcpGuideVideosGetRes Admin 列表 data。
+type CashAdminXiaozhiMcpGuideVideosGetRes struct {
+	List []CashXiaozhiMcpGuideVideoItem `json:"list"`
+}
+
+// CashAdminXiaozhiMcpGuideVideoPutReq PUT 更新槽标题。
+type CashAdminXiaozhiMcpGuideVideoPutReq struct {
+	g.Meta `path:"/cash/admin/api/xiaozhi-mcp/guide-videos/{slot}" method:"put" tags:"cash-admin" summary:"管理端更新小智引导视频标题"`
+	Slot   string `json:"slot" in:"path" v:"required"`
+	Title  string `json:"title" v:"required"`
+}
+
+// CashAdminXiaozhiMcpGuideVideoPutRes 空 data。
+type CashAdminXiaozhiMcpGuideVideoPutRes struct{}
+
+// CashAdminXiaozhiMcpGuideVideoUploadReq POST multipart 上传/覆盖槽视频。
+type CashAdminXiaozhiMcpGuideVideoUploadReq struct {
+	g.Meta `path:"/cash/admin/api/xiaozhi-mcp/guide-videos/{slot}/upload" method:"post" tags:"cash-admin" summary:"管理端上传小智引导视频"`
+	Slot   string `json:"slot" in:"path" v:"required"`
+}
+
+// CashAdminXiaozhiMcpGuideVideoUploadRes 上传后槽态。
+type CashAdminXiaozhiMcpGuideVideoUploadRes struct {
+	Slot        string `json:"slot"`
+	Title       string `json:"title"`
+	ObjectKey   string `json:"objectKey"`
+	VideoCdnUrl string `json:"videoCdnUrl"`
+	CoverCdnUrl string `json:"coverCdnUrl,omitempty"`
+	UpdatedAt   int64  `json:"updatedAt"`
+}
+
+// CashAdminXiaozhiMcpGuideVideoDeleteReq DELETE 清空槽视频。
+type CashAdminXiaozhiMcpGuideVideoDeleteReq struct {
+	g.Meta `path:"/cash/admin/api/xiaozhi-mcp/guide-videos/{slot}" method:"delete" tags:"cash-admin" summary:"管理端清空小智引导视频"`
+	Slot   string `json:"slot" in:"path" v:"required"`
+}
+
+// CashAdminXiaozhiMcpGuideVideoDeleteRes 空 data。
+type CashAdminXiaozhiMcpGuideVideoDeleteRes struct{}

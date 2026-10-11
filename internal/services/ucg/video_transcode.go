@@ -19,6 +19,8 @@ var (
 )
 
 // NormalizeVideo 将输入转码为 v2 canonical mp4（H.264 Main + AAC + faststart；无音轨补静音 AAC）。
+//
+// 已停用：上传路径不再调用；保留实现便于日后独立转码 worker 复用，业务上传 MUST NOT 依赖本函数。
 func NormalizeVideo(ctx context.Context, input []byte) ([]byte, error) {
 	if len(input) == 0 {
 		return nil, videoInvalidErr("视频为空")

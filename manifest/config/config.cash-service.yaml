@@ -12,6 +12,8 @@ server:
   address: ":9807"
   openapiPath: "/api.json"
   swaggerPath: "/swagger"
+  # Hub 小智引导视频 multipart 经本进程转发 ucg；须 ≥ UCG MaxMediaUploadBytes（约 25MB）。
+  clientMaxBodySize: "25MB"
 
 logger:
   level: "all"

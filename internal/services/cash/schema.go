@@ -284,6 +284,14 @@ func EnsureSchema(ctx context.Context) error {
   updated_at  BIGINT       NOT NULL DEFAULT 0,
   PRIMARY KEY (wx_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+		// 小智引导视频双固定槽（promo/tutorial）；库内仅存 objectKey。
+		`CREATE TABLE IF NOT EXISTS xiaozhi_mcp_guide_video (
+  slot        VARCHAR(32)  NOT NULL COMMENT 'promo|tutorial',
+  title       VARCHAR(128) NOT NULL DEFAULT '' COMMENT '展示标题，Hub 可改',
+  object_key  VARCHAR(512) NOT NULL DEFAULT '' COMMENT 'OSS objectKey；空=未配置',
+  updated_at  BIGINT       NOT NULL DEFAULT 0,
+  PRIMARY KEY (slot)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 	}
 	for _, sql := range stmts {
 		if _, err := db.Exec(ctx, sql); err != nil {
@@ -477,5 +485,13 @@ VALUES (?, 7, 10, ?), (?, 2, 10, ?)`,
 INSERT IGNORE INTO xiaozhi_mcp_product (product_code, title, price_fen, original_price_fen, apple_product_id, status, updated_at)
 VALUES (?, '小智 MCP 永久开通', 1900, 0, '', 1, ?)`,
 		XiaozhiMcpProductCodePerm, now)
+	if err != nil {
+		return err
+	}
+	// 引导视频双槽种子：不覆盖运维已改标题/已上传 object_key。
+	_, err = db.Exec(ctx, `
+INSERT IGNORE INTO xiaozhi_mcp_guide_video (slot, title, object_key, updated_at)
+VALUES (?, '能力介绍', '', ?), (?, '绑定教学', '', ?)`,
+		XiaozhiGuideSlotPromo, now, XiaozhiGuideSlotTutorial, now)
 	return err
 }
