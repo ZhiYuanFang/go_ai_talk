@@ -28,3 +28,15 @@ type DevicePredictImminentPendingPutReq struct {
 type DevicePredictImminentPendingPutRes struct {
 	Count int `json:"count" dc:"写入条数"`
 }
+
+// VoiceInternalPredictImminentPendingGetReq 内部按 deviceNo 读取 imminent 待办（供 Python）。
+// 须经 voice internal 密钥中间件；缺键返回空 events。
+type VoiceInternalPredictImminentPendingGetReq struct {
+	g.Meta   `path:"/voice/internal/api/predict/imminent/pending" method:"get" tags:"voice" summary:"内部-预测临近待办列表"`
+	DeviceNo string `json:"deviceNo" in:"query" v:"required" dc:"宝宝设备号"`
+}
+
+// VoiceInternalPredictImminentPendingGetRes 内部读响应；字段与 App PUT events 条目对齐。
+type VoiceInternalPredictImminentPendingGetRes struct {
+	Events []PredictImminentPendingEventItem `json:"events" dc:"当前待办列表；无键时为空数组"`
+}

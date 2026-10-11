@@ -196,21 +196,41 @@ func SyncPredictImminentPending(ctx context.Context, wxID int64, deviceNo string
 	return len(cleaned), nil
 }
 
-// loadPredictImminentPending 读取宝宝当前待办。
-func loadPredictImminentPending(ctx context.Context, deviceNo string) ([]PredictImminentPendingItem, error) {
+// LoadPredictImminentPending 读取宝宝当前 imminent 待办（供 Python internal GET 与推送校验）。
+// Args: deviceNo 宝宝设备号。
+// Returns: 列表（缺键/空/非法 JSON 视为空列表，不报错）；系统级 Redis 错误向上返回。
+// Side Effects: 仅读 Redis；MUST NOT 发 MQ / 推送。
+func LoadPredictImminentPending(ctx context.Context, deviceNo string) ([]PredictImminentPendingItem, error) {
+	deviceNo = strings.TrimSpace(deviceNo)
+	if deviceNo == "" {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "deviceNo 不能为空")
+	}
 	key, err := cachekit.PredictImminentPendingKey(deviceNo)
 	if err != nil {
 		return nil, err
 	}
 	val, ok, err := predictImminentCache.Get(ctx, key)
-	if err != nil || !ok || strings.TrimSpace(val) == "" {
+	if err != nil {
 		return nil, err
+	}
+	// 缺键或空值：按契约返回空列表，不报错（供 Python 双通道降级）。
+	if !ok || strings.TrimSpace(val) == "" {
+		return []PredictImminentPendingItem{}, nil
 	}
 	var list []PredictImminentPendingItem
-	if err := json.Unmarshal([]byte(val), &list); err != nil {
-		return nil, err
+	if unmarshalErr := json.Unmarshal([]byte(val), &list); unmarshalErr != nil {
+		glog.Warningf(ctx, "[predict-imminent] corrupt json deviceNoLen=%d err=%v", len(deviceNo), unmarshalErr)
+		return []PredictImminentPendingItem{}, nil
+	}
+	if list == nil {
+		return []PredictImminentPendingItem{}, nil
 	}
 	return list, nil
+}
+
+// loadPredictImminentPending 推送路径读取待办；语义同 LoadPredictImminentPending。
+func loadPredictImminentPending(ctx context.Context, deviceNo string) ([]PredictImminentPendingItem, error) {
+	return LoadPredictImminentPending(ctx, deviceNo)
 }
 
 // pendingMatches 判断 Redis 是否仍有相同 eventId+nextAt。

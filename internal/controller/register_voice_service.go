@@ -33,5 +33,7 @@ func RegisterVoiceServiceHTTP(s *ghttp.Server) {
 		group.Bind(voicectrl.NewVoiceAIQuotaInternalCtrl())
 		// 进行中 ETA 内部读：供 Python；须 X-Device-Gateway-Internal-Secret。
 		group.Bind(voicectrl.NewVoicePredictActiveEtaInternalCtrl())
+		// 预测临近待办内部读：供 Python intent next 通道；同组密钥中间件。
+		group.Bind(voicectrl.NewVoicePredictImminentInternalCtrl())
 	})
 }
