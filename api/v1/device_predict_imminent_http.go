@@ -3,10 +3,16 @@ package v1
 import "github.com/gogf/gf/v2/frame/g"
 
 // PredictImminentPendingEventItem 客户端上报的单条待发生预测节点。
+// expect* 为可选（omitempty）：胜出用量/用时结构化字段，供到点推送追加「约」后缀；非法时服务端仅发基句。
 type PredictImminentPendingEventItem struct {
-	EventId int64  `json:"eventId" v:"required|min:1" dc:"事件 ID（可为一级根）"`
-	NextAt  int64  `json:"nextAt" v:"required|min:1" dc:"下次发生 unix 秒"`
-	Title   string `json:"title" dc:"父事件展示名；空则服务端到点不发可见推送"`
+	EventId            int64   `json:"eventId" v:"required|min:1" dc:"事件 ID（可为一级根）"`
+	NextAt             int64   `json:"nextAt" v:"required|min:1" dc:"下次发生 unix 秒"`
+	Title              string  `json:"title" dc:"父事件展示名；空则服务端到点不发可见推送"`
+	ExpectKind         string  `json:"expectKind,omitempty" dc:"duration|amount；胜出线种类"`
+	ExpectDurationSec  int64   `json:"expectDurationSec,omitempty" dc:"预计用时秒；kind=duration 且 >0 时有效"`
+	ExpectAmount       float64 `json:"expectAmount,omitempty" dc:"预计用量；kind=amount 且 >0 时有效"`
+	ExpectUnit         string  `json:"expectUnit,omitempty" dc:"用量单位，如毫升；可空"`
+	ExpectLeafTitle    string  `json:"expectLeafTitle,omitempty" dc:"叶子展示名（与根名不同时）；可空"`
 }
 
 // DevicePredictImminentPendingPutReq 全量替换宝宝待发生预测列表（最后写入赢）。

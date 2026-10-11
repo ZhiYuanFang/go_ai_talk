@@ -31,6 +31,12 @@ window.ADMIN_MODULES = [
 		showInNav: true
 	},
 	{
+		id: 'type-vector-admin',
+		title: '类型向量',
+		pagePath: '/device/admin/type-vector-admin.html',
+		showInNav: true
+	},
+	{
 		id: 'rule-gaps-admin',
 		title: '规则缺口',
 		pagePath: '/device/admin/rule-gaps-admin.html',

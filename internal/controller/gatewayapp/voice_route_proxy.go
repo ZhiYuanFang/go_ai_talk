@@ -34,7 +34,7 @@ func installVoiceProxyMiddleware(s *ghttp.Server) {
 	}
 	// /device/api/care-alert/*：护理留意日缓存（GET daily / DELETE item / POST feedback）；宿主 voice。
 	// /device/api/growth-trajectory/*：成长轨迹 latest + turn SSE；宿主 voice。
-	// /device/api/predict/*：预测临近待办同步；宿主 voice。
+	// /device/api/predict/*：预测临近 pending + 进行中 ETA 同步；宿主 voice。
 	// tip SSE 与 clinic|tip HTTP 飞轮已下线（remove-tip-and-clinic-feedback）。
 	for _, pattern := range []string{
 		"/voice/text/*",

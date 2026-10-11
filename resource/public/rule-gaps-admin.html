@@ -34,12 +34,22 @@
 	<div class="card glass hidden" id="mainCard">
 		<p class="hint">
 			数据来自 Python 卷 <code>data/rule_gaps/gaps.jsonl</code>（经 voice 代理 <code>/v1/admin/rule-gaps</code>）。
-			本页仅供浏览与标已处理；<strong>整理规则须改 Python 代码发版，非热更新</strong>，也不会写入事件向量库。
+			<strong>默认只展示 TIME/QTY</strong>（不传维度时由 Python 合并 <code>time</code> + <code>quantity</code>）；type/event/shape 不再作为默认工单。
+			本页仅供浏览与标已处理；<strong>整理规则须改 Python 代码发版，非热更新</strong>，也不会写入事件/类型向量库。
+			存量 legacy 行若需瘦磁盘，由运维在 Python 卷可选 truncate 或只保留 time/quantity（本页无清理按钮）。
 			静态页样式不对请 <strong>Ctrl+F5</strong>。
 		</p>
 		<div class="filters">
-			<label>维度
-				<input id="fltDim" type="text" placeholder="空=全部，如 time/event" />
+			<label>维度预设
+				<select id="fltDimPreset">
+					<option value="" selected>默认 TIME+QTY</option>
+					<option value="time">time</option>
+					<option value="quantity">quantity</option>
+					<option value="__custom">自定义（排障）</option>
+				</select>
+			</label>
+			<label>自定义维度
+				<input id="fltDim" type="text" placeholder="排障如 type/event；默认勿填" disabled />
 			</label>
 			<label>状态
 				<select id="fltStatus">
@@ -102,13 +112,29 @@
 		return '—';
 	}
 
+	function resolveDimension() {
+		const preset = document.getElementById('fltDimPreset').value;
+		if (preset === '__custom') {
+			return (document.getElementById('fltDim').value || '').trim();
+		}
+		return (preset || '').trim();
+	}
+
+	function syncDimCustomEnabled() {
+		const custom = document.getElementById('fltDimPreset').value === '__custom';
+		const inp = document.getElementById('fltDim');
+		inp.disabled = !custom;
+		if (!custom) inp.value = '';
+	}
+
 	async function loadList() {
 		setMsg('加载中…');
-		const dim = (document.getElementById('fltDim').value || '').trim();
+		const dim = resolveDimension();
 		const st = document.getElementById('fltStatus').value;
 		const qs = new URLSearchParams();
 		qs.set('offset', String(offset));
 		qs.set('limit', String(LIMIT));
+		// 空 dimension 不传 → Python 默认只返回 time+quantity
 		if (dim) qs.set('dimension', dim);
 		// status= 空串表示不过滤；须显式带参数覆盖服务端默认 open
 		qs.set('status', st);
@@ -171,6 +197,9 @@
 		document.getElementById('gateCard').classList.add('hidden');
 		document.getElementById('mainCard').classList.remove('hidden');
 	} catch (e) { return; }
+
+	document.getElementById('fltDimPreset').onchange = () => syncDimCustomEnabled();
+	syncDimCustomEnabled();
 
 	document.getElementById('reloadBtn').onclick = () => {
 		offset = 0;

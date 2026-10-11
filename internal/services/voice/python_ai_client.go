@@ -897,6 +897,141 @@ func (c *PythonAIClient) DedupeIntentCache(ctx context.Context) (*IntentCacheDed
 	return &out, nil
 }
 
+// TypeCacheListResult Python /v1/admin/type-cache 列表响应（feeding_type_cues）。
+type TypeCacheListResult struct {
+	Total  int                      `json:"total"`
+	Offset int                      `json:"offset"`
+	Limit  int                      `json:"limit"`
+	Items  []map[string]interface{} `json:"items"`
+}
+
+// TypeCacheBulkItem 类型关键字批量种子（payload 含 target_type/op/history_mode）。
+type TypeCacheBulkItem struct {
+	Document string                 `json:"document"`
+	Payload  map[string]interface{} `json:"payload"`
+}
+
+// TypeCacheBulkResult 批量写入结果（同 document 跳过）。
+type TypeCacheBulkResult struct {
+	Ok      int                      `json:"ok"`
+	Added   int                      `json:"added"`
+	Skipped []map[string]interface{} `json:"skipped"`
+	Failed  []map[string]interface{} `json:"failed"`
+	Ids     []string                 `json:"ids"`
+}
+
+// TypeCacheDedupeResult 整理 document 全等重复的结果。
+type TypeCacheDedupeResult struct {
+	Kept    int                      `json:"kept"`
+	Deleted []map[string]interface{} `json:"deleted"`
+	Groups  int                      `json:"groups"`
+}
+
+// ListTypeCache 列出 feeding_type_cues 类型关键字向量。
+//
+// Args: offset/limit 分页；limit<=0 时由上游默认。
+func (c *PythonAIClient) ListTypeCache(ctx context.Context, offset, limit int) (*TypeCacheListResult, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	url := fmt.Sprintf("%s/v1/admin/type-cache?offset=%d&limit=%d", c.baseURL, offset, limit)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("创建类型缓存列表请求失败: %w", err)
+	}
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("调用 Python 类型缓存列表失败: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Python 类型缓存列表错误 %d: %s", resp.StatusCode, string(body))
+	}
+	var out TypeCacheListResult
+	if err := json.Unmarshal(body, &out); err != nil {
+		return nil, fmt.Errorf("解析类型缓存列表失败: %w", err)
+	}
+	if out.Items == nil {
+		out.Items = []map[string]interface{}{}
+	}
+	return &out, nil
+}
+
+// BulkUpsertTypeCache 批量写入类型关键字种子（同 document 跳过由上游保证）。
+func (c *PythonAIClient) BulkUpsertTypeCache(ctx context.Context, items []TypeCacheBulkItem) (*TypeCacheBulkResult, error) {
+	payload, _ := json.Marshal(map[string]interface{}{"items": items})
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/admin/type-cache/bulk", strings.NewReader(string(payload)))
+	if err != nil {
+		return nil, fmt.Errorf("创建类型缓存 bulk 请求失败: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("调用 Python 类型缓存 bulk 失败: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Python 类型缓存 bulk 错误 %d: %s", resp.StatusCode, string(body))
+	}
+	var out TypeCacheBulkResult
+	if err := json.Unmarshal(body, &out); err != nil {
+		return nil, fmt.Errorf("解析类型缓存 bulk 失败: %w", err)
+	}
+	return &out, nil
+}
+
+// DeleteTypeCache 按向量 id 删除类型关键字。
+func (c *PythonAIClient) DeleteTypeCache(ctx context.Context, vectorID string) error {
+	vid := strings.TrimSpace(vectorID)
+	if vid == "" {
+		return fmt.Errorf("vector id 为空")
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.baseURL+"/v1/admin/type-cache/"+url.PathEscape(vid), nil)
+	if err != nil {
+		return fmt.Errorf("创建类型缓存删除请求失败: %w", err)
+	}
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("调用 Python 类型缓存删除失败: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode == http.StatusNotFound {
+		return fmt.Errorf("向量不存在")
+	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("Python 类型缓存删除错误 %d: %s", resp.StatusCode, string(body))
+	}
+	return nil
+}
+
+// DedupeTypeCache 整理 feeding_type_cues 中 document 原文全等的重复条。
+func (c *PythonAIClient) DedupeTypeCache(ctx context.Context) (*TypeCacheDedupeResult, error) {
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/admin/type-cache/dedupe", nil)
+	if err != nil {
+		return nil, fmt.Errorf("创建类型缓存 dedupe 请求失败: %w", err)
+	}
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("调用 Python 类型缓存 dedupe 失败: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Python 类型缓存 dedupe 错误 %d: %s", resp.StatusCode, string(body))
+	}
+	var out TypeCacheDedupeResult
+	if err := json.Unmarshal(body, &out); err != nil {
+		return nil, fmt.Errorf("解析类型缓存 dedupe 失败: %w", err)
+	}
+	return &out, nil
+}
+
 // RuleGapsListResult Python /v1/admin/rule-gaps 列表响应。
 type RuleGapsListResult struct {
 	Total  int                      `json:"total"`

@@ -20,14 +20,18 @@ func RegisterVoiceServiceHTTP(s *ghttp.Server) {
 		group.Bind(voicectrl.NewVoiceAdminAIQuotaCtrl())
 		group.Bind(voicectrl.NewVoiceAdminLLMLanesCtrl())
 		group.Bind(voicectrl.NewVoiceAdminIntentVectorsCtrl())
+		group.Bind(voicectrl.NewVoiceAdminTypeVectorsCtrl())
 		group.Bind(voicectrl.NewVoiceAdminRuleGapsCtrl())
 		// tip SSE / clinic|tip HTTP 飞轮已下线（remove-tip-and-clinic-feedback）；care-alert / growth-trajectory 保留。
 		group.Bind(&voicectrl.DeviceCareAlertController{})
 		group.Bind(&voicectrl.DeviceGrowthTrajectoryController{})
 		group.Bind(&voicectrl.DevicePredictImminentController{})
+		group.Bind(&voicectrl.DevicePredictActiveEtaController{})
 	})
 	s.Group("/", func(group *ghttp.RouterGroup) {
 		group.Middleware(devicectrl.InternalSecretMiddleware)
 		group.Bind(voicectrl.NewVoiceAIQuotaInternalCtrl())
+		// 进行中 ETA 内部读：供 Python；须 X-Device-Gateway-Internal-Secret。
+		group.Bind(voicectrl.NewVoicePredictActiveEtaInternalCtrl())
 	})
 }

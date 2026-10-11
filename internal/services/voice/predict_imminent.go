@@ -6,10 +6,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	deviceclient "hello/internal/clients/device"
 	pushclient "hello/internal/clients/push"
@@ -33,6 +35,8 @@ const (
 	// predictImminentMaxDelayMs 对齐 rabbitmq_delayed_message_exchange 的 ERL_MAX_T（2^32−1 毫秒，约 49.7 天）。
 	// 超过该值插件会 nodelay 立刻投递，导致疫苗等远 nextAt 误推；超限时只写 Redis、不发 MQ。
 	predictImminentMaxDelayMs = 4294967295
+	// predictImminentExpectLeafMaxRunes 推送叶子名截断上限（Unicode 字符），防 alert 膨胀。
+	predictImminentExpectLeafMaxRunes = 32
 )
 
 var predictImminentCache = cachekit.Default()
@@ -63,19 +67,29 @@ func predictImminentPushDedupTTL() time.Duration {
 	return time.Duration(sec) * time.Second
 }
 
-// PredictImminentPendingItem Redis / MQ 共用待办项。
+// PredictImminentPendingItem Redis / MQ 共用待办项（含可选 expect，对账仍仅 eventId+nextAt）。
 type PredictImminentPendingItem struct {
-	EventId int64  `json:"eventId"`
-	NextAt  int64  `json:"nextAt"`
-	Title   string `json:"title,omitempty"`
+	EventId           int64   `json:"eventId"`
+	NextAt            int64   `json:"nextAt"`
+	Title             string  `json:"title,omitempty"`
+	ExpectKind        string  `json:"expectKind,omitempty"`
+	ExpectDurationSec int64   `json:"expectDurationSec,omitempty"`
+	ExpectAmount      float64 `json:"expectAmount,omitempty"`
+	ExpectUnit        string  `json:"expectUnit,omitempty"`
+	ExpectLeafTitle   string  `json:"expectLeafTitle,omitempty"`
 }
 
-// predictImminentFirePayload 延时消息体；消费时须与 Redis 中 eventId+nextAt 一致。
+// predictImminentFirePayload 延时消息体；消费时须与 Redis 中 eventId+nextAt 一致；expect 透传供拼 alert。
 type predictImminentFirePayload struct {
-	DeviceNo string `json:"deviceNo"`
-	EventId  int64  `json:"eventId"`
-	NextAt   int64  `json:"nextAt"`
-	Title    string `json:"title,omitempty"`
+	DeviceNo          string  `json:"deviceNo"`
+	EventId           int64   `json:"eventId"`
+	NextAt            int64   `json:"nextAt"`
+	Title             string  `json:"title,omitempty"`
+	ExpectKind        string  `json:"expectKind,omitempty"`
+	ExpectDurationSec int64   `json:"expectDurationSec,omitempty"`
+	ExpectAmount      float64 `json:"expectAmount,omitempty"`
+	ExpectUnit        string  `json:"expectUnit,omitempty"`
+	ExpectLeafTitle   string  `json:"expectLeafTitle,omitempty"`
 }
 
 // SyncPredictImminentPending 全量替换宝宝待办并为可调度条目发延时叫醒。
@@ -162,11 +176,17 @@ func SyncPredictImminentPending(ctx context.Context, wxID int64, deviceNo string
 				len(deviceNo), it.EventId, it.NextAt, delayMs, predictImminentMaxDelayMs)
 			continue
 		}
+		// expect 与 title 一并写入延时载荷，消费时直接拼后缀，不再回查客户端。
 		payload := predictImminentFirePayload{
-			DeviceNo: deviceNo,
-			EventId:  it.EventId,
-			NextAt:   it.NextAt,
-			Title:    it.Title,
+			DeviceNo:          deviceNo,
+			EventId:           it.EventId,
+			NextAt:            it.NextAt,
+			Title:             it.Title,
+			ExpectKind:        it.ExpectKind,
+			ExpectDurationSec: it.ExpectDurationSec,
+			ExpectAmount:      it.ExpectAmount,
+			ExpectUnit:        it.ExpectUnit,
+			ExpectLeafTitle:   it.ExpectLeafTitle,
 		}
 		if err := pub.PublishDelayed(ctx, eventkit.RoutingVoicePredictImminentFire.String(), delayMs, payload); err != nil {
 			glog.Warningf(ctx, "[predict-imminent] PublishDelayed failed deviceNoLen=%d eventId=%d err=%v", len(deviceNo), it.EventId, err)
@@ -317,16 +337,19 @@ func handlePredictImminentFire(ctx context.Context, body []byte) error {
 	} else if n := strings.TrimSpace(profile.BabyName); n != "" {
 		nick = n
 	}
-	// 可见正文：{昵称}要{title}了；厂商通知标题仍为「胖宝」。
+	// 可见正文：基句 {昵称}要{title}了；合法 expect 追加「，预计这次约…」；expect 不进 data。
 	alert := nick + "要" + title + "了"
+	if suffix := buildPredictImminentExpectSuffix(msg); suffix != "" {
+		alert += suffix
+	}
 	data := map[string]string{
 		"bizType":  pushclient.BizPredictImminent,
 		"deviceNo": msg.DeviceNo,
 		"eventId":  strconv.FormatInt(msg.EventId, 10),
 		"nextAt":   strconv.FormatInt(msg.NextAt, 10),
 	}
-	glog.Infof(ctx, "[predict-imminent] push_attempt deviceNoLen=%d eventId=%d nextAt=%d wxCount=%d",
-		len(msg.DeviceNo), msg.EventId, msg.NextAt, len(wxIDs))
+	glog.Infof(ctx, "[predict-imminent] push_attempt deviceNoLen=%d eventId=%d nextAt=%d wxCount=%d alertLen=%d expectKind=%s",
+		len(msg.DeviceNo), msg.EventId, msg.NextAt, len(wxIDs), len(alert), strings.TrimSpace(msg.ExpectKind))
 	for _, wxID := range wxIDs {
 		// badge=0：预测临近不累计 UCG 未读角标。
 		if pushErr := pushclient.PushByBizType(ctx, wxID, pushclient.BizPredictImminent, alert, 0, false, data); pushErr != nil {
@@ -461,4 +484,84 @@ func predictImminentAMQPURL() (string, error) {
 		pass = "guest"
 	}
 	return fmt.Sprintf("amqp://%s:%s@%s:%s/", user, pass, host, port), nil
+}
+
+// buildPredictImminentExpectSuffix 按 D1 矩阵从火点载荷拼「，预计这次约…」；非法返回空串。
+// Args: msg 延时叫醒载荷（expect 字段可空）。
+// Returns: 后缀（含前导中文逗号）或 ""。
+func buildPredictImminentExpectSuffix(msg predictImminentFirePayload) string {
+	kind := strings.TrimSpace(msg.ExpectKind)
+	switch kind {
+	case "duration":
+		if msg.ExpectDurationSec <= 0 {
+			return ""
+		}
+		return "，预计这次约" + formatExpectDurationCN(msg.ExpectDurationSec)
+	case "amount":
+		if msg.ExpectAmount <= 0 {
+			return ""
+		}
+		unit := strings.TrimSpace(msg.ExpectUnit)
+		leaf := truncateRunes(strings.TrimSpace(msg.ExpectLeafTitle), predictImminentExpectLeafMaxRunes)
+		return "，预计这次约" + formatExpectAmountNumber(msg.ExpectAmount) + unit + leaf
+	default:
+		// 空或未知 kind：整段忽略
+		return ""
+	}
+}
+
+// formatExpectDurationCN 将秒格式化为中文时长，算法等价 Flutter formatTodayTotalAmount（小时浮点 + round）。
+//
+// Args: sec 预计用时秒（调用方保证 >0）。
+// Returns:「不足1分钟」/「N分钟」/「N小时」/「N小时M分钟」。
+func formatExpectDurationCN(sec int64) string {
+	if sec <= 0 {
+		return "不足1分钟"
+	}
+	hours := float64(sec) / 3600.0
+	if hours < 1.0/60.0 {
+		return "不足1分钟"
+	}
+	if hours < 1 {
+		mins := int(math.Round(hours * 60))
+		if mins < 1 {
+			return "不足1分钟"
+		}
+		return fmt.Sprintf("%d分钟", mins)
+	}
+	h := int(math.Floor(hours))
+	m := int(math.Round((hours - float64(h)) * 60))
+	if m == 0 {
+		return fmt.Sprintf("%d小时", h)
+	}
+	// round 可能进位到 60 分钟
+	if m == 60 {
+		return fmt.Sprintf("%d小时", h+1)
+	}
+	return fmt.Sprintf("%d小时%d分钟", h, m)
+}
+
+// formatExpectAmountNumber 用量数字展示：整数无小数，否则去无意义尾零。
+func formatExpectAmountNumber(amount float64) string {
+	if amount <= 0 {
+		return ""
+	}
+	if amount == math.Trunc(amount) {
+		return strconv.FormatInt(int64(amount), 10)
+	}
+	s := strconv.FormatFloat(amount, 'f', 1, 64)
+	s = strings.TrimRight(strings.TrimRight(s, "0"), ".")
+	return s
+}
+
+// truncateRunes 按 Unicode 字符数截断（非字节）。
+func truncateRunes(s string, max int) string {
+	if max <= 0 || s == "" {
+		return ""
+	}
+	if utf8.RuneCountInString(s) <= max {
+		return s
+	}
+	runes := []rune(s)
+	return string(runes[:max])
 }

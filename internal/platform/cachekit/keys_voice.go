@@ -81,3 +81,14 @@ func PredictImminentPushedKey(deviceNo string, eventID int64) (string, error) {
 	id := fmt.Sprintf("%s:%d", strings.TrimSpace(deviceNo), eventID)
 	return Key(DomainVoice, "predict", "pushed", id)
 }
+
+// PredictActiveEtaKey 宝宝进行中计时 ETA 全量列表 JSON（权威在 Redis，无 TTL，靠客户端全量替换；与 imminent pending 分键）。
+// identifier = deviceNo；App PUT 写、Python 经 internal GET 读。
+func PredictActiveEtaKey(deviceNo string) (string, error) {
+	return Key(DomainVoice, "predict", "activeeta", strings.TrimSpace(deviceNo))
+}
+
+// PredictActiveEtaSyncLockKey 同宝宝 active-eta 同步短锁，防并发半更新；TTL 由业务 SetNXEX 传入（秒级）。
+func PredictActiveEtaSyncLockKey(deviceNo string) (string, error) {
+	return Key(DomainVoice, "predict", "activeetasynclock", strings.TrimSpace(deviceNo))
+}
