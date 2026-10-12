@@ -44,7 +44,8 @@
 	</header>
 	<div class="card glass hidden" id="mainCard">
 		<p class="hint" style="font-size:13px;color:#64748b;margin:0 0 14px;line-height:1.55;">
-			飞轮均经 voice 代理 Python Chroma；document 灌<strong>整段原文</strong>。TIME 无飞轮，缺口见下方工单。
+			飞轮均经 voice 代理 Python Chroma；document 灌<strong>整段原文</strong>。
+			TIME 为相对配方飞轮（禁绝对 Unix 主缓存）；缺口仍见下方工单。
 			旧「类型向量」热路径已停，勿再从门户灌种（深链仅迁移排障）。
 		</p>
 		<p class="portal-section">飞轮整理</p>
@@ -61,20 +62,36 @@
 				<h3>数量</h3>
 				<p>口语量整段 → quantity · <code>feeding_qty_cues</code></p>
 			</a>
+			<a class="portal-card" href="/device/admin/time-vector-admin.html">
+				<h3>时间</h3>
+				<p>相对配方整段 → 物化 · <code>feeding_time_cues</code></p>
+			</a>
+			<a class="portal-card" href="/device/admin/remark-vector-admin.html">
+				<h3>备注</h3>
+				<p>整段 → remark（可空）· <code>feeding_remark_cues</code></p>
+			</a>
 			<a class="portal-card" href="/device/admin/read-source-vector-admin.html">
 				<h3>R·数据源</h3>
 				<p>read 分流 record|predict · <code>feeding_read_source_cues</code></p>
 			</a>
+			<a class="portal-card" href="/device/admin/predict-vector-admin.html">
+				<h3>R·predict</h3>
+				<p>channel + time_answer · <code>feeding_predict_cues</code></p>
+			</a>
 			<a class="portal-card" href="/device/admin/history-speak-vector-admin.html">
 				<h3>查史播报</h3>
 				<p>R·record 点查策略 · <code>feeding_history_speak_cues</code></p>
+			</a>
+			<a class="portal-card" href="/device/admin/locate-vector-admin.html">
+				<h3>U/D 定位</h3>
+				<p>strategy（禁 historyId）· <code>feeding_locate_cues</code></p>
 			</a>
 		</div>
 		<p class="portal-section" style="margin-top:18px;">规则工单</p>
 		<div class="portal-grid">
 			<a class="portal-card" href="/device/admin/rule-gaps-admin.html">
 				<h3>规则缺口</h3>
-				<p>TIME 主工单（扩规则发版）；QTY 可配合数量飞轮 · JSONL</p>
+				<p>TIME 主工单（可配合时间飞轮）；QTY 可配合数量飞轮 · JSONL</p>
 			</a>
 		</div>
 	</div>

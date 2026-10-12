@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>U/D 定位飞轮</title>
+	<link rel="stylesheet" href="/resource/public/pangbao-theme.css" />
+	<link rel="stylesheet" href="/resource/public/admin-pages.css" />
+	<style>
+		.hint { font-size: 12px; color: #64748b; line-height: 1.55; margin: 0 0 14px; }
+		.table-wrap { overflow-x: auto; }
+		table { width: 100%; border-collapse: collapse; font-size: 13px; }
+		th, td { border-bottom: 1px solid rgba(0,0,0,.06); padding: 8px 6px; text-align: left; vertical-align: top; }
+		th.num, td.num { width: 48px; text-align: right; color: #64748b; font-variant-numeric: tabular-nums; }
+		td.doc { max-width: 220px; word-break: break-all; }
+		td.payload { max-width: 320px; font-family: ui-monospace, monospace; font-size: 11px; word-break: break-all; white-space: pre-wrap; }
+		textarea.json { width: 100%; min-height: 160px; font-family: ui-monospace, monospace; font-size: 12px; }
+		.danger { background: #dc2626; color: #fff; border: none; }
+	</style>
+</head>
+<body>
+<div class="page">
+	<header class="admin-header glass">
+		<div class="logo">定位</div>
+		<div>
+			<h1>U/D 定位飞轮</h1>
+			<p>Chroma <code>feeding_locate_cues</code> ·
+				<a href="/device/admin/intent-agent-admin.html">意图智能体</a> ·
+				<a href="/device/admin">运维 Hub</a> · 不写 MySQL</p>
+		</div>
+	</header>
+	<div class="card glass hidden" id="mainCard">
+		<p class="hint">
+			列表来自 Python <code>/v1/admin/locate-cache</code>。document MUST 为<strong>整段原文</strong>。
+			payload 仅含 <code>strategy</code>：<code>latest</code>|<code>open_timer</code>|<code>prefer_completed</code>。
+			<strong>禁止</strong>写入 <code>historyId</code>/<code>history_id</code>（上游会拒）。上游无 dedupe。
+		</p>
+		<div class="row" style="margin-bottom:12px;">
+			<button id="reloadBtn" type="button" class="secondary">刷新列表</button>
+			<span id="listMeta" class="msg" style="color:#64748b;"></span>
+		</div>
+		<div class="table-wrap">
+			<table>
+				<thead>
+					<tr>
+						<th class="num">#</th>
+						<th>id</th>
+						<th>document</th>
+						<th>quality</th>
+						<th>payload</th>
+						<th></th>
+					</tr>
+				</thead>
+				<tbody id="listBody"></tbody>
+			</table>
+		</div>
+		<hr class="divider" />
+		<h4 style="margin:0 0 8px;font-size:15px;">批量上传种子</h4>
+		<p class="hint">粘贴 JSON 数组，例如：<code>[{"document":"把刚才那次改成120","payload":{"strategy":"latest"}}]</code></p>
+		<textarea id="bulkJson" class="json" placeholder='[{"document":"...","payload":{"strategy":"latest"}}]'></textarea>
+		<div class="row" style="margin-top:10px;">
+			<button id="bulkBtn" type="button">提交批量写入</button>
+		</div>
+		<div id="mainMsg" class="msg"></div>
+	</div>
+	<div class="card glass" id="gateCard">
+		<p>请先打开 <a href="/device/admin">运维 Hub</a> 登录后再访问本页。</p>
+	</div>
+</div>
+<script src="/resource/public/admin-common.js"></script>
+<script>
+let listOffset = 0;
+const API = '/voice/admin/api/locate-vectors';
+
+function api(path, options={}) { return AdminCommon.adminFetch(path, options); }
+
+function setMsg(text, ok) {
+	const el = document.getElementById('mainMsg');
+	el.textContent = text || '';
+	el.style.color = ok === false ? '#dc2626' : (ok ? '#16a34a' : '#64748b');
+}
+
+async function loadList() {
+	setMsg('加载中…');
+	listOffset = 0;
+	const d = await api(API + '?offset=0&limit=200');
+	const body = document.getElementById('listBody');
+	body.innerHTML = '';
+	const items = (d && d.items) || [];
+	const offset = (d && d.offset != null) ? Number(d.offset) : listOffset;
+	listOffset = offset;
+	document.getElementById('listMeta').textContent = '共 ' + ((d && d.total) || items.length) + ' 条';
+	items.forEach((it, i) => {
+		const tr = document.createElement('tr');
+		const num = offset + i + 1;
+		const id = it.id || '';
+		const doc = it.document || '';
+		const q = it.quality_score != null ? it.quality_score : '';
+		const payload = JSON.stringify(it.payload || {}, null, 0);
+		tr.innerHTML =
+			'<td class="num">' + num + '</td>' +
+			'<td><code>' + escapeHtml(id) + '</code></td>' +
+			'<td class="doc">' + escapeHtml(doc) + '</td>' +
+			'<td>' + escapeHtml(String(q)) + '</td>' +
+			'<td class="payload">' + escapeHtml(payload) + '</td>' +
+			'<td><button type="button" class="danger del-btn" data-id="' + escapeAttr(id) + '">删除</button></td>';
+		body.appendChild(tr);
+	});
+	body.querySelectorAll('.del-btn').forEach(btn => {
+		btn.addEventListener('click', () => deleteOne(btn.getAttribute('data-id')));
+	});
+	setMsg('已刷新', true);
+}
+
+async function deleteOne(id) {
+	if (!id) return;
+	if (!confirm('确认删除向量 ' + id + '？删除后不可恢复。')) return;
+	try {
+		await api(API + '/' + encodeURIComponent(id), { method: 'DELETE' });
+		setMsg('已删除 ' + id, true);
+		await loadList();
+	} catch (e) {
+		setMsg(String(e && e.message || e), false);
+	}
+}
+
+async function bulkUpload() {
+	const raw = (document.getElementById('bulkJson').value || '').trim();
+	if (!raw) { setMsg('请粘贴 JSON 数组', false); return; }
+	let items;
+	try {
+		items = JSON.parse(raw);
+	} catch (e) {
+		setMsg('JSON 解析失败: ' + e.message, false);
+		return;
+	}
+	if (!Array.isArray(items)) {
+		setMsg('顶层必须是数组', false);
+		return;
+	}
+	try {
+		const d = await api(API + '/bulk', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ items })
+		});
+		const added = (d && (d.added != null ? d.added : d.ok)) || 0;
+		const skipped = (d && d.skipped) || [];
+		const failed = (d && d.failed) || [];
+		const skipDocs = skipped.map((s, i) =>
+			(i + 1) + '. ' + (s.document || '') + (s.existing_id ? ' （已有 ' + s.existing_id + '）' : '')
+		);
+		let dialog = '新增 ' + added + ' 条';
+		if (skipped.length) {
+			dialog += '\n跳过重复 ' + skipped.length + ' 条（文案相同，未覆盖）：\n\n' + skipDocs.join('\n');
+		} else {
+			dialog += '\n无跳过。';
+		}
+		if (failed.length) {
+			dialog += '\n\n失败 ' + failed.length + ' 条。';
+		}
+		alert(dialog);
+		setMsg(
+			'新增 ' + added + (skipped.length ? '，跳过 ' + skipped.length : '') + (failed.length ? '，失败 ' + failed.length : ''),
+			failed.length === 0
+		);
+		await loadList();
+	} catch (e) {
+		setMsg(String(e && e.message || e), false);
+	}
+}
+
+function escapeHtml(s) {
+	return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function escapeAttr(s) {
+	return String(s).replace(/"/g, '&quot;');
+}
+
+document.getElementById('reloadBtn').addEventListener('click', () => loadList().catch(e => setMsg(String(e), false)));
+document.getElementById('bulkBtn').addEventListener('click', () => bulkUpload());
+
+if (AdminCommon.requireAdmin()) {
+	document.getElementById('gateCard').classList.add('hidden');
+	document.getElementById('mainCard').classList.remove('hidden');
+	loadList().catch(e => setMsg(String(e), false));
+}
+</script>
+</body>
+</html>

@@ -37,7 +37,7 @@
 		<p class="hint">
 			数据来自 Python 卷 <code>data/rule_gaps/gaps.jsonl</code>（经 voice 代理 <code>/v1/admin/rule-gaps</code>）。
 			<strong>默认只展示 TIME/QTY</strong>（不传维度时由 Python 合并 <code>time</code> + <code>quantity</code>）；type/event/shape 不再作为默认工单。
-			<strong>TIME</strong> 为主工单：无时间飞轮，扩本地规则须改 Python 代码发版（非热更新）。
+			<strong>TIME</strong> 为主工单：扩本地规则须改 Python 代码发版（非热更新）；口语相对时间可优先在「时间飞轮」灌整段相对配方种子以跳过重复 TIME LLM。
 			<strong>QTY</strong> 仍可能进箱；口语量可优先在「数量飞轮」灌整段种子以跳过重复 QTY LLM，不必只靠改规则。
 			本页仅浏览与标已处理，不会写入飞轮库。存量 legacy 行由运维在 Python 卷可选清理（本页无清理按钮）。
 			静态页样式不对请 <strong>Ctrl+F5</strong>。

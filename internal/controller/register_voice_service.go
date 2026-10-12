@@ -24,6 +24,10 @@ func RegisterVoiceServiceHTTP(s *ghttp.Server) {
 		group.Bind(voicectrl.NewVoiceAdminOpVectorsCtrl())
 		group.Bind(voicectrl.NewVoiceAdminQtyVectorsCtrl())
 		group.Bind(voicectrl.NewVoiceAdminReadSourceVectorsCtrl())
+		group.Bind(voicectrl.NewVoiceAdminTimeVectorsCtrl())
+		group.Bind(voicectrl.NewVoiceAdminRemarkVectorsCtrl())
+		group.Bind(voicectrl.NewVoiceAdminPredictVectorsCtrl())
+		group.Bind(voicectrl.NewVoiceAdminLocateVectorsCtrl())
 		group.Bind(voicectrl.NewVoiceAdminHistorySpeakVectorsCtrl())
 		group.Bind(voicectrl.NewVoiceAdminRuleGapsCtrl())
 		// Hub 预测上报只读：imminent + active-eta（Admin 口令；非 InternalSecret）。

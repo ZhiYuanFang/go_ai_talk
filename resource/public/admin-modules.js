@@ -61,6 +61,30 @@ window.ADMIN_MODULES = [
 		showInNav: false
 	},
 	{
+		id: 'time-vector-admin',
+		title: '时间飞轮',
+		pagePath: '/device/admin/time-vector-admin.html',
+		showInNav: false
+	},
+	{
+		id: 'remark-vector-admin',
+		title: '备注飞轮',
+		pagePath: '/device/admin/remark-vector-admin.html',
+		showInNav: false
+	},
+	{
+		id: 'predict-vector-admin',
+		title: 'R·predict 飞轮',
+		pagePath: '/device/admin/predict-vector-admin.html',
+		showInNav: false
+	},
+	{
+		id: 'locate-vector-admin',
+		title: 'U/D 定位飞轮',
+		pagePath: '/device/admin/locate-vector-admin.html',
+		showInNav: false
+	},
+	{
 		id: 'history-speak-vector-admin',
 		title: '查史播报向量',
 		pagePath: '/device/admin/history-speak-vector-admin.html',

@@ -1303,6 +1303,102 @@ func (c *PythonAIClient) DeleteReadSourceCache(ctx context.Context, vectorID str
 	return c.deleteCueCache(ctx, "/admin/read-source-cache", "R数据源飞轮缓存", vectorID)
 }
 
+// TimeCacheListResult Python /v1/admin/time-cache（feeding_time_cues，相对配方）。
+type TimeCacheListResult = TypeCacheListResult
+
+// TimeCacheBulkItem 时间飞轮批量种子（payload: 相对配方，禁 Unix 主缓存）。
+type TimeCacheBulkItem = TypeCacheBulkItem
+
+// TimeCacheBulkResult 批量写入结果。
+type TimeCacheBulkResult = TypeCacheBulkResult
+
+// RemarkCacheListResult Python /v1/admin/remark-cache（feeding_remark_cues）。
+type RemarkCacheListResult = TypeCacheListResult
+
+// RemarkCacheBulkItem 备注飞轮批量种子（payload: remark，可空串）。
+type RemarkCacheBulkItem = TypeCacheBulkItem
+
+// RemarkCacheBulkResult 批量写入结果。
+type RemarkCacheBulkResult = TypeCacheBulkResult
+
+// PredictCacheListResult Python /v1/admin/predict-cache（feeding_predict_cues）。
+type PredictCacheListResult = TypeCacheListResult
+
+// PredictCacheBulkItem 预测两维批量种子（payload: predict_channel + time_answer）。
+type PredictCacheBulkItem = TypeCacheBulkItem
+
+// PredictCacheBulkResult 批量写入结果。
+type PredictCacheBulkResult = TypeCacheBulkResult
+
+// LocateCacheListResult Python /v1/admin/locate-cache（feeding_locate_cues）。
+type LocateCacheListResult = TypeCacheListResult
+
+// LocateCacheBulkItem 定位策略批量种子（payload: strategy；禁 historyId）。
+type LocateCacheBulkItem = TypeCacheBulkItem
+
+// LocateCacheBulkResult 批量写入结果。
+type LocateCacheBulkResult = TypeCacheBulkResult
+
+// ListTimeCache 列出 feeding_time_cues 时间相对配方飞轮。
+func (c *PythonAIClient) ListTimeCache(ctx context.Context, offset, limit int) (*TimeCacheListResult, error) {
+	return c.listCueCache(ctx, "/admin/time-cache", "时间飞轮缓存", offset, limit)
+}
+
+// BulkUpsertTimeCache 批量写入时间飞轮种子（相对配方）。
+func (c *PythonAIClient) BulkUpsertTimeCache(ctx context.Context, items []TimeCacheBulkItem) (*TimeCacheBulkResult, error) {
+	return c.bulkUpsertCueCache(ctx, "/admin/time-cache", "时间飞轮缓存", items)
+}
+
+// DeleteTimeCache 按 id 删除时间飞轮条目。
+func (c *PythonAIClient) DeleteTimeCache(ctx context.Context, vectorID string) error {
+	return c.deleteCueCache(ctx, "/admin/time-cache", "时间飞轮缓存", vectorID)
+}
+
+// ListRemarkCache 列出 feeding_remark_cues 备注整段飞轮。
+func (c *PythonAIClient) ListRemarkCache(ctx context.Context, offset, limit int) (*RemarkCacheListResult, error) {
+	return c.listCueCache(ctx, "/admin/remark-cache", "备注飞轮缓存", offset, limit)
+}
+
+// BulkUpsertRemarkCache 批量写入备注飞轮种子（payload.remark）。
+func (c *PythonAIClient) BulkUpsertRemarkCache(ctx context.Context, items []RemarkCacheBulkItem) (*RemarkCacheBulkResult, error) {
+	return c.bulkUpsertCueCache(ctx, "/admin/remark-cache", "备注飞轮缓存", items)
+}
+
+// DeleteRemarkCache 按 id 删除备注飞轮条目。
+func (c *PythonAIClient) DeleteRemarkCache(ctx context.Context, vectorID string) error {
+	return c.deleteCueCache(ctx, "/admin/remark-cache", "备注飞轮缓存", vectorID)
+}
+
+// ListPredictCache 列出 feeding_predict_cues R·predict 两维飞轮。
+func (c *PythonAIClient) ListPredictCache(ctx context.Context, offset, limit int) (*PredictCacheListResult, error) {
+	return c.listCueCache(ctx, "/admin/predict-cache", "预测飞轮缓存", offset, limit)
+}
+
+// BulkUpsertPredictCache 批量写入预测飞轮种子。
+func (c *PythonAIClient) BulkUpsertPredictCache(ctx context.Context, items []PredictCacheBulkItem) (*PredictCacheBulkResult, error) {
+	return c.bulkUpsertCueCache(ctx, "/admin/predict-cache", "预测飞轮缓存", items)
+}
+
+// DeletePredictCache 按 id 删除预测飞轮条目。
+func (c *PythonAIClient) DeletePredictCache(ctx context.Context, vectorID string) error {
+	return c.deleteCueCache(ctx, "/admin/predict-cache", "预测飞轮缓存", vectorID)
+}
+
+// ListLocateCache 列出 feeding_locate_cues U/D 定位策略飞轮。
+func (c *PythonAIClient) ListLocateCache(ctx context.Context, offset, limit int) (*LocateCacheListResult, error) {
+	return c.listCueCache(ctx, "/admin/locate-cache", "定位飞轮缓存", offset, limit)
+}
+
+// BulkUpsertLocateCache 批量写入定位飞轮种子（payload.strategy）。
+func (c *PythonAIClient) BulkUpsertLocateCache(ctx context.Context, items []LocateCacheBulkItem) (*LocateCacheBulkResult, error) {
+	return c.bulkUpsertCueCache(ctx, "/admin/locate-cache", "定位飞轮缓存", items)
+}
+
+// DeleteLocateCache 按 id 删除定位飞轮条目。
+func (c *PythonAIClient) DeleteLocateCache(ctx context.Context, vectorID string) error {
+	return c.deleteCueCache(ctx, "/admin/locate-cache", "定位飞轮缓存", vectorID)
+}
+
 // RuleGapsListResult Python /v1/admin/rule-gaps 列表响应。
 type RuleGapsListResult struct {
 	Total  int                      `json:"total"`
