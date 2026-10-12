@@ -256,10 +256,21 @@ func FulfillFeaturePaid(ctx context.Context, orderNo, channel, channelTxnID stri
 	if orderNo == "" {
 		return gerror.NewCode(gcode.CodeInvalidParameter, "orderNo 不能为空")
 	}
+	// 渠道交易号已履约 → 同 wx / 非 Apple 幂等成功；Apple 异 wx 拒绝（防换号刷授权）。
 	if channelTxnID != "" {
 		if existed, err := loadFeatureOrderByChannelTxn(ctx, channel, channelTxnID); err != nil {
 			return err
 		} else if existed != nil && existed.Status == OrderPaid {
+			if existed.OrderNo == orderNo {
+				return nil
+			}
+			target, tErr := loadFeatureOrderByNo(ctx, orderNo)
+			if tErr != nil {
+				return tErr
+			}
+			if cErr := checkAppleIAPChannelTxnWx(channel, existed.WxId, target.WxId); cErr != nil {
+				return cErr
+			}
 			return nil
 		}
 	}
