@@ -1148,6 +1148,161 @@ func (c *PythonAIClient) DedupeHistorySpeakCache(ctx context.Context) (*HistoryS
 	return &out, nil
 }
 
+// OpCacheListResult Python /v1/admin/op-cache（feeding_op_cues，OP 轨整段飞轮）。
+type OpCacheListResult = TypeCacheListResult
+
+// OpCacheBulkItem OP 轨批量种子（payload: op_rail）。
+type OpCacheBulkItem = TypeCacheBulkItem
+
+// OpCacheBulkResult 批量写入结果。
+type OpCacheBulkResult = TypeCacheBulkResult
+
+// QtyCacheListResult Python /v1/admin/qty-cache（feeding_qty_cues）。
+type QtyCacheListResult = TypeCacheListResult
+
+// QtyCacheBulkItem 数量飞轮批量种子（payload: quantity）。
+type QtyCacheBulkItem = TypeCacheBulkItem
+
+// QtyCacheBulkResult 批量写入结果。
+type QtyCacheBulkResult = TypeCacheBulkResult
+
+// ReadSourceCacheListResult Python /v1/admin/read-source-cache（feeding_read_source_cues）。
+type ReadSourceCacheListResult = TypeCacheListResult
+
+// ReadSourceCacheBulkItem R·source 批量种子（payload: read_source）。
+type ReadSourceCacheBulkItem = TypeCacheBulkItem
+
+// ReadSourceCacheBulkResult 批量写入结果。
+type ReadSourceCacheBulkResult = TypeCacheBulkResult
+
+// listCueCache 通用分页列出 Python Admin 飞轮缓存（list 响应形同 type-cache）。
+//
+// Args: adminPath 为相对 /v1 的路径前缀（如 /admin/op-cache）；label 用于中文错误文案。
+func (c *PythonAIClient) listCueCache(ctx context.Context, adminPath, label string, offset, limit int) (*TypeCacheListResult, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	u := fmt.Sprintf("%s/v1%s?offset=%d&limit=%d", c.baseURL, adminPath, offset, limit)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, fmt.Errorf("创建%s列表请求失败: %w", label, err)
+	}
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("调用 Python %s列表失败: %w", label, err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Python %s列表错误 %d: %s", label, resp.StatusCode, string(body))
+	}
+	var out TypeCacheListResult
+	if err := json.Unmarshal(body, &out); err != nil {
+		return nil, fmt.Errorf("解析%s列表失败: %w", label, err)
+	}
+	if out.Items == nil {
+		out.Items = []map[string]interface{}{}
+	}
+	return &out, nil
+}
+
+// bulkUpsertCueCache 通用 bulk 写入 Python Admin 飞轮缓存。
+func (c *PythonAIClient) bulkUpsertCueCache(ctx context.Context, adminPath, label string, items []TypeCacheBulkItem) (*TypeCacheBulkResult, error) {
+	payload, _ := json.Marshal(map[string]interface{}{"items": items})
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1"+adminPath+"/bulk", strings.NewReader(string(payload)))
+	if err != nil {
+		return nil, fmt.Errorf("创建%s bulk 请求失败: %w", label, err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("调用 Python %s bulk 失败: %w", label, err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Python %s bulk 错误 %d: %s", label, resp.StatusCode, string(body))
+	}
+	var out TypeCacheBulkResult
+	if err := json.Unmarshal(body, &out); err != nil {
+		return nil, fmt.Errorf("解析%s bulk 失败: %w", label, err)
+	}
+	return &out, nil
+}
+
+// deleteCueCache 按向量 id 删除 Python Admin 飞轮条目。
+func (c *PythonAIClient) deleteCueCache(ctx context.Context, adminPath, label, vectorID string) error {
+	vid := strings.TrimSpace(vectorID)
+	if vid == "" {
+		return fmt.Errorf("vector id 为空")
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.baseURL+"/v1"+adminPath+"/"+url.PathEscape(vid), nil)
+	if err != nil {
+		return fmt.Errorf("创建%s删除请求失败: %w", label, err)
+	}
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("调用 Python %s删除失败: %w", label, err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode == http.StatusNotFound {
+		return fmt.Errorf("向量不存在")
+	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("Python %s删除错误 %d: %s", label, resp.StatusCode, string(body))
+	}
+	return nil
+}
+
+// ListOpCache 列出 feeding_op_cues OP 轨整段飞轮。
+func (c *PythonAIClient) ListOpCache(ctx context.Context, offset, limit int) (*OpCacheListResult, error) {
+	return c.listCueCache(ctx, "/admin/op-cache", "OP飞轮缓存", offset, limit)
+}
+
+// BulkUpsertOpCache 批量写入 OP 轨种子（payload.op_rail）。
+func (c *PythonAIClient) BulkUpsertOpCache(ctx context.Context, items []OpCacheBulkItem) (*OpCacheBulkResult, error) {
+	return c.bulkUpsertCueCache(ctx, "/admin/op-cache", "OP飞轮缓存", items)
+}
+
+// DeleteOpCache 按 id 删除 OP 轨飞轮条目。
+func (c *PythonAIClient) DeleteOpCache(ctx context.Context, vectorID string) error {
+	return c.deleteCueCache(ctx, "/admin/op-cache", "OP飞轮缓存", vectorID)
+}
+
+// ListQtyCache 列出 feeding_qty_cues 数量整段飞轮。
+func (c *PythonAIClient) ListQtyCache(ctx context.Context, offset, limit int) (*QtyCacheListResult, error) {
+	return c.listCueCache(ctx, "/admin/qty-cache", "数量飞轮缓存", offset, limit)
+}
+
+// BulkUpsertQtyCache 批量写入数量飞轮种子（payload.quantity）。
+func (c *PythonAIClient) BulkUpsertQtyCache(ctx context.Context, items []QtyCacheBulkItem) (*QtyCacheBulkResult, error) {
+	return c.bulkUpsertCueCache(ctx, "/admin/qty-cache", "数量飞轮缓存", items)
+}
+
+// DeleteQtyCache 按 id 删除数量飞轮条目。
+func (c *PythonAIClient) DeleteQtyCache(ctx context.Context, vectorID string) error {
+	return c.deleteCueCache(ctx, "/admin/qty-cache", "数量飞轮缓存", vectorID)
+}
+
+// ListReadSourceCache 列出 feeding_read_source_cues R·数据源飞轮。
+func (c *PythonAIClient) ListReadSourceCache(ctx context.Context, offset, limit int) (*ReadSourceCacheListResult, error) {
+	return c.listCueCache(ctx, "/admin/read-source-cache", "R数据源飞轮缓存", offset, limit)
+}
+
+// BulkUpsertReadSourceCache 批量写入 R·source 种子（payload.read_source）。
+func (c *PythonAIClient) BulkUpsertReadSourceCache(ctx context.Context, items []ReadSourceCacheBulkItem) (*ReadSourceCacheBulkResult, error) {
+	return c.bulkUpsertCueCache(ctx, "/admin/read-source-cache", "R数据源飞轮缓存", items)
+}
+
+// DeleteReadSourceCache 按 id 删除 R·source 飞轮条目。
+func (c *PythonAIClient) DeleteReadSourceCache(ctx context.Context, vectorID string) error {
+	return c.deleteCueCache(ctx, "/admin/read-source-cache", "R数据源飞轮缓存", vectorID)
+}
+
 // RuleGapsListResult Python /v1/admin/rule-gaps 列表响应。
 type RuleGapsListResult struct {
 	Total  int                      `json:"total"`

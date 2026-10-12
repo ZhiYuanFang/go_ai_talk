@@ -30,6 +30,7 @@
 		.portal-card h3 { margin: 0 0 8px; font-size: 17px; }
 		.portal-card p { margin: 0; font-size: 13px; color: #64748b; line-height: 1.55; }
 		.portal-card code { font-size: 11px; }
+		.portal-section { margin: 0 0 6px; font-size: 13px; font-weight: 600; color: #334155; }
 	</style>
 </head>
 <body>
@@ -38,29 +39,42 @@
 		<div class="logo">意图</div>
 		<div>
 			<h1>意图智能体</h1>
-			<p>喂养意图相关向量与规则缺口 · <a href="/device/admin">返回运维 Hub</a></p>
+			<p>分层整段飞轮与规则缺口 · <a href="/device/admin">返回运维 Hub</a></p>
 		</div>
 	</header>
 	<div class="card glass hidden" id="mainCard">
 		<p class="hint" style="font-size:13px;color:#64748b;margin:0 0 14px;line-height:1.55;">
-			以下工具均经 voice 代理 Python；不写 MySQL。TIME/QTY 无独立向量库，缺口请看「规则缺口」。
+			飞轮均经 voice 代理 Python Chroma；document 灌<strong>整段原文</strong>。TIME 无飞轮，缺口见下方工单。
+			旧「类型向量」热路径已停，勿再从门户灌种（深链仅迁移排障）。
 		</p>
+		<p class="portal-section">飞轮整理</p>
 		<div class="portal-grid">
+			<a class="portal-card" href="/device/admin/op-vector-admin.html">
+				<h3>OP 轨</h3>
+				<p>整段 → create/read/update/delete/exit/other · <code>feeding_op_cues</code></p>
+			</a>
 			<a class="portal-card" href="/device/admin/intent-vector-admin.html">
-				<h3>事件向量</h3>
+				<h3>事件</h3>
 				<p>短说法 → 事件 · Chroma <code>feeding_intents</code></p>
 			</a>
-			<a class="portal-card" href="/device/admin/type-vector-admin.html">
-				<h3>类型向量</h3>
-				<p>类型关键字 · Chroma <code>feeding_type_cues</code></p>
+			<a class="portal-card" href="/device/admin/qty-vector-admin.html">
+				<h3>数量</h3>
+				<p>口语量整段 → quantity · <code>feeding_qty_cues</code></p>
+			</a>
+			<a class="portal-card" href="/device/admin/read-source-vector-admin.html">
+				<h3>R·数据源</h3>
+				<p>read 分流 record|predict · <code>feeding_read_source_cues</code></p>
 			</a>
 			<a class="portal-card" href="/device/admin/history-speak-vector-admin.html">
-				<h3>查史播报向量</h3>
-				<p>点查策略 · Chroma <code>feeding_history_speak_cues</code></p>
+				<h3>查史播报</h3>
+				<p>R·record 点查策略 · <code>feeding_history_speak_cues</code></p>
 			</a>
+		</div>
+		<p class="portal-section" style="margin-top:18px;">规则工单</p>
+		<div class="portal-grid">
 			<a class="portal-card" href="/device/admin/rule-gaps-admin.html">
 				<h3>规则缺口</h3>
-				<p>TIME/QTY 本地规则未覆盖收件箱 · JSONL</p>
+				<p>TIME 主工单（扩规则发版）；QTY 可配合数量飞轮 · JSONL</p>
 			</a>
 		</div>
 	</div>

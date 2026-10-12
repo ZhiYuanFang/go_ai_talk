@@ -43,6 +43,24 @@ window.ADMIN_MODULES = [
 		showInNav: false
 	},
 	{
+		id: 'op-vector-admin',
+		title: 'OP 轨飞轮',
+		pagePath: '/device/admin/op-vector-admin.html',
+		showInNav: false
+	},
+	{
+		id: 'qty-vector-admin',
+		title: '数量飞轮',
+		pagePath: '/device/admin/qty-vector-admin.html',
+		showInNav: false
+	},
+	{
+		id: 'read-source-vector-admin',
+		title: 'R·数据源飞轮',
+		pagePath: '/device/admin/read-source-vector-admin.html',
+		showInNav: false
+	},
+	{
 		id: 'history-speak-vector-admin',
 		title: '查史播报向量',
 		pagePath: '/device/admin/history-speak-vector-admin.html',

@@ -23,16 +23,21 @@
 	<header class="admin-header glass">
 		<div class="logo">Type</div>
 		<div>
-			<h1>类型向量</h1>
+			<h1>类型向量（遗留）</h1>
 			<p>Chroma <code>feeding_type_cues</code> ·
 				<a href="/device/admin/intent-agent-admin.html">意图智能体</a> ·
 				<a href="/device/admin">运维 Hub</a> · 不写 MySQL</p>
 		</div>
 	</header>
 	<div class="card glass hidden" id="mainCard">
+		<p class="hint" style="background:rgba(220,38,38,.08);padding:10px 12px;border-radius:10px;border:1px solid rgba(220,38,38,.2);">
+			<strong>遗留 / 迁移</strong>：Python 热路径已停用短关键词 TYPE 飞轮。
+			<strong>新种子请用「OP 轨」整段飞轮</strong>（门户 → OP 轨），勿再以 <code>target_type=feeding/history/predict/…</code> 作为主灌种策略。
+			本页仅供清存量 / 排障；深链保留。
+		</p>
 		<p class="hint">
 			列表来自 Python 类型关键字库（<code>/v1/admin/type-cache</code>），<strong>不是</strong>事件短说法库 <code>feeding_intents</code>。
-			payload 须含 <code>target_type</code>（feeding/history/conversation/exit），可选 <code>op</code>、<code>history_mode</code>。
+			存量 payload 可能含旧 <code>target_type</code> / <code>op</code> / <code>history_mode</code>。
 			重复判定为 document 去空白后完全相同；批量上传遇相同文案会跳过不覆盖。
 		</p>
 		<div class="row" style="margin-bottom:12px;">
