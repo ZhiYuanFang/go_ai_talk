@@ -79,6 +79,7 @@ var (
 		"/device/admin/locate-vector-admin.html",
 		"/device/admin/history-speak-vector-admin.html",
 		"/device/admin/rule-gaps-admin.html",
+		"/device/admin/miss-inbox-admin.html",
 		"/device/admin/ai-model-admin.html",
 		"/device/admin/sim-admin.html",
 		"/device/admin/cash-vip-admin.html",

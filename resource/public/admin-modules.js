@@ -97,6 +97,12 @@ window.ADMIN_MODULES = [
 		showInNav: false
 	},
 	{
+		id: 'miss-inbox-admin',
+		title: '覆盖缺口',
+		pagePath: '/device/admin/miss-inbox-admin.html',
+		showInNav: false
+	},
+	{
 		id: 'sim-admin',
 		title: '模拟用户管理',
 		pagePath: '/device/admin/sim-admin.html',

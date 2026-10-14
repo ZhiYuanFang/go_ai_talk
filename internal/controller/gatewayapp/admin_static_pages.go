@@ -37,6 +37,7 @@ var adminStaticPages = []adminStaticPage{
 	{path: "/device/admin/locate-vector-admin.html", file: "resource/public/locate-vector-admin.html", noCache: true},
 	{path: "/device/admin/history-speak-vector-admin.html", file: "resource/public/history-speak-vector-admin.html", noCache: true},
 	{path: "/device/admin/rule-gaps-admin.html", file: "resource/public/rule-gaps-admin.html", noCache: true},
+	{path: "/device/admin/miss-inbox-admin.html", file: "resource/public/miss-inbox-admin.html", noCache: true},
 	{path: "/device/admin/ai-model-admin.html", file: "resource/public/ai-model-admin.html", noCache: true},
 	{path: "/device/admin/sim-admin.html", file: "resource/public/sim-admin.html", noCache: true},
 	{path: "/device/admin/cash-vip-admin.html", file: "resource/public/cash-vip-admin.html", noCache: true},

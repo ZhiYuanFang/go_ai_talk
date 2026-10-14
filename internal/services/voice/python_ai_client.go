@@ -1454,6 +1454,80 @@ func (c *PythonAIClient) ListRuleGaps(ctx context.Context, offset, limit int, di
 	return &out, nil
 }
 
+// MissInboxListResult Python /v1/admin/miss-inbox 列表响应（覆盖缺口 / 答不出）。
+type MissInboxListResult struct {
+	Total  int                      `json:"total"`
+	Offset int                      `json:"offset"`
+	Limit  int                      `json:"limit"`
+	Items  []map[string]interface{} `json:"items"`
+}
+
+// ListMissInbox 分页列出覆盖缺口收件箱（透传 Python JSONL 行字段）。
+//
+// Args: offset/limit；status/failKind 空串表示不过滤。
+// 须始终带上 status/fail_kind 查询串：若省略 status，Python FastAPI 默认 open，无法表示「全部」。
+func (c *PythonAIClient) ListMissInbox(ctx context.Context, offset, limit int, status, failKind string) (*MissInboxListResult, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	q := fmt.Sprintf(
+		"offset=%d&limit=%d&status=%s&fail_kind=%s",
+		offset,
+		limit,
+		url.QueryEscape(strings.TrimSpace(status)),
+		url.QueryEscape(strings.TrimSpace(failKind)),
+	)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/v1/admin/miss-inbox?"+q, nil)
+	if err != nil {
+		return nil, fmt.Errorf("创建覆盖缺口列表请求失败: %w", err)
+	}
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("调用 Python 覆盖缺口列表失败: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Python 覆盖缺口列表错误 %d: %s", resp.StatusCode, string(body))
+	}
+	var out MissInboxListResult
+	if err := json.Unmarshal(body, &out); err != nil {
+		return nil, fmt.Errorf("解析覆盖缺口列表失败: %w", err)
+	}
+	if out.Items == nil {
+		out.Items = []map[string]interface{}{}
+	}
+	return &out, nil
+}
+
+// DeleteMissInbox 按 id 物理删除一条覆盖缺口。
+func (c *PythonAIClient) DeleteMissInbox(ctx context.Context, missID string) error {
+	mid := strings.TrimSpace(missID)
+	if mid == "" {
+		return fmt.Errorf("miss id 为空")
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.baseURL+"/v1/admin/miss-inbox/"+url.PathEscape(mid), nil)
+	if err != nil {
+		return fmt.Errorf("创建覆盖缺口删除请求失败: %w", err)
+	}
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("调用 Python 覆盖缺口删除失败: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode == http.StatusNotFound {
+		return fmt.Errorf("记录不存在")
+	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("Python 覆盖缺口删除错误 %d: %s", resp.StatusCode, string(body))
+	}
+	return nil
+}
+
 // PatchRuleGapStatus 更新缺口 status（如 dismissed）。
 func (c *PythonAIClient) PatchRuleGapStatus(ctx context.Context, gapID, status string) (*RuleGapPatchResult, error) {
 	gid := strings.TrimSpace(gapID)
