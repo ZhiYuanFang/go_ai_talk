@@ -57,8 +57,8 @@
 - 细则见 **`openspec/project.md`**「App API 使用统计约定」；维护型排除列表在 **`internal/services/gatewayapp/usagestats/maintenance_skip.go`**。
 
 ## Hub 运维页布局（OpenSpec / 实现强制）
-- 新增或改造 Hub / 设备管理等运维静态页时，若存在「主列表 + 详情」，宽屏 MUST 优先左右分栏（master–detail），**禁止**默认整页纵向堆叠主从内容导致长时间下滚；窄屏可回退上下布局。
-- 共享样式：`resource/public/admin-pages.css` 的 `.hub-md*` / `.hub-page-wide`。
+- 加载 `admin-pages.css` 的 Hub 运维页 MUST 近全宽（约 `calc(100% - 32px)`），禁止 ~1180/~1400 硬封顶；协议/官网页不加载 admin-pages，不受影响。
+- 若存在「主列表 + 详情」或上下长段，宽屏 MUST 左右分栏（`.hub-md*`）或多卡片两列（`.hub-cards-2col`），**禁止**默认整页纵向堆叠导致长时间下滚；窄屏可回退。
 - 细则见 **`openspec/project.md`**「Hub 运维页布局约定」。
 
 ## 背景循环任务（OpenSpec / 实现强制）

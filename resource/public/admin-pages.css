@@ -488,19 +488,54 @@ tr.row-selected td {
 }
 
 /* --------------------------------------------------------------------------
- * Hub 运维页 master–detail（宽屏左右、窄屏上下）
- * 业务说明：列表与详情并列，减少整页下滚；统计等宽内容页用 .hub-page-wide。
+ * Hub 运维页：近全宽壳 + master–detail / 多卡片两列
+ * 仅加载本文件的页生效；不改 pangbao-theme，以免协议/官网变全宽。
  * -------------------------------------------------------------------------- */
 
-/* 相对默认 .page(~1180px) 加宽，容纳双栏 */
+/* 覆盖 theme .page(~1180) / .card max-width：Hub 统一近全宽 */
+.page,
+.page.page-narrow,
 .page.hub-page-wide {
-	width: min(1400px, calc(100% - 32px));
+	width: calc(100% - 32px);
+	max-width: none;
 }
 
-.page.hub-page-wide .card {
-	max-width: 1400px;
+.page .card,
+.page.page-narrow .card,
+.page.hub-page-wide .card,
+.card {
+	max-width: none;
 }
 
+/* 历史页曾单独压窄 card，恢复跟随近全宽 */
+.history-page .card {
+	max-width: none;
+}
+
+/* 多卡片页：宽屏两列，减少整页下滚 */
+.hub-cards-2col {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 16px;
+	align-items: start;
+}
+
+.hub-cards-2col > .card {
+	margin-bottom: 0;
+	width: 100%;
+}
+
+.hub-cards-2col > .card.hub-card-span-2 {
+	grid-column: 1 / -1;
+}
+
+@media (max-width: 1100px) {
+	.hub-cards-2col {
+		grid-template-columns: 1fr;
+	}
+}
+
+/* master–detail */
 .hub-md {
 	display: flex;
 	gap: 16px;
@@ -514,6 +549,12 @@ tr.row-selected td {
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
+}
+
+/* 开通功能等：左侧窄导航轨 */
+.hub-md-master.hub-md-nav {
+	flex: 0 0 200px;
+	max-width: 240px;
 }
 
 .hub-md-master .table-wrap {
@@ -539,7 +580,6 @@ tr.row-selected td {
 	line-height: 1.5;
 }
 
-/* 明细面板展开后隐藏占位文案 */
 .hub-md-detail:has(.detail-panel:not(.hidden)) > .hub-md-empty {
 	display: none;
 }
@@ -555,9 +595,37 @@ tr.row-selected td {
 	margin-top: 0;
 }
 
+/* 磁贴竖向（开通功能左栏） */
+.tile-bar.tile-bar-vert {
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	gap: 8px;
+	margin: 0;
+}
+
+.tile-bar.tile-bar-vert button {
+	width: 100%;
+	text-align: left;
+}
+
 @media (max-width: 900px) {
 	.hub-md {
 		flex-direction: column;
+	}
+
+	.hub-md-master.hub-md-nav {
+		flex: 1 1 auto;
+		max-width: none;
+	}
+
+	.tile-bar.tile-bar-vert {
+		flex-direction: row;
+		flex-wrap: wrap;
+	}
+
+	.tile-bar.tile-bar-vert button {
+		width: auto;
 	}
 
 	.hub-md-detail,

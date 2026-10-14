@@ -8,7 +8,7 @@
 	<link rel="stylesheet" href="/resource/public/admin-pages.css" />
 	<style>
 		.hint { font-size: 12px; color: #64748b; line-height: 1.55; margin: 0 0 14px; }
-		.form-stack { display: flex; flex-direction: column; gap: 14px; max-width: 920px; margin-bottom: 14px; }
+		.form-stack { display: flex; flex-direction: column; gap: 14px; max-width: none; margin-bottom: 14px; }
 		.form-section { border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px; background: #f8fafc; }
 		.form-section h4 { margin: 0 0 10px; font-size: 13px; color: #0f172a; font-weight: 700; }
 		.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; }
@@ -63,7 +63,12 @@
 			顶部点选一项再编辑。价格单位为<strong>分</strong>。样式不对请 <strong>Ctrl+F5</strong>。
 			撤销手工授会使该项立即过期，此前叠加上去的付费剩余也会一起失效。
 		</p>
-		<div class="tile-bar" id="tileBar"></div>
+		<!-- 左磁贴导航 | 右编辑区，减少整页下滚 -->
+		<div class="hub-md">
+		<div class="hub-md-master hub-md-nav">
+		<div class="tile-bar tile-bar-vert" id="tileBar"></div>
+		</div>
+		<div class="hub-md-detail">
 
 		<div id="secGrant" class="hub-sec">
 		<h3 style="margin-top:18px;">手工授功能（补单/赠送）</h3>
@@ -198,7 +203,7 @@
 				<button id="reloadDefBtn" type="button" class="secondary">刷新列表</button>
 			</div>
 		</div>
-		<div class="form-stack" id="activationPanel" style="display:none;max-width:920px;">
+		<div class="form-stack" id="activationPanel" style="display:none;">
 			<section class="form-section">
 				<h4>开通快照 · <span id="actFeatureId"></span></h4>
 				<p class="hint" id="actNote"></p>
@@ -502,6 +507,8 @@
 		</div>
 		</div>
 		<div id="msg" class="msg"></div>
+		</div><!-- hub-md-detail -->
+		</div><!-- hub-md -->
 	</div>
 </div>
 <script src="/resource/public/admin-common.js"></script>

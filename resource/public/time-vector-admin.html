@@ -40,7 +40,9 @@
 			<button id="reloadBtn" type="button" class="secondary">刷新列表</button>
 			<span id="listMeta" class="msg" style="color:#64748b;"></span>
 		</div>
-		<div class="table-wrap">
+		<div class="hub-md">
+			<div class="hub-md-master">
+			<div class="table-wrap">
 			<table>
 				<thead>
 					<tr>
@@ -55,14 +57,17 @@
 				<tbody id="listBody"></tbody>
 			</table>
 		</div>
-		<hr class="divider" />
-		<h4 style="margin:0 0 8px;font-size:15px;">批量上传种子</h4>
-		<p class="hint">粘贴 JSON 数组，例如：<code>[{"document":"昨晚八点喂了","payload":{"kind":"instant","points":[{"day":"yesterday","period":"evening","hour":20,"minute":0}],"duration_minutes":null}}]</code></p>
-		<textarea id="bulkJson" class="json" placeholder='[{"document":"...","payload":{"kind":"instant","points":[{"day":"yesterday","hour":20,"minute":0}]}}]'></textarea>
-		<div class="row" style="margin-top:10px;">
+			</div>
+			<div class="hub-md-detail">
+			<h4 style="margin:0 0 8px;font-size:15px;">批量上传种子</h4>
+			<p class="hint">粘贴 JSON 数组，例如：<code>[{"document":"昨晚八点喂了","payload":{"kind":"instant","points":[{"day":"yesterday","period":"evening","hour":20,"minute":0}],"duration_minutes":null}}]</code></p>
+			<textarea id="bulkJson" class="json" placeholder='[{"document":"...","payload":{"kind":"instant","points":[{"day":"yesterday","hour":20,"minute":0}]}}]'></textarea>
+			<div class="row" style="margin-top:10px;">
 			<button id="bulkBtn" type="button">提交批量写入</button>
 		</div>
-		<div id="mainMsg" class="msg"></div>
+			<div id="mainMsg" class="msg"></div>
+			</div>
+		</div>
 	</div>
 	<div class="card glass" id="gateCard">
 		<p>请先打开 <a href="/device/admin">运维 Hub</a> 登录后再访问本页。</p>
