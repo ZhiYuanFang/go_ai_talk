@@ -30,5 +30,7 @@ func RegisterDeviceServiceHTTP(s *ghttp.Server) {
 		group.Bind(devicectrl.NewDeviceUcgInternalCtrl())
 		group.Bind(devicectrl.NewDeviceSimInternalCtrl())
 		group.Bind(devicectrl.NewDeviceXiaozhiMcpInternalCtrl())
+		// Python 预测兜底读预约约定（与 App appointment/next 字段对齐）
+		group.Bind(devicectrl.NewDeviceAppointmentInternalCtrl())
 	})
 }
