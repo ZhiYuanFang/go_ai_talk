@@ -8,7 +8,7 @@
 	<link rel="stylesheet" href="/resource/public/admin-pages.css" />
 </head>
 <body>
-<div class="page">
+<div class="page hub-page-wide">
 	<header class="admin-header glass">
 		<div class="logo">App</div>
 		<div>
@@ -45,39 +45,48 @@
 		<p class="hint">数据仅存 Redis，可丢失；窗口最多 30 天。时间线每用户最多 1 万条（可能短于次数合计）。须登录上报；模拟用户不计；同账号 3 秒限流 1 次。上报接口不计入「App API 使用统计」。</p>
 		<div id="mainMsg" class="msg"></div>
 
+		<!-- 按功能：左侧功能表，右侧用户明细（宽屏 master–detail） -->
 		<div id="featPanel">
-			<div class="table-wrap">
-				<table>
-					<thead>
-						<tr>
-							<th>功能 / 事件名</th>
-							<th>说明</th>
-							<th>次数</th>
-							<th>最近上报</th>
-							<th>操作</th>
-						</tr>
-					</thead>
-					<tbody id="featTbody"></tbody>
-				</table>
-			</div>
-			<div class="pager" id="featPager">
-				<button id="featPrevBtn" type="button">上一页</button>
-				<button id="featNextBtn" type="button">下一页</button>
-				<span id="featPagerInfo"></span>
-			</div>
-			<div id="featDetailPanel" class="detail-panel hidden">
-				<h4 id="featDetailTitle"></h4>
-				<div class="table-wrap">
-					<table>
-						<thead>
-							<tr><th>wxId</th><th>UCG昵称</th><th>次数</th><th>最近上报</th></tr>
-						</thead>
-						<tbody id="featDetailTbody"></tbody>
-					</table>
+			<div class="hub-md">
+				<div class="hub-md-master">
+					<div class="table-wrap">
+						<table>
+							<thead>
+								<tr>
+									<th>功能 / 事件名</th>
+									<th>说明</th>
+									<th>次数</th>
+									<th>最近上报</th>
+									<th>操作</th>
+								</tr>
+							</thead>
+							<tbody id="featTbody"></tbody>
+						</table>
+					</div>
+					<div class="pager" id="featPager">
+						<button id="featPrevBtn" type="button">上一页</button>
+						<button id="featNextBtn" type="button">下一页</button>
+						<span id="featPagerInfo"></span>
+					</div>
+				</div>
+				<div class="hub-md-detail">
+					<p class="hub-md-empty">点击左侧功能行查看使用用户</p>
+					<div id="featDetailPanel" class="detail-panel hidden">
+						<h4 id="featDetailTitle"></h4>
+						<div class="table-wrap">
+							<table>
+								<thead>
+									<tr><th>wxId</th><th>UCG昵称</th><th>次数</th><th>最近上报</th></tr>
+								</thead>
+								<tbody id="featDetailTbody"></tbody>
+							</table>
+						</div>
+					</div>
 				</div>
 			</div>
 		</div>
 
+		<!-- 按用户：左侧 wx 列表，右侧功能汇总 + 操作时间线 -->
 		<div id="userPanel" class="hidden">
 			<div class="card-actions">
 				<input id="wxSearchInput" placeholder="搜索 wxId / 设备号 / unionid / 账号" style="min-width:220px;" />
@@ -98,58 +107,64 @@
 				</label>
 			</div>
 			<p class="hint" style="margin-top:8px;">宝宝名筛选与「最近使用时间」排序仅作用于<strong>当前页</strong>已加载行。</p>
-			<div class="table-wrap" style="margin-top:12px;">
-				<table>
-					<thead>
-						<tr>
-							<th>#</th>
-							<th>wxId</th>
-							<th>UCG昵称</th>
-							<th>注册时间</th>
-							<th id="wxLastAtTh" class="sortable-th" title="点击按最近使用时间排序（仅当前页）" style="cursor:pointer;">最近使用时间</th>
-							<th>设备号</th>
-							<th>unionid</th>
-							<th>平台</th>
-							<th>用户名账号</th>
-						</tr>
-					</thead>
-					<tbody id="wxListTbody"></tbody>
-				</table>
-			</div>
-			<div class="pager" id="wxListPager" style="flex-wrap:wrap;gap:8px;">
-				<button id="wxPrevBtn" type="button">上一页</button>
-				<button id="wxNextBtn" type="button">下一页</button>
-				<span id="wxPagerInfo"></span>
-				<label>页码 <input id="wxPageInput" type="number" min="1" style="width:64px;" /></label>
-				<button id="wxGotoBtn" type="button">跳转</button>
-			</div>
-			<p class="hint" style="margin-top:8px;">点击 wx 行查看该用户功能汇总与操作时间线；点击设备号进入设备数据运维</p>
-			<h4 id="userDetailTitle" style="margin:16px 0 8px;font-size:15px;color:#333;">未选择用户</h4>
-			<div class="table-wrap">
-				<table>
-					<thead>
-						<tr>
-							<th>功能 / 事件名</th>
-							<th>说明</th>
-							<th>次数</th>
-							<th>最近上报</th>
-						</tr>
-					</thead>
-					<tbody id="userFeatTbody"></tbody>
-				</table>
-			</div>
-			<h4 style="margin:16px 0 8px;font-size:15px;color:#333;">操作时间线</h4>
-			<div class="table-wrap">
-				<table>
-					<thead>
-						<tr>
-							<th>服务端时间</th>
-							<th>事件名</th>
-							<th>说明</th>
-						</tr>
-					</thead>
-					<tbody id="timelineTbody"></tbody>
-				</table>
+			<div class="hub-md" style="margin-top:12px;">
+				<div class="hub-md-master">
+					<div class="table-wrap">
+						<table>
+							<thead>
+								<tr>
+									<th>#</th>
+									<th>wxId</th>
+									<th>UCG昵称</th>
+									<th>注册时间</th>
+									<th id="wxLastAtTh" class="sortable-th" title="点击按最近使用时间排序（仅当前页）" style="cursor:pointer;">最近使用时间</th>
+									<th>设备号</th>
+									<th>unionid</th>
+									<th>平台</th>
+									<th>用户名账号</th>
+								</tr>
+							</thead>
+							<tbody id="wxListTbody"></tbody>
+						</table>
+					</div>
+					<div class="pager" id="wxListPager" style="flex-wrap:wrap;gap:8px;">
+						<button id="wxPrevBtn" type="button">上一页</button>
+						<button id="wxNextBtn" type="button">下一页</button>
+						<span id="wxPagerInfo"></span>
+						<label>页码 <input id="wxPageInput" type="number" min="1" style="width:64px;" /></label>
+						<button id="wxGotoBtn" type="button">跳转</button>
+					</div>
+					<p class="hint">点击 wx 行查看右侧汇总与时间线；点击设备号进入设备数据运维</p>
+				</div>
+				<div class="hub-md-detail">
+					<h4 id="userDetailTitle" style="margin:0 0 8px;font-size:15px;color:#333;">未选择用户</h4>
+					<div class="table-wrap">
+						<table>
+							<thead>
+								<tr>
+									<th>功能 / 事件名</th>
+									<th>说明</th>
+									<th>次数</th>
+									<th>最近上报</th>
+								</tr>
+							</thead>
+							<tbody id="userFeatTbody"></tbody>
+						</table>
+					</div>
+					<h4 style="margin:16px 0 8px;font-size:15px;color:#333;">操作时间线</h4>
+					<div class="table-wrap">
+						<table>
+							<thead>
+								<tr>
+									<th>服务端时间</th>
+									<th>事件名</th>
+									<th>说明</th>
+								</tr>
+							</thead>
+							<tbody id="timelineTbody"></tbody>
+						</table>
+					</div>
+				</div>
 			</div>
 		</div>
 	</div>

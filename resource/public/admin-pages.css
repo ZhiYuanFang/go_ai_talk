@@ -486,3 +486,82 @@ tr.row-selected td {
 	text-align: center;
 	max-width: 420px;
 }
+
+/* --------------------------------------------------------------------------
+ * Hub 运维页 master–detail（宽屏左右、窄屏上下）
+ * 业务说明：列表与详情并列，减少整页下滚；统计等宽内容页用 .hub-page-wide。
+ * -------------------------------------------------------------------------- */
+
+/* 相对默认 .page(~1180px) 加宽，容纳双栏 */
+.page.hub-page-wide {
+	width: min(1400px, calc(100% - 32px));
+}
+
+.page.hub-page-wide .card {
+	max-width: 1400px;
+}
+
+.hub-md {
+	display: flex;
+	gap: 16px;
+	align-items: stretch;
+	min-height: 280px;
+}
+
+.hub-md-master {
+	flex: 1 1 52%;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.hub-md-master .table-wrap {
+	max-height: calc(100vh - 280px);
+	overflow: auto;
+}
+
+.hub-md-detail {
+	flex: 1 1 48%;
+	min-width: 0;
+	max-height: calc(100vh - 220px);
+	overflow: auto;
+	padding: 12px 14px;
+	border-radius: 20px;
+	background: rgba(255, 255, 255, 0.28);
+	border: 1px solid rgba(255, 255, 255, 0.45);
+}
+
+.hub-md-empty {
+	margin: 0;
+	color: var(--muted, #64748b);
+	font-size: 13px;
+	line-height: 1.5;
+}
+
+/* 明细面板展开后隐藏占位文案 */
+.hub-md-detail:has(.detail-panel:not(.hidden)) > .hub-md-empty {
+	display: none;
+}
+
+.hub-md-detail .detail-panel {
+	margin-top: 0;
+	padding: 0;
+	background: transparent;
+	border: none;
+}
+
+.hub-md-detail > h4:first-child {
+	margin-top: 0;
+}
+
+@media (max-width: 900px) {
+	.hub-md {
+		flex-direction: column;
+	}
+
+	.hub-md-detail,
+	.hub-md-master .table-wrap {
+		max-height: none;
+	}
+}

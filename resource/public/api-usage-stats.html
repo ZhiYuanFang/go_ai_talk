@@ -8,7 +8,7 @@
 	<link rel="stylesheet" href="/resource/public/admin-pages.css" />
 </head>
 <body>
-<div class="page">
+<div class="page hub-page-wide">
 	<header class="admin-header glass">
 		<div class="logo">API</div>
 		<div>
@@ -46,44 +46,53 @@
 		<p class="hint">仅统计经 App 网关的 HTTP 2xx；不含 WebSocket。不含 token 刷新、版本检查、官网与运维发版接口；登录/注册/绑定与业务 API 均计入。用户维度仅统计 wxId &gt; 0 的已登录调用。</p>
 		<div id="mainMsg" class="msg"></div>
 
+		<!-- 按 API：左侧接口表，右侧调用用户明细（宽屏 master–detail） -->
 		<div id="apiPanel">
-			<div class="table-wrap">
-				<table>
-					<thead>
-						<tr>
-							<th>API</th>
-							<th>中文说明</th>
-							<th>调用次数</th>
-							<th>最近调用</th>
-							<th>操作</th>
-						</tr>
-					</thead>
-					<tbody id="apiTbody"></tbody>
-				</table>
-			</div>
-			<div class="pager" id="apiPager">
-				<button id="apiPrevBtn" type="button">上一页</button>
-				<button id="apiNextBtn" type="button">下一页</button>
-				<span id="apiPagerInfo"></span>
-			</div>
-			<div id="apiDetailPanel" class="detail-panel hidden">
-				<h4 id="apiDetailTitle"></h4>
-				<div class="table-wrap">
-					<table>
-						<thead>
-							<tr><th>wxId</th><th>UCG昵称</th><th>次数</th><th>最近调用</th></tr>
-						</thead>
-						<tbody id="apiDetailTbody"></tbody>
-					</table>
+			<div class="hub-md">
+				<div class="hub-md-master">
+					<div class="table-wrap">
+						<table>
+							<thead>
+								<tr>
+									<th>API</th>
+									<th>中文说明</th>
+									<th>调用次数</th>
+									<th>最近调用</th>
+									<th>操作</th>
+								</tr>
+							</thead>
+							<tbody id="apiTbody"></tbody>
+						</table>
+					</div>
+					<div class="pager" id="apiPager">
+						<button id="apiPrevBtn" type="button">上一页</button>
+						<button id="apiNextBtn" type="button">下一页</button>
+						<span id="apiPagerInfo"></span>
+					</div>
 				</div>
-				<div class="pager" id="apiDetailPager">
-					<button id="apiDetailPrevBtn" type="button">上一页</button>
-					<button id="apiDetailNextBtn" type="button">下一页</button>
-					<span id="apiDetailPagerInfo"></span>
+				<div class="hub-md-detail">
+					<p class="hub-md-empty">点击左侧 API 行查看调用用户</p>
+					<div id="apiDetailPanel" class="detail-panel hidden">
+						<h4 id="apiDetailTitle"></h4>
+						<div class="table-wrap">
+							<table>
+								<thead>
+									<tr><th>wxId</th><th>UCG昵称</th><th>次数</th><th>最近调用</th></tr>
+								</thead>
+								<tbody id="apiDetailTbody"></tbody>
+							</table>
+						</div>
+						<div class="pager" id="apiDetailPager">
+							<button id="apiDetailPrevBtn" type="button">上一页</button>
+							<button id="apiDetailNextBtn" type="button">下一页</button>
+							<span id="apiDetailPagerInfo"></span>
+						</div>
+					</div>
 				</div>
 			</div>
 		</div>
 
+		<!-- 按用户：左侧 wx 列表，右侧 API 调用明细 -->
 		<div id="userPanel" class="hidden">
 			<div class="card-actions">
 				<input id="wxSearchInput" placeholder="搜索 wxId / 设备号 / unionid / 账号" style="min-width:220px;" />
@@ -104,50 +113,56 @@
 				</label>
 			</div>
 			<p class="hint" style="margin-top:8px;">宝宝名筛选与「最近使用时间」排序仅作用于<strong>当前页</strong>已加载行。</p>
-			<div class="table-wrap" style="margin-top:12px;">
-				<table>
-					<thead>
-						<tr>
-							<th>#</th>
-							<th>wxId</th>
-							<th>UCG昵称</th>
-							<th>注册时间</th>
-							<th id="wxLastAtTh" class="sortable-th" title="点击按最近使用时间排序（仅当前页）" style="cursor:pointer;">最近使用时间</th>
-							<th>设备号</th>
-							<th>unionid</th>
-							<th>平台</th>
-							<th>用户名账号</th>
-						</tr>
-					</thead>
-					<tbody id="wxListTbody"></tbody>
-				</table>
-			</div>
-			<div class="pager" id="wxListPager" style="flex-wrap:wrap;gap:8px;">
-				<button id="wxPrevBtn" type="button">上一页</button>
-				<button id="wxNextBtn" type="button">下一页</button>
-				<span id="wxPagerInfo"></span>
-				<label>页码 <input id="wxPageInput" type="number" min="1" style="width:64px;" /></label>
-				<button id="wxGotoBtn" type="button">跳转</button>
-			</div>
-			<p class="hint" style="margin-top:8px;">点击 wx 账号行查看该用户的 API 调用明细；点击设备号进入设备数据运维</p>
-			<h4 id="userDetailTitle" style="margin:16px 0 8px;font-size:15px;color:#333;">未选择用户</h4>
-			<div class="table-wrap">
-				<table>
-					<thead>
-						<tr>
-							<th>API</th>
-							<th>中文说明</th>
-							<th>调用次数</th>
-							<th>最近调用</th>
-						</tr>
-					</thead>
-					<tbody id="userTbody"></tbody>
-				</table>
-			</div>
-			<div class="pager" id="userApisPager">
-				<button id="userApisPrevBtn" type="button">上一页</button>
-				<button id="userApisNextBtn" type="button">下一页</button>
-				<span id="userApisPagerInfo"></span>
+			<div class="hub-md" style="margin-top:12px;">
+				<div class="hub-md-master">
+					<div class="table-wrap">
+						<table>
+							<thead>
+								<tr>
+									<th>#</th>
+									<th>wxId</th>
+									<th>UCG昵称</th>
+									<th>注册时间</th>
+									<th id="wxLastAtTh" class="sortable-th" title="点击按最近使用时间排序（仅当前页）" style="cursor:pointer;">最近使用时间</th>
+									<th>设备号</th>
+									<th>unionid</th>
+									<th>平台</th>
+									<th>用户名账号</th>
+								</tr>
+							</thead>
+							<tbody id="wxListTbody"></tbody>
+						</table>
+					</div>
+					<div class="pager" id="wxListPager" style="flex-wrap:wrap;gap:8px;">
+						<button id="wxPrevBtn" type="button">上一页</button>
+						<button id="wxNextBtn" type="button">下一页</button>
+						<span id="wxPagerInfo"></span>
+						<label>页码 <input id="wxPageInput" type="number" min="1" style="width:64px;" /></label>
+						<button id="wxGotoBtn" type="button">跳转</button>
+					</div>
+					<p class="hint">点击 wx 行查看右侧 API 明细；点击设备号进入设备数据运维</p>
+				</div>
+				<div class="hub-md-detail">
+					<h4 id="userDetailTitle" style="margin:0 0 8px;font-size:15px;color:#333;">未选择用户</h4>
+					<div class="table-wrap">
+						<table>
+							<thead>
+								<tr>
+									<th>API</th>
+									<th>中文说明</th>
+									<th>调用次数</th>
+									<th>最近调用</th>
+								</tr>
+							</thead>
+							<tbody id="userTbody"></tbody>
+						</table>
+					</div>
+					<div class="pager" id="userApisPager">
+						<button id="userApisPrevBtn" type="button">上一页</button>
+						<button id="userApisNextBtn" type="button">下一页</button>
+						<span id="userApisPagerInfo"></span>
+					</div>
+				</div>
 			</div>
 		</div>
 	</div>

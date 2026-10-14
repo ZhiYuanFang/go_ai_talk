@@ -56,6 +56,11 @@
 - 新增经 **gateway-app** 对外的 **App HTTP 接口**时，**必须先向负责人询问是否计入 usage 统计**；未获明确答复前不得修改 `usagestats/maintenance_skip.go` 或假定统计策略。
 - 细则见 **`openspec/project.md`**「App API 使用统计约定」；维护型排除列表在 **`internal/services/gatewayapp/usagestats/maintenance_skip.go`**。
 
+## Hub 运维页布局（OpenSpec / 实现强制）
+- 新增或改造 Hub / 设备管理等运维静态页时，若存在「主列表 + 详情」，宽屏 MUST 优先左右分栏（master–detail），**禁止**默认整页纵向堆叠主从内容导致长时间下滚；窄屏可回退上下布局。
+- 共享样式：`resource/public/admin-pages.css` 的 `.hub-md*` / `.hub-page-wide`。
+- 细则见 **`openspec/project.md`**「Hub 运维页布局约定」。
+
 ## 背景循环任务（OpenSpec / 实现强制）
 - 默认禁止在 `internal/services/**` 新增循环后台任务（`time.NewTicker`、扫 outbox/表 reconciler、HTTP Pull 轮询队列等）；新增 MUST 有 OpenSpec proposal/design 明确批准（任务名、宿主进程、周期、开关、失败语义）。
 - RabbitMQ **broker push** consumer（`autoAck=false`）不视为 ticker 扫表，但仍须在变更中声明队列与宿主进程。
