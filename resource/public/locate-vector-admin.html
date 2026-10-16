@@ -58,6 +58,16 @@
 		</div>
 			</div>
 			<div class="hub-md-detail">
+			<h4 style="margin:0 0 8px;font-size:15px;">种子提示词</h4>
+			<p class="hint">对照 <code>locate_cue_store.py</code>。复制后交给其它模型，产出贴到下方。</p>
+			<textarea id="seedPrompt" class="json seed-prompt" readonly>你是更新/删除定位飞轮种子编写助手。只输出 JSON 数组，不要 markdown。
+document 为整段原话，不要用确认词。
+payload 仅 strategy，取值 latest|open_timer|prefer_completed。禁止 historyId 与 history_id。
+对照 python_ai_talk app/feeding/services/locate_cue_store.py。
+示例：[{"document":"把刚才那条改成150","payload":{"strategy":"latest"}}]</textarea>
+			<div class="row" style="margin:8px 0 14px;">
+				<button type="button" class="secondary seed-copy-btn" data-seed-target="seedPrompt">复制提示词</button>
+			</div>
 			<h4 style="margin:0 0 8px;font-size:15px;">批量上传种子</h4>
 			<p class="hint">粘贴 JSON 数组，例如：<code>[{"document":"把刚才那次改成120","payload":{"strategy":"latest"}}]</code></p>
 			<textarea id="bulkJson" class="json" placeholder='[{"document":"...","payload":{"strategy":"latest"}}]'></textarea>

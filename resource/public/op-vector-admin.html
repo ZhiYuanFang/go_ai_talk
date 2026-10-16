@@ -58,6 +58,16 @@
 		</div>
 			</div>
 			<div class="hub-md-detail">
+			<h4 style="margin:0 0 8px;font-size:15px;">种子提示词</h4>
+			<p class="hint">对照 <code>op_cue_store.py</code>。复制后交给其它模型，产出贴到下方。</p>
+			<textarea id="seedPrompt" class="json seed-prompt" readonly>你是喂养意图种子编写助手。只输出 JSON 数组，不要 markdown。
+每项含 document 与 payload。document 为整段原话，不要用「嗯/是的/好的」等确认词。
+payload 仅 op_rail，取值 create|read|update|delete|exit|other。
+对照 python_ai_talk app/feeding/services/op_cue_store.py。
+示例：[{"document":"宝宝睡了多久了","payload":{"op_rail":"read"}}]</textarea>
+			<div class="row" style="margin:8px 0 14px;">
+				<button type="button" class="secondary seed-copy-btn" data-seed-target="seedPrompt">复制提示词</button>
+			</div>
 			<h4 style="margin:0 0 8px;font-size:15px;">批量上传种子</h4>
 			<p class="hint">粘贴 JSON 数组，例如：<code>[{"document":"宝宝睡了多久了","payload":{"op_rail":"read"}}]</code></p>
 			<textarea id="bulkJson" class="json" placeholder='[{"document":"...","payload":{"op_rail":"read"}}]'></textarea>

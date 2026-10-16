@@ -55,6 +55,16 @@
 		</div>
 			</div>
 			<div class="hub-md-detail">
+			<h4 style="margin:0 0 8px;font-size:15px;">种子提示词</h4>
+			<p class="hint">对照 <code>intent_cache_store.py</code>。复制后交给其它模型，产出贴到下方。</p>
+			<textarea id="seedPrompt" class="json seed-prompt" readonly>你是喂养事件短说法种子编写助手。只输出 JSON 数组，不要 markdown。
+document 是单事件短说法或别名，不是整段长句。不要用「嗯/是的/好的」等确认词。禁止整包 multi-events。
+payload 仅 event_id、event_name、kind（parent|leaf）。
+对照 python_ai_talk app/feeding/services/intent_cache_store.py。
+示例：[{"document":"配方奶","payload":{"event_id":"123","event_name":"配方奶","kind":"leaf"}}]</textarea>
+			<div class="row" style="margin:8px 0 14px;">
+				<button type="button" class="secondary seed-copy-btn" data-seed-target="seedPrompt">复制提示词</button>
+			</div>
 			<h4 style="margin:0 0 8px;font-size:15px;">批量上传种子</h4>
 			<p class="hint">粘贴 JSON 数组，例如：<code>[{"document":"记录吃了120毫升配方奶","payload":{"target_type":"feeding","events":[{"op":"create","action":"one","event_id":"123","event_name":"配方奶","quantity":120}]}}]</code></p>
 			<textarea id="bulkJson" class="json" placeholder='[{"document":"...","payload":{...}}]'></textarea>

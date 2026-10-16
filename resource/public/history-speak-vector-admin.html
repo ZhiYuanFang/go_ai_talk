@@ -60,6 +60,16 @@
 		</div>
 			</div>
 			<div class="hub-md-detail">
+			<h4 style="margin:0 0 8px;font-size:15px;">种子提示词</h4>
+			<p class="hint">对照 <code>history_speak_cue_store.py</code>。复制后交给其它模型，产出贴到下方。</p>
+			<textarea id="seedPrompt" class="json seed-prompt" readonly>你是查史播报策略飞轮种子编写助手。只输出 JSON 数组，不要 markdown。
+document 为整段原话，至少 4 个字，不要用确认词。
+payload 必须同时含 point_pick（latest|prefer_completed）与 open_speak（elapsed|in_progress）。
+对照 python_ai_talk app/feeding/services/history_speak_cue_store.py。
+示例：[{"document":"最近一次睡了多久","payload":{"point_pick":"latest","open_speak":"elapsed"}}]</textarea>
+			<div class="row" style="margin:8px 0 14px;">
+				<button type="button" class="secondary seed-copy-btn" data-seed-target="seedPrompt">复制提示词</button>
+			</div>
 			<h4 style="margin:0 0 8px;font-size:15px;">批量上传种子</h4>
 			<p class="hint">粘贴 JSON 数组，例如：<code>[{"document":"多久了","payload":{"point_pick":"latest","open_speak":"elapsed"}}]</code></p>
 			<textarea id="bulkJson" class="json" placeholder='[{"document":"...","payload":{"point_pick":"latest","open_speak":"elapsed"}}]'></textarea>

@@ -59,6 +59,18 @@
 		</div>
 			</div>
 			<div class="hub-md-detail">
+			<h4 style="margin:0 0 8px;font-size:15px;">种子提示词</h4>
+			<p class="hint">对照 <code>time_formula.py</code>。复制后交给其它模型，产出贴到下方。</p>
+			<textarea id="seedPrompt" class="json seed-prompt" readonly>你是喂养时间相对配方种子编写助手。只输出 JSON 数组，不要 markdown。
+document 为整段原话，不要用确认词。payload 禁止 start_time/end_time 等绝对 Unix。
+kind 取 instant|interval|duration_to_now|open_start。
+points[].day 取 today|yesterday|day_before；须有 hour(0-23) 或 period（morning|noon|afternoon|evening|night），minute 默认 0。
+instant 与 open_start 恰好 1 个点；interval 恰好 2 个点；duration_to_now 的 points 为空，并给 duration_minutes（1 到 7 天的分钟数）。
+对照 python_ai_talk app/feeding/services/time_formula.py。
+示例：[{"document":"昨天晚上八点","payload":{"kind":"instant","points":[{"day":"yesterday","period":"evening","hour":20,"minute":0}],"duration_minutes":null}}]</textarea>
+			<div class="row" style="margin:8px 0 14px;">
+				<button type="button" class="secondary seed-copy-btn" data-seed-target="seedPrompt">复制提示词</button>
+			</div>
 			<h4 style="margin:0 0 8px;font-size:15px;">批量上传种子</h4>
 			<p class="hint">粘贴 JSON 数组，例如：<code>[{"document":"昨晚八点喂了","payload":{"kind":"instant","points":[{"day":"yesterday","period":"evening","hour":20,"minute":0}],"duration_minutes":null}}]</code></p>
 			<textarea id="bulkJson" class="json" placeholder='[{"document":"...","payload":{"kind":"instant","points":[{"day":"yesterday","hour":20,"minute":0}]}}]'></textarea>

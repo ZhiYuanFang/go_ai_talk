@@ -95,3 +95,29 @@ window.AdminCommon = (function () {
 		hubUrl: hubUrl
 	};
 })();
+
+// 飞轮页「复制提示词」：成功走剪贴板，失败则选中只读框便于手动复制。
+document.addEventListener('click', function (ev) {
+	var btn = ev.target && ev.target.closest ? ev.target.closest('.seed-copy-btn') : null;
+	if (!btn) return;
+	var id = btn.getAttribute('data-seed-target') || 'seedPrompt';
+	var box = document.getElementById(id);
+	if (!box) return;
+	var text = box.value || '';
+	function mark(ok) {
+		var prev = btn.textContent;
+		btn.textContent = ok ? '已复制' : '请手动复制';
+		setTimeout(function () { btn.textContent = prev; }, 1200);
+	}
+	if (navigator.clipboard && navigator.clipboard.writeText) {
+		navigator.clipboard.writeText(text).then(function () { mark(true); }).catch(function () {
+			box.focus();
+			box.select();
+			mark(false);
+		});
+		return;
+	}
+	box.focus();
+	box.select();
+	mark(false);
+});

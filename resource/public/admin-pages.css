@@ -633,3 +633,9 @@ tr.row-selected td {
 		max-height: none;
 	}
 }
+
+/* 飞轮种子提示词：只读，复制后交给其它模型生成 JSON 数组 */
+.seed-prompt {
+	min-height: 180px;
+	white-space: pre-wrap;
+}
