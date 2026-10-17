@@ -6,11 +6,11 @@ import (
 	"strings"
 
 	"hello/internal/controller"
-	device "hello/internal/services/device"
 	"hello/internal/platform/dbcfg"
 	"hello/internal/platform/loggercfg"
 	"hello/internal/platform/rediscfg"
 	"hello/internal/platform/runtimecheck"
+	device "hello/internal/services/device"
 	_ "hello/internal/shared/runtime"
 
 	"github.com/gogf/gf/v2/frame/g"
@@ -36,6 +36,10 @@ func main() {
 	}
 	if err := device.EnsureAppointmentNextTable(ctx); err != nil {
 		glog.Fatalf(ctx, "appointment_next schema ensure failed: %v", err)
+		return
+	}
+	if err := device.EnsureSurveyTables(ctx); err != nil {
+		glog.Fatalf(ctx, "survey schema ensure failed: %v", err)
 		return
 	}
 	if err := device.EnsureXiaozhiMcpBindingTable(ctx); err != nil {
@@ -73,4 +77,3 @@ func applyDeviceServiceAddress(s interface{ SetAddr(address string) }) {
 	}
 	s.SetAddr(addr)
 }
-

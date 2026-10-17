@@ -48,6 +48,9 @@ var maintenanceExactAPI = map[string]struct{}{
 	// 预约下次约定读写：负责人确认不计入 usage（appointment-event-next-at；客户端日历备忘同步）。
 	"GET /device/app/api/appointment/next": {},
 	"PUT /device/app/api/appointment/next": {},
+	// 满意度问卷：负责人确认不计入 usage（device-satisfaction-survey）。
+	"GET /device/app/api/survey/current": {},
+	"POST /device/app/api/survey/submit": {},
 }
 
 var maintenancePathPrefixes = []string{

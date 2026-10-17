@@ -45,6 +45,7 @@ var adminStaticPages = []adminStaticPage{
 	{path: "/device/admin/cash-xiaozhi-mcp-admin.html", file: "resource/public/cash-xiaozhi-mcp-admin.html", noCache: true},
 	{path: "/device/admin/cash-feeding-eligibility-admin.html", file: "resource/public/cash-feeding-eligibility-admin.html", noCache: true},
 	{path: "/device/admin/push-device-admin.html", file: "resource/public/push-device-admin.html", noCache: true},
+	{path: "/device/admin/survey", file: "resource/public/survey-admin.html", noCache: true},
 	{path: "/device/admin/history/*deviceNo", file: "resource/public/history.html", noCache: true},
 	{path: "/device/app/version-admin.html", file: "resource/public/gateway-app-version-admin.html", noCache: true},
 }

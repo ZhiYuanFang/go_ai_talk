@@ -87,6 +87,7 @@ var (
 		"/device/admin/cash-xiaozhi-mcp-admin.html",
 		"/device/admin/cash-feeding-eligibility-admin.html",
 		"/device/admin/push-device-admin.html",
+		"/device/admin/survey",
 		"/user-agreement.html",
 		"/privacy-policy.html",
 		// 微信域名归属校验 TXT（www.pangbao.cuplay.top 根路径）。

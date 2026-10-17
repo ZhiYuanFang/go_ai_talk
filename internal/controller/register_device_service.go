@@ -22,6 +22,7 @@ func RegisterDeviceServiceHTTP(s *ghttp.Server) {
 		group.Bind(devicectrl.NewDeviceAppUserCtrl())
 		group.Bind(devicectrl.NewDeviceAppFeedbackCtrl())
 		group.Bind(devicectrl.NewDeviceAppAppointmentCtrl())
+		group.Bind(devicectrl.NewDeviceAppSurveyCtrl())
 		group.Bind(devicectrl.NewDeviceAppXiaozhiMcpCtrl())
 		group.Bind(devicectrl.NewDeviceInternalCtrl())
 	})

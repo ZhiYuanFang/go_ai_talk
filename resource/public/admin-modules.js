@@ -7,6 +7,12 @@ window.ADMIN_MODULES = [
 		showInNav: true
 	},
 	{
+		id: 'survey-admin',
+		title: '问卷调查',
+		pagePath: '/device/admin/survey',
+		showInNav: true
+	},
+	{
 		id: 'ucg-admin',
 		title: 'UCG 管理',
 		pagePath: '/device/admin/ucg-admin.html',

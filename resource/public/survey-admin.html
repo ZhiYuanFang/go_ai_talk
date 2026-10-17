@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>问卷调查 — 设备管理</title>
+	<link rel="stylesheet" href="/resource/public/pangbao-theme.css" />
+	<link rel="stylesheet" href="/resource/public/admin-pages.css" />
+</head>
+<body>
+<div class="page">
+	<header class="admin-header glass">
+		<div class="logo">问</div>
+		<div>
+			<h1>问卷调查</h1>
+			<p>收集用户觉得胖宝 App 做得满意的地方。App 只看最新一轮；时间按上海时区。</p>
+		</div>
+	</header>
+	<div class="hub-md hidden" id="main">
+		<div class="hub-md-master">
+			<div class="card glass">
+				<div class="card-head">
+					<h3>编辑</h3>
+					<div class="card-actions">
+						<button id="newBtn" type="button">开启新一轮</button>
+						<button id="saveBtn" type="button">保存</button>
+						<a class="link-btn" href="/device/admin">返回</a>
+					</div>
+				</div>
+				<div id="editMsg" class="msg"></div>
+				<p id="latestHint" class="msg"></p>
+				<label class="filter">活动
+					<select id="campaignSel"></select>
+				</label>
+				<label class="filter"><input id="enabled" type="checkbox" /> 开启（关掉后，即使还在有效期内也不弹出）</label>
+				<label class="filter">开始（上海时间）<input id="startAt" type="datetime-local" /></label>
+				<label class="filter">结束（上海时间）<input id="endAt" type="datetime-local" /></label>
+				<label class="filter">说明<textarea id="intro" rows="3" maxlength="500"></textarea></label>
+				<div class="table-wrap">
+					<table>
+						<thead><tr><th>文案</th><th>启用</th><th></th></tr></thead>
+						<tbody id="optBody"></tbody>
+					</table>
+				</div>
+				<button id="addOpt" type="button">增加一行</button>
+			</div>
+		</div>
+		<div class="hub-md-detail">
+			<div class="card glass">
+				<div class="card-head">
+					<h3>提交结果</h3>
+					<button id="refreshRes" type="button">刷新</button>
+				</div>
+				<div id="resMsg" class="msg"></div>
+				<div class="table-wrap">
+					<table>
+						<thead>
+							<tr><th>用户 id</th><th>宝宝昵称</th><th>设备号</th><th>选择</th><th>意见</th><th>时间</th></tr>
+						</thead>
+						<tbody id="resBody"></tbody>
+					</table>
+				</div>
+				<div class="pager">
+					<button id="prevBtn" type="button">上一页</button>
+					<button id="nextBtn" type="button">下一页</button>
+					<span id="pagerInfo"></span>
+				</div>
+			</div>
+		</div>
+	</div>
+</div>
+<script src="/resource/public/admin-common.js"></script>
+<script>
+const main = document.getElementById('main');
+const editMsg = document.getElementById('editMsg');
+const resMsg = document.getElementById('resMsg');
+const optBody = document.getElementById('optBody');
+let page = 1;
+const pageSize = 20;
+let viewingId = 0;
+
+function setMsg(el, text, ok){
+	el.textContent = text || '';
+	el.style.color = ok ? '#0a6' : '#c1121f';
+}
+function escapeHtml(s){
+	return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function shanghaiToUnix(value){
+	if(!value) return 0;
+	const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(value);
+	if(!m) return 0;
+	const y = Number(m[1]), mo = Number(m[2]), d = Number(m[3]), h = Number(m[4]), mi = Number(m[5]);
+	return Math.floor(Date.UTC(y, mo - 1, d, h - 8, mi, 0) / 1000);
+}
+function unixToShanghai(sec){
+	const n = Number(sec);
+	if(!n) return '';
+	const d = new Date((n + 8 * 3600) * 1000);
+	const p = x => String(x).padStart(2, '0');
+	return d.getUTCFullYear()+'-'+p(d.getUTCMonth()+1)+'-'+p(d.getUTCDate())+'T'+p(d.getUTCHours())+':'+p(d.getUTCMinutes());
+}
+function formatTime(sec){
+	const v = unixToShanghai(sec);
+	return v ? v.replace('T', ' ') : '';
+}
+function addRow(opt){
+	const tr = document.createElement('tr');
+	tr.dataset.id = String(opt && opt.id ? opt.id : 0);
+	tr.innerHTML = '<td><input class="opt-text" type="text" maxlength="200" /></td>'+
+		'<td><input class="opt-on" type="checkbox" checked /></td>'+
+		'<td><button type="button" class="opt-del">删除</button></td>';
+	tr.querySelector('.opt-text').value = opt && opt.text ? opt.text : '';
+	tr.querySelector('.opt-on').checked = !opt || opt.enabled !== false;
+	tr.querySelector('.opt-del').addEventListener('click', function(){ tr.remove(); });
+	optBody.appendChild(tr);
+}
+function collectOptions(){
+	const rows = [];
+	optBody.querySelectorAll('tr').forEach(function(tr){
+		rows.push({
+			id: Number(tr.dataset.id || 0),
+			text: tr.querySelector('.opt-text').value,
+			enabled: tr.querySelector('.opt-on').checked
+		});
+	});
+	return rows;
+}
+async function loadEditor(campaignId){
+	const q = campaignId ? ('?campaignId=' + encodeURIComponent(campaignId)) : '';
+	const data = await AdminCommon.adminFetch('/device/admin/api/survey/editor' + q);
+	viewingId = data.campaignId || 0;
+	document.getElementById('enabled').checked = !!data.enabled;
+	document.getElementById('startAt').value = unixToShanghai(data.startAt);
+	document.getElementById('endAt').value = unixToShanghai(data.endAt);
+	document.getElementById('intro').value = data.intro || '';
+	document.getElementById('latestHint').textContent = data.campaignId
+		? (data.isLatest ? '当前是最新一轮，App 会读取这一轮。' : '这不是最新一轮，App 不会弹出这一轮。')
+		: '还没有活动，保存后会创建第一轮。';
+	const sel = document.getElementById('campaignSel');
+	sel.innerHTML = '';
+	(data.campaigns || []).forEach(function(c){
+		const o = document.createElement('option');
+		o.value = String(c.id);
+		o.textContent = '#' + c.id + (c.enabled ? ' 开' : ' 关');
+		if(c.id === data.campaignId) o.selected = true;
+		sel.appendChild(o);
+	});
+	optBody.innerHTML = '';
+	(data.options || []).forEach(addRow);
+	setMsg(editMsg, '', true);
+}
+async function loadResponses(){
+	const data = await AdminCommon.adminFetch('/device/admin/api/survey/responses?campaignId=' + encodeURIComponent(viewingId) + '&page=' + page + '&pageSize=' + pageSize);
+	const body = document.getElementById('resBody');
+	body.innerHTML = '';
+	(data.list || []).forEach(function(row){
+		const tr = document.createElement('tr');
+		tr.innerHTML = '<td>'+escapeHtml(row.wxId)+'</td><td>'+escapeHtml(row.babyName)+'</td><td>'+escapeHtml(row.deviceNo)+'</td><td>'+escapeHtml((row.options||[]).join('、'))+'</td><td>'+escapeHtml(row.comment)+'</td><td>'+escapeHtml(formatTime(row.submittedAt))+'</td>';
+		body.appendChild(tr);
+	});
+	const total = data.total || 0;
+	document.getElementById('pagerInfo').textContent = '第 ' + (data.page || page) + ' 页 / 共 ' + total + ' 条';
+	setMsg(resMsg, '', true);
+}
+document.getElementById('addOpt').addEventListener('click', function(){ addRow({id:0, text:'', enabled:true}); });
+document.getElementById('campaignSel').addEventListener('change', function(){
+	page = 1;
+	const id = Number(this.value || 0);
+	loadEditor(id).then(loadResponses).catch(function(e){ setMsg(editMsg, e.message || '加载失败', false); });
+});
+document.getElementById('saveBtn').addEventListener('click', async function(){
+	try {
+		const saved = await AdminCommon.adminFetch('/device/admin/api/survey/save', {
+			method: 'POST',
+			body: JSON.stringify({
+				campaignId: viewingId,
+				enabled: document.getElementById('enabled').checked,
+				startAt: shanghaiToUnix(document.getElementById('startAt').value),
+				endAt: shanghaiToUnix(document.getElementById('endAt').value),
+				intro: document.getElementById('intro').value,
+				options: collectOptions()
+			})
+		});
+		setMsg(editMsg, '已保存', true);
+		page = 1;
+		await loadEditor(saved.campaignId);
+		await loadResponses();
+	} catch (e) {
+		setMsg(editMsg, e.message || '保存失败', false);
+	}
+});
+document.getElementById('newBtn').addEventListener('click', async function(){
+	if(!window.confirm('开启新一轮后，App 只看新的一轮。旧提交仍可在这里按活动查看。')) return;
+	try {
+		const created = await AdminCommon.adminFetch('/device/admin/api/survey/new', {method:'POST', body:'{}'});
+		page = 1;
+		await loadEditor(created.campaignId);
+		await loadResponses();
+		setMsg(editMsg, '已开启新一轮，默认关闭。请设置有效期后再打开开关。', true);
+	} catch (e) {
+		setMsg(editMsg, e.message || '开启失败', false);
+	}
+});
+document.getElementById('refreshRes').addEventListener('click', function(){
+	loadResponses().catch(function(e){ setMsg(resMsg, e.message || '加载失败', false); });
+});
+document.getElementById('prevBtn').addEventListener('click', function(){
+	if(page <= 1) return;
+	page -= 1;
+	loadResponses().catch(function(e){ setMsg(resMsg, e.message || '加载失败', false); });
+});
+document.getElementById('nextBtn').addEventListener('click', function(){
+	page += 1;
+	loadResponses().catch(function(e){ setMsg(resMsg, e.message || '加载失败', false); });
+});
+if(AdminCommon.requireAdmin()){
+	main.classList.remove('hidden');
+	loadEditor(0).then(loadResponses).catch(function(e){ setMsg(editMsg, e.message || '加载失败', false); });
+}
+</script>
+</body>
+</html>
