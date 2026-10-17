@@ -34,4 +34,5 @@ type SurveyResponse struct {
 	OptionSnapshot interface{}
 	Comment        interface{}
 	SubmittedAt    interface{}
+	Valid          interface{}
 }

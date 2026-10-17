@@ -29,4 +29,5 @@ type SurveyResponse struct {
 	OptionSnapshot string `json:"optionSnapshot"`
 	Comment        string `json:"comment"`
 	SubmittedAt    int64  `json:"submittedAt"`
+	Valid          int    `json:"valid"`
 }

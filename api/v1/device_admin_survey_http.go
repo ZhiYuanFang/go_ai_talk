@@ -107,13 +107,25 @@ type DeviceAdminSurveyResponsesReq struct {
 
 // DeviceAdminSurveyResponseItem 一条提交。
 type DeviceAdminSurveyResponseItem struct {
+	Id          int64    `json:"id"`
 	WxId        int64    `json:"wxId"`
 	BabyName    string   `json:"babyName"`
 	DeviceNo    string   `json:"deviceNo"`
 	Options     []string `json:"options"`
 	Comment     string   `json:"comment"`
 	SubmittedAt int64    `json:"submittedAt"`
+	Valid       bool     `json:"valid"`
 }
+
+// DeviceAdminSurveyResponseValidReq 修改一条提交是否有效。
+type DeviceAdminSurveyResponseValidReq struct {
+	g.Meta `path:"/device/admin/api/survey/response/valid" method:"post" tags:"admin" summary:"设置满意度问卷提交是否有效"`
+	Id     int64 `json:"id" v:"required|min:1"`
+	Valid  bool  `json:"valid"`
+}
+
+// DeviceAdminSurveyResponseValidRes 设置成功。
+type DeviceAdminSurveyResponseValidRes struct{}
 
 // DeviceAdminSurveyResponsesRes 提交分页。
 type DeviceAdminSurveyResponsesRes struct {

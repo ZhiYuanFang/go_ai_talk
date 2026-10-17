@@ -58,13 +58,24 @@ func (c *AdminCtrl) SurveyResponses(ctx context.Context, req *v1.DeviceAdminSurv
 			opts = []string{}
 		}
 		list = append(list, v1.DeviceAdminSurveyResponseItem{
-			WxId: row.WxId, BabyName: row.BabyName, DeviceNo: row.DeviceNo,
-			Options: opts, Comment: row.Comment, SubmittedAt: row.SubmittedAt,
+			Id: row.Id, WxId: row.WxId, BabyName: row.BabyName, DeviceNo: row.DeviceNo,
+			Options: opts, Comment: row.Comment, SubmittedAt: row.SubmittedAt, Valid: row.Valid,
 		})
 	}
 	return &v1.DeviceAdminSurveyResponsesRes{
 		List: list, Total: page.Total, Page: page.Page, PageSize: page.PageSize, CampaignId: page.CampaignId,
 	}, nil
+}
+
+// SurveyResponseValid POST /device/admin/api/survey/response/valid
+func (c *AdminCtrl) SurveyResponseValid(ctx context.Context, req *v1.DeviceAdminSurveyResponseValidReq) (res *v1.DeviceAdminSurveyResponseValidRes, err error) {
+	if err := c.requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	if err := device.SurveySetResponseValid(ctx, req.Id, req.Valid); err != nil {
+		return nil, err
+	}
+	return &v1.DeviceAdminSurveyResponseValidRes{}, nil
 }
 
 // SurveyOptionAdd POST /device/admin/api/survey/option/add

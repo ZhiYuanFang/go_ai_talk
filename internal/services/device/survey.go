@@ -67,12 +67,14 @@ type SurveyOptionInput struct {
 
 // SurveyResponseItem Hub 提交行。
 type SurveyResponseItem struct {
+	Id          int64    `json:"id"`
 	WxId        int64    `json:"wxId"`
 	BabyName    string   `json:"babyName"`
 	DeviceNo    string   `json:"deviceNo"`
 	Options     []string `json:"options"`
 	Comment     string   `json:"comment"`
 	SubmittedAt int64    `json:"submittedAt"`
+	Valid       bool     `json:"valid"`
 }
 
 // SurveyResponsePage 提交分页。
@@ -152,6 +154,23 @@ func SurveySubmit(ctx context.Context, wxID int64, deviceNo string, campaignID i
 	}
 	babyName = clipRunes(babyName, 64)
 	c := dao.SurveyResponse.Columns()
+	existing, err := surveyResponseByWx(ctx, camp.Id, wxID)
+	if err != nil {
+		return err
+	}
+	now := time.Now().Unix()
+	if existing != nil {
+		// 无效行再交卷：覆盖同一行并恢复有效。
+		_, err = dao.SurveyResponse.Ctx(ctx).Where(c.Id, existing.Id).Data(g.Map{
+			c.DeviceNo:       deviceNo,
+			c.BabyName:       babyName,
+			c.OptionSnapshot: string(raw),
+			c.Comment:        comment,
+			c.SubmittedAt:    now,
+			c.Valid:          1,
+		}).Update()
+		return err
+	}
 	_, err = dao.SurveyResponse.Ctx(ctx).Data(g.Map{
 		c.CampaignId:     camp.Id,
 		c.WxId:           wxID,
@@ -159,7 +178,8 @@ func SurveySubmit(ctx context.Context, wxID int64, deviceNo string, campaignID i
 		c.BabyName:       babyName,
 		c.OptionSnapshot: string(raw),
 		c.Comment:        comment,
-		c.SubmittedAt:    time.Now().Unix(),
+		c.SubmittedAt:    now,
+		c.Valid:          1,
 	}).Insert()
 	if err != nil {
 		if surveyDupKey(err) {
@@ -333,12 +353,14 @@ func SurveyResponses(ctx context.Context, page, pageSize int) (*SurveyResponsePa
 	list := make([]SurveyResponseItem, 0, len(rows))
 	for _, row := range rows {
 		list = append(list, SurveyResponseItem{
+			Id:          row.Id,
 			WxId:        row.WxId,
 			BabyName:    row.BabyName,
 			DeviceNo:    row.DeviceNo,
 			Options:     decodeOptionSnapshot(row.OptionSnapshot),
 			Comment:     row.Comment,
 			SubmittedAt: row.SubmittedAt,
+			Valid:       row.Valid != 0,
 		})
 	}
 	return &SurveyResponsePage{
@@ -442,16 +464,58 @@ func surveyCampaignByID(ctx context.Context, id int64) (*entity.SurveyCampaign, 
 }
 
 func surveyWxSubmitted(ctx context.Context, campaignID, wxID int64) (bool, error) {
+	row, err := surveyResponseByWx(ctx, campaignID, wxID)
+	if err != nil || row == nil {
+		return false, err
+	}
+	return row.Valid != 0, nil
+}
+
+func surveyResponseByWx(ctx context.Context, campaignID, wxID int64) (*entity.SurveyResponse, error) {
 	c := dao.SurveyResponse.Columns()
 	one, err := dao.SurveyResponse.Ctx(ctx).
 		Where(c.CampaignId, campaignID).
 		Where(c.WxId, wxID).
-		Fields(c.Id).
 		One()
 	if err != nil {
-		return false, err
+		return nil, err
 	}
-	return !one.IsEmpty(), nil
+	if one.IsEmpty() {
+		return nil, nil
+	}
+	var row entity.SurveyResponse
+	if err := one.Struct(&row); err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
+// SurveySetResponseValid 把一条提交标为有效或无效。无效行仍保留。
+func SurveySetResponseValid(ctx context.Context, id int64, valid bool) error {
+	if id <= 0 {
+		return gerror.NewCode(gcode.CodeInvalidParameter, "提交不存在")
+	}
+	camp, err := EnsureSurveySingleCampaign(ctx)
+	if err != nil {
+		return err
+	}
+	c := dao.SurveyResponse.Columns()
+	v := 0
+	if valid {
+		v = 1
+	}
+	n, err := dao.SurveyResponse.Ctx(ctx).
+		Where(c.Id, id).
+		Where(c.CampaignId, camp.Id).
+		Data(g.Map{c.Valid: v}).
+		UpdateAndGetAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return gerror.NewCode(gcode.CodeInvalidParameter, "提交不存在")
+	}
+	return nil
 }
 
 func listSurveyOptions(ctx context.Context, campaignID int64, enabledOnly bool) ([]SurveyOptionView, error) {

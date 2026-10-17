@@ -27,6 +27,7 @@ type SurveyResponseColumns struct {
 	OptionSnapshot string
 	Comment        string
 	SubmittedAt    string
+	Valid          string
 }
 
 var surveyResponseColumns = SurveyResponseColumns{
@@ -38,6 +39,7 @@ var surveyResponseColumns = SurveyResponseColumns{
 	OptionSnapshot: "option_snapshot",
 	Comment:        "comment",
 	SubmittedAt:    "submitted_at",
+	Valid:          "valid",
 }
 
 // NewSurveyResponseDao 构造提交 DAO。

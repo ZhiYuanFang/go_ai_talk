@@ -16,7 +16,10 @@ func EnsureSurveyTables(ctx context.Context) error {
 	if err := ensureSurveyOptionTable(ctx); err != nil {
 		return err
 	}
-	return ensureSurveyResponseTable(ctx)
+	if err := ensureSurveyResponseTable(ctx); err != nil {
+		return err
+	}
+	return ensureSurveyResponseValidColumn(ctx)
 }
 
 func ensureSurveyCampaignTable(ctx context.Context) error {
@@ -93,6 +96,7 @@ CREATE TABLE survey_response (
   option_snapshot TEXT COMMENT '所选选项提交时文案 JSON 数组',
   comment VARCHAR(1000) NOT NULL DEFAULT '' COMMENT '更多意见',
   submitted_at BIGINT NOT NULL DEFAULT 0 COMMENT '提交 unix 秒',
+  valid TINYINT NOT NULL DEFAULT 1 COMMENT '1=有效，挡住再次弹出；0=无效，允许再答',
   PRIMARY KEY (id),
   UNIQUE KEY uk_campaign_wx (campaign_id, wx_id),
   KEY idx_campaign_time (campaign_id, submitted_at)
@@ -101,5 +105,25 @@ CREATE TABLE survey_response (
 		return err
 	}
 	glog.Infof(ctx, "[device-schema] survey_response 表已创建")
+	return nil
+}
+
+// ensureSurveyResponseValidColumn 给已有提交表补有效标记。已有行默认有效。
+func ensureSurveyResponseValidColumn(ctx context.Context) error {
+	n, err := g.DB().GetValue(ctx, `
+SELECT COUNT(*) FROM information_schema.COLUMNS
+WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'survey_response' AND COLUMN_NAME = 'valid'`)
+	if err != nil {
+		return err
+	}
+	if n.Int() > 0 {
+		return nil
+	}
+	_, err = g.DB().Exec(ctx, `
+ALTER TABLE survey_response ADD COLUMN valid TINYINT NOT NULL DEFAULT 1 COMMENT '1=有效，挡住再次弹出；0=无效，允许再答' AFTER submitted_at`)
+	if err != nil {
+		return err
+	}
+	glog.Infof(ctx, "[device-schema] survey_response.valid 列已添加")
 	return nil
 }
