@@ -60,11 +60,17 @@
 			<div class="hub-md-detail">
 			<h4 style="margin:0 0 8px;font-size:15px;">种子提示词</h4>
 			<p class="hint">对照 <code>remark_cue_store.py</code>。复制后交给其它模型，产出贴到下方。</p>
-			<textarea id="seedPrompt" class="json seed-prompt" readonly>你是喂养备注飞轮种子编写助手。只输出 JSON 数组，不要 markdown。
-document 为整段原话，不要用确认词。
-payload 必须含 remark 字符串；空串表示已确认没有备注明细。
-对照 python_ai_talk app/feeding/services/remark_cue_store.py。
-示例：[{"document":"左边吸了十分钟","payload":{"remark":"左边"}}]</textarea>
+			<textarea id="seedPrompt" class="json seed-prompt" readonly>你是喂养备注飞轮种子编写助手，需要针对日常母婴事件对话模拟场景。只输出 JSON 数组，不要 markdown。
+				document 为整段原话，不要用确认词。
+				payload 必须含 remark 字符串；空串表示已确认没有备注明细。
+				硬性约束：
+				1. remark 只填自由明细（如「有点黄」「菠菜泥偏稀」），不要重复事件正式名本身。
+				2. 若段内没有额外明细，remark 必须为空字符串 ""。
+				3. 不要编造；不要把数量、钟点写进 remark（那些另有字段）。
+				
+				示例：[{"document":"左边吸了十分钟","payload":{"remark":"左边"}}]
+				
+				输出含有10个句子的数组结构</textarea>
 			<div class="row" style="margin:8px 0 14px;">
 				<button type="button" class="secondary seed-copy-btn" data-seed-target="seedPrompt">复制提示词</button>
 			</div>

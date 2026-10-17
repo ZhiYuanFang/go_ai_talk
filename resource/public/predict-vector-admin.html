@@ -61,14 +61,15 @@
 			<div class="hub-md-detail">
 			<h4 style="margin:0 0 8px;font-size:15px;">种子提示词</h4>
 			<p class="hint">对照 <code>predict_cue_store.py</code>。复制后交给其它模型，产出贴到下方。</p>
-			<textarea id="seedPrompt" class="json seed-prompt" readonly>你是喂养预测问法飞轮种子编写助手。只输出 JSON 数组，不要 markdown。
-document 为整段原话，不要用确认词。上次吃了多少这类查史不要写进本维。
-payload 必须含三字段：
-predict_channel 取 active|next；
-predict_aspect 取 when|amount|duration；
-time_answer 仅当 aspect 为 when 时取 clock|remain，amount 与 duration 时必须是空字符串。
-对照 python_ai_talk app/feeding/services/predict_cue_store.py。
-示例：[{"document":"下一次喂养是什么时候","payload":{"predict_channel":"next","predict_aspect":"when","time_answer":"clock"}}]</textarea>
+			<textarea id="seedPrompt" class="json seed-prompt" readonly>你是喂养预测问法飞轮种子编写助手，需要针对日常母婴事件对话模拟场景。只输出 JSON 数组，不要 markdown。
+				document 为整段原话，不要用确认词。上次吃了多少这类查史不要写进本维。
+				payload 必须含三字段：
+				predict_channel 取 active|next；
+				predict_aspect 取 when|amount|duration；
+				time_answer 仅当 aspect 为 when 时取 clock|remain，amount 与 duration 时必须是空字符串。
+				示例：[{"document":"下一次喂养是什么时候","payload":{"predict_channel":"next","predict_aspect":"when","time_answer":"clock"}}]
+				
+				输出含有10个句子的数组结构</textarea>
 			<div class="row" style="margin:8px 0 14px;">
 				<button type="button" class="secondary seed-copy-btn" data-seed-target="seedPrompt">复制提示词</button>
 			</div>

@@ -62,11 +62,12 @@
 			<div class="hub-md-detail">
 			<h4 style="margin:0 0 8px;font-size:15px;">种子提示词</h4>
 			<p class="hint">对照 <code>history_speak_cue_store.py</code>。复制后交给其它模型，产出贴到下方。</p>
-			<textarea id="seedPrompt" class="json seed-prompt" readonly>你是查史播报策略飞轮种子编写助手。只输出 JSON 数组，不要 markdown。
-document 为整段原话，至少 4 个字，不要用确认词。
-payload 必须同时含 point_pick（latest|prefer_completed）与 open_speak（elapsed|in_progress）。
-对照 python_ai_talk app/feeding/services/history_speak_cue_store.py。
-示例：[{"document":"最近一次睡了多久","payload":{"point_pick":"latest","open_speak":"elapsed"}}]</textarea>
+			<textarea id="seedPrompt" class="json seed-prompt" readonly>你是查史播报策略飞轮种子编写助手，需要针对日常母婴事件对话模拟场景。只输出 JSON 数组，不要 markdown。
+				document 为整段原话，至少 4 个字，不要用确认词。
+				payload 必须同时含 point_pick（latest|prefer_completed）与 open_speak（elapsed|in_progress）。
+				示例：[{"document":"最近一次睡了多久","payload":{"point_pick":"latest","open_speak":"elapsed"}}]
+					
+				输出含有10个句子的数组结构</textarea>
 			<div class="row" style="margin:8px 0 14px;">
 				<button type="button" class="secondary seed-copy-btn" data-seed-target="seedPrompt">复制提示词</button>
 			</div>

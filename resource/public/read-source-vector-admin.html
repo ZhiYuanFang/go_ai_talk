@@ -60,11 +60,12 @@
 			<div class="hub-md-detail">
 			<h4 style="margin:0 0 8px;font-size:15px;">种子提示词</h4>
 			<p class="hint">对照 <code>read_source_cue_store.py</code>。复制后交给其它模型，产出贴到下方。</p>
-			<textarea id="seedPrompt" class="json seed-prompt" readonly>你是喂养查阅数据源飞轮种子编写助手。只输出 JSON 数组，不要 markdown。
-document 为整段原话，不要用确认词。
-payload 仅 read_source，取值 record|predict。
-对照 python_ai_talk app/feeding/services/read_source_cue_store.py。
-示例：[{"document":"上次喝了多少","payload":{"read_source":"record"}}]</textarea>
+			<textarea id="seedPrompt" class="json seed-prompt" readonly>你是喂养查阅数据源飞轮种子编写助手，需要针对日常母婴事件对话模拟查找或者预测场景。只输出 JSON 数组，不要 markdown。
+				document 为整段原话，不要用确认词。
+				payload 仅 read_source，取值 record|predict。
+				示例：[{"document":"上次喝了多少","payload":{"read_source":"record"}}]
+				
+				输出含有10个句子的数组结构</textarea>
 			<div class="row" style="margin:8px 0 14px;">
 				<button type="button" class="secondary seed-copy-btn" data-seed-target="seedPrompt">复制提示词</button>
 			</div>

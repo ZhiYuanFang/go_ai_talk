@@ -57,11 +57,30 @@
 			<div class="hub-md-detail">
 			<h4 style="margin:0 0 8px;font-size:15px;">种子提示词</h4>
 			<p class="hint">对照 <code>intent_cache_store.py</code>。复制后交给其它模型，产出贴到下方。</p>
-			<textarea id="seedPrompt" class="json seed-prompt" readonly>你是喂养事件短说法种子编写助手。只输出 JSON 数组，不要 markdown。
-document 是单事件短说法或别名，不是整段长句。不要用「嗯/是的/好的」等确认词。禁止整包 multi-events。
-payload 仅 event_id、event_name、kind（parent|leaf）。
-对照 python_ai_talk app/feeding/services/intent_cache_store.py。
-示例：[{"document":"配方奶","payload":{"event_id":"123","event_name":"配方奶","kind":"leaf"}}]</textarea>
+			<textarea id="seedPrompt" class="json seed-prompt" readonly>你是喂养事件种子编写助手，需要针对日常母婴事件对话模拟场景。只输出 JSON 数组，不要 markdown。
+				document 是关于事件说法或别名。不要用「嗯/是的/好的」等确认词。禁止整包 multi-events。
+				payload 仅 event_id、event_name、kind（parent|leaf）。
+				
+				事件从这里取
+				叶子事件表（event_id\tevent_name）：
+				2	配方奶
+				3	睡眠
+				21	母乳
+				24	疫苗
+				40	洗澡
+				41	拉屎
+				42	尿尿
+				45	瓶喂母乳
+				46	辅食
+				49	喝水
+				53	零食
+				56	D3
+				57	AD
+				58	其它营养品
+				
+				示例：[{"document":"吃了120配方奶","payload":{"event_id":"123","event_name":"配方奶","kind":"leaf"}}]
+				
+				输出含有100个句子的数组结构</textarea>
 			<div class="row" style="margin:8px 0 14px;">
 				<button type="button" class="secondary seed-copy-btn" data-seed-target="seedPrompt">复制提示词</button>
 			</div>
