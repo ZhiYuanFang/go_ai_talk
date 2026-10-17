@@ -52,7 +52,42 @@ type DeviceAdminSurveySaveRes struct {
 	CampaignId int64 `json:"campaignId"`
 }
 
-// DeviceAdminSurveyNewReq 开启新一轮（默认关闭，不复制提交）。
+// DeviceAdminSurveyOptionAddReq 新增一行选项并立即落库。
+type DeviceAdminSurveyOptionAddReq struct {
+	g.Meta  `path:"/device/admin/api/survey/option/add" method:"post" tags:"admin" summary:"新增满意度问卷选项"`
+	Text    string `json:"text"`
+	Enabled bool   `json:"enabled"`
+}
+
+// DeviceAdminSurveyOptionAddRes 新增后的行。
+type DeviceAdminSurveyOptionAddRes struct {
+	Id      int64  `json:"id"`
+	Text    string `json:"text"`
+	Sort    int    `json:"sort"`
+	Enabled bool   `json:"enabled"`
+}
+
+// DeviceAdminSurveyOptionUpdateReq 更新一行文案与启用。
+type DeviceAdminSurveyOptionUpdateReq struct {
+	g.Meta  `path:"/device/admin/api/survey/option/update" method:"post" tags:"admin" summary:"更新满意度问卷选项"`
+	Id      int64  `json:"id" v:"required|min:1"`
+	Text    string `json:"text"`
+	Enabled bool   `json:"enabled"`
+}
+
+// DeviceAdminSurveyOptionUpdateRes 更新成功。
+type DeviceAdminSurveyOptionUpdateRes struct{}
+
+// DeviceAdminSurveyOptionDeleteReq 删除一行选项。
+type DeviceAdminSurveyOptionDeleteReq struct {
+	g.Meta `path:"/device/admin/api/survey/option/delete" method:"post" tags:"admin" summary:"删除满意度问卷选项"`
+	Id     int64 `json:"id" v:"required|min:1"`
+}
+
+// DeviceAdminSurveyOptionDeleteRes 删除成功。
+type DeviceAdminSurveyOptionDeleteRes struct{}
+
+// DeviceAdminSurveyNewReq 已停用：问卷只有一份，调用会被拒绝。
 type DeviceAdminSurveyNewReq struct {
 	g.Meta `path:"/device/admin/api/survey/new" method:"post" tags:"admin" summary:"开启新一轮满意度问卷"`
 }

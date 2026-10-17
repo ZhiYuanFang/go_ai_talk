@@ -10,7 +10,6 @@ import (
 	"hello/internal/dao"
 	"hello/internal/model/entity"
 
-	"github.com/gogf/gf/v2/database/gdb"
 	"github.com/gogf/gf/v2/errors/gcode"
 	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/frame/g"
@@ -59,7 +58,7 @@ type SurveyCampaignBrief struct {
 	EndAt   int64 `json:"endAt"`
 }
 
-// SurveyOptionInput 保存时的一行。id=0 表示新增。
+// SurveyOptionInput 保留给历史保存入参；选项现已逐行写入，整表保存不再使用。
 type SurveyOptionInput struct {
 	Id      int64
 	Text    string
@@ -85,11 +84,11 @@ type SurveyResponsePage struct {
 	CampaignId int64                `json:"campaignId"`
 }
 
-// SurveyCurrentForWx 读取最新活动对该用户是否展示。
-// 无活动、关闭、不在 [startAt,endAt]、或已提交时 show=false。无启用选项仍可展示（允许只写意见）。
+// SurveyCurrentForWx 读取唯一问卷对该用户是否展示。
+// 关闭、不在 [startAt,endAt]、或已提交时 show=false。无有效文案的选项仍允许只写意见。
 func SurveyCurrentForWx(ctx context.Context, wxID int64) (*SurveyCurrent, error) {
 	out := &SurveyCurrent{Options: []SurveyOptionView{}}
-	camp, err := latestSurveyCampaign(ctx)
+	camp, err := EnsureSurveySingleCampaign(ctx)
 	if err != nil || camp == nil {
 		return out, err
 	}
@@ -124,7 +123,7 @@ func SurveySubmit(ctx context.Context, wxID int64, deviceNo string, campaignID i
 	if len(optionIDs) == 0 && comment == "" {
 		return gerror.NewCode(gcode.CodeInvalidParameter, "请至少选择一项或填写意见")
 	}
-	camp, err := latestSurveyCampaign(ctx)
+	camp, err := EnsureSurveySingleCampaign(ctx)
 	if err != nil {
 		return err
 	}
@@ -171,43 +170,30 @@ func SurveySubmit(ctx context.Context, wxID int64, deviceNo string, campaignID i
 	return nil
 }
 
-// SurveyEditorGet 读取指定活动；campaignID<=0 时取最新。没有活动时返回空编辑态。
-func SurveyEditorGet(ctx context.Context, campaignID int64) (*SurveyEditor, error) {
-	briefs, latestID, err := listSurveyCampaignBriefs(ctx)
+// SurveyEditorGet 读取唯一问卷。没有活动时会先插入默认关闭的一行。
+func SurveyEditorGet(ctx context.Context) (*SurveyEditor, error) {
+	camp, err := EnsureSurveySingleCampaign(ctx)
 	if err != nil {
 		return nil, err
-	}
-	out := &SurveyEditor{Options: []SurveyOptionView{}, Campaigns: briefs}
-	if latestID == 0 {
-		return out, nil
-	}
-	id := campaignID
-	if id <= 0 {
-		id = latestID
-	}
-	camp, err := surveyCampaignByID(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	if camp == nil {
-		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "问卷活动不存在")
 	}
 	opts, err := listSurveyOptions(ctx, camp.Id, false)
 	if err != nil {
 		return nil, err
 	}
-	out.CampaignId = camp.Id
-	out.Enabled = camp.Enabled == 1
-	out.StartAt = camp.StartAt
-	out.EndAt = camp.EndAt
-	out.Intro = camp.Intro
-	out.Options = opts
-	out.IsLatest = camp.Id == latestID
-	return out, nil
+	return &SurveyEditor{
+		CampaignId: camp.Id,
+		Enabled:    camp.Enabled == 1,
+		StartAt:    camp.StartAt,
+		EndAt:      camp.EndAt,
+		Intro:      camp.Intro,
+		Options:    opts,
+		Campaigns:  []SurveyCampaignBrief{},
+		IsLatest:   true,
+	}, nil
 }
 
-// SurveyEditorSave 保存活动开关、有效期、说明与选项行。起止无效则拒绝。
-func SurveyEditorSave(ctx context.Context, campaignID int64, enabled bool, startAt, endAt int64, intro string, options []SurveyOptionInput) (int64, error) {
+// SurveyEditorSave 只保存开关、有效期和说明，不改选项行。起止无效则拒绝。
+func SurveyEditorSave(ctx context.Context, enabled bool, startAt, endAt int64, intro string) (int64, error) {
 	intro = strings.TrimSpace(intro)
 	if utf8.RuneCountInString(intro) > surveyIntroMaxRunes {
 		return 0, gerror.NewCode(gcode.CodeInvalidParameter, "说明过长")
@@ -215,38 +201,16 @@ func SurveyEditorSave(ctx context.Context, campaignID int64, enabled bool, start
 	if startAt <= 0 || endAt <= 0 || endAt < startAt {
 		return 0, gerror.NewCode(gcode.CodeInvalidParameter, "请设置有效的开始与结束时间")
 	}
-	if len(options) > surveyOptionMaxRows {
-		return 0, gerror.NewCode(gcode.CodeInvalidParameter, "选项过多")
-	}
-	for i := range options {
-		options[i].Text = strings.TrimSpace(options[i].Text)
-		if options[i].Text == "" || utf8.RuneCountInString(options[i].Text) > surveyOptionMaxRunes {
-			return 0, gerror.NewCode(gcode.CodeInvalidParameter, "选项文案不能为空且需在 200 字以内")
-		}
-	}
-	if campaignID <= 0 {
-		id, err := insertSurveyCampaign(ctx, enabled, startAt, endAt, intro)
-		if err != nil {
-			return 0, err
-		}
-		if err := replaceSurveyOptions(ctx, id, options); err != nil {
-			return 0, err
-		}
-		return id, nil
-	}
-	camp, err := surveyCampaignByID(ctx, campaignID)
+	camp, err := EnsureSurveySingleCampaign(ctx)
 	if err != nil {
 		return 0, err
-	}
-	if camp == nil {
-		return 0, gerror.NewCode(gcode.CodeInvalidParameter, "问卷活动不存在")
 	}
 	c := dao.SurveyCampaign.Columns()
 	en := 0
 	if enabled {
 		en = 1
 	}
-	_, err = dao.SurveyCampaign.Ctx(ctx).Where(c.Id, campaignID).Data(g.Map{
+	_, err = dao.SurveyCampaign.Ctx(ctx).Where(c.Id, camp.Id).Data(g.Map{
 		c.Enabled: en,
 		c.StartAt: startAt,
 		c.EndAt:   endAt,
@@ -255,35 +219,102 @@ func SurveyEditorSave(ctx context.Context, campaignID int64, enabled bool, start
 	if err != nil {
 		return 0, err
 	}
-	if err := replaceSurveyOptions(ctx, campaignID, options); err != nil {
-		return 0, err
+	return camp.Id, nil
+}
+
+// SurveyAddOption 新增一行并立即落库。空文案允许暂存，App 不展示。
+func SurveyAddOption(ctx context.Context, text string, enabled bool) (*SurveyOptionView, error) {
+	text = strings.TrimSpace(text)
+	if utf8.RuneCountInString(text) > surveyOptionMaxRunes {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "选项文案需在 200 字以内")
 	}
-	return campaignID, nil
+	camp, err := EnsureSurveySingleCampaign(ctx)
+	if err != nil {
+		return nil, err
+	}
+	c := dao.SurveyOption.Columns()
+	n, err := dao.SurveyOption.Ctx(ctx).Where(c.CampaignId, camp.Id).Count()
+	if err != nil {
+		return nil, err
+	}
+	if n >= surveyOptionMaxRows {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "选项过多")
+	}
+	en := 0
+	if enabled {
+		en = 1
+	}
+	id, err := dao.SurveyOption.Ctx(ctx).Data(g.Map{
+		c.CampaignId: camp.Id,
+		c.Text:       text,
+		c.Sort:       n,
+		c.Enabled:    en,
+	}).InsertAndGetId()
+	if err != nil {
+		return nil, err
+	}
+	return &SurveyOptionView{Id: id, Text: text, Sort: n, Enabled: enabled}, nil
 }
 
-// SurveyNewCampaign 开启新一轮：插入关闭的空活动，不复制旧提交。
-func SurveyNewCampaign(ctx context.Context) (int64, error) {
-	return insertSurveyCampaign(ctx, false, 0, 0, "")
+// SurveyUpdateOption 更新一行文案与是否启用。
+func SurveyUpdateOption(ctx context.Context, id int64, text string, enabled bool) error {
+	if id <= 0 {
+		return gerror.NewCode(gcode.CodeInvalidParameter, "选项不存在")
+	}
+	text = strings.TrimSpace(text)
+	if utf8.RuneCountInString(text) > surveyOptionMaxRunes {
+		return gerror.NewCode(gcode.CodeInvalidParameter, "选项文案需在 200 字以内")
+	}
+	camp, err := EnsureSurveySingleCampaign(ctx)
+	if err != nil {
+		return err
+	}
+	c := dao.SurveyOption.Columns()
+	en := 0
+	if enabled {
+		en = 1
+	}
+	affected, err := dao.SurveyOption.Ctx(ctx).
+		Where(c.Id, id).
+		Where(c.CampaignId, camp.Id).
+		Data(g.Map{c.Text: text, c.Enabled: en}).
+		UpdateAndGetAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return gerror.NewCode(gcode.CodeInvalidParameter, "选项不存在")
+	}
+	return nil
 }
 
-// SurveyResponses 按活动分页列出提交。campaignID<=0 时用最新活动。
-func SurveyResponses(ctx context.Context, campaignID int64, page, pageSize int) (*SurveyResponsePage, error) {
+// SurveyDeleteOption 删除一行。已有提交快照不动。
+func SurveyDeleteOption(ctx context.Context, id int64) error {
+	if id <= 0 {
+		return gerror.NewCode(gcode.CodeInvalidParameter, "选项不存在")
+	}
+	camp, err := EnsureSurveySingleCampaign(ctx)
+	if err != nil {
+		return err
+	}
+	c := dao.SurveyOption.Columns()
+	_, err = dao.SurveyOption.Ctx(ctx).Where(c.Id, id).Where(c.CampaignId, camp.Id).Delete()
+	return err
+}
+
+// SurveyResponses 列出唯一问卷的全部提交。
+func SurveyResponses(ctx context.Context, page, pageSize int) (*SurveyResponsePage, error) {
 	if page < 1 {
 		page = 1
 	}
 	if pageSize < 1 || pageSize > 100 {
 		pageSize = 20
 	}
-	if campaignID <= 0 {
-		camp, err := latestSurveyCampaign(ctx)
-		if err != nil {
-			return nil, err
-		}
-		if camp == nil {
-			return &SurveyResponsePage{List: []SurveyResponseItem{}, Page: page, PageSize: pageSize}, nil
-		}
-		campaignID = camp.Id
+	camp, err := EnsureSurveySingleCampaign(ctx)
+	if err != nil {
+		return nil, err
 	}
+	campaignID := camp.Id
 	c := dao.SurveyResponse.Columns()
 	m := dao.SurveyResponse.Ctx(ctx).Where(c.CampaignId, campaignID)
 	total, err := m.Count()
@@ -325,20 +356,73 @@ func surveyCampaignOpen(camp *entity.SurveyCampaign, now int64) bool {
 	return now >= camp.StartAt && now <= camp.EndAt
 }
 
-func latestSurveyCampaign(ctx context.Context) (*entity.SurveyCampaign, error) {
+// EnsureSurveySingleCampaign 保证库里只有一份问卷。
+// 没有则插入默认关闭的一行；多行时并入最小 id，同一 wx 只留较早的提交。
+func EnsureSurveySingleCampaign(ctx context.Context) (*entity.SurveyCampaign, error) {
 	c := dao.SurveyCampaign.Columns()
-	one, err := dao.SurveyCampaign.Ctx(ctx).OrderDesc(c.Id).Limit(1).One()
-	if err != nil {
+	var rows []entity.SurveyCampaign
+	if err := dao.SurveyCampaign.Ctx(ctx).OrderAsc(c.Id).Scan(&rows); err != nil {
 		return nil, err
 	}
-	if one.IsEmpty() {
-		return nil, nil
+	if len(rows) == 0 {
+		id, err := insertSurveyCampaign(ctx, false, 0, 0, "")
+		if err != nil {
+			return nil, err
+		}
+		return surveyCampaignByID(ctx, id)
 	}
-	var row entity.SurveyCampaign
-	if err := one.Struct(&row); err != nil {
-		return nil, err
+	keep := rows[0]
+	for _, extra := range rows[1:] {
+		if err := mergeSurveyCampaignInto(ctx, keep.Id, extra.Id); err != nil {
+			return nil, err
+		}
 	}
-	return &row, nil
+	return surveyCampaignByID(ctx, keep.Id)
+}
+
+// mergeSurveyCampaignInto 把 extra 的选项和提交并入 keep，然后删除 extra。
+func mergeSurveyCampaignInto(ctx context.Context, keepID, extraID int64) error {
+	oc := dao.SurveyOption.Columns()
+	if _, err := dao.SurveyOption.Ctx(ctx).Where(oc.CampaignId, extraID).Data(g.Map{oc.CampaignId: keepID}).Update(); err != nil {
+		return err
+	}
+	rc := dao.SurveyResponse.Columns()
+	var extras []entity.SurveyResponse
+	if err := dao.SurveyResponse.Ctx(ctx).Where(rc.CampaignId, extraID).Scan(&extras); err != nil {
+		return err
+	}
+	for _, ex := range extras {
+		one, err := dao.SurveyResponse.Ctx(ctx).Where(rc.CampaignId, keepID).Where(rc.WxId, ex.WxId).One()
+		if err != nil {
+			return err
+		}
+		if one.IsEmpty() {
+			if _, err := dao.SurveyResponse.Ctx(ctx).Where(rc.Id, ex.Id).Data(g.Map{rc.CampaignId: keepID}).Update(); err != nil {
+				return err
+			}
+			continue
+		}
+		var kept entity.SurveyResponse
+		if err := one.Struct(&kept); err != nil {
+			return err
+		}
+		// 同一用户留较早的那次提交。
+		if ex.SubmittedAt < kept.SubmittedAt {
+			if _, err := dao.SurveyResponse.Ctx(ctx).Where(rc.Id, kept.Id).Delete(); err != nil {
+				return err
+			}
+			if _, err := dao.SurveyResponse.Ctx(ctx).Where(rc.Id, ex.Id).Data(g.Map{rc.CampaignId: keepID}).Update(); err != nil {
+				return err
+			}
+			continue
+		}
+		if _, err := dao.SurveyResponse.Ctx(ctx).Where(rc.Id, ex.Id).Delete(); err != nil {
+			return err
+		}
+	}
+	cc := dao.SurveyCampaign.Columns()
+	_, err := dao.SurveyCampaign.Ctx(ctx).Where(cc.Id, extraID).Delete()
+	return err
 }
 
 func surveyCampaignByID(ctx context.Context, id int64) (*entity.SurveyCampaign, error) {
@@ -382,6 +466,10 @@ func listSurveyOptions(ctx context.Context, campaignID int64, enabledOnly bool) 
 	}
 	out := make([]SurveyOptionView, 0, len(rows))
 	for _, row := range rows {
+		// 空文案只给 Hub 编辑，不发给 App。
+		if enabledOnly && strings.TrimSpace(row.Text) == "" {
+			continue
+		}
 		out = append(out, SurveyOptionView{
 			Id: row.Id, Text: row.Text, Sort: row.Sort, Enabled: row.Enabled == 1,
 		})
@@ -405,6 +493,9 @@ func surveyOptionTexts(ctx context.Context, campaignID int64, ids []int64) ([]st
 	}
 	byID := make(map[int64]string, len(rows))
 	for _, row := range rows {
+		if strings.TrimSpace(row.Text) == "" {
+			continue
+		}
 		byID[row.Id] = row.Text
 	}
 	texts := make([]string, 0, len(ids))
@@ -432,70 +523,6 @@ func insertSurveyCampaign(ctx context.Context, enabled bool, startAt, endAt int6
 		c.CreatedAt: time.Now().Unix(),
 	}).InsertAndGetId()
 	return id, err
-}
-
-func replaceSurveyOptions(ctx context.Context, campaignID int64, options []SurveyOptionInput) error {
-	return dao.SurveyCampaign.Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
-		c := dao.SurveyOption.Columns()
-		keep := make([]int64, 0, len(options))
-		for i, opt := range options {
-			en := 0
-			if opt.Enabled {
-				en = 1
-			}
-			if opt.Id > 0 {
-				n, err := dao.SurveyOption.Ctx(ctx).
-					Where(c.Id, opt.Id).
-					Where(c.CampaignId, campaignID).
-					Data(g.Map{c.Text: opt.Text, c.Sort: i, c.Enabled: en}).
-					UpdateAndGetAffected()
-				if err != nil {
-					return err
-				}
-				if n == 0 {
-					return gerror.NewCode(gcode.CodeInvalidParameter, "选项不属于该活动")
-				}
-				keep = append(keep, opt.Id)
-				continue
-			}
-			id, err := dao.SurveyOption.Ctx(ctx).Data(g.Map{
-				c.CampaignId: campaignID,
-				c.Text:       opt.Text,
-				c.Sort:       i,
-				c.Enabled:    en,
-			}).InsertAndGetId()
-			if err != nil {
-				return err
-			}
-			keep = append(keep, id)
-		}
-		del := dao.SurveyOption.Ctx(ctx).Where(c.CampaignId, campaignID)
-		if len(keep) > 0 {
-			del = del.WhereNotIn(c.Id, keep)
-		}
-		_, err := del.Delete()
-		return err
-	})
-}
-
-func listSurveyCampaignBriefs(ctx context.Context) ([]SurveyCampaignBrief, int64, error) {
-	c := dao.SurveyCampaign.Columns()
-	var rows []entity.SurveyCampaign
-	err := dao.SurveyCampaign.Ctx(ctx).OrderDesc(c.Id).Limit(50).Scan(&rows)
-	if err != nil {
-		return nil, 0, err
-	}
-	out := make([]SurveyCampaignBrief, 0, len(rows))
-	var latest int64
-	for i, row := range rows {
-		if i == 0 {
-			latest = row.Id
-		}
-		out = append(out, SurveyCampaignBrief{
-			Id: row.Id, Enabled: row.Enabled == 1, StartAt: row.StartAt, EndAt: row.EndAt,
-		})
-	}
-	return out, latest, nil
 }
 
 func uniquePositiveIDs(ids []int64) []int64 {

@@ -13,7 +13,7 @@
 		<div class="logo">问</div>
 		<div>
 			<h1>问卷调查</h1>
-			<p>收集用户觉得胖宝 App 做得满意的地方。App 只看最新一轮；时间按上海时区。</p>
+			<p>只有一份问卷。每一行文案改完即保存。时间按上海时区。</p>
 		</div>
 	</header>
 	<div class="hub-md hidden" id="main">
@@ -22,16 +22,11 @@
 				<div class="card-head">
 					<h3>编辑</h3>
 					<div class="card-actions">
-						<button id="newBtn" type="button">开启新一轮</button>
-						<button id="saveBtn" type="button">保存</button>
+						<button id="saveBtn" type="button">保存开关与有效期</button>
 						<a class="link-btn" href="/device/admin">返回</a>
 					</div>
 				</div>
 				<div id="editMsg" class="msg"></div>
-				<p id="latestHint" class="msg"></p>
-				<label class="filter">活动
-					<select id="campaignSel"></select>
-				</label>
 				<label class="filter"><input id="enabled" type="checkbox" /> 开启（关掉后，即使还在有效期内也不弹出）</label>
 				<label class="filter">开始（上海时间）<input id="startAt" type="datetime-local" /></label>
 				<label class="filter">结束（上海时间）<input id="endAt" type="datetime-local" /></label>
@@ -77,7 +72,6 @@ const resMsg = document.getElementById('resMsg');
 const optBody = document.getElementById('optBody');
 let page = 1;
 const pageSize = 20;
-let viewingId = 0;
 
 function setMsg(el, text, ok){
 	el.textContent = text || '';
@@ -108,50 +102,64 @@ function addRow(opt){
 	const tr = document.createElement('tr');
 	tr.dataset.id = String(opt && opt.id ? opt.id : 0);
 	tr.innerHTML = '<td><input class="opt-text" type="text" maxlength="200" /></td>'+
-		'<td><input class="opt-on" type="checkbox" checked /></td>'+
+		'<td><input class="opt-on" type="checkbox" /></td>'+
 		'<td><button type="button" class="opt-del">删除</button></td>';
-	tr.querySelector('.opt-text').value = opt && opt.text ? opt.text : '';
-	tr.querySelector('.opt-on').checked = !opt || opt.enabled !== false;
-	tr.querySelector('.opt-del').addEventListener('click', function(){ tr.remove(); });
+	const text = tr.querySelector('.opt-text');
+	const on = tr.querySelector('.opt-on');
+	text.value = opt && opt.text ? opt.text : '';
+	on.checked = !!(opt && opt.enabled);
+	text.addEventListener('change', function(){ saveRow(tr); });
+	on.addEventListener('change', function(){ saveRow(tr); });
+	tr.querySelector('.opt-del').addEventListener('click', function(){ deleteRow(tr); });
 	optBody.appendChild(tr);
+	return tr;
 }
-function collectOptions(){
-	const rows = [];
-	optBody.querySelectorAll('tr').forEach(function(tr){
-		rows.push({
-			id: Number(tr.dataset.id || 0),
-			text: tr.querySelector('.opt-text').value,
-			enabled: tr.querySelector('.opt-on').checked
+async function saveRow(tr){
+	const id = Number(tr.dataset.id || 0);
+	if(!id) return;
+	try {
+		await AdminCommon.adminFetch('/device/admin/api/survey/option/update', {
+			method: 'POST',
+			body: JSON.stringify({
+				id: id,
+				text: tr.querySelector('.opt-text').value,
+				enabled: tr.querySelector('.opt-on').checked
+			})
 		});
-	});
-	return rows;
+		setMsg(editMsg, '已保存这一行', true);
+	} catch (e) {
+		setMsg(editMsg, e.message || '保存失败', false);
+	}
 }
-async function loadEditor(campaignId){
-	const q = campaignId ? ('?campaignId=' + encodeURIComponent(campaignId)) : '';
-	const data = await AdminCommon.adminFetch('/device/admin/api/survey/editor' + q);
-	viewingId = data.campaignId || 0;
+async function deleteRow(tr){
+	const id = Number(tr.dataset.id || 0);
+	if(!id){
+		tr.remove();
+		return;
+	}
+	try {
+		await AdminCommon.adminFetch('/device/admin/api/survey/option/delete', {
+			method: 'POST',
+			body: JSON.stringify({id: id})
+		});
+		tr.remove();
+		setMsg(editMsg, '已删除', true);
+	} catch (e) {
+		setMsg(editMsg, e.message || '删除失败', false);
+	}
+}
+async function loadEditor(){
+	const data = await AdminCommon.adminFetch('/device/admin/api/survey/editor');
 	document.getElementById('enabled').checked = !!data.enabled;
 	document.getElementById('startAt').value = unixToShanghai(data.startAt);
 	document.getElementById('endAt').value = unixToShanghai(data.endAt);
 	document.getElementById('intro').value = data.intro || '';
-	document.getElementById('latestHint').textContent = data.campaignId
-		? (data.isLatest ? '当前是最新一轮，App 会读取这一轮。' : '这不是最新一轮，App 不会弹出这一轮。')
-		: '还没有活动，保存后会创建第一轮。';
-	const sel = document.getElementById('campaignSel');
-	sel.innerHTML = '';
-	(data.campaigns || []).forEach(function(c){
-		const o = document.createElement('option');
-		o.value = String(c.id);
-		o.textContent = '#' + c.id + (c.enabled ? ' 开' : ' 关');
-		if(c.id === data.campaignId) o.selected = true;
-		sel.appendChild(o);
-	});
 	optBody.innerHTML = '';
 	(data.options || []).forEach(addRow);
 	setMsg(editMsg, '', true);
 }
 async function loadResponses(){
-	const data = await AdminCommon.adminFetch('/device/admin/api/survey/responses?campaignId=' + encodeURIComponent(viewingId) + '&page=' + page + '&pageSize=' + pageSize);
+	const data = await AdminCommon.adminFetch('/device/admin/api/survey/responses?page=' + page + '&pageSize=' + pageSize);
 	const body = document.getElementById('resBody');
 	body.innerHTML = '';
 	(data.list || []).forEach(function(row){
@@ -159,47 +167,36 @@ async function loadResponses(){
 		tr.innerHTML = '<td>'+escapeHtml(row.wxId)+'</td><td>'+escapeHtml(row.babyName)+'</td><td>'+escapeHtml(row.deviceNo)+'</td><td>'+escapeHtml((row.options||[]).join('、'))+'</td><td>'+escapeHtml(row.comment)+'</td><td>'+escapeHtml(formatTime(row.submittedAt))+'</td>';
 		body.appendChild(tr);
 	});
-	const total = data.total || 0;
-	document.getElementById('pagerInfo').textContent = '第 ' + (data.page || page) + ' 页 / 共 ' + total + ' 条';
+	document.getElementById('pagerInfo').textContent = '第 ' + (data.page || page) + ' 页 / 共 ' + (data.total || 0) + ' 条';
 	setMsg(resMsg, '', true);
 }
-document.getElementById('addOpt').addEventListener('click', function(){ addRow({id:0, text:'', enabled:true}); });
-document.getElementById('campaignSel').addEventListener('change', function(){
-	page = 1;
-	const id = Number(this.value || 0);
-	loadEditor(id).then(loadResponses).catch(function(e){ setMsg(editMsg, e.message || '加载失败', false); });
+document.getElementById('addOpt').addEventListener('click', async function(){
+	try {
+		const row = await AdminCommon.adminFetch('/device/admin/api/survey/option/add', {
+			method: 'POST',
+			body: JSON.stringify({text: '', enabled: true})
+		});
+		const tr = addRow(row);
+		tr.querySelector('.opt-text').focus();
+		setMsg(editMsg, '已增加一行，改完文案会自动保存', true);
+	} catch (e) {
+		setMsg(editMsg, e.message || '增加失败', false);
+	}
 });
 document.getElementById('saveBtn').addEventListener('click', async function(){
 	try {
-		const saved = await AdminCommon.adminFetch('/device/admin/api/survey/save', {
+		await AdminCommon.adminFetch('/device/admin/api/survey/save', {
 			method: 'POST',
 			body: JSON.stringify({
-				campaignId: viewingId,
 				enabled: document.getElementById('enabled').checked,
 				startAt: shanghaiToUnix(document.getElementById('startAt').value),
 				endAt: shanghaiToUnix(document.getElementById('endAt').value),
-				intro: document.getElementById('intro').value,
-				options: collectOptions()
+				intro: document.getElementById('intro').value
 			})
 		});
-		setMsg(editMsg, '已保存', true);
-		page = 1;
-		await loadEditor(saved.campaignId);
-		await loadResponses();
+		setMsg(editMsg, '开关与有效期已保存', true);
 	} catch (e) {
 		setMsg(editMsg, e.message || '保存失败', false);
-	}
-});
-document.getElementById('newBtn').addEventListener('click', async function(){
-	if(!window.confirm('开启新一轮后，App 只看新的一轮。旧提交仍可在这里按活动查看。')) return;
-	try {
-		const created = await AdminCommon.adminFetch('/device/admin/api/survey/new', {method:'POST', body:'{}'});
-		page = 1;
-		await loadEditor(created.campaignId);
-		await loadResponses();
-		setMsg(editMsg, '已开启新一轮，默认关闭。请设置有效期后再打开开关。', true);
-	} catch (e) {
-		setMsg(editMsg, e.message || '开启失败', false);
 	}
 });
 document.getElementById('refreshRes').addEventListener('click', function(){
@@ -216,7 +213,7 @@ document.getElementById('nextBtn').addEventListener('click', function(){
 });
 if(AdminCommon.requireAdmin()){
 	main.classList.remove('hidden');
-	loadEditor(0).then(loadResponses).catch(function(e){ setMsg(editMsg, e.message || '加载失败', false); });
+	loadEditor().then(loadResponses).catch(function(e){ setMsg(editMsg, e.message || '加载失败', false); });
 }
 </script>
 </body>

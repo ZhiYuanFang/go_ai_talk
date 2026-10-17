@@ -42,6 +42,10 @@ func main() {
 		glog.Fatalf(ctx, "survey schema ensure failed: %v", err)
 		return
 	}
+	if _, err := device.EnsureSurveySingleCampaign(ctx); err != nil {
+		glog.Fatalf(ctx, "survey single campaign ensure failed: %v", err)
+		return
+	}
 	if err := device.EnsureXiaozhiMcpBindingTable(ctx); err != nil {
 		glog.Fatalf(ctx, "xiaozhi_mcp_binding schema ensure failed: %v", err)
 		return
