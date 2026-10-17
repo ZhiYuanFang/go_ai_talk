@@ -22,12 +22,13 @@ type DeviceAppSurveyCurrentRes struct {
 	Options    []DeviceAppSurveyOption `json:"options" dc:"启用中的选项"`
 }
 
-// DeviceAppSurveySubmitReq 提交满意度问卷。允许 optionIds 为空但 comment 非空。
+// DeviceAppSurveySubmitReq 提交满意度问卷。
+// optionResults 为「启用选项原文 + 未使用/不好用/好用」，可空；空时必须有意见。
 type DeviceAppSurveySubmitReq struct {
-	g.Meta     `path:"/device/app/api/survey/submit" method:"post" tags:"device" summary:"提交满意度问卷"`
-	CampaignId int64   `json:"campaignId" v:"required|min:1" dc:"活动 id"`
-	OptionIds  []int64 `json:"optionIds" dc:"选中的选项，可空"`
-	Comment    string  `json:"comment" dc:"更多意见，可空"`
+	g.Meta        `path:"/device/app/api/survey/submit" method:"post" tags:"device" summary:"提交满意度问卷"`
+	CampaignId    int64    `json:"campaignId" v:"required|min:1" dc:"活动 id"`
+	OptionResults []string `json:"optionResults" dc:"选项原文加评价后缀，可空"`
+	Comment       string   `json:"comment" dc:"更多意见，可空"`
 }
 
 // DeviceAppSurveySubmitRes 提交成功（含重复提交）。

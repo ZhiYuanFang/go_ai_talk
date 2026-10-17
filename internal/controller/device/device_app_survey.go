@@ -52,7 +52,7 @@ func (c *DeviceAppSurveyCtrl) Submit(ctx context.Context, req *v1.DeviceAppSurve
 	if r != nil {
 		deviceNo = strings.TrimSpace(r.GetHeader(httpmeta.HeaderInternalDeviceNo))
 	}
-	if err := device.SurveySubmit(ctx, wxID, deviceNo, req.CampaignId, req.OptionIds, req.Comment); err != nil {
+	if err := device.SurveySubmit(ctx, wxID, deviceNo, req.CampaignId, req.OptionResults, req.Comment); err != nil {
 		return nil, err
 	}
 	return &v1.DeviceAppSurveySubmitRes{}, nil

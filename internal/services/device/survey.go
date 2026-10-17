@@ -20,7 +20,12 @@ const (
 	surveyOptionMaxRunes  = 200
 	surveyOptionMaxRows   = 40
 	surveyCommentMaxRunes = 1000
+	surveyResultMaxRunes  = 203
+	surveyResultMaxCount  = 40
 )
+
+// surveyResultSuffixes 客户端拼在选项原文后的评价，无分隔符。
+var surveyResultSuffixes = []string{"未使用", "不好用", "好用"}
 
 // SurveyOptionView App / Hub 共用的选项行。
 type SurveyOptionView struct {
@@ -112,8 +117,9 @@ func SurveyCurrentForWx(ctx context.Context, wxID int64) (*SurveyCurrent, error)
 	return out, nil
 }
 
-// SurveySubmit 写入提交。双空拒绝且不落库；重复提交保持单行并成功。
-func SurveySubmit(ctx context.Context, wxID int64, deviceNo string, campaignID int64, optionIDs []int64, comment string) error {
+// SurveySubmit 写入提交。结果必须是启用选项原文加评价后缀；双空拒绝且不落库。
+// 已有有效提交则保持原行。无效行再交卷时用本次 optionResults 覆盖快照。
+func SurveySubmit(ctx context.Context, wxID int64, deviceNo string, campaignID int64, optionResults []string, comment string) error {
 	if wxID <= 0 {
 		return gerror.NewCode(gcode.CodeInvalidParameter, "未登录")
 	}
@@ -121,8 +127,7 @@ func SurveySubmit(ctx context.Context, wxID int64, deviceNo string, campaignID i
 	if utf8.RuneCountInString(comment) > surveyCommentMaxRunes {
 		return gerror.NewCode(gcode.CodeInvalidParameter, "意见过长")
 	}
-	optionIDs = uniquePositiveIDs(optionIDs)
-	if len(optionIDs) == 0 && comment == "" {
+	if len(optionResults) == 0 && comment == "" {
 		return gerror.NewCode(gcode.CodeInvalidParameter, "请至少选择一项或填写意见")
 	}
 	camp, err := EnsureSurveySingleCampaign(ctx)
@@ -139,7 +144,11 @@ func SurveySubmit(ctx context.Context, wxID int64, deviceNo string, campaignID i
 	if done {
 		return nil
 	}
-	texts, err := surveyOptionTexts(ctx, camp.Id, optionIDs)
+	opts, err := listSurveyOptions(ctx, camp.Id, true)
+	if err != nil {
+		return err
+	}
+	texts, err := normalizeSurveyOptionResults(optionResults, opts)
 	if err != nil {
 		return err
 	}
@@ -541,36 +550,51 @@ func listSurveyOptions(ctx context.Context, campaignID int64, enabledOnly bool) 
 	return out, nil
 }
 
-func surveyOptionTexts(ctx context.Context, campaignID int64, ids []int64) ([]string, error) {
-	if len(ids) == 0 {
-		return []string{}, nil
+// normalizeSurveyOptionResults 校验客户端提交的「原文+评价」并保持提交顺序。
+// 空串、重复、超长、对不上启用选项时整单拒绝。多个选项都能对上时仍接受。
+func normalizeSurveyOptionResults(results []string, options []SurveyOptionView) ([]string, error) {
+	if len(results) > surveyResultMaxCount {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "问卷结果过多")
 	}
-	c := dao.SurveyOption.Columns()
-	var rows []entity.SurveyOption
-	err := dao.SurveyOption.Ctx(ctx).
-		Where(c.CampaignId, campaignID).
-		Where(c.Enabled, 1).
-		WhereIn(c.Id, ids).
-		Scan(&rows)
-	if err != nil {
-		return nil, err
-	}
-	byID := make(map[int64]string, len(rows))
-	for _, row := range rows {
-		if strings.TrimSpace(row.Text) == "" {
+	texts := make([]string, 0, len(options))
+	for _, opt := range options {
+		text := strings.TrimSpace(opt.Text)
+		if text == "" {
 			continue
-		}
-		byID[row.Id] = row.Text
-	}
-	texts := make([]string, 0, len(ids))
-	for _, id := range ids {
-		text, ok := byID[id]
-		if !ok {
-			return nil, gerror.NewCode(gcode.CodeInvalidParameter, "包含无效或已关闭的选项")
 		}
 		texts = append(texts, text)
 	}
-	return texts, nil
+	seen := make(map[string]struct{}, len(results))
+	out := make([]string, 0, len(results))
+	for _, raw := range results {
+		item := strings.TrimSpace(raw)
+		if item == "" {
+			return nil, gerror.NewCode(gcode.CodeInvalidParameter, "问卷结果不能为空")
+		}
+		if utf8.RuneCountInString(item) > surveyResultMaxRunes {
+			return nil, gerror.NewCode(gcode.CodeInvalidParameter, "问卷结果过长")
+		}
+		if _, ok := seen[item]; ok {
+			return nil, gerror.NewCode(gcode.CodeInvalidParameter, "问卷结果重复")
+		}
+		if !surveyResultMatchesOption(item, texts) {
+			return nil, gerror.NewCode(gcode.CodeInvalidParameter, "问卷结果与启用选项不匹配")
+		}
+		seen[item] = struct{}{}
+		out = append(out, item)
+	}
+	return out, nil
+}
+
+func surveyResultMatchesOption(result string, optionTexts []string) bool {
+	for _, text := range optionTexts {
+		for _, suffix := range surveyResultSuffixes {
+			if result == text+suffix {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func insertSurveyCampaign(ctx context.Context, enabled bool, startAt, endAt int64, intro string) (int64, error) {
@@ -587,22 +611,6 @@ func insertSurveyCampaign(ctx context.Context, enabled bool, startAt, endAt int6
 		c.CreatedAt: time.Now().Unix(),
 	}).InsertAndGetId()
 	return id, err
-}
-
-func uniquePositiveIDs(ids []int64) []int64 {
-	seen := map[int64]struct{}{}
-	out := make([]int64, 0, len(ids))
-	for _, id := range ids {
-		if id <= 0 {
-			continue
-		}
-		if _, ok := seen[id]; ok {
-			continue
-		}
-		seen[id] = struct{}{}
-		out = append(out, id)
-	}
-	return out
 }
 
 func decodeOptionSnapshot(raw string) []string {
