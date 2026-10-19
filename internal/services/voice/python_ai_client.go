@@ -1399,6 +1399,57 @@ func (c *PythonAIClient) DeleteLocateCache(ctx context.Context, vectorID string)
 	return c.deleteCueCache(ctx, "/admin/locate-cache", "定位飞轮缓存", vectorID)
 }
 
+// CueDocumentHit 九个飞轮按原文精确命中的一条（dimension 决定 Hub 走哪条删除接口）。
+type CueDocumentHit struct {
+	Dimension  string                 `json:"dimension"`
+	Collection string                 `json:"collection"`
+	Id         string                 `json:"id"`
+	Document   string                 `json:"document"`
+	Payload    map[string]interface{} `json:"payload"`
+}
+
+// CueDocumentLookupResult Python GET /v1/admin/cues/by-document 的命中列表。
+type CueDocumentLookupResult struct {
+	Items []CueDocumentHit `json:"items"`
+}
+
+// ListCuesByDocument 按 trim 后的整句原文精确查询九个飞轮。
+//
+// 业务逻辑：只转发聚合接口，不在 Go 侧分页拉各维度列表再过滤。
+// 调用方须先拒绝空白 document，避免无意义扫库。
+//
+// Args: document 为已 trim 的非空原文。
+// Returns: 命中列表；Python 非 200 时返回错误。
+// Side Effects: 一次 HTTP GET，Python 侧各集合各读一次。
+func (c *PythonAIClient) ListCuesByDocument(ctx context.Context, document string) (*CueDocumentLookupResult, error) {
+	doc := strings.TrimSpace(document)
+	if doc == "" {
+		return nil, fmt.Errorf("document 不能为空")
+	}
+	u := c.baseURL + "/v1/admin/cues/by-document?document=" + url.QueryEscape(doc)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, fmt.Errorf("创建飞轮原文查询请求失败: %w", err)
+	}
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("调用 Python 飞轮原文查询失败: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Python 飞轮原文查询错误 %d: %s", resp.StatusCode, string(body))
+	}
+	var out CueDocumentLookupResult
+	if err := json.Unmarshal(body, &out); err != nil {
+		return nil, fmt.Errorf("解析飞轮原文查询失败: %w", err)
+	}
+	if out.Items == nil {
+		out.Items = []CueDocumentHit{}
+	}
+	return &out, nil
+}
+
 // RuleGapsListResult Python /v1/admin/rule-gaps 列表响应。
 type RuleGapsListResult struct {
 	Total  int                      `json:"total"`

@@ -29,6 +29,8 @@ func RegisterVoiceServiceHTTP(s *ghttp.Server) {
 		group.Bind(voicectrl.NewVoiceAdminPredictVectorsCtrl())
 		group.Bind(voicectrl.NewVoiceAdminLocateVectorsCtrl())
 		group.Bind(voicectrl.NewVoiceAdminHistorySpeakVectorsCtrl())
+		// 按原文一次查九个飞轮；删除仍走各 *-vectors。
+		group.Bind(voicectrl.NewVoiceAdminIntentCuesCtrl())
 		group.Bind(voicectrl.NewVoiceAdminRuleGapsCtrl())
 		group.Bind(voicectrl.NewVoiceAdminMissInboxCtrl())
 		// Hub 预测上报只读：imminent + active-eta（Admin 口令；非 InternalSecret）。

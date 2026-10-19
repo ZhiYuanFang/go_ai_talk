@@ -31,6 +31,15 @@
 		.portal-card p { margin: 0; font-size: 13px; color: #64748b; line-height: 1.55; }
 		.portal-card code { font-size: 11px; }
 		.portal-section { margin: 0 0 6px; font-size: 13px; font-weight: 600; color: #334155; }
+		.doc-lookup { margin: 0 0 18px; }
+		.doc-lookup .row { display: flex; gap: 8px; align-items: center; }
+		.doc-lookup input[type="text"] { flex: 1; min-width: 0; }
+		.doc-lookup .msg { margin: 8px 0 0; font-size: 13px; }
+		.doc-lookup .msg.err { color: #b91c1c; }
+		.doc-lookup .table-wrap { overflow-x: auto; margin-top: 10px; }
+		.doc-lookup table { width: max-content; min-width: 100%; border-collapse: collapse; }
+		.doc-lookup th, .doc-lookup td { white-space: nowrap; text-align: left; padding: 6px 10px; vertical-align: top; }
+		.doc-lookup td.payload { white-space: pre; font-family: ui-monospace, monospace; font-size: 12px; }
 	</style>
 </head>
 <body>
@@ -48,6 +57,22 @@
 			TIME 为相对配方飞轮（禁绝对 Unix 主缓存）；缺口仍见下方工单。
 			旧「类型向量」热路径已停，勿再从门户灌种（深链仅迁移排障）。
 		</p>
+		<div class="doc-lookup">
+			<p class="portal-section">按原文查全部飞轮</p>
+			<div class="row">
+				<input type="text" id="docQuery" placeholder="整句原文，精确匹配" autocomplete="off" />
+				<button type="button" id="docSearch">查询</button>
+			</div>
+			<p class="msg" id="docMsg"></p>
+			<div class="table-wrap hidden" id="docTableWrap">
+				<table>
+					<thead>
+						<tr><th>维度</th><th>向量 id</th><th>payload</th><th></th></tr>
+					</thead>
+					<tbody id="docBody"></tbody>
+				</table>
+			</div>
+		</div>
 		<p class="portal-section">飞轮整理</p>
 		<div class="portal-grid">
 			<a class="portal-card" href="/device/admin/op-vector-admin.html">
@@ -105,9 +130,110 @@
 </div>
 <script src="/resource/public/admin-common.js"></script>
 <script>
+// 维度键对应已有删除接口；未知维度不给删除，避免删错集合。
+var DOC_DELETE = {
+	op: '/voice/admin/api/op-vectors/',
+	intent: '/voice/admin/api/intent-vectors/',
+	qty: '/voice/admin/api/qty-vectors/',
+	time: '/voice/admin/api/time-vectors/',
+	remark: '/voice/admin/api/remark-vectors/',
+	read_source: '/voice/admin/api/read-source-vectors/',
+	predict: '/voice/admin/api/predict-vectors/',
+	history_speak: '/voice/admin/api/history-speak-vectors/',
+	locate: '/voice/admin/api/locate-vectors/'
+};
+var DOC_LABEL = {
+	op: 'OP 轨',
+	intent: '事件',
+	qty: '数量',
+	time: '时间',
+	remark: '备注',
+	read_source: 'R·数据源',
+	predict: 'R·predict',
+	history_speak: '查史播报',
+	locate: 'U/D 定位'
+};
+
+function escapeHtml(s) {
+	return String(s == null ? '' : s)
+		.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+function escapeAttr(s) {
+	return escapeHtml(s).replace(/"/g, '&quot;');
+}
+function setDocMsg(text, ok) {
+	var el = document.getElementById('docMsg');
+	el.textContent = text || '';
+	el.className = 'msg' + (ok ? '' : ' err');
+}
+function renderHits(items) {
+	var body = document.getElementById('docBody');
+	var wrap = document.getElementById('docTableWrap');
+	body.innerHTML = '';
+	wrap.classList.remove('hidden');
+	if (!items.length) {
+		body.innerHTML = '<tr><td colspan="4">没有命中</td></tr>';
+		return;
+	}
+	items.forEach(function (it) {
+		var dim = String(it.dimension || '');
+		var id = String(it.id || '');
+		var label = DOC_LABEL[dim] || dim;
+		var del = '';
+		if (DOC_DELETE[dim] && id) {
+			del = '<button type="button" class="danger doc-del" data-dim="' + escapeAttr(dim) + '" data-id="' + escapeAttr(id) + '">删除</button>';
+		}
+		var tr = document.createElement('tr');
+		tr.innerHTML =
+			'<td>' + escapeHtml(label) + '</td>' +
+			'<td><code>' + escapeHtml(id) + '</code></td>' +
+			'<td class="payload">' + escapeHtml(JSON.stringify(it.payload || {})) + '</td>' +
+			'<td>' + del + '</td>';
+		body.appendChild(tr);
+	});
+	body.querySelectorAll('.doc-del').forEach(function (btn) {
+		btn.addEventListener('click', function () {
+			deleteHit(btn.getAttribute('data-dim'), btn.getAttribute('data-id'));
+		});
+	});
+}
+async function searchDoc() {
+	var doc = (document.getElementById('docQuery').value || '').trim();
+	// 空白不发请求。
+	if (!doc) {
+		setDocMsg('请输入原文', false);
+		return;
+	}
+	setDocMsg('查询中…', true);
+	try {
+		var d = await AdminCommon.adminFetch('/voice/admin/api/intent-cues/by-document?document=' + encodeURIComponent(doc));
+		var items = (d && d.items) || [];
+		renderHits(items);
+		setDocMsg('命中 ' + items.length + ' 条', true);
+	} catch (e) {
+		setDocMsg(String(e && e.message || e), false);
+	}
+}
+async function deleteHit(dim, id) {
+	var base = DOC_DELETE[dim];
+	if (!base || !id) return;
+	if (!confirm('确认从「' + (DOC_LABEL[dim] || dim) + '」删除 ' + id + '？')) return;
+	try {
+		await AdminCommon.adminFetch(base + encodeURIComponent(id), { method: 'DELETE' });
+		setDocMsg('已删除', true);
+		await searchDoc();
+	} catch (e) {
+		setDocMsg(String(e && e.message || e), false);
+	}
+}
+
 if (AdminCommon.requireAdmin()) {
 	document.getElementById('gateCard').classList.add('hidden');
 	document.getElementById('mainCard').classList.remove('hidden');
+	document.getElementById('docSearch').addEventListener('click', searchDoc);
+	document.getElementById('docQuery').addEventListener('keydown', function (ev) {
+		if (ev.key === 'Enter') searchDoc();
+	});
 }
 </script>
 </body>
