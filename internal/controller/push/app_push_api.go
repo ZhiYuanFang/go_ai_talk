@@ -50,3 +50,16 @@ func (c *AppPushCtrl) UnregisterPost(ctx context.Context, req *v1.AppPushUnregis
 	}
 	return &v1.AppPushUnregisterPostRes{}, nil
 }
+
+// LiveActivityRegisterPost POST /app/api/push/live-activity/register
+// 业务：并列于 device register；LA token 写入分表，MUST NOT 进 push_device.uk_token。
+func (c *AppPushCtrl) LiveActivityRegisterPost(ctx context.Context, req *v1.AppPushLiveActivityRegisterPostReq) (res *v1.AppPushLiveActivityRegisterPostRes, err error) {
+	wxID, err := wxIDFromHeader(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err = pushsvc.RegisterLiveActivityToken(ctx, wxID, req.DeviceKey, req.TokenKind, req.AttributesKind, req.ActivityId, req.Token); err != nil {
+		return nil, err
+	}
+	return &v1.AppPushLiveActivityRegisterPostRes{}, nil
+}

@@ -92,3 +92,19 @@ func PredictActiveEtaKey(deviceNo string) (string, error) {
 func PredictActiveEtaSyncLockKey(deviceNo string) (string, error) {
 	return Key(DomainVoice, "predict", "activeetasynclock", strings.TrimSpace(deviceNo))
 }
+
+// PredictImminentRateLimitKey 用户级 Imminent 扇出 1/min 闸（先到占坑）；identifier=wxId；TTL 由业务 SetNXEX 传入（通常 60s）。
+func PredictImminentRateLimitKey(wxID int64) (string, error) {
+	return Key(DomainVoice, "predict", "imminentrate", strconv.FormatInt(wxID, 10))
+}
+
+// PredictImminentActivitySlotKey 每用户 Imminent Live Activity 单槽跟踪（存 activityId）；identifier=wxId；无固定 TTL，靠 end/清场删除。
+func PredictImminentActivitySlotKey(wxID int64) (string, error) {
+	return Key(DomainVoice, "predict", "imminentact", strconv.FormatInt(wxID, 10))
+}
+
+// PredictTimingActivitySlotKey Timing Live Activity 跟踪；identifier=deviceNo:historyId；无固定 TTL，闭合时删除。
+func PredictTimingActivitySlotKey(deviceNo string, historyID int64) (string, error) {
+	id := fmt.Sprintf("%s:%d", strings.TrimSpace(deviceNo), historyID)
+	return Key(DomainVoice, "predict", "timingact", id)
+}

@@ -22,3 +22,16 @@ type AppPushUnregisterPostReq struct {
 
 // AppPushUnregisterPostRes 注销成功。
 type AppPushUnregisterPostRes struct{}
+
+// AppPushLiveActivityRegisterPostReq 注册 Live Activity Push-to-Start / per-activity update token（分表，不进 push_device）。
+type AppPushLiveActivityRegisterPostReq struct {
+	g.Meta         `path:"/app/api/push/live-activity/register" method:"post" tags:"push" summary:"注册 Live Activity token"`
+	DeviceKey      string `json:"deviceKey" v:"required|max-length:64"`
+	TokenKind      string `json:"tokenKind" v:"required|in:push_to_start,activity"`
+	AttributesKind string `json:"attributesKind" v:"required|in:imminent,timing"`
+	ActivityId     string `json:"activityId" v:"max-length:128" dc:"tokenKind=activity 时必填；push_to_start 可空"`
+	Token          string `json:"token" v:"required|max-length:512"`
+}
+
+// AppPushLiveActivityRegisterPostRes 注册成功。
+type AppPushLiveActivityRegisterPostRes struct{}

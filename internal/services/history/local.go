@@ -231,6 +231,7 @@ func EndLatestDeviceHistoryIfMatch(ctx context.Context, deviceNo string, eventID
 	// 与 UpdateDeviceHistory 一致：改 endTime（及可选 remark）时也要递增 piece 版本并向 app:history:notify 广播，否则 App WS 收不到「结束事件」类更新。
 	bumpPieceCacheEpoch(ctx, deviceNo)
 	publishHistoryChange(ctx, deviceNo, "update", historyToNotifyPayload(ctx, open))
+	maybeEndTimingLiveActivity(ctx, deviceNo, open.Id, endTimeUnixSec)
 	return true, nil
 }
 
@@ -409,6 +410,8 @@ func AddDeviceHistory(ctx context.Context, item entity.History) (int64, error) {
 		historyCache.patchHistoryOnAdd(ctx, item)
 		bumpPieceCacheEpoch(ctx, item.DeviceNo)
 		publishHistoryChange(ctx, item.DeviceNo, "create", historyToNotifyPayload(ctx, item))
+		// Timing LA：仅在权威落库成功后扇出一次；remote 调用方不另挂钩。
+		maybeStartTimingLiveActivity(ctx, item.DeviceNo, id, item.EventName, item.StartTime, item.EndTime)
 	}
 	return id, err
 }
@@ -457,6 +460,10 @@ func UpdateDeviceHistory(ctx context.Context, item entity.History) error {
 		historyCache.patchHistoryOnUpdate(ctx, item)
 		bumpPieceCacheEpoch(ctx, item.DeviceNo)
 		publishHistoryChange(ctx, item.DeviceNo, "update", historyToNotifyPayload(ctx, item))
+		// 闭合 → Timing end。未闭合 update 不重复 start（start 仅挂 Add 落库成功）。
+		if item.EndTime != 0 {
+			maybeEndTimingLiveActivity(ctx, item.DeviceNo, item.Id, item.EndTime)
+		}
 	}
 	return err
 }

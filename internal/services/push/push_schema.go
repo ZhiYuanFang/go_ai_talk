@@ -42,6 +42,24 @@ CREATE TABLE IF NOT EXISTS push_device (
 	if err := ensurePushDeviceIndex(ctx, pushDeviceTokenUniqueIndexName, ensureUkToken); err != nil {
 		return err
 	}
+	// Live Activity 专用表：与 push_device 分表，禁止共享 uk_token 语义。
+	if _, err := g.DB().Exec(ctx, `
+CREATE TABLE IF NOT EXISTS push_live_activity_token (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  wx_id BIGINT NOT NULL,
+  device_key VARCHAR(64) NOT NULL,
+  token_kind VARCHAR(32) NOT NULL,
+  attributes_kind VARCHAR(64) NOT NULL,
+  activity_id VARCHAR(128) NOT NULL DEFAULT '',
+  token VARCHAR(512) NOT NULL,
+  updated_at BIGINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_la_slot (wx_id, device_key, token_kind, attributes_kind, activity_id),
+  KEY idx_la_wx_kind (wx_id, token_kind, attributes_kind),
+  KEY idx_la_activity (wx_id, activity_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`); err != nil {
+		return err
+	}
 	return nil
 }
 

@@ -13,6 +13,7 @@ const (
 	DomainUCG     = "ucg"
 	DomainAI      = "ai"
 	DomainSystem  = "platform"
+	DomainPush    = "push"
 )
 
 // Key 统一生成 Redis 键格式：domain:module:kind:identifier。

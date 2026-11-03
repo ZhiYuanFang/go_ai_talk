@@ -171,6 +171,9 @@ services:
       VOICE_SERVICE_URL: "http://voice-service:9802"
       DEVICE_PROFILE_SERVICE_MODE: "remote"
       DEVICE_SERVICE_URL: "http://device-service:9803"
+      # Timing Live Activity 扇出经 push-service；开关与 voice/push 共用。
+      PUSH_SERVICE_URL: "http://push-service:9808"
+      PUSH_LIVE_ACTIVITY_ENABLED: "${PUSH_LIVE_ACTIVITY_ENABLED:-}"
       # 与 runtimecheck 探活一致：启动前校验 RabbitMQ 管理 API 可达。
       MQ_HTTP_API_BASE: "http://rabbitmq:15672/api"
       MQ_USER: "guest"
@@ -213,6 +216,7 @@ services:
       DEVICE_PROFILE_SERVICE_REMOTE_FAILOVER_LOCAL: "true"
       CASH_SERVICE_URL: "http://cash-service:9807"
       PUSH_SERVICE_URL: "http://push-service:9808"
+      PUSH_LIVE_ACTIVITY_ENABLED: "${PUSH_LIVE_ACTIVITY_ENABLED:-}"
       MQ_HTTP_API_BASE: "http://rabbitmq:15672/api"
       MQ_USER: "guest"
       MQ_PASSWORD: "guest"
@@ -382,6 +386,9 @@ services:
       PUSH_APNS_BUNDLE_ID: "${PUSH_APNS_BUNDLE_ID:-}"
       PUSH_APNS_KEY_PATH: "${PUSH_APNS_KEY_PATH:-}"
       PUSH_APNS_PRODUCTION: "${PUSH_APNS_PRODUCTION:-}"
+      PUSH_LIVE_ACTIVITY_ENABLED: "${PUSH_LIVE_ACTIVITY_ENABLED:-}"
+      PUSH_LA_ATTR_IMMINENT: "${PUSH_LA_ATTR_IMMINENT:-}"
+      PUSH_LA_ATTR_TIMING: "${PUSH_LA_ATTR_TIMING:-}"
       PUSH_HMS_APP_ID: "${PUSH_HMS_APP_ID:-}"
       PUSH_HMS_APP_SECRET: "${PUSH_HMS_APP_SECRET:-}"
       # 可选深链；留空则 HMS 通知 click_action 默认 type=3 打开应用。

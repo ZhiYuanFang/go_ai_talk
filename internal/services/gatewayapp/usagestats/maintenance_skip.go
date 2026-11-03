@@ -18,6 +18,8 @@ var maintenanceExactAPI = map[string]struct{}{
 	// 全局推送注册/注销：负责人确认不计入 usage（extract-push-service）。
 	"POST /app/api/push/register":           {},
 	"POST /app/api/push/unregister":         {},
+	// Live Activity token 注册：负责人确认不计入 usage（predict-live-activity-push；对标 push register）。
+	"POST /app/api/push/live-activity/register": {},
 	"GET /device/history/api/event/options": {},
 	"GET /ucg/app/api/conversations":        {},
 	"GET /device/app/api/user/get":          {},

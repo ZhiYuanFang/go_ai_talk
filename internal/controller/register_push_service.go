@@ -15,5 +15,6 @@ func RegisterPushServiceHTTP(s *ghttp.Server) {
 			&pushctrl.AdminPushCtrl{},
 		)
 		group.POST("/push/internal/api/by-biz-type", pushctrl.InternalByBizType)
+		group.POST("/push/internal/api/live-activity", pushctrl.InternalLiveActivity)
 	})
 }

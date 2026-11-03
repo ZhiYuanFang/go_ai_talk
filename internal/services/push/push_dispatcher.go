@@ -92,6 +92,11 @@ func (d *PushDispatcher) sendOne(ctx context.Context, dev entityPushDevice, payl
 	}
 	bizType := pushBizTypeFromPayload(payload)
 	ch := strings.TrimSpace(strings.ToLower(dev.Channel))
+	// Live Activity 开启时：predict_imminent 对 iOS/APNs MUST NOT 再发普通 alert（改走 liveactivity）。
+	if LiveActivityEnabled() && bizType == PushBizPredictImminent && ch == PushChannelAPNs {
+		g.Log().Warningf(ctx, "[push] skip reason=la_replaces_apns_alert channel=%s wxId=%d bizType=%s", ch, dev.WxID, bizType)
+		return
+	}
 	sender, ok := d.senders[ch]
 	if !ok || sender == nil {
 		g.Log().Warningf(ctx, "[push] skip reason=no_sender channel=%s wxId=%d bizType=%s", ch, dev.WxID, bizType)

@@ -145,6 +145,8 @@ func SyncPredictImminentPending(ctx context.Context, wxID int64, deviceNo string
 	if err != nil {
 		return 0, err
 	}
+	// pending 清场：写 Redis / 重布前 end 全部 Imminent LA（不得 end Timing）。
+	clearImminentLiveActivitiesForDevice(ctx, deviceNo)
 	if len(cleaned) == 0 {
 		// 空列表：清空 Redis，不发取消类 MQ（旧消息靠消费校验作废）。
 		if delErr := predictImminentCache.Del(ctx, pendingKey); delErr != nil {
@@ -368,12 +370,25 @@ func handlePredictImminentFire(ctx context.Context, body []byte) error {
 		"eventId":  strconv.FormatInt(msg.EventId, 10),
 		"nextAt":   strconv.FormatInt(msg.NextAt, 10),
 	}
-	glog.Infof(ctx, "[predict-imminent] push_attempt deviceNoLen=%d eventId=%d nextAt=%d wxCount=%d alertLen=%d expectKind=%s",
-		len(msg.DeviceNo), msg.EventId, msg.NextAt, len(wxIDs), len(alert), strings.TrimSpace(msg.ExpectKind))
+	glog.Infof(ctx, "[predict-imminent] push_attempt deviceNoLen=%d eventId=%d nextAt=%d wxCount=%d alertLen=%d expectKind=%s la=%v",
+		len(msg.DeviceNo), msg.EventId, msg.NextAt, len(wxIDs), len(alert), strings.TrimSpace(msg.ExpectKind), predictLiveActivityEnabled())
 	for _, wxID := range wxIDs {
-		// badge=0：预测临近不累计 UCG 未读角标。
+		// 用户级 1/min：未过闸 Ack 跳过，不 requeue。
+		if !tryOccupyImminentRateLimit(ctx, wxID) {
+			glog.Warningf(ctx, "[predict-imminent] skip reason=rate_limit_1min wxId=%d eventId=%d", wxID, msg.EventId)
+			continue
+		}
+		if predictLiveActivityEnabled() {
+			// iOS：Live Activity start；无 LA token 由 push-service 跳过。
+			startImminentLiveActivityForWx(ctx, wxID, msg.DeviceNo, alert, msg.EventId, msg.NextAt)
+			// 非 iOS：仍发可见通知；push-service 在 LA 开启时会跳过 APNs alert 通道。
+			if pushErr := pushclient.PushByBizType(ctx, wxID, pushclient.BizPredictImminent, alert, 0, false, data); pushErr != nil {
+				glog.Warningf(ctx, "[predict-imminent] push_failed wxId=%d eventId=%d err=%v", wxID, msg.EventId, pushErr)
+			}
+			continue
+		}
+		// 开关关闭：回退普通可见推送（含 APNs alert）。
 		if pushErr := pushclient.PushByBizType(ctx, wxID, pushclient.BizPredictImminent, alert, 0, false, data); pushErr != nil {
-			// 推送失败只打日志，不 return err（避免 Nack requeue 风暴）。
 			glog.Warningf(ctx, "[predict-imminent] push_failed wxId=%d eventId=%d err=%v", wxID, msg.EventId, pushErr)
 		}
 	}
