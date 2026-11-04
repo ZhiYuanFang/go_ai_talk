@@ -98,5 +98,15 @@ func historyToNotifyPayload(ctx context.Context, h entity.History) map[string]in
 	if strings.TrimSpace(h.VideoKey) != "" {
 		payload["videoKey"] = h.VideoKey
 	}
+	// 预计字段：仅非空时回传，与 list JSON omitempty 对齐。
+	if h.ExpectStartTime != nil {
+		payload["expectStartTime"] = *h.ExpectStartTime
+	}
+	if h.ExpectEndTime != nil {
+		payload["expectEndTime"] = *h.ExpectEndTime
+	}
+	if h.ExpectAmount != nil {
+		payload["expectAmount"] = *h.ExpectAmount
+	}
 	return payload
 }

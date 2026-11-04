@@ -27,6 +27,9 @@ func historyListSelectFields() []interface{} {
 		c.MediaType,
 		c.ImageKeys,
 		c.VideoKey,
+		c.ExpectStartTime,
+		c.ExpectEndTime,
+		c.ExpectAmount,
 	}
 }
 
@@ -113,28 +116,49 @@ func enrichHistoryEventUnit(ctx context.Context, item *entity.History) {
 	item.EventUnit = lookupEventUnit(ctx, item.EventId)
 }
 
+// optionalInt64FromRow 将可空 BIGINT 读成 *int64；NULL 保持 nil，避免与 0 混淆。
+func optionalInt64FromRow(v gdb.Value) *int64 {
+	if v.IsNil() {
+		return nil
+	}
+	n := v.Int64()
+	return &n
+}
+
+// optionalFloat64FromRow 将可空 DOUBLE 读成 *float64；NULL 保持 nil。
+func optionalFloat64FromRow(v gdb.Value) *float64 {
+	if v.IsNil() {
+		return nil
+	}
+	n := v.Float64()
+	return &n
+}
+
 func historyRowToEntity(row gdb.Record) entity.History {
 	c := dao.History.Columns()
 	return entity.History{
-		Id:          row[c.Id].Int64(),
-		DeviceNo:    row[c.DeviceNo].String(),
-		EventId:     row[c.EventId].Int64(),
-		EventName:   row[c.EventName].String(),
-		EventNumber: row[c.EventNumber].Int64(),
-		EventUnit:   row[c.EventUnit].String(),
-		StartTime:   row[c.StartTime].Int64(),
-		EndTime:     row[c.EndTime].Int64(),
-		Remark:      row[c.Remark].String(),
-		PostId:      row[c.PostId].Uint64(),
-		MediaType:   row[c.MediaType].Int(),
-		ImageKeys:   strings.TrimSpace(row[c.ImageKeys].String()),
-		VideoKey:    row[c.VideoKey].String(),
+		Id:              row[c.Id].Int64(),
+		DeviceNo:        row[c.DeviceNo].String(),
+		EventId:         row[c.EventId].Int64(),
+		EventName:       row[c.EventName].String(),
+		EventNumber:     row[c.EventNumber].Int64(),
+		EventUnit:       row[c.EventUnit].String(),
+		StartTime:       row[c.StartTime].Int64(),
+		EndTime:         row[c.EndTime].Int64(),
+		Remark:          row[c.Remark].String(),
+		PostId:          row[c.PostId].Uint64(),
+		MediaType:       row[c.MediaType].Int(),
+		ImageKeys:       strings.TrimSpace(row[c.ImageKeys].String()),
+		VideoKey:        row[c.VideoKey].String(),
+		ExpectStartTime: optionalInt64FromRow(row[c.ExpectStartTime]),
+		ExpectEndTime:   optionalInt64FromRow(row[c.ExpectEndTime]),
+		ExpectAmount:    optionalFloat64FromRow(row[c.ExpectAmount]),
 	}
 }
 
 func historyInsertData(item entity.History) map[string]interface{} {
 	c := dao.History.Columns()
-	return map[string]interface{}{
+	data := map[string]interface{}{
 		c.DeviceNo:    item.DeviceNo,
 		c.EventId:     item.EventId,
 		c.EventName:   item.EventName,
@@ -148,8 +172,21 @@ func historyInsertData(item entity.History) map[string]interface{} {
 		c.ImageKeys:   nullableImageKeys(decodeImageKeys(item.ImageKeys)),
 		c.VideoKey:    nullableVideoKey(item.VideoKey),
 	}
+	// 预计字段：仅非 nil 才写入；全缺则列保持 DEFAULT NULL，禁止用零值占位。
+	if item.ExpectStartTime != nil {
+		data[c.ExpectStartTime] = *item.ExpectStartTime
+	}
+	if item.ExpectEndTime != nil {
+		data[c.ExpectEndTime] = *item.ExpectEndTime
+	}
+	if item.ExpectAmount != nil {
+		data[c.ExpectAmount] = *item.ExpectAmount
+	}
+	return data
 }
 
+// historyUpdateData 构造 UPDATE 列集合。
+// 业务约束：永远不包含 expect_*，避免停表/改名等路径用结构体零值抹掉已落库的预计字段。
 func historyUpdateData(item entity.History) map[string]interface{} {
 	c := dao.History.Columns()
 	return map[string]interface{}{

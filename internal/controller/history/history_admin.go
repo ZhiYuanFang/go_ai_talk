@@ -105,14 +105,17 @@ func (c *HistoryAdminCtrl) EventAdd(ctx context.Context, req *v1.DeviceAdminHist
 		return nil, err
 	}
 	out, err := c.inner.EventAdd(ctx, &v1.DeviceHistoryEventAddReq{
-		DeviceNo:    req.DeviceNo,
-		EventId:     req.EventId,
-		EventName:   req.EventName,
-		EventUnit:   req.EventUnit,
-		EventNumber: req.EventNumber,
-		StartTime:   req.StartTime,
-		EndTime:     req.EndTime,
-		Remark:      req.Remark,
+		DeviceNo:        req.DeviceNo,
+		EventId:         req.EventId,
+		EventName:       req.EventName,
+		EventUnit:       req.EventUnit,
+		EventNumber:     req.EventNumber,
+		StartTime:       req.StartTime,
+		EndTime:         req.EndTime,
+		Remark:          req.Remark,
+		ExpectStartTime: req.ExpectStartTime,
+		ExpectEndTime:   req.ExpectEndTime,
+		ExpectAmount:    req.ExpectAmount,
 	})
 	if err != nil {
 		return nil, err

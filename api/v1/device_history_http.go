@@ -98,16 +98,20 @@ type DeviceHistoryBirthdaySaveReq struct {
 type DeviceHistoryBirthdaySaveRes struct{}
 
 // DeviceHistoryEventAddReq 手动新增历史事件。
+// expect* 可选：仅 add 落库；update/end-latest 忽略且不写列（见 historyUpdateData）。
 type DeviceHistoryEventAddReq struct {
-	g.Meta      `path:"/device/history/api/event/add" method:"post" tags:"device" summary:"新增历史事件"`
-	DeviceNo    string `json:"deviceNo" dc:"设备号"`
-	EventId     int64  `json:"eventId" dc:"事件ID"`
-	EventName   string `json:"eventName" dc:"事件名"`
-	EventUnit   string `json:"eventUnit" dc:"事件单位"`
-	EventNumber int    `json:"eventNumber" dc:"数量"`
-	StartTime   int64  `json:"startTime" dc:"开始时间，Unix 秒"`
-	EndTime     int64  `json:"endTime" dc:"结束时间，Unix 秒"`
-	Remark      string `json:"remark" dc:"备注"`
+	g.Meta          `path:"/device/history/api/event/add" method:"post" tags:"device" summary:"新增历史事件"`
+	DeviceNo        string   `json:"deviceNo" dc:"设备号"`
+	EventId         int64    `json:"eventId" dc:"事件ID"`
+	EventName       string   `json:"eventName" dc:"事件名"`
+	EventUnit       string   `json:"eventUnit" dc:"事件单位"`
+	EventNumber     int      `json:"eventNumber" dc:"数量"`
+	StartTime       int64    `json:"startTime" dc:"开始时间，Unix 秒"`
+	EndTime         int64    `json:"endTime" dc:"结束时间，Unix 秒"`
+	Remark          string   `json:"remark" dc:"备注"`
+	ExpectStartTime *int64   `json:"expectStartTime,omitempty" dc:"预计开始，Unix 秒；可选"`
+	ExpectEndTime   *int64   `json:"expectEndTime,omitempty" dc:"预计结束，Unix 秒；可选"`
+	ExpectAmount    *float64 `json:"expectAmount,omitempty" dc:"预计数量（浮点）；可选"`
 }
 
 // DeviceHistoryEventAddRes 新增结果。

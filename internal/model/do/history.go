@@ -10,18 +10,21 @@ import (
 
 // History is the golang structure of table history for DAO operations like Where/Data.
 type History struct {
-	g.Meta      `orm:"table:history, do:true"`
-	Id          interface{} //
-	DeviceNo    interface{} // 设备号
-	EventId     interface{} // 事件id
-	EventName   interface{} // 事件名
-	EventNumber interface{} // 奶量等
-	EventUnit   interface{} // 写入时反规范化的事件单位
-	StartTime   interface{} // 开始时间戳
-	EndTime     interface{} // 结束时间戳
-	Remark      interface{} // 备注
-	PostId      interface{} //
-	MediaType   interface{} //
-	ImageKeys   interface{} //
-	VideoKey    interface{} //
+	g.Meta          `orm:"table:history, do:true"`
+	Id              interface{} //
+	DeviceNo        interface{} // 设备号
+	EventId         interface{} // 事件id
+	EventName       interface{} // 事件名
+	EventNumber     interface{} // 奶量等
+	EventUnit       interface{} // 写入时反规范化的事件单位
+	StartTime       interface{} // 开始时间戳
+	EndTime         interface{} // 结束时间戳
+	Remark          interface{} // 备注
+	PostId          interface{} //
+	MediaType       interface{} //
+	ImageKeys       interface{} //
+	VideoKey        interface{} //
+	ExpectStartTime interface{} // 预计开始 unix 秒
+	ExpectEndTime   interface{} // 预计结束 unix 秒
+	ExpectAmount    interface{} // 预计数量（浮点）
 }

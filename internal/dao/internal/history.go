@@ -20,36 +20,42 @@ type HistoryDao struct {
 
 // HistoryColumns defines and stores column names for table history.
 type HistoryColumns struct {
-	Id          string //
-	DeviceNo    string // 设备号
-	EventId     string // 事件id
-	EventName   string // 事件名
-	EventNumber string // 奶量等
-	EventUnit   string // 写入时反规范化的事件单位
-	StartTime   string // 开始时间戳
-	EndTime     string // 结束时间戳
-	Remark      string // 备注
-	PostId      string //
-	MediaType   string //
-	ImageKeys   string //
-	VideoKey    string //
+	Id              string //
+	DeviceNo        string // 设备号
+	EventId         string // 事件id
+	EventName       string // 事件名
+	EventNumber     string // 奶量等
+	EventUnit       string // 写入时反规范化的事件单位
+	StartTime       string // 开始时间戳
+	EndTime         string // 结束时间戳
+	Remark          string // 备注
+	PostId          string //
+	MediaType       string //
+	ImageKeys       string //
+	VideoKey        string //
+	ExpectStartTime string // 预计开始 unix 秒
+	ExpectEndTime   string // 预计结束 unix 秒
+	ExpectAmount    string // 预计数量（浮点）
 }
 
 // historyColumns holds the columns for table history.
 var historyColumns = HistoryColumns{
-	Id:          "id",
-	DeviceNo:    "device_no",
-	EventId:     "event_id",
-	EventName:   "event_name",
-	EventNumber: "event_number",
-	EventUnit:   "event_unit",
-	StartTime:   "start_time",
-	EndTime:     "end_time",
-	Remark:      "remark",
-	PostId:      "post_id",
-	MediaType:   "media_type",
-	ImageKeys:   "image_keys",
-	VideoKey:    "video_key",
+	Id:              "id",
+	DeviceNo:        "device_no",
+	EventId:         "event_id",
+	EventName:       "event_name",
+	EventNumber:     "event_number",
+	EventUnit:       "event_unit",
+	StartTime:       "start_time",
+	EndTime:         "end_time",
+	Remark:          "remark",
+	PostId:          "post_id",
+	MediaType:       "media_type",
+	ImageKeys:       "image_keys",
+	VideoKey:        "video_key",
+	ExpectStartTime: "expect_start_time",
+	ExpectEndTime:   "expect_end_time",
+	ExpectAmount:    "expect_amount",
 }
 
 // NewHistoryDao creates and returns a new DAO object for table data access.

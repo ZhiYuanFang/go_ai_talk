@@ -281,7 +281,7 @@ func (r *historyRemoteClient) AddHistory(ctx context.Context, item entity.Histor
 		Id int64 `json:"id"`
 	}
 	t := r.targets
-	err := r.doJSON(ctx, http.MethodPost, r.historyBase, t.HistoryEventAddPath(), nil, map[string]interface{}{
+	body := map[string]interface{}{
 		"deviceNo":    strings.TrimSpace(item.DeviceNo),
 		"eventId":     item.EventId,
 		"eventName":   strings.TrimSpace(item.EventName),
@@ -289,7 +289,18 @@ func (r *historyRemoteClient) AddHistory(ctx context.Context, item entity.Histor
 		"startTime":   item.StartTime,
 		"endTime":     item.EndTime,
 		"remark":      strings.TrimSpace(item.Remark),
-	}, &resp)
+	}
+	// 预计字段仅非 nil 时带上，与 historyInsertData 一致；UpdateHistory 故意不传。
+	if item.ExpectStartTime != nil {
+		body["expectStartTime"] = *item.ExpectStartTime
+	}
+	if item.ExpectEndTime != nil {
+		body["expectEndTime"] = *item.ExpectEndTime
+	}
+	if item.ExpectAmount != nil {
+		body["expectAmount"] = *item.ExpectAmount
+	}
+	err := r.doJSON(ctx, http.MethodPost, r.historyBase, t.HistoryEventAddPath(), nil, body, &resp)
 	return resp.Id, err
 }
 

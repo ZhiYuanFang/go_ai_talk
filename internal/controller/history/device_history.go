@@ -209,14 +209,17 @@ func (c *HistoryCtrl) EventAdd(ctx context.Context, req *v1.DeviceHistoryEventAd
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "deviceNo 不能为空")
 	}
 	id, err := c.Svc.AddHistory(ctx, entity.History{
-		DeviceNo:    deviceNo,
-		EventId:     req.EventId,
-		EventName:   c.canonicalEventNameForRow(ctx, req.EventId, req.EventName),
-		EventNumber: int64(req.EventNumber),
-		EventUnit:   strings.TrimSpace(req.EventUnit),
-		StartTime:   req.StartTime,
-		EndTime:     req.EndTime,
-		Remark:      strings.TrimSpace(req.Remark),
+		DeviceNo:        deviceNo,
+		EventId:         req.EventId,
+		EventName:       c.canonicalEventNameForRow(ctx, req.EventId, req.EventName),
+		EventNumber:     int64(req.EventNumber),
+		EventUnit:       strings.TrimSpace(req.EventUnit),
+		StartTime:       req.StartTime,
+		EndTime:         req.EndTime,
+		Remark:          strings.TrimSpace(req.Remark),
+		ExpectStartTime: req.ExpectStartTime,
+		ExpectEndTime:   req.ExpectEndTime,
+		ExpectAmount:    req.ExpectAmount,
 	})
 	if err != nil {
 		return nil, err
