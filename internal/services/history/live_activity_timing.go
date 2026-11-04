@@ -3,8 +3,10 @@ package history
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	deviceclient "hello/internal/clients/device"
@@ -92,9 +94,47 @@ func maybeStartTimingLiveActivity(ctx context.Context, deviceNo string, historyI
 	}
 }
 
+// activeEtaExpectRow 只读解析 active-eta Redis JSON 所需字段（与 voice PredictActiveEtaItem 对齐；禁止 import voice）。
+type activeEtaExpectRow struct {
+	HistoryId   string `json:"historyId"`
+	ExpectEndAt int64  `json:"expectEndAt"`
+}
+
+// lookupActiveEtaExpectEndAt 从 PredictActiveEtaKey 按 historyId 取正 expectEndAt；无匹配/失败返回 0。
+func lookupActiveEtaExpectEndAt(ctx context.Context, deviceNo string, historyID int64) int64 {
+	if historyID <= 0 {
+		return 0
+	}
+	key, err := cachekit.PredictActiveEtaKey(deviceNo)
+	if err != nil {
+		return 0
+	}
+	val, ok, getErr := historyLACache.Get(ctx, key)
+	if getErr != nil || !ok || strings.TrimSpace(val) == "" {
+		return 0
+	}
+	var rows []activeEtaExpectRow
+	if json.Unmarshal([]byte(val), &rows) != nil {
+		glog.Warningf(ctx, "[history-la] active_eta corrupt deviceNoLen=%d historyId=%d", len(deviceNo), historyID)
+		return 0
+	}
+	want := strconv.FormatInt(historyID, 10)
+	for _, row := range rows {
+		if strings.TrimSpace(row.HistoryId) != want {
+			continue
+		}
+		if row.ExpectEndAt > 0 {
+			return row.ExpectEndAt
+		}
+		return 0
+	}
+	return 0
+}
+
 // updateTimingLiveActivity 未闭合 history 更新后扇出 Timing ContentState update（不重建活动，图标可沿用 start Attributes）。
 // Args: eventID 用于主档回填展示名；startTime 为 unix 秒，>0 才写入，禁止显式 0。
 // Side Effects: 经 PUSH_SERVICE_URL 调 live-activity update；无 activity token 时 push-service 跳过。
+// 因 APNs content-state 整包替换：若 active-eta Redis 仍有该 historyId 的正 expectEndAt，MUST 一并写回，避免冲掉副行。
 func updateTimingLiveActivity(ctx context.Context, deviceNo string, historyID, eventID int64, eventName string, startTime int64) {
 	if !historyLiveActivityEnabled() || historyID <= 0 {
 		return
@@ -116,6 +156,10 @@ func updateTimingLiveActivity(ctx context.Context, deviceNo string, historyID, e
 	}
 	if startTime > 0 {
 		cs["startTime"] = startTime
+	}
+	// 只读 platform 键合并 ETA；无匹配则 omit（不阻断改名/改 startTime）。
+	if expectEndAt := lookupActiveEtaExpectEndAt(ctx, deviceNo, historyID); expectEndAt > 0 {
+		cs["expectEndAt"] = expectEndAt
 	}
 	for _, wxID := range wxIDs {
 		if pushErr := pushclient.FanoutLiveActivity(ctx, pushclient.LiveActivityOp{

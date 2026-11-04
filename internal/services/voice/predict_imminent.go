@@ -359,10 +359,17 @@ func handlePredictImminentFire(ctx context.Context, body []byte) error {
 	} else if n := strings.TrimSpace(profile.BabyName); n != "" {
 		nick = n
 	}
-	// 可见正文：基句 {昵称}要{title}了；合法 expect 追加「，预计这次约…」；expect 不进 data。
-	alert := nick + "要" + title + "了"
+	// LA 标题仅为基句；普通通知可追加「，预计这次约…」；结构化 expect 进 LA ContentState，不进 data。
+	laTitle := nick + "要" + title + "了"
+	alert := laTitle
 	if suffix := buildPredictImminentExpectSuffix(msg); suffix != "" {
 		alert += suffix
+	}
+	laExpect := imminentLAExpect{
+		Kind:        msg.ExpectKind,
+		DurationSec: msg.ExpectDurationSec,
+		Amount:      msg.ExpectAmount,
+		Unit:        msg.ExpectUnit,
 	}
 	data := map[string]string{
 		"bizType":  pushclient.BizPredictImminent,
@@ -379,9 +386,9 @@ func handlePredictImminentFire(ctx context.Context, body []byte) error {
 			continue
 		}
 		if predictLiveActivityEnabled() {
-			// iOS：Live Activity start；无 LA token 由 push-service 跳过。
-			startImminentLiveActivityForWx(ctx, wxID, msg.DeviceNo, alert, msg.EventId, msg.NextAt)
-			// 非 iOS：仍发可见通知；push-service 在 LA 开启时会跳过 APNs alert 通道。
+			// iOS：Live Activity start（基句 title + 结构化 expect）；无 LA token 由 push-service 跳过。
+			startImminentLiveActivityForWx(ctx, wxID, msg.DeviceNo, laTitle, msg.EventId, msg.NextAt, laExpect)
+			// 非 iOS：仍发可见通知（可含预计中文后缀）；push-service 在 LA 开启时会跳过 APNs alert 通道。
 			if pushErr := pushclient.PushByBizType(ctx, wxID, pushclient.BizPredictImminent, alert, 0, false, data); pushErr != nil {
 				glog.Warningf(ctx, "[predict-imminent] push_failed wxId=%d eventId=%d err=%v", wxID, msg.EventId, pushErr)
 			}

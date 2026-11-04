@@ -1,15 +1,20 @@
 // 进行中计时 ETA：Redis 权威全量列表，供 App 同步与 Python internal 读取。
-// 与 PredictImminentPending（下次发生 + 延时推送）分键；本模块 MUST NOT 发 MQ / 推送。
-// 设计见 openspec/changes/predict-active-timing-eta。
+// 与 PredictImminentPending（下次发生 + 延时推送）分键；
+// MUST NOT 发延时 MQ / 普通可见 predict alert / Imminent LA；
+// 同步成功后 MAY 扇出 Timing Live Activity ContentState update（灌入 expectEndAt）。
+// 设计见 openspec/changes/predict-active-timing-eta 与 live-activity-expect-lock-go。
 package voice
 
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
 	deviceclient "hello/internal/clients/device"
+	pushclient "hello/internal/clients/push"
 	"hello/internal/platform/cachekit"
 
 	"github.com/gogf/gf/v2/errors/gcode"
@@ -38,7 +43,9 @@ type PredictActiveEtaItem struct {
 // SyncPredictActiveEta 全量替换宝宝进行中 ETA 列表。
 // Args: wxID 触发用户；deviceNo 宝宝；items 全量列表（可空=清空）。
 // Returns: 清洗后写入条数、错误。
-// Side Effects: Redis 写/删；SetNX 短锁；MUST NOT PublishDelayed / 推送。
+// Side Effects: Redis 写/删；SetNX 短锁；成功后可扇出 Timing LA update；
+//
+//	MUST NOT PublishDelayed / 普通可见 alert / Imminent LA start；空列表不清 end Timing。
 func SyncPredictActiveEta(ctx context.Context, wxID int64, deviceNo string, items []PredictActiveEtaItem) (int, error) {
 	deviceNo = strings.TrimSpace(deviceNo)
 	if wxID <= 0 {
@@ -79,6 +86,7 @@ func SyncPredictActiveEta(ctx context.Context, wxID int64, deviceNo string, item
 			return 0, gerror.WrapCode(gcode.CodeInternalError, delErr, "清空进行中 ETA 失败")
 		}
 		glog.Infof(ctx, "[predict-active-eta] sync_ok wxId=%d deviceNoLen=%d count=0 cleared=1", wxID, len(deviceNo))
+		// 仅清 Redis：MUST NOT 因 ETA 清空而 end Timing（闭合仍由 history 驱动）。
 		return 0, nil
 	}
 
@@ -87,7 +95,74 @@ func SyncPredictActiveEta(ctx context.Context, wxID int64, deviceNo string, item
 		return 0, gerror.WrapCode(gcode.CodeInternalError, setErr, "写入进行中 ETA 失败")
 	}
 	glog.Infof(ctx, "[predict-active-eta] sync_ok wxId=%d deviceNoLen=%d count=%d", wxID, len(deviceNo), len(cleaned))
+	// Redis 已成功：再扇出 Timing update；单条失败只打日志，不影响本接口成功。
+	fanoutTimingExpectFromActiveEta(ctx, deviceNo, cleaned)
 	return len(cleaned), nil
+}
+
+// fanoutTimingExpectFromActiveEta 按 cleaned 条目向绑定用户扇出 Timing LA update（灌入 expectEndAt）。
+// historyId 不可解析或 expectEndAt<=0 时跳过该条；不发 MQ / 普通 alert / Imminent。
+func fanoutTimingExpectFromActiveEta(ctx context.Context, deviceNo string, items []PredictActiveEtaItem) {
+	if !predictLiveActivityEnabled() || len(items) == 0 {
+		return
+	}
+	deviceNo = strings.TrimSpace(deviceNo)
+	if deviceNo == "" {
+		return
+	}
+	wxIDs, _, err := deviceclient.RemoteListWxIDsByDeviceNo(ctx, deviceNo)
+	if err != nil {
+		glog.Warningf(ctx, "[predict-active-eta] la_list_wx_err deviceNoLen=%d err=%v", len(deviceNo), err)
+		return
+	}
+	if len(wxIDs) == 0 {
+		return
+	}
+	for _, it := range items {
+		historyID, ok := parsePositiveHistoryID(it.HistoryId)
+		if !ok || it.ExpectEndAt <= 0 {
+			if strings.TrimSpace(it.HistoryId) != "" && !ok {
+				glog.Warningf(ctx, "[predict-active-eta] la_skip bad_historyId=%q", it.HistoryId)
+			}
+			continue
+		}
+		activityID := fmt.Sprintf("timing:%s:%d", deviceNo, historyID)
+		// 整包替换 ContentState：尽量带齐 phase / 标题 / 开始时间，避免冲掉锁屏主信息。
+		cs := map[string]interface{}{
+			"phase":       "timing",
+			"expectEndAt": it.ExpectEndAt,
+		}
+		if title := strings.TrimSpace(it.Title); title != "" {
+			cs["eventName"] = title
+		}
+		if it.StartAt > 0 {
+			cs["startTime"] = it.StartAt
+		}
+		for _, wxID := range wxIDs {
+			if pushErr := pushclient.FanoutLiveActivity(ctx, pushclient.LiveActivityOp{
+				WxID:           wxID,
+				Action:         "update",
+				AttributesKind: "timing",
+				ActivityID:     activityID,
+				ContentState:   cs,
+			}); pushErr != nil {
+				glog.Warningf(ctx, "[predict-active-eta] timing_update_failed wxId=%d historyId=%d err=%v", wxID, historyID, pushErr)
+			}
+		}
+	}
+}
+
+// parsePositiveHistoryID 将 active-eta 的 string historyId 解析为正 int64；失败返回 false。
+func parsePositiveHistoryID(raw string) (int64, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0, false
+	}
+	id, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || id <= 0 {
+		return 0, false
+	}
+	return id, true
 }
 
 // LoadPredictActiveEta 读取宝宝当前进行中 ETA。

@@ -102,11 +102,47 @@ func endImminentSlotForWx(ctx context.Context, wxID int64, title string, nextAt 
 	_ = predictImminentCache.Del(ctx, slotKey)
 }
 
+// imminentLAExpect 开火载荷透传到 LA ContentState 的可选结构化预计（不含 leaf / 中文 label）。
+type imminentLAExpect struct {
+	Kind        string  // duration | amount；其它视为无预计
+	DurationSec int64   // duration 维；>0 才写
+	Amount      float64 // amount 维；>0 才写
+	Unit        string  // amount 单位；trim 非空才写
+}
+
+// applyImminentExpectToContentState 按维写入 ContentState；不可用则省略键，禁止 0 占位。
+func applyImminentExpectToContentState(cs map[string]interface{}, exp imminentLAExpect) {
+	if cs == nil {
+		return
+	}
+	kind := strings.TrimSpace(strings.ToLower(exp.Kind))
+	switch kind {
+	case "duration":
+		if exp.DurationSec <= 0 {
+			return
+		}
+		cs["expectKind"] = "duration"
+		cs["expectDurationSec"] = exp.DurationSec
+	case "amount":
+		if exp.Amount <= 0 {
+			return
+		}
+		cs["expectKind"] = "amount"
+		cs["expectAmount"] = exp.Amount
+		if u := strings.TrimSpace(exp.Unit); u != "" {
+			cs["expectUnit"] = u
+		}
+	}
+}
+
 // startImminentLiveActivityForWx 过闸后：先 end 旧槽再 start；写 Redis 槽。
-// Args: eventID 与 Flutter 事件目录 id 对齐；nextAt 为 pending/MQ 载荷中的 unix 秒（非毫秒）。
-// 契约：固定 Attributes MUST 含 eventId、nextAt、title；ContentState MUST 含 title 与 nextAt（unix 秒）；
-// 载荷 MUST NOT 含 logo/color/logoFile/远程图 URL（视觉由客户端按 eventId 本地解析）。
-func startImminentLiveActivityForWx(ctx context.Context, wxID int64, deviceNo, alert string, eventID, nextAt int64) {
+// Args: laTitle 为基句「{昵称}要{事件名}了」（MUST NOT 含「预计这次约」后缀）；eventID 与 Flutter 事件目录对齐；
+//
+//	nextAt 为 pending/MQ 载荷中的 unix 秒；exp 为可选结构化预计。
+//
+// 契约：固定 Attributes MUST 含 eventId、nextAt、title；ContentState MUST 含 title/phase/nextAt；
+// 有可用 expect 时另含 expect*；MUST NOT 含 logo/color/logoFile/远程图 URL / expectLeafTitle / 成品中文预计 label。
+func startImminentLiveActivityForWx(ctx context.Context, wxID int64, deviceNo, laTitle string, eventID, nextAt int64, exp imminentLAExpect) {
 	if wxID <= 0 || !predictLiveActivityEnabled() {
 		return
 	}
@@ -114,20 +150,22 @@ func startImminentLiveActivityForWx(ctx context.Context, wxID int64, deviceNo, a
 	// 单槽换新：先 end 旧再 start。旧槽 title/nextAt 未缓存则省略，禁止写 0。
 	endImminentSlotForWx(ctx, wxID, "", 0)
 
+	laTitle = strings.TrimSpace(laTitle)
 	// 固定 Attributes：含 eventId 取色/图、title 供 Push-to-Start 后锁屏标题回退；nextAt 为 unix 秒；禁止 logo/color。
 	attrs := map[string]interface{}{
 		"activityId": activityID,
 		"deviceNo":   deviceNo,
 		"eventId":    eventID,
 		"nextAt":     nextAt,
-		"title":      strings.TrimSpace(alert),
+		"title":      laTitle,
 	}
-	// ContentState.nextAt 与 Attributes 同为 unix 秒，供锁屏倒计时。
+	// ContentState.nextAt 与 Attributes 同为 unix 秒，供锁屏倒计时；title 仅为基句。
 	cs := map[string]interface{}{
-		"title":  alert,
+		"title":  laTitle,
 		"phase":  "imminent",
 		"nextAt": nextAt,
 	}
+	applyImminentExpectToContentState(cs, exp)
 	if pushErr := pushclient.FanoutLiveActivity(ctx, pushclient.LiveActivityOp{
 		WxID:           wxID,
 		Action:         "start",
@@ -136,7 +174,7 @@ func startImminentLiveActivityForWx(ctx context.Context, wxID int64, deviceNo, a
 		Attributes:     attrs,
 		ContentState:   cs,
 		AlertTitle:     "预测临近",
-		AlertBody:      alert,
+		AlertBody:      laTitle,
 	}); pushErr != nil {
 		glog.Warningf(ctx, "[predict-la] start_imminent_failed wxId=%d err=%v", wxID, pushErr)
 		return
