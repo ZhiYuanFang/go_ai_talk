@@ -111,3 +111,52 @@ type DeviceAdminHistoryEventDeleteReq struct {
 
 // DeviceAdminHistoryEventDeleteRes 删除结果。
 type DeviceAdminHistoryEventDeleteRes struct{}
+
+// DeviceAdminHistoryPredictAccuracyReq 运维近 7 日预测准确率总览（对齐 Flutter 竖列表柱图）。
+type DeviceAdminHistoryPredictAccuracyReq struct {
+	g.Meta   `path:"/device/admin/api/history/predict-accuracy" method:"get" tags:"admin" summary:"运维-近7日预测准确率"`
+	DeviceNo string `json:"deviceNo" p:"deviceNo" dc:"设备号"`
+}
+
+// DeviceAdminHistoryPredictAccuracyDayKey 上海自然日键。
+type DeviceAdminHistoryPredictAccuracyDayKey struct {
+	Date     string `json:"date" dc:"yyyy-MM-dd"`
+	DayStart int64  `json:"dayStart" dc:"该日 00:00 unix 秒（上海）"`
+}
+
+// DeviceAdminHistoryPredictAccuracyCard 单事件根卡片。
+type DeviceAdminHistoryPredictAccuracyCard struct {
+	RootEventId   int64  `json:"rootEventId"`
+	Title         string `json:"title"`
+	DailyPercents []*int `json:"dailyPercents" dc:"与 days 等长；无样本为 null"`
+}
+
+// DeviceAdminHistoryPredictAccuracyRes 准确率总览。
+type DeviceAdminHistoryPredictAccuracyRes struct {
+	Timezone string                                    `json:"timezone"`
+	Days     []DeviceAdminHistoryPredictAccuracyDayKey `json:"days"`
+	Cards    []DeviceAdminHistoryPredictAccuracyCard   `json:"cards"`
+}
+
+// DeviceAdminHistoryPredictAccuracyDayReq 某根某日预测小结。
+type DeviceAdminHistoryPredictAccuracyDayReq struct {
+	g.Meta      `path:"/device/admin/api/history/predict-accuracy/day" method:"get" tags:"admin" summary:"运维-预测准确率日明细"`
+	DeviceNo    string `json:"deviceNo" p:"deviceNo" dc:"设备号"`
+	RootEventId int64  `json:"rootEventId" p:"rootEventId" dc:"事件根 ID"`
+	Day         string `json:"day" p:"day" dc:"yyyy-MM-dd（Asia/Shanghai）"`
+}
+
+// DeviceAdminHistoryPredictAccuracySample 日明细样本。
+type DeviceAdminHistoryPredictAccuracySample struct {
+	HistoryId       int64  `json:"historyId"`
+	EventId         int64  `json:"eventId"`
+	EventName       string `json:"eventName"`
+	ExpectStartTime int64  `json:"expectStartTime"`
+	ActualStartTime int64  `json:"actualStartTime"`
+	Hit             bool   `json:"hit"`
+}
+
+// DeviceAdminHistoryPredictAccuracyDayRes 日明细响应。
+type DeviceAdminHistoryPredictAccuracyDayRes struct {
+	Samples []DeviceAdminHistoryPredictAccuracySample `json:"samples"`
+}

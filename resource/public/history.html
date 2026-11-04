@@ -89,6 +89,47 @@
         <p id="predictReportStatus" class="muted" style="margin:8px 0 0;"></p>
     </div>
 
+    <div class="card glass hub-card-span-2" id="predictAccuracyCard">
+        <div class="section-head">
+            <h3>预测准确率</h3>
+            <div class="meta-row">
+                <button id="refreshPredictAccuracyBtn" class="btn-secondary" type="button">刷新</button>
+            </div>
+        </div>
+        <p class="muted" style="margin:0 0 10px;">
+            仿 App 预测竖列表：近 7 日开始时刻命中率（|实际−预计|≤30 分钟，仅已存 expectStartTime）。时区
+            <strong id="predictAccuracyTz">Asia/Shanghai</strong>。与上方「预测上报」Redis 卡无关。
+        </p>
+        <div class="hub-md" id="predictAccuracyLayout">
+            <div class="hub-md-master">
+                <div id="predictAccuracyEmpty" class="muted" style="display:none;">近 7 日暂无预测对照</div>
+                <div id="predictAccuracyCards" class="predict-acc-cards"></div>
+            </div>
+            <div class="hub-md-detail">
+                <div class="hub-md-empty muted" id="predictAccuracyDetailEmpty">点击左侧某日柱查看预测小结</div>
+                <div class="detail-panel hidden" id="predictAccuracyDetailPanel">
+                    <div class="meta-row" style="margin-bottom:8px;">
+                        <strong id="predictAccuracyDetailTitle"></strong>
+                        <button type="button" class="btn-secondary" id="predictAccuracyBackBtn">近7日</button>
+                    </div>
+                    <div class="table-wrap scroll-max-20">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>预计开始</th>
+                                    <th>实际开始</th>
+                                    <th>命中</th>
+                                </tr>
+                            </thead>
+                            <tbody id="predictAccuracyDetailBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <p id="predictAccuracyStatus" class="muted" style="margin:8px 0 0;"></p>
+    </div>
+
     <div class="card glass">
         <div class="section-head">
             <h3>历史事件</h3>
@@ -680,6 +721,144 @@
             statusEl.textContent = '已刷新 · ' + new Date().toLocaleString();
         }
 
+        let predictAccuracyState = { days: [], cards: [], selected: null };
+
+        function predictAccuracyDayLabel(dateStr, days){
+            if(!dateStr || !days || !days.length) return dateStr || '';
+            const last = days[days.length - 1] && days[days.length - 1].date;
+            if(dateStr === last) return '今天';
+            if(days.length >= 2 && dateStr === days[days.length - 2].date) return '昨天';
+            if(days.length >= 3 && dateStr === days[days.length - 3].date) return '前天';
+            const parts = String(dateStr).split('-');
+            if(parts.length === 3) return Number(parts[1]) + '/' + Number(parts[2]);
+            return dateStr;
+        }
+
+        function hidePredictAccuracyDetail(){
+            predictAccuracyState.selected = null;
+            document.getElementById('predictAccuracyDetailPanel').classList.add('hidden');
+            document.getElementById('predictAccuracyDetailEmpty').style.display = '';
+            document.getElementById('predictAccuracyDetailBody').innerHTML = '';
+        }
+
+        function renderPredictAccuracyCards(payload){
+            const wrap = document.getElementById('predictAccuracyCards');
+            const empty = document.getElementById('predictAccuracyEmpty');
+            wrap.innerHTML = '';
+            const days = (payload && payload.days) || [];
+            const cards = (payload && payload.cards) || [];
+            predictAccuracyState.days = days;
+            predictAccuracyState.cards = cards;
+            if(payload && payload.timezone){
+                document.getElementById('predictAccuracyTz').textContent = payload.timezone;
+            }
+            if(!cards.length){
+                empty.style.display = 'block';
+                return;
+            }
+            empty.style.display = 'none';
+            cards.forEach(function(card){
+                const el = document.createElement('div');
+                el.className = 'predict-acc-card';
+                const title = document.createElement('h4');
+                title.textContent = (card.title || ('事件#' + card.rootEventId)) +
+                    ' · root=' + card.rootEventId;
+                el.appendChild(title);
+                const bars = document.createElement('div');
+                bars.className = 'predict-acc-bars';
+                const percents = Array.isArray(card.dailyPercents) ? card.dailyPercents : [];
+                days.forEach(function(d, i){
+                    const pct = percents[i];
+                    const has = pct != null && pct !== '';
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'predict-acc-day' + (has ? ' has-sample' : '');
+                    const pctEl = document.createElement('div');
+                    pctEl.className = 'predict-acc-pct';
+                    pctEl.textContent = has ? (String(pct) + '%') : '';
+                    const rodWrap = document.createElement('div');
+                    rodWrap.className = 'predict-acc-rod-wrap';
+                    if(has){
+                        const rod = document.createElement('div');
+                        rod.className = 'predict-acc-rod';
+                        const h = Math.max(2, Math.min(100, Number(pct) || 0));
+                        // 相对图区可用高度的像素柱高（避免 % 在 flex 子项上塌缩）
+                        rod.style.height = Math.max(2, Math.round(56 * h / 100)) + 'px';
+                        rodWrap.appendChild(rod);
+                    }
+                    const xl = document.createElement('div');
+                    xl.className = 'predict-acc-xlabel';
+                    xl.textContent = predictAccuracyDayLabel(d.date, days);
+                    btn.appendChild(pctEl);
+                    btn.appendChild(rodWrap);
+                    btn.appendChild(xl);
+                    if(has){
+                        btn.addEventListener('click', function(ev){
+                            ev.preventDefault();
+                            ev.stopPropagation();
+                            openPredictAccuracyDay(card.rootEventId, card.title, d.date);
+                        });
+                    }
+                    bars.appendChild(btn);
+                });
+                el.appendChild(bars);
+                wrap.appendChild(el);
+            });
+        }
+
+        async function openPredictAccuracyDay(rootEventId, title, day){
+            const panel = document.getElementById('predictAccuracyDetailPanel');
+            const empty = document.getElementById('predictAccuracyDetailEmpty');
+            const body = document.getElementById('predictAccuracyDetailBody');
+            const titleEl = document.getElementById('predictAccuracyDetailTitle');
+            predictAccuracyState.selected = { rootEventId: rootEventId, day: day };
+            titleEl.textContent = (title || ('事件#' + rootEventId)) + ' · ' + day;
+            empty.style.display = 'none';
+            panel.classList.remove('hidden');
+            body.innerHTML = '<tr><td colspan="3">加载中…</td></tr>';
+            try{
+                const qs = new URLSearchParams({
+                    deviceNo: deviceNo,
+                    rootEventId: String(rootEventId),
+                    day: day
+                });
+                const data = await api('/device/admin/api/history/predict-accuracy/day?' + qs.toString());
+                const samples = (data && data.samples) || [];
+                body.innerHTML = '';
+                if(!samples.length){
+                    body.innerHTML = '<tr><td colspan="3">该日无合格样本</td></tr>';
+                    return;
+                }
+                samples.forEach(function(s){
+                    const tr = document.createElement('tr');
+                    tr.innerHTML =
+                        cellWithUnix(s.expectStartTime) +
+                        cellWithUnix(s.actualStartTime) +
+                        '<td>' + (s.hit ? '✓' : '✗') + '</td>';
+                    body.appendChild(tr);
+                });
+            }catch(e){
+                body.innerHTML = '<tr><td colspan="3">加载失败：' +
+                    escapeHtml(e.message || '未知错误') + '</td></tr>';
+            }
+        }
+
+        async function loadPredictAccuracy(){
+            const statusEl = document.getElementById('predictAccuracyStatus');
+            hidePredictAccuracyDetail();
+            if(!deviceNo){
+                renderPredictAccuracyCards({ days: [], cards: [] });
+                statusEl.textContent = '未指定设备号';
+                return;
+            }
+            statusEl.textContent = '加载中…';
+            const data = await api(
+                '/device/admin/api/history/predict-accuracy?deviceNo=' + encodeURIComponent(deviceNo)
+            );
+            renderPredictAccuracyCards(data || { days: [], cards: [] });
+            statusEl.textContent = '已刷新 · ' + new Date().toLocaleString();
+        }
+
         async function loadBirthday(){
             const data = await api('/device/admin/api/history/birthday?deviceNo=' + encodeURIComponent(deviceNo));
             currentBabyName = String((data && data.babyName) || '').trim();
@@ -832,12 +1011,18 @@
             } catch (e) {
                 meta.textContent = '生日信息加载失败：' + (e.message || '未知错误');
             }
-            // 预测上报独立拉取，失败不阻断档案区
+            // 预测上报 / 准确率独立拉取，失败不阻断档案区
             try {
                 await loadPredictReport();
             } catch (pe) {
                 document.getElementById('predictReportStatus').textContent =
                     '预测上报加载失败：' + (pe.message || '未知错误');
+            }
+            try {
+                await loadPredictAccuracy();
+            } catch (ae) {
+                document.getElementById('predictAccuracyStatus').textContent =
+                    '预测准确率加载失败：' + (ae.message || '未知错误');
             }
         }
         saveBirthdayBtn.addEventListener('click', async () => {
@@ -865,6 +1050,17 @@
                 document.getElementById('predictReportStatus').textContent =
                     '刷新失败：' + (e.message || '未知错误');
             }
+        });
+        document.getElementById('refreshPredictAccuracyBtn').addEventListener('click', async () => {
+            try{
+                await loadPredictAccuracy();
+            }catch(e){
+                document.getElementById('predictAccuracyStatus').textContent =
+                    '刷新失败：' + (e.message || '未知错误');
+            }
+        });
+        document.getElementById('predictAccuracyBackBtn').addEventListener('click', () => {
+            hidePredictAccuracyDetail();
         });
         historyPageSizeSelect.addEventListener('change', async () => {
             historyPageSize = Math.max(1, Number(historyPageSizeSelect.value || 20));

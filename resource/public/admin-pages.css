@@ -639,3 +639,86 @@ tr.row-selected td {
 	min-height: 180px;
 	white-space: pre-wrap;
 }
+
+/* Hub 预测准确率竖列表卡（仿 App predict-list-accuracy-bars） */
+.predict-acc-cards {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.predict-acc-card {
+	border: 1px solid rgba(0, 0, 0, 0.08);
+	border-radius: 10px;
+	padding: 10px 12px;
+	background: rgba(255, 255, 255, 0.35);
+}
+
+.predict-acc-card h4 {
+	margin: 0 0 8px;
+	font-size: 14px;
+	font-weight: 600;
+}
+
+.predict-acc-bars {
+	display: flex;
+	align-items: flex-end;
+	justify-content: space-between;
+	gap: 4px;
+	height: 96px;
+}
+
+.predict-acc-day {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: flex-end;
+	height: 100%;
+	border: none;
+	background: transparent;
+	padding: 0;
+	cursor: default;
+	color: inherit;
+	font: inherit;
+}
+
+.predict-acc-day.has-sample {
+	cursor: pointer;
+}
+
+.predict-acc-day.has-sample:hover .predict-acc-rod {
+	opacity: 0.85;
+}
+
+.predict-acc-pct {
+	font-size: 10px;
+	line-height: 1.2;
+	min-height: 14px;
+	color: rgba(0, 0, 0, 0.55);
+}
+
+.predict-acc-rod-wrap {
+	flex: 1;
+	width: 100%;
+	display: flex;
+	align-items: flex-end;
+	justify-content: center;
+	min-height: 0;
+}
+
+.predict-acc-rod {
+	width: 55%;
+	max-width: 28px;
+	min-height: 2px;
+	border-radius: 4px 4px 2px 2px;
+	background: #3b82f6;
+}
+
+.predict-acc-xlabel {
+	font-size: 10px;
+	margin-top: 4px;
+	color: rgba(0, 0, 0, 0.45);
+	white-space: nowrap;
+}

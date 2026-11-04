@@ -1,11 +1,12 @@
 package historyctrl
 
 import (
-	deviceclient "hello/internal/clients/device"
 	"context"
 	"strings"
 
+	deviceclient "hello/internal/clients/device"
 	v1 "hello/api/v1"
+	histsvc "hello/internal/services/history"
 
 	"github.com/gogf/gf/v2/errors/gcode"
 	"github.com/gogf/gf/v2/errors/gerror"
@@ -162,4 +163,59 @@ func (c *HistoryAdminCtrl) EventDelete(ctx context.Context, req *v1.DeviceAdminH
 		return nil, err
 	}
 	return &v1.DeviceAdminHistoryEventDeleteRes{}, nil
+}
+
+// PredictAccuracy GET /device/admin/api/history/predict-accuracy
+// 近 7 日按事件根准确率柱数据；计分对齐 Flutter（1800s / 仅 expectStartTime）。
+func (c *HistoryAdminCtrl) PredictAccuracy(ctx context.Context, req *v1.DeviceAdminHistoryPredictAccuracyReq) (res *v1.DeviceAdminHistoryPredictAccuracyRes, err error) {
+	if err = c.requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	out, err := histsvc.GetPredictAccuracyOverview(ctx, req.DeviceNo)
+	if err != nil {
+		return nil, err
+	}
+	days := make([]v1.DeviceAdminHistoryPredictAccuracyDayKey, 0, len(out.Days))
+	for _, d := range out.Days {
+		days = append(days, v1.DeviceAdminHistoryPredictAccuracyDayKey{
+			Date:     d.Date,
+			DayStart: d.DayStart,
+		})
+	}
+	cards := make([]v1.DeviceAdminHistoryPredictAccuracyCard, 0, len(out.Cards))
+	for _, card := range out.Cards {
+		cards = append(cards, v1.DeviceAdminHistoryPredictAccuracyCard{
+			RootEventId:   card.RootEventId,
+			Title:         card.Title,
+			DailyPercents: card.DailyPercents,
+		})
+	}
+	return &v1.DeviceAdminHistoryPredictAccuracyRes{
+		Timezone: out.Timezone,
+		Days:     days,
+		Cards:    cards,
+	}, nil
+}
+
+// PredictAccuracyDay GET /device/admin/api/history/predict-accuracy/day
+func (c *HistoryAdminCtrl) PredictAccuracyDay(ctx context.Context, req *v1.DeviceAdminHistoryPredictAccuracyDayReq) (res *v1.DeviceAdminHistoryPredictAccuracyDayRes, err error) {
+	if err = c.requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	samples, err := histsvc.GetPredictAccuracyDaySamples(ctx, req.DeviceNo, req.RootEventId, req.Day)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]v1.DeviceAdminHistoryPredictAccuracySample, 0, len(samples))
+	for _, s := range samples {
+		out = append(out, v1.DeviceAdminHistoryPredictAccuracySample{
+			HistoryId:       s.HistoryId,
+			EventId:         s.EventId,
+			EventName:       s.EventName,
+			ExpectStartTime: s.ExpectStartTime,
+			ActualStartTime: s.ActualStartTime,
+			Hit:             s.Hit,
+		})
+	}
+	return &v1.DeviceAdminHistoryPredictAccuracyDayRes{Samples: out}, nil
 }
