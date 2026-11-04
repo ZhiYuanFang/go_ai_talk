@@ -37,7 +37,7 @@
 
 5. **iOS 渠道分支。** 有可用 LA / Push-to-Start token 时发 liveactivity；无 token 跳过该接收方；其它通道（Android 等）MAY 保留可见 `predict_imminent`。
 
-6. **LA Token：新 App path + 落库分表。** MUST NOT 扩展把 LA token 写入 `push_device` 同一 `token`/`uk_token` 语义。新增并列 HTTP（如 `/app/api/push/live-activity/...`，具体 path 实现期定）注册/更新 Push-to-Start 与 per-activity update token；权威存于 push 域新表（或等价分表），与 wx / deviceKey / attributes 或 activityId 可查。活动态跟踪键经 cachekit builder，禁止业务字面量。`/app/api/push/register` 继续只管 device alert token。新 path MUST 走 gateway-app 反代 / Bearer / usage 检查表（usage 是否计入须问负责人）。
+6. **LA Token：新 App path + 落库分表。** MUST NOT 扩展把 LA token 写入 `push_device` 同一 `token`/`uk_token` 语义。已定 App path：`POST /app/api/push/live-activity/register`（`deviceKey`、`tokenKind`=`push_to_start`|`activity`、`attributesKind`=`imminent`|`timing`、`token`；`activity` 时 `activityId`）。权威表 `push_live_activity_token`。活动态跟踪键经 cachekit builder。`/app/api/push/register` 继续只管 device alert token。新 path MUST 走 gateway-app 反代 / Bearer / usage 检查表。
 
 7. **APNs / Apple 配置。** 复用现有 `PUSH_APNS_*` Auth Key（`.p8`）；一般无需在 Developer 后台另开 Live Activity 专用证书。发送时 `apns-push-type: liveactivity`，`apns-topic: {bundleId}.push-type.liveactivity`（后缀由发送代码拼接，**勿**写入 env Bundle ID）。App 侧 `NSSupportsLiveActivities`、Widget Extension、描述文件归 Flutter change。
 
@@ -62,6 +62,6 @@
 
 ## Open Questions
 
-- Imminent / Timing 为 Flutter 两类 Attributes 时，Push-to-Start token 是按 attributes 分列存储还是一机一 token（实现期与 Flutter 对齐；分表 schema 须预留 kind/attributes）。
-- 新 LA register path 的最终 URL 与是否计入 usage 统计（实现前问负责人）。
-- 服务端 end 是否强制依赖 per-activity update token，或允许「客户端本地 dismiss + 服务端尽力 end」（与 Flutter 联调定）。
+- （已收敛）LA register：`POST /app/api/push/live-activity/register`；按 `attributesKind` 分列存 Push-to-Start；表 `push_live_activity_token`。
+- usage 是否计入：实现时已按负责人结论处理则关闭本条；否则归档前再确认。
+- 服务端 end 对 per-activity update token 的强制程度：与 Flutter 联调（对端客户端点开不 dismiss，依赖 end 推送）。

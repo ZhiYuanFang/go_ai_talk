@@ -92,6 +92,9 @@ func endImminentSlotForWx(ctx context.Context, wxID int64) {
 }
 
 // startImminentLiveActivityForWx 过闸后：先 end 旧槽再 start；写 Redis 槽。
+// Args: eventID 与 Flutter 事件目录 id 对齐；nextAt 为 pending/MQ 载荷中的 unix 秒（非毫秒）。
+// 契约：固定 Attributes MUST 含 eventId、nextAt；ContentState MUST 含 nextAt（unix 秒）；
+// 载荷 MUST NOT 含 logo/color/logoFile/远程图 URL（视觉由客户端按 eventId 本地解析）。
 func startImminentLiveActivityForWx(ctx context.Context, wxID int64, deviceNo, alert string, eventID, nextAt int64) {
 	if wxID <= 0 || !predictLiveActivityEnabled() {
 		return
@@ -100,12 +103,14 @@ func startImminentLiveActivityForWx(ctx context.Context, wxID int64, deviceNo, a
 	// 单槽换新：先 end 旧再 start。
 	endImminentSlotForWx(ctx, wxID)
 
+	// 固定 Attributes：含 eventId 供 Extension 本地取色/图；nextAt 为 unix 秒；禁止 logo/color。
 	attrs := map[string]interface{}{
 		"activityId": activityID,
 		"deviceNo":   deviceNo,
 		"eventId":    eventID,
 		"nextAt":     nextAt,
 	}
+	// ContentState.nextAt 与 Attributes 同为 unix 秒，供锁屏倒计时。
 	cs := map[string]interface{}{
 		"title":  alert,
 		"phase":  "imminent",

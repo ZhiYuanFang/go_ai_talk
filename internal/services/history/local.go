@@ -411,7 +411,8 @@ func AddDeviceHistory(ctx context.Context, item entity.History) (int64, error) {
 		bumpPieceCacheEpoch(ctx, item.DeviceNo)
 		publishHistoryChange(ctx, item.DeviceNo, "create", historyToNotifyPayload(ctx, item))
 		// Timing LA：仅在权威落库成功后扇出一次；remote 调用方不另挂钩。
-		maybeStartTimingLiveActivity(ctx, item.DeviceNo, id, item.EventName, item.StartTime, item.EndTime)
+		// eventId/startTime 来自本行；startTime 与库字段同为 unix 秒，供锁屏 Attributes/ContentState 契约。
+		maybeStartTimingLiveActivity(ctx, item.DeviceNo, id, item.EventId, item.EventName, item.StartTime, item.EndTime)
 	}
 	return id, err
 }

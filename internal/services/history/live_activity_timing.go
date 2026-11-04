@@ -28,8 +28,14 @@ func timingActivityID(deviceNo string, historyID int64) string {
 }
 
 // maybeStartTimingLiveActivity 未闭合计时落库成功后扇出 Timing start。
+// Args: eventID 为 history.EventId（与 Flutter 事件目录 id 对齐；<=0 时客户端走 BrandLogo 兜底）；
+//
+//	startTime 为 unix 秒（与库内 history.start_time BIGINT 语义一致，禁止毫秒）。
+//
 // Side Effects: 经 PUSH_SERVICE_URL 调 live-activity；写 Redis 槽跟踪。
-func maybeStartTimingLiveActivity(ctx context.Context, deviceNo string, historyID int64, eventName string, startTime, endTime int64) {
+// 契约：固定 Attributes MUST 含 eventId；ContentState.startTime MUST 为 unix 秒；
+// 载荷 MUST NOT 含 logo/color/logoFile/远程图 URL（视觉由客户端按 eventId 本地解析）。
+func maybeStartTimingLiveActivity(ctx context.Context, deviceNo string, historyID, eventID int64, eventName string, startTime, endTime int64) {
 	if !historyLiveActivityEnabled() || historyID <= 0 || endTime != 0 {
 		return
 	}
@@ -37,17 +43,24 @@ func maybeStartTimingLiveActivity(ctx context.Context, deviceNo string, historyI
 	if deviceNo == "" {
 		return
 	}
+	// eventId 缺省不伪造正 id；仍可 start 计时文案，锁屏视觉走客户端兜底。
+	if eventID <= 0 {
+		glog.Warningf(ctx, "[history-la] timing_start eventId_missing historyId=%d deviceNoLen=%d", historyID, len(deviceNo))
+	}
 	wxIDs, _, err := deviceclient.RemoteListWxIDsByDeviceNo(ctx, deviceNo)
 	if err != nil {
 		glog.Warningf(ctx, "[history-la] timing_start list_wx_err deviceNoLen=%d err=%v", len(deviceNo), err)
 		return
 	}
 	activityID := timingActivityID(deviceNo, historyID)
+	// 固定 Attributes：含 eventId 供 Extension 读 App Group 色/图；禁止写入 logo/color。
 	attrs := map[string]interface{}{
 		"activityId": activityID,
 		"deviceNo":   deviceNo,
 		"historyId":  historyID,
+		"eventId":    eventID,
 	}
+	// ContentState.startTime 必须为 unix 秒，供锁屏系统计时展示「已计时」。
 	cs := map[string]interface{}{
 		"eventName": strings.TrimSpace(eventName),
 		"startTime": startTime,
