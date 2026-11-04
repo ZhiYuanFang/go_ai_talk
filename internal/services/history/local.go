@@ -461,9 +461,11 @@ func UpdateDeviceHistory(ctx context.Context, item entity.History) error {
 		historyCache.patchHistoryOnUpdate(ctx, item)
 		bumpPieceCacheEpoch(ctx, item.DeviceNo)
 		publishHistoryChange(ctx, item.DeviceNo, "update", historyToNotifyPayload(ctx, item))
-		// 闭合 → Timing end。未闭合 update 不重复 start（start 仅挂 Add 落库成功）。
+		// 闭合 → Timing end；仍未闭合 → 只 update 文案/时间，不 start、不换图标。
 		if item.EndTime != 0 {
 			maybeEndTimingLiveActivity(ctx, item.DeviceNo, item.Id, item.EventName, item.StartTime, item.EndTime)
+		} else {
+			updateTimingLiveActivity(ctx, item.DeviceNo, item.Id, item.EventId, item.EventName, item.StartTime)
 		}
 	}
 	return err

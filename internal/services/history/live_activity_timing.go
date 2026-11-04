@@ -92,6 +92,44 @@ func maybeStartTimingLiveActivity(ctx context.Context, deviceNo string, historyI
 	}
 }
 
+// updateTimingLiveActivity 未闭合 history 更新后扇出 Timing ContentState update（不重建活动，图标可沿用 start Attributes）。
+// Args: eventID 用于主档回填展示名；startTime 为 unix 秒，>0 才写入，禁止显式 0。
+// Side Effects: 经 PUSH_SERVICE_URL 调 live-activity update；无 activity token 时 push-service 跳过。
+func updateTimingLiveActivity(ctx context.Context, deviceNo string, historyID, eventID int64, eventName string, startTime int64) {
+	if !historyLiveActivityEnabled() || historyID <= 0 {
+		return
+	}
+	deviceNo = strings.TrimSpace(deviceNo)
+	if deviceNo == "" {
+		return
+	}
+	displayName := notifyEventDisplayName(ctx, eventID, eventName)
+	wxIDs, _, err := deviceclient.RemoteListWxIDsByDeviceNo(ctx, deviceNo)
+	if err != nil {
+		glog.Warningf(ctx, "[history-la] timing_update list_wx_err deviceNoLen=%d err=%v", len(deviceNo), err)
+		return
+	}
+	activityID := timingActivityID(deviceNo, historyID)
+	cs := map[string]interface{}{"phase": "timing"}
+	if displayName != "" {
+		cs["eventName"] = displayName
+	}
+	if startTime > 0 {
+		cs["startTime"] = startTime
+	}
+	for _, wxID := range wxIDs {
+		if pushErr := pushclient.FanoutLiveActivity(ctx, pushclient.LiveActivityOp{
+			WxID:           wxID,
+			Action:         "update",
+			AttributesKind: "timing",
+			ActivityID:     activityID,
+			ContentState:   cs,
+		}); pushErr != nil {
+			glog.Warningf(ctx, "[history-la] timing_update_failed wxId=%d historyId=%d err=%v", wxID, historyID, pushErr)
+		}
+	}
+}
+
 // maybeEndTimingLiveActivity 闭合（endTime 写入）后扇出 Timing end。
 // Args: startTime/eventName 来自该 history 行，写入 end ContentState，避免客户端把缺省 startTime 解成 0。
 // endTime==0 视为未闭合，不发 end（删除路径请用 endTimingLiveActivity）。
