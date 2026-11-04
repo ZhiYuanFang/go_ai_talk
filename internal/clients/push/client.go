@@ -86,7 +86,7 @@ type LiveActivityOp struct {
 	ContentState   map[string]interface{}
 	AlertTitle     string
 	AlertBody      string
-	DismissalDate  int64
+	DismissalDate  int64 // end 时 unix 秒；<=0 由 push-service 组装层填过去时刻（立即摘条）
 }
 
 // FanoutLiveActivity 经 push internal API 异步扇出 Live Activity；无 token / 开关关由 push-service 跳过。

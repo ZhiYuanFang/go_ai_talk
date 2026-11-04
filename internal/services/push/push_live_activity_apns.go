@@ -21,7 +21,9 @@ type LiveActivityAPNsPayload struct {
 	ContentState   map[string]interface{} // 各事件 content-state
 	AlertTitle     string
 	AlertBody      string
-	DismissalDate  int64 // end 可选：Unix 秒；0 表示立即
+	// DismissalDate 为 APNs dismissal-date（unix 秒）。end 时 <=0 由组装层填「现在-1 秒」（过去时刻=立即从锁屏摘条）；
+	// 禁止省略该键（Apple 省略后 ended 活动可在锁屏再挂数小时）。>0 则原样写入。
+	DismissalDate int64
 }
 
 // SendLiveActivityAPNs 使用现有 .p8 JWT 向 APNs 发送 liveactivity。
@@ -101,8 +103,13 @@ func buildLiveActivityAPNsBody(payload LiveActivityAPNsPayload) ([]byte, error) 
 		}
 		aps["attributes"] = attrs
 	}
-	if event == "end" && payload.DismissalDate > 0 {
-		aps["dismissal-date"] = payload.DismissalDate
+	if event == "end" {
+		// Apple：过去的 dismissal-date 才会立刻从锁屏移除；省略则可能再挂数小时。
+		dismissAt := payload.DismissalDate
+		if dismissAt <= 0 {
+			dismissAt = time.Now().Unix() - 1
+		}
+		aps["dismissal-date"] = dismissAt
 	}
 	title := strings.TrimSpace(payload.AlertTitle)
 	body := strings.TrimSpace(payload.AlertBody)

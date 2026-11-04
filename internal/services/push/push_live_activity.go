@@ -17,7 +17,7 @@ type LiveActivityOp struct {
 	ContentState   map[string]interface{}
 	AlertTitle     string
 	AlertBody      string
-	DismissalDate  int64
+	DismissalDate  int64 // end 时 unix 秒；<=0 由 APNs 组装层填过去时刻（立即摘条），禁止依赖「省略=立即」
 }
 
 // FanoutLiveActivity 异步向某用户的全部相关 LA token 扇出。

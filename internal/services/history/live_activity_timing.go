@@ -33,7 +33,7 @@ func timingActivityID(deviceNo string, historyID int64) string {
 //	startTime 为 unix 秒（与库内 history.start_time BIGINT 语义一致，禁止毫秒）。
 //
 // Side Effects: 经 PUSH_SERVICE_URL 调 live-activity；写 Redis 槽跟踪。
-// 契约：固定 Attributes MUST 含 eventId；ContentState.startTime MUST 为 unix 秒；
+// 契约：固定 Attributes MUST 含 eventId、eventName、已知 startTime；ContentState 同步；
 // 载荷 MUST NOT 含 logo/color/logoFile/远程图 URL（视觉由客户端按 eventId 本地解析）。
 func maybeStartTimingLiveActivity(ctx context.Context, deviceNo string, historyID, eventID int64, eventName string, startTime, endTime int64) {
 	if !historyLiveActivityEnabled() || historyID <= 0 || endTime != 0 {
@@ -47,22 +47,28 @@ func maybeStartTimingLiveActivity(ctx context.Context, deviceNo string, historyI
 	if eventID <= 0 {
 		glog.Warningf(ctx, "[history-la] timing_start eventId_missing historyId=%d deviceNoLen=%d", historyID, len(deviceNo))
 	}
+	// Push-to-Start 常不套用 ContentState：展示名写入固定 Attributes；行内空名则主档回填。
+	displayName := notifyEventDisplayName(ctx, eventID, eventName)
 	wxIDs, _, err := deviceclient.RemoteListWxIDsByDeviceNo(ctx, deviceNo)
 	if err != nil {
 		glog.Warningf(ctx, "[history-la] timing_start list_wx_err deviceNoLen=%d err=%v", len(deviceNo), err)
 		return
 	}
 	activityID := timingActivityID(deviceNo, historyID)
-	// 固定 Attributes：含 eventId 供 Extension 读 App Group 色/图；禁止写入 logo/color。
+	// 固定 Attributes：eventId 供本地色/图；eventName/startTime 供锁屏标题与计时回退；禁止 logo/color。
 	attrs := map[string]interface{}{
 		"activityId": activityID,
 		"deviceNo":   deviceNo,
 		"historyId":  historyID,
 		"eventId":    eventID,
+		"eventName":  displayName,
 	}
-	// ContentState.startTime 必须为 unix 秒，供锁屏系统计时展示「已计时」。
+	if startTime > 0 {
+		attrs["startTime"] = startTime
+	}
+	// ContentState 仍带同名字段；startTime 必须为 unix 秒。
 	cs := map[string]interface{}{
-		"eventName": strings.TrimSpace(eventName),
+		"eventName": displayName,
 		"startTime": startTime,
 		"phase":     "timing",
 	}
@@ -75,7 +81,7 @@ func maybeStartTimingLiveActivity(ctx context.Context, deviceNo string, historyI
 			Attributes:     attrs,
 			ContentState:   cs,
 			AlertTitle:     "计时中",
-			AlertBody:      strings.TrimSpace(eventName),
+			AlertBody:      displayName,
 		}); pushErr != nil {
 			glog.Warningf(ctx, "[history-la] timing_start_failed wxId=%d historyId=%d err=%v", wxID, historyID, pushErr)
 			continue
@@ -87,8 +93,21 @@ func maybeStartTimingLiveActivity(ctx context.Context, deviceNo string, historyI
 }
 
 // maybeEndTimingLiveActivity 闭合（endTime 写入）后扇出 Timing end。
-func maybeEndTimingLiveActivity(ctx context.Context, deviceNo string, historyID int64, endTime int64) {
-	if !historyLiveActivityEnabled() || historyID <= 0 || endTime == 0 {
+// Args: startTime/eventName 来自该 history 行，写入 end ContentState，避免客户端把缺省 startTime 解成 0。
+// endTime==0 视为未闭合，不发 end（删除路径请用 endTimingLiveActivity）。
+func maybeEndTimingLiveActivity(ctx context.Context, deviceNo string, historyID int64, eventName string, startTime, endTime int64) {
+	if endTime == 0 {
+		return
+	}
+	endTimingLiveActivity(ctx, deviceNo, historyID, eventName, startTime)
+}
+
+// endTimingLiveActivity 按 activity id 扇出 Timing end（闭合与删除共用）。
+// 不检查 endTime：删除未闭合行时仍须摘锁屏。无 LA token 时 push-service 跳过。
+// ContentState：phase=ended；已知 startTime>0 / eventName 非空则带上，MUST NOT 把已知 startTime 写成 0。
+// dismissal-date 由 push-service 组装层填过去秒（立即摘条）。
+func endTimingLiveActivity(ctx context.Context, deviceNo string, historyID int64, eventName string, startTime int64) {
+	if !historyLiveActivityEnabled() || historyID <= 0 {
 		return
 	}
 	deviceNo = strings.TrimSpace(deviceNo)
@@ -101,13 +120,22 @@ func maybeEndTimingLiveActivity(ctx context.Context, deviceNo string, historyID 
 		return
 	}
 	activityID := timingActivityID(deviceNo, historyID)
+	cs := map[string]interface{}{"phase": "ended"}
+	eventName = strings.TrimSpace(eventName)
+	if eventName != "" {
+		cs["eventName"] = eventName
+	}
+	// 已知真实开始时间才写入，禁止显式 0（Flutter 会从 epoch 错乱计时）。
+	if startTime > 0 {
+		cs["startTime"] = startTime
+	}
 	for _, wxID := range wxIDs {
 		if pushErr := pushclient.FanoutLiveActivity(ctx, pushclient.LiveActivityOp{
 			WxID:           wxID,
 			Action:         "end",
 			AttributesKind: "timing",
 			ActivityID:     activityID,
-			ContentState:   map[string]interface{}{"phase": "ended"},
+			ContentState:   cs,
 		}); pushErr != nil {
 			glog.Warningf(ctx, "[history-la] timing_end_failed wxId=%d historyId=%d err=%v", wxID, historyID, pushErr)
 		}

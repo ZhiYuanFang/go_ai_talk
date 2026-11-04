@@ -231,7 +231,7 @@ func EndLatestDeviceHistoryIfMatch(ctx context.Context, deviceNo string, eventID
 	// 与 UpdateDeviceHistory 一致：改 endTime（及可选 remark）时也要递增 piece 版本并向 app:history:notify 广播，否则 App WS 收不到「结束事件」类更新。
 	bumpPieceCacheEpoch(ctx, deviceNo)
 	publishHistoryChange(ctx, deviceNo, "update", historyToNotifyPayload(ctx, open))
-	maybeEndTimingLiveActivity(ctx, deviceNo, open.Id, endTimeUnixSec)
+	maybeEndTimingLiveActivity(ctx, deviceNo, open.Id, open.EventName, open.StartTime, endTimeUnixSec)
 	return true, nil
 }
 
@@ -463,7 +463,7 @@ func UpdateDeviceHistory(ctx context.Context, item entity.History) error {
 		publishHistoryChange(ctx, item.DeviceNo, "update", historyToNotifyPayload(ctx, item))
 		// 闭合 → Timing end。未闭合 update 不重复 start（start 仅挂 Add 落库成功）。
 		if item.EndTime != 0 {
-			maybeEndTimingLiveActivity(ctx, item.DeviceNo, item.Id, item.EndTime)
+			maybeEndTimingLiveActivity(ctx, item.DeviceNo, item.Id, item.EventName, item.StartTime, item.EndTime)
 		}
 	}
 	return err
@@ -473,6 +473,20 @@ func DeleteDeviceHistory(ctx context.Context, id int64, deviceNo string) error {
 	deviceNo = strings.TrimSpace(deviceNo)
 	if id <= 0 || deviceNo == "" {
 		return fmt.Errorf("参数无效")
+	}
+	// 删除前读一行：给 Timing end 带上 eventName/startTime；无行不阻断删除。
+	var eventName string
+	var startTime int64
+	one, loadErr := dao.History.Ctx(ctx).
+		Where(dao.History.Columns().Id, id).
+		Where(dao.History.Columns().DeviceNo, deviceNo).
+		One()
+	if loadErr != nil {
+		g.Log().Warningf(ctx, "[history-la] delete preload_err historyId=%d err=%v", id, loadErr)
+	} else if !one.IsEmpty() {
+		pre := historyRowToEntity(one)
+		eventName = pre.EventName
+		startTime = pre.StartTime
 	}
 	err := g.DB(dao.History.Group()).Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
 		_, err := tx.Model(dao.History.Table()).
@@ -488,6 +502,8 @@ func DeleteDeviceHistory(ctx context.Context, id int64, deviceNo string) error {
 			"id":       id,
 			"deviceNo": deviceNo,
 		})
+		// 删除（含未闭合）仍按同一 activity id 发 Timing end，立刻摘锁屏。
+		endTimingLiveActivity(ctx, deviceNo, id, eventName, startTime)
 	}
 	return err
 }
