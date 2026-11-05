@@ -4,8 +4,8 @@ import (
 	"context"
 	"strings"
 
-	deviceclient "hello/internal/clients/device"
 	v1 "hello/api/v1"
+	deviceclient "hello/internal/clients/device"
 	histsvc "hello/internal/services/history"
 
 	"github.com/gogf/gf/v2/errors/gcode"

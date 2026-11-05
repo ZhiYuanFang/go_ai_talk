@@ -22,8 +22,8 @@
 			<div class="card-actions">
 				<label>时间范围
 					<select id="daysSelect">
-						<option value="1" selected>近 1 天</option>
-						<option value="3">近 3 天</option>
+						<option value="1">近 1 天</option>
+						<option value="3" selected>近 3 天</option>
 						<option value="7">近 7 天</option>
 						<option value="30">近 30 天</option>
 					</select>
@@ -93,20 +93,20 @@
 				<button id="wxSearchBtn" type="button">搜索</button>
 				<label>宝宝名
 					<select id="babyNameFilter">
-						<option value="all" selected>全部</option>
-						<option value="yes">有宝宝名</option>
+						<option value="all">全部</option>
+						<option value="yes" selected>有宝宝名</option>
 						<option value="no">无宝宝名</option>
 					</select>
 				</label>
 				<label>每页
 					<select id="wxPageSizeSelect">
-						<option value="20" selected>20</option>
+						<option value="20">20</option>
 						<option value="50">50</option>
-						<option value="100">100</option>
+						<option value="100" selected>100</option>
 					</select>
 				</label>
 			</div>
-			<p class="hint" style="margin-top:8px;">宝宝名筛选与「最近使用时间」排序仅作用于<strong>当前页</strong>已加载行。</p>
+			<p class="hint" style="margin-top:8px;">宝宝名筛选与「最近使用时间」排序仅作用于<strong>当前页</strong>已加载行。右侧默认「历史事件」（每页 50，样式对齐设备历史运维表，不做时间筛选）。</p>
 			<div class="hub-md" style="margin-top:12px;">
 				<div class="hub-md-master">
 					<div class="table-wrap">
@@ -134,35 +134,70 @@
 						<label>页码 <input id="wxPageInput" type="number" min="1" style="width:64px;" /></label>
 						<button id="wxGotoBtn" type="button">跳转</button>
 					</div>
-					<p class="hint">点击 wx 行查看右侧汇总与时间线；点击设备号进入设备数据运维</p>
+					<p class="hint">点击 wx 行查看右侧历史/使用明细；点击设备号进入设备数据运维</p>
 				</div>
 				<div class="hub-md-detail">
 					<h4 id="userDetailTitle" style="margin:0 0 8px;font-size:15px;color:#333;">未选择用户</h4>
-					<div class="table-wrap">
-						<table>
-							<thead>
-								<tr>
-									<th>功能 / 事件名</th>
-									<th>说明</th>
-									<th>次数</th>
-									<th>最近上报</th>
-								</tr>
-							</thead>
-							<tbody id="userFeatTbody"></tbody>
-						</table>
+					<div class="card-actions" style="margin-bottom:10px;">
+						<button id="userTabHistoryBtn" type="button" class="tab-btn active">历史事件</button>
+						<button id="userTabUsageBtn" type="button" class="tab-btn">使用明细</button>
 					</div>
-					<h4 style="margin:16px 0 8px;font-size:15px;color:#333;">操作时间线</h4>
-					<div class="table-wrap">
-						<table>
-							<thead>
-								<tr>
-									<th>服务端时间</th>
-									<th>事件名</th>
-									<th>说明</th>
-								</tr>
-							</thead>
-							<tbody id="timelineTbody"></tbody>
-						</table>
+					<div id="userHistoryPanel">
+						<p id="userHistoryEmpty" class="hub-md-empty">请选择左侧用户</p>
+						<div id="userHistoryBody" class="hidden">
+							<p class="hint" style="margin-bottom:8px;">
+								<span id="userHistoryHint"></span>
+								<a id="userHistoryFullLink" class="device-link" href="#" target="_blank" rel="noopener">打开完整运维</a>
+							</p>
+							<div class="table-wrap">
+								<table>
+									<thead>
+										<tr>
+											<th>ID</th>
+											<th>事件名</th>
+											<th>数量/时长</th>
+											<th>开始时间</th>
+											<th>结束时间</th>
+											<th>备注</th>
+										</tr>
+									</thead>
+									<tbody id="userHistoryTbody"></tbody>
+								</table>
+							</div>
+							<div class="pager" id="userHistoryPager">
+								<button id="userHistoryPrevBtn" type="button">上一页</button>
+								<button id="userHistoryNextBtn" type="button">下一页</button>
+								<span id="userHistoryPagerInfo"></span>
+							</div>
+						</div>
+					</div>
+					<div id="userUsagePanel" class="hidden">
+						<div class="table-wrap">
+							<table>
+								<thead>
+									<tr>
+										<th>功能 / 事件名</th>
+										<th>说明</th>
+										<th>次数</th>
+										<th>最近上报</th>
+									</tr>
+								</thead>
+								<tbody id="userFeatTbody"></tbody>
+							</table>
+						</div>
+						<h4 style="margin:16px 0 8px;font-size:15px;color:#333;">操作时间线</h4>
+						<div class="table-wrap">
+							<table>
+								<thead>
+									<tr>
+										<th>服务端时间</th>
+										<th>事件名</th>
+										<th>说明</th>
+									</tr>
+								</thead>
+								<tbody id="timelineTbody"></tbody>
+							</table>
+						</div>
 					</div>
 				</div>
 			</div>
@@ -173,7 +208,10 @@
 <script>
 let activeTab = 'feat';
 let selectedWxId = 0;
+let selectedDeviceNo = '';
+let userDetailTab = 'history';
 const pageSize = 20;
+const HISTORY_PAGE_SIZE = 50;
 let featListCache = [];
 let featPage = 1;
 let featDetailCache = [];
@@ -181,8 +219,10 @@ let currentFeatureId = '';
 let wxListCache = [];
 let wxSortByLastAt = false;
 let wxPage = 1;
-let wxPageSize = 20;
+let wxPageSize = 100;
 let wxTotal = 0;
+let historyPage = 1;
+let historyTotal = 0;
 
 const mainCard = document.getElementById('mainCard');
 const mainMsg = document.getElementById('mainMsg');
@@ -205,6 +245,18 @@ const wxPagerInfo = document.getElementById('wxPagerInfo');
 const wxPageInput = document.getElementById('wxPageInput');
 const wxGotoBtn = document.getElementById('wxGotoBtn');
 const wxPageSizeSelect = document.getElementById('wxPageSizeSelect');
+const userHistoryPanel = document.getElementById('userHistoryPanel');
+const userUsagePanel = document.getElementById('userUsagePanel');
+const userHistoryEmpty = document.getElementById('userHistoryEmpty');
+const userHistoryBody = document.getElementById('userHistoryBody');
+const userHistoryTbody = document.getElementById('userHistoryTbody');
+const userHistoryHint = document.getElementById('userHistoryHint');
+const userHistoryFullLink = document.getElementById('userHistoryFullLink');
+const userHistoryPagerInfo = document.getElementById('userHistoryPagerInfo');
+const userHistoryPrevBtn = document.getElementById('userHistoryPrevBtn');
+const userHistoryNextBtn = document.getElementById('userHistoryNextBtn');
+const userTabHistoryBtn = document.getElementById('userTabHistoryBtn');
+const userTabUsageBtn = document.getElementById('userTabUsageBtn');
 
 function setMsg(el, text, ok){
 	el.textContent = text || '';
@@ -345,13 +397,141 @@ function renderWxList(){
 		}
 		tr.addEventListener('click', () => {
 			selectedWxId = Number(it.id);
+			selectedDeviceNo = String(it.deviceNo || '').trim();
+			historyPage = 1;
 			renderWxList();
-			loadUserDetail(it.id).catch(e => setMsg(mainMsg, e.message || '加载失败'));
+			onUserRowSelected().catch(e => setMsg(mainMsg, e.message || '加载失败'));
 		});
 		wxListTbody.appendChild(tr);
 	});
 	updateWxLastAtThLabel();
 	updateWxPager();
+}
+
+function switchUserDetailTab(tab){
+	userDetailTab = tab === 'usage' ? 'usage' : 'history';
+	userTabHistoryBtn.classList.toggle('active', userDetailTab === 'history');
+	userTabUsageBtn.classList.toggle('active', userDetailTab === 'usage');
+	userHistoryPanel.classList.toggle('hidden', userDetailTab !== 'history');
+	userUsagePanel.classList.toggle('hidden', userDetailTab !== 'usage');
+}
+
+function historyTotalPages(){
+	return Math.max(1, Math.ceil((historyTotal || 0) / HISTORY_PAGE_SIZE));
+}
+
+function updateHistoryPager(){
+	const tp = historyTotalPages();
+	userHistoryPagerInfo.textContent = historyTotal
+		? ('第 '+ historyPage +' / '+ tp +' 页，共 '+ historyTotal +' 条（每页 '+ HISTORY_PAGE_SIZE +'）')
+		: '暂无数据';
+	userHistoryPrevBtn.disabled = historyPage <= 1;
+	userHistoryNextBtn.disabled = historyPage >= tp || historyTotal === 0;
+}
+
+/** 对齐 history.html：Unix 秒 → 可读时间；0/空为进行中。 */
+function formatHistoryDateTime(v){
+	if(v === null || v === undefined) return '正在进行中';
+	if(typeof v === 'number' && v === 0) return '正在进行中';
+	const raw = String(v || '').trim();
+	if(raw === '' || raw === '0') return '正在进行中';
+	const n = Number(v);
+	if(!Number.isFinite(n) || n <= 0) return raw;
+	const dt = new Date(n * 1000);
+	if(isNaN(dt.getTime())) return raw;
+	const now = new Date();
+	const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+	const tomorrowStart = new Date(todayStart.getTime() + 86400000);
+	const yesterdayStart = new Date(todayStart.getTime() - 86400000);
+	const hm = dt.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
+	if(dt >= todayStart && dt < tomorrowStart) return '今天 '+ hm;
+	if(dt >= yesterdayStart && dt < todayStart) return '昨天 '+ hm;
+	return dt.toLocaleString('zh-CN', { hour12: false });
+}
+
+/** 对齐 history.html 数量/时长列（无事件目录时尽力展示）。 */
+function formatHistoryAmount(it){
+	const num = Number(it && it.eventNumber);
+	const unit = String((it && it.eventUnit) || '').trim();
+	if(Number.isFinite(num) && num > 0){
+		return unit ? (String(num) + unit) : String(num);
+	}
+	const start = Number(it && it.startTime) || 0;
+	const end = Number(it && it.endTime) || 0;
+	if(start <= 0) return '-';
+	if(end <= 0) return '进行中';
+	if(end < start) return '-';
+	const totalSeconds = Math.round(end - start);
+	const hours = Math.floor(totalSeconds / 3600);
+	const minutes = Math.floor((totalSeconds % 3600) / 60);
+	const seconds = totalSeconds % 60;
+	const parts = [];
+	if(hours > 0) parts.push(String(hours) + '时');
+	if(minutes > 0 || hours > 0) parts.push(String(minutes).padStart(2, '0') + '分');
+	parts.push(String(seconds).padStart(2, '0') + '秒');
+	return parts.join('');
+}
+
+async function loadUserHistory(){
+	const id = selectedWxId;
+	const dn = String(selectedDeviceNo || '').trim();
+	userDetailTitle.textContent = id ? ('wxId '+ id) : '未选择用户';
+	if(!id){
+		userHistoryEmpty.textContent = '请选择左侧用户';
+		userHistoryEmpty.classList.remove('hidden');
+		userHistoryBody.classList.add('hidden');
+		return;
+	}
+	if(!dn){
+		userHistoryEmpty.textContent = '该用户无绑定设备号，无法加载历史事件';
+		userHistoryEmpty.classList.remove('hidden');
+		userHistoryBody.classList.add('hidden');
+		setMsg(mainMsg, 'wxId '+ id +' 无 deviceNo', true);
+		return;
+	}
+	// 仅既有 admin list；不传时间窗，不依赖服务端契约变更。
+	const qs = new URLSearchParams({
+		deviceNo: dn,
+		page: String(historyPage),
+		pageSize: String(HISTORY_PAGE_SIZE)
+	});
+	const d = await api('/device/admin/api/history/list?'+ qs.toString());
+	const rows = d.list || [];
+	historyTotal = typeof d.total === 'number' ? d.total : rows.length;
+	if(typeof d.page === 'number' && d.page > 0) historyPage = d.page;
+	const tp = historyTotalPages();
+	if(historyTotal > 0 && historyPage > tp){
+		historyPage = tp;
+		return loadUserHistory();
+	}
+	userHistoryEmpty.classList.add('hidden');
+	userHistoryBody.classList.remove('hidden');
+	userHistoryHint.textContent = '设备 '+ dn +' · ';
+	userHistoryFullLink.href = historyPageUrl(dn);
+	userHistoryTbody.innerHTML = '';
+	if(!rows.length){
+		userHistoryTbody.innerHTML = '<tr><td colspan="6">暂无历史数据</td></tr>';
+	} else {
+		rows.forEach(it => {
+			const tr = document.createElement('tr');
+			tr.innerHTML =
+				'<td>'+ escapeHtml(it.id ?? '-') +'</td>' +
+				'<td>'+ escapeHtml(it.eventName || it.eventId || '-') +'</td>' +
+				'<td>'+ escapeHtml(formatHistoryAmount(it)) +'</td>' +
+				'<td>'+ escapeHtml(formatHistoryDateTime(it.startTime)) +'</td>' +
+				'<td>'+ escapeHtml(formatHistoryDateTime(it.endTime)) +'</td>' +
+				'<td class="wrapcell">'+ escapeHtml(it.remark || '') +'</td>';
+			userHistoryTbody.appendChild(tr);
+		});
+	}
+	updateHistoryPager();
+	setMsg(mainMsg, 'wxId '+ id +' 历史共 '+ historyTotal +' 条', true);
+}
+
+async function onUserRowSelected(){
+	switchUserDetailTab(userDetailTab);
+	if(userDetailTab === 'history') await loadUserHistory();
+	else await loadUserDetail(selectedWxId);
 }
 
 async function loadFeatList(){
@@ -434,7 +614,7 @@ function switchTab(tab){
 document.getElementById('refreshBtn').addEventListener('click', async () => {
 	try {
 		if(activeTab === 'feat') await loadFeatList();
-		else { await loadWxList(); if(selectedWxId) await loadUserDetail(); }
+		else { await loadWxList(); if(selectedWxId) await onUserRowSelected(); }
 	} catch (e) { setMsg(mainMsg, e.message || '刷新失败'); }
 });
 document.getElementById('daysSelect').addEventListener('change', async () => {
@@ -442,7 +622,10 @@ document.getElementById('daysSelect').addEventListener('change', async () => {
 		if(activeTab === 'feat') await loadFeatList();
 		else {
 			await loadWxList();
-			if(selectedWxId) await loadUserDetail();
+			if(selectedWxId){
+				historyPage = 1;
+				await onUserRowSelected();
+			}
 		}
 	} catch (e) { setMsg(mainMsg, e.message || '加载失败'); }
 });
@@ -451,7 +634,7 @@ document.getElementById('sortSelect').addEventListener('change', async () => {
 		if(activeTab === 'feat') {
 			await loadFeatList();
 			if(currentFeatureId) await loadFeatDetail(currentFeatureId);
-		} else if(selectedWxId) await loadUserDetail();
+		} else if(selectedWxId && userDetailTab === 'usage') await loadUserDetail();
 	} catch (e) { setMsg(mainMsg, e.message || '加载失败'); }
 });
 featPrevBtn.addEventListener('click', () => { featPage--; renderFeatListPage(); });
@@ -487,6 +670,24 @@ wxPageSizeSelect.addEventListener('change', () => {
 	wxPageSize = (n === 50 || n === 100) ? n : 20;
 	wxPage = 1;
 	loadWxList().catch(e => setMsg(mainMsg, e.message || '加载失败'));
+});
+userHistoryPrevBtn.addEventListener('click', () => {
+	if(historyPage <= 1) return;
+	historyPage--;
+	loadUserHistory().catch(e => setMsg(mainMsg, e.message || '加载失败'));
+});
+userHistoryNextBtn.addEventListener('click', () => {
+	if(historyPage >= historyTotalPages()) return;
+	historyPage++;
+	loadUserHistory().catch(e => setMsg(mainMsg, e.message || '加载失败'));
+});
+userTabHistoryBtn.addEventListener('click', () => {
+	switchUserDetailTab('history');
+	if(selectedWxId) loadUserHistory().catch(e => setMsg(mainMsg, e.message || '加载失败'));
+});
+userTabUsageBtn.addEventListener('click', () => {
+	switchUserDetailTab('usage');
+	if(selectedWxId) loadUserDetail(selectedWxId).catch(e => setMsg(mainMsg, e.message || '加载失败'));
 });
 
 if(AdminCommon.requireAdmin()){
