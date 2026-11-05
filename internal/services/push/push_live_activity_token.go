@@ -131,3 +131,23 @@ func DeleteLiveActivityTokenByID(ctx context.Context, id uint64) error {
 	_, err := g.DB().Model(pushLiveActivityTokenTable).Ctx(ctx).Where("id", id).Delete()
 	return err
 }
+
+// DeleteLiveActivityTokensByActivityID 删除某用户某 activityId 下全部 token_kind=activity 行。
+// 业务：Live Activity event=end 后主动清库，避免 imminent/timing 结束后无效 update token 累计；
+// MUST NOT 删除 push_to_start（本函数仅按 token_kind=activity 过滤）。
+// Side Effects: DELETE push_live_activity_token。
+func DeleteLiveActivityTokensByActivityID(ctx context.Context, wxID int64, activityID string) error {
+	if wxID <= 0 {
+		return nil
+	}
+	activityID = strings.TrimSpace(activityID)
+	if activityID == "" {
+		return nil
+	}
+	_, err := g.DB().Model(pushLiveActivityTokenTable).Ctx(ctx).
+		Where("wx_id", wxID).
+		Where("token_kind", LATokenKindActivity).
+		Where("activity_id", activityID).
+		Delete()
+	return err
+}

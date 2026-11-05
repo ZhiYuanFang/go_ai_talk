@@ -145,8 +145,7 @@ func SyncPredictImminentPending(ctx context.Context, wxID int64, deviceNo string
 	if err != nil {
 		return 0, err
 	}
-	// pending 清场：写 Redis / 重布前 end 全部 Imminent LA（不得 end Timing）。
-	clearImminentLiveActivitiesForDevice(ctx, deviceNo)
+	// Imminent 全员清屏已改挂 history 增/删/改；本 PUT 仅整表替换日程，不再 end LA。
 	if len(cleaned) == 0 {
 		// 空列表：清空 Redis，不发取消类 MQ（旧消息靠消费校验作废）。
 		if delErr := predictImminentCache.Del(ctx, pendingKey); delErr != nil {

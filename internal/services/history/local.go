@@ -232,6 +232,8 @@ func EndLatestDeviceHistoryIfMatch(ctx context.Context, deviceNo string, eventID
 	bumpPieceCacheEpoch(ctx, deviceNo)
 	publishHistoryChange(ctx, deviceNo, "update", historyToNotifyPayload(ctx, open))
 	maybeEndTimingLiveActivity(ctx, deviceNo, open.Id, open.EventName, open.StartTime, endTimeUnixSec)
+	// 闭合旁路未走 UpdateDeviceHistory：同样触发 Imminent 清屏 + Del pending。
+	clearImminentOnHistoryMutation(ctx, deviceNo)
 	return true, nil
 }
 
@@ -413,6 +415,8 @@ func AddDeviceHistory(ctx context.Context, item entity.History) (int64, error) {
 		// Timing LA：仅在权威落库成功后扇出一次；remote 调用方不另挂钩。
 		// eventId/startTime 来自本行；startTime 与库字段同为 unix 秒，供锁屏 Attributes/ContentState 契约。
 		maybeStartTimingLiveActivity(ctx, item.DeviceNo, id, item.EventId, item.EventName, item.StartTime, item.EndTime)
+		// Imminent 清屏改挂 history：含瞬时 Add；作废 Redis pending，不得 end Timing。
+		clearImminentOnHistoryMutation(ctx, item.DeviceNo)
 	}
 	return id, err
 }
@@ -467,6 +471,8 @@ func UpdateDeviceHistory(ctx context.Context, item entity.History) error {
 		} else {
 			updateTimingLiveActivity(ctx, item.DeviceNo, item.Id, item.EventId, item.EventName, item.StartTime)
 		}
+		// 任意成功 Update 一律清 Imminent（含仅改备注）；不得误 end Timing。
+		clearImminentOnHistoryMutation(ctx, item.DeviceNo)
 	}
 	return err
 }
@@ -506,6 +512,7 @@ func DeleteDeviceHistory(ctx context.Context, id int64, deviceNo string) error {
 		})
 		// 删除（含未闭合）仍按同一 activity id 发 Timing end，立刻摘锁屏。
 		endTimingLiveActivity(ctx, deviceNo, id, eventName, startTime)
+		clearImminentOnHistoryMutation(ctx, deviceNo)
 	}
 	return err
 }

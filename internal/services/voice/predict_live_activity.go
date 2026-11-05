@@ -1,4 +1,5 @@
-// 预测 Imminent Live Activity 编排（voice 侧）：限流、清场、单槽跟踪；经 clients/push 扇出。
+// 预测 Imminent Live Activity 编排（voice 侧）：限流、开火单槽换新；经 clients/push 扇出。
+// 全员清屏（end 全部 Imminent + Del Redis pending）MUST 挂 history 落库路径，本文件不再在 pending PUT 清屏。
 // Timing 起停 MUST 挂 history 落库路径，本文件不触发 Timing。
 package voice
 
@@ -9,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	deviceclient "hello/internal/clients/device"
 	pushclient "hello/internal/clients/push"
 	"hello/internal/platform/cachekit"
 
@@ -47,29 +47,10 @@ func tryOccupyImminentRateLimit(ctx context.Context, wxID int64) bool {
 	return ok
 }
 
-// clearImminentLiveActivitiesForDevice pending 同步清场：向绑定用户 end 全部 Imminent，不得 end Timing。
-func clearImminentLiveActivitiesForDevice(ctx context.Context, deviceNo string) {
-	if !predictLiveActivityEnabled() {
-		return
-	}
-	deviceNo = strings.TrimSpace(deviceNo)
-	if deviceNo == "" {
-		return
-	}
-	wxIDs, _, err := deviceclient.RemoteListWxIDsByDeviceNo(ctx, deviceNo)
-	if err != nil {
-		glog.Warningf(ctx, "[predict-la] clear list_wx_err deviceNoLen=%d err=%v", len(deviceNo), err)
-		return
-	}
-	for _, wxID := range wxIDs {
-		// pending 清场无单槽 title/nextAt 缓存；省略字段而非写 0，dismissal-date 组装层兜底。
-		endImminentSlotForWx(ctx, wxID, "", 0)
-	}
-}
-
 // endImminentSlotForWx 结束该用户 Imminent 槽（有跟踪 id 则 end；清 Redis 槽）。
+// 用于开火前单槽换新；全员清屏已改挂 history，禁止在 pending PUT 调用本函数做设备级清场。
 // ContentState：phase=cleared；已知 title/nextAt 才写入，MUST NOT 把 nextAt 写成 0（Flutter 会解成「已过时」花屏）。
-// dismissal-date 由 push-service 组装层填过去秒（立即摘条）。
+// dismissal-date 由 push-service 组装层填过去秒（立即摘条）；activity token 由 push end 路径清理。
 func endImminentSlotForWx(ctx context.Context, wxID int64, title string, nextAt int64) {
 	if wxID <= 0 {
 		return

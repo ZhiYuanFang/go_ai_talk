@@ -27,7 +27,8 @@ type LiveActivityOp struct {
 //   - start 用 push_to_start token；update/end 用 activity token（按 activityId）；
 //   - 无 token 时跳过（不视为整次失败）。
 //
-// Side Effects: 异步 HTTP 打 APNs；可能删除无效 LA token 行。
+// Side Effects: 异步 HTTP 打 APNs；可能删除无效 LA token 行；
+// action=end 时另按 activityId 主动清全部 activity 行（imminent/timing 共用）。
 func FanoutLiveActivity(ctx context.Context, op LiveActivityOp) {
 	if op.WxID <= 0 {
 		return
@@ -46,6 +47,22 @@ func FanoutLiveActivity(ctx context.Context, op LiveActivityOp) {
 	asyncPush(op.WxID, func(bg context.Context) {
 		dispatchLiveActivity(bg, op)
 	})
+}
+
+// cleanupActivityTokensAfterEnd end 扇出尝试结束后删除该 activityId 的 activity 行。
+// 计时闭合/删除与 Imminent 清屏/换槽共用；发送失败仍删，避免脏行无限积压。
+// MUST NOT 删 push_to_start（DeleteLiveActivityTokensByActivityID 仅打 activity）。
+func cleanupActivityTokensAfterEnd(ctx context.Context, wxID int64, activityID string) {
+	activityID = strings.TrimSpace(activityID)
+	if wxID <= 0 || activityID == "" {
+		return
+	}
+	if delErr := DeleteLiveActivityTokensByActivityID(ctx, wxID, activityID); delErr != nil {
+		g.Log().Warningf(ctx, "[push-la] delete activity tokens after end failed wxId=%d activityIdLen=%d err=%v",
+			wxID, len(activityID), delErr)
+		return
+	}
+	g.Log().Warningf(ctx, "[push-la] activity tokens cleaned after end wxId=%d activityIdLen=%d", wxID, len(activityID))
 }
 
 func dispatchLiveActivity(ctx context.Context, op LiveActivityOp) {
@@ -70,11 +87,19 @@ func dispatchLiveActivity(ctx context.Context, op LiveActivityOp) {
 	}
 	if err != nil {
 		g.Log().Warningf(ctx, "[push-la] skip reason=list_token_err wxId=%d action=%s err=%v", op.WxID, action, err)
+		// end 仍尝试清库：列表失败时也可能有残留行可按 activityId 删。
+		if action == "end" {
+			cleanupActivityTokensAfterEnd(ctx, op.WxID, activityID)
+		}
 		return
 	}
 	if len(tokens) == 0 {
 		g.Log().Warningf(ctx, "[push-la] skip reason=no_la_token wxId=%d action=%s kind=%s activityIdLen=%d",
 			op.WxID, action, kind, len(activityID))
+		// 无 token 可发 APNs，但 end 仍清可能残留的 activity 行（幂等）。
+		if action == "end" {
+			cleanupActivityTokensAfterEnd(ctx, op.WxID, activityID)
+		}
 		return
 	}
 
@@ -112,5 +137,9 @@ func dispatchLiveActivity(ctx context.Context, op LiveActivityOp) {
 				g.Log().Warningf(ctx, "[push-la] delete invalid la token failed id=%d err=%v", tok.ID, delErr)
 			}
 		}
+	}
+	// imminent 清屏/换槽与 timing 闭合/删除共用：end 后按 activityId 清 activity 行，保留 push_to_start。
+	if action == "end" {
+		cleanupActivityTokensAfterEnd(ctx, op.WxID, activityID)
 	}
 }
