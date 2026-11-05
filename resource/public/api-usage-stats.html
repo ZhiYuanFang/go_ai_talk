@@ -162,6 +162,7 @@
 											<th>ID</th>
 											<th>事件名</th>
 											<th>数量/时长</th>
+											<th>预计开始</th>
 											<th>开始时间</th>
 											<th>结束时间</th>
 											<th>备注</th>
@@ -505,6 +506,14 @@ function formatHistoryDateTime(v){
 	return dt.toLocaleString('zh-CN', { hour12: false });
 }
 
+/** 预计开始：无值 '-'；有值与开始时间同格式。 */
+function formatExpectStartTime(v){
+	if(v === null || v === undefined) return '-';
+	const n = Number(v);
+	if(!Number.isFinite(n) || n <= 0) return '-';
+	return formatHistoryDateTime(n);
+}
+
 /** 对齐 history.html 数量/时长列（无事件目录时尽力展示）。 */
 function formatHistoryAmount(it){
 	const num = Number(it && it.eventNumber);
@@ -566,7 +575,7 @@ async function loadUserHistory(){
 	userHistoryFullLink.href = historyPageUrl(dn);
 	userHistoryTbody.innerHTML = '';
 	if(!rows.length){
-		userHistoryTbody.innerHTML = '<tr><td colspan="6">暂无历史数据</td></tr>';
+		userHistoryTbody.innerHTML = '<tr><td colspan="7">暂无历史数据</td></tr>';
 	} else {
 		rows.forEach(it => {
 			const tr = document.createElement('tr');
@@ -574,6 +583,7 @@ async function loadUserHistory(){
 				'<td>'+ escapeHtml(it.id ?? '-') +'</td>' +
 				'<td>'+ escapeHtml(it.eventName || it.eventId || '-') +'</td>' +
 				'<td>'+ escapeHtml(formatHistoryAmount(it)) +'</td>' +
+				'<td>'+ escapeHtml(formatExpectStartTime(it.expectStartTime)) +'</td>' +
 				'<td>'+ escapeHtml(formatHistoryDateTime(it.startTime)) +'</td>' +
 				'<td>'+ escapeHtml(formatHistoryDateTime(it.endTime)) +'</td>' +
 				'<td class="wrapcell">'+ escapeHtml(it.remark || '') +'</td>';

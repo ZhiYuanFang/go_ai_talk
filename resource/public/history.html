@@ -145,6 +145,7 @@
                         <th>ID</th>
                         <th>事件名</th>
                         <th>数量/时长</th>
+                        <th>预计开始</th>
                         <th>开始时间</th>
                         <th>结束时间</th>
                         <th>备注</th>
@@ -403,6 +404,14 @@
             return pad2(dt.getHours()) + ':' + pad2(dt.getMinutes()) + ':' + pad2(dt.getSeconds());
         }
 
+        /** 预计开始：无值显示 '-'，有值与开始时间同格式（不用「正在进行中」）。 */
+        function formatExpectStartTime(v){
+            if(v === null || v === undefined){ return '-'; }
+            const n = Number(v);
+            if(!Number.isFinite(n) || n <= 0){ return '-'; }
+            return formatHistoryDateTime(n);
+        }
+
         function formatHistoryDateTime(v){
             if(v === null || v === undefined){ return '正在进行中'; }
             if(typeof v === 'number' && v === 0){ return '正在进行中'; }
@@ -550,7 +559,7 @@
             renderHistoryPagination();
             historyBody.innerHTML = '';
             if(!rows || rows.length === 0){
-                historyBody.innerHTML = '<tr><td colspan="7">暂无历史数据</td></tr>';
+                historyBody.innerHTML = '<tr><td colspan="8">暂无历史数据</td></tr>';
                 return;
             }
             rows.forEach(it => {
@@ -579,6 +588,7 @@
                 tr.innerHTML = '<td>'+escapeHtml(it.id)+'</td>'+
                     '<td>'+escapeHtml(it.eventName || it.eventId)+'</td>'+
                     '<td>'+escapeHtml(numberText)+'</td>'+
+                    '<td>'+escapeHtml(formatExpectStartTime(it.expectStartTime))+'</td>'+
                     '<td>'+escapeHtml(formatHistoryDateTime(it.startTime))+'</td>'+
                     '<td>'+escapeHtml(formatHistoryDateTime(it.endTime))+'</td>'+
                     '<td class="history-remark">'+escapeHtml(it.remark)+'</td>'+
@@ -996,7 +1006,7 @@
                 babyNameInput.disabled = true;
                 birthdayInput.disabled = true;
                 saveBirthdayBtn.disabled = true;
-                historyBody.innerHTML = '<tr><td colspan="7">未指定设备号</td></tr>';
+                historyBody.innerHTML = '<tr><td colspan="8">未指定设备号</td></tr>';
                 suggestWrap.innerHTML = '<div class="muted">未指定设备号</div>';
                 renderPredictImminent([]);
                 renderPredictActiveEta([]);
