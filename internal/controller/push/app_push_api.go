@@ -53,12 +53,13 @@ func (c *AppPushCtrl) UnregisterPost(ctx context.Context, req *v1.AppPushUnregis
 
 // LiveActivityRegisterPost POST /app/api/push/live-activity/register
 // 业务：并列于 device register；LA token 写入分表，MUST NOT 进 push_device.uk_token。
+// 身份：以 body.wxId 为准（iOS 原生唤醒可无 Bearer）；不得用 X-Internal-Wx-Id 顶替或缺省回退。
 func (c *AppPushCtrl) LiveActivityRegisterPost(ctx context.Context, req *v1.AppPushLiveActivityRegisterPostReq) (res *v1.AppPushLiveActivityRegisterPostRes, err error) {
-	wxID, err := wxIDFromHeader(ctx)
-	if err != nil {
-		return nil, err
+	// 校验标签已要求 min:1；此处再挡一层，避免仅靠框架时身份歧义。
+	if req.WxId <= 0 {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "wxId 无效")
 	}
-	if err = pushsvc.RegisterLiveActivityToken(ctx, wxID, req.DeviceKey, req.TokenKind, req.AttributesKind, req.ActivityId, req.Token); err != nil {
+	if err = pushsvc.RegisterLiveActivityToken(ctx, req.WxId, req.DeviceKey, req.TokenKind, req.AttributesKind, req.ActivityId, req.Token); err != nil {
 		return nil, err
 	}
 	return &v1.AppPushLiveActivityRegisterPostRes{}, nil

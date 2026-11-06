@@ -34,6 +34,8 @@ var (
 		"/cash/app/api/vip/alipay/notify",
 		// Apple Server Notifications V2：匿名到达，cash-service 内验 signedPayload。
 		"/cash/app/api/vip/apple/notifications",
+		// Live Activity token：iOS Push-to-Start 唤醒窗原生直报，无 Flutter JWT；身份以 body.wxId 为准。
+		"/app/api/push/live-activity/register",
 	}
 
 	// GET 且路径精确匹配（WebSocket Upgrade 等不要求 HTTP 层 Bearer）。
