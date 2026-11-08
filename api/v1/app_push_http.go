@@ -35,3 +35,15 @@ type AppPushLiveActivityRegisterPostReq struct {
 
 // AppPushLiveActivityRegisterPostRes 注册成功。
 type AppPushLiveActivityRegisterPostRes struct{}
+
+// AppPushLiveActivityAckPostReq 回执 Live Activity update 送达（ContentState.ack）。
+// 业务：可无 Bearer（gateway 精确豁免，对齐 register）；身份 MUST 为 body.wxId；仅 ack==last_sent_ack 时更新 last_acked。
+type AppPushLiveActivityAckPostReq struct {
+	g.Meta    `path:"/app/api/push/live-activity/ack" method:"post" tags:"push" summary:"回执 Live Activity update ack"`
+	WxId      int64  `json:"wxId" v:"required|min:1" dc:"归属用户 wx 主键；免鉴权路径唯一身份来源"`
+	DeviceKey string `json:"deviceKey" v:"required|max-length:64"`
+	Ack       string `json:"ack" v:"required|max-length:64" dc:"与最近一次 update ContentState.ack 一致"`
+}
+
+// AppPushLiveActivityAckPostRes 回执受理（含 no-op 匹配失败 / 无行）。
+type AppPushLiveActivityAckPostRes struct{}

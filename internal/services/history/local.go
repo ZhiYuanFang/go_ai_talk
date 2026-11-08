@@ -231,7 +231,7 @@ func EndLatestDeviceHistoryIfMatch(ctx context.Context, deviceNo string, eventID
 	// 与 UpdateDeviceHistory 一致：改 endTime（及可选 remark）时也要递增 piece 版本并向 app:history:notify 广播，否则 App WS 收不到「结束事件」类更新。
 	bumpPieceCacheEpoch(ctx, deviceNo)
 	publishHistoryChange(ctx, deviceNo, "update", historyToNotifyPayload(ctx, open))
-	// 闭合旁路：Del pending 后统一 LA Refresh（不再单独 Timing end / Imminent 清屏）。
+	// 闭合旁路：仅 Del pending；LA 由后续预测 PUT / 到点触发（不再 CUD Refresh）。
 	afterHistoryMutationLiveActivity(ctx, deviceNo)
 	return true, nil
 }
@@ -411,7 +411,7 @@ func AddDeviceHistory(ctx context.Context, item entity.History) (int64, error) {
 		historyCache.patchHistoryOnAdd(ctx, item)
 		bumpPieceCacheEpoch(ctx, item.DeviceNo)
 		publishHistoryChange(ctx, item.DeviceNo, "create", historyToNotifyPayload(ctx, item))
-		// 统一 LA：先 Del pending，再 Refresh 列表态（含瞬时 Add）。
+		// 统一 LA：C 仅 Del pending；投影等客户端重传预测 PUT。
 		afterHistoryMutationLiveActivity(ctx, item.DeviceNo)
 	}
 	return id, err
@@ -461,7 +461,7 @@ func UpdateDeviceHistory(ctx context.Context, item entity.History) error {
 		historyCache.patchHistoryOnUpdate(ctx, item)
 		bumpPieceCacheEpoch(ctx, item.DeviceNo)
 		publishHistoryChange(ctx, item.DeviceNo, "update", historyToNotifyPayload(ctx, item))
-		// 任意成功 Update：Del pending 后统一 Refresh。
+		// 任意成功 Update：仅 Del pending；LA 等预测 PUT / 到点。
 		afterHistoryMutationLiveActivity(ctx, item.DeviceNo)
 	}
 	return err
@@ -486,7 +486,7 @@ func DeleteDeviceHistory(ctx context.Context, id int64, deviceNo string) error {
 			"id":       id,
 			"deviceNo": deviceNo,
 		})
-		// 删除后：Del pending + 统一 Refresh（不再单独 Timing end）。
+		// 删除后：仅 Del pending；LA 等预测 PUT / 到点。
 		afterHistoryMutationLiveActivity(ctx, deviceNo)
 	}
 	return err

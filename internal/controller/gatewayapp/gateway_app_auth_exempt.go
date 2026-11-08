@@ -36,6 +36,8 @@ var (
 		"/cash/app/api/vip/apple/notifications",
 		// Live Activity token：iOS Push-to-Start 唤醒窗原生直报，无 Flutter JWT；身份以 body.wxId 为准。
 		"/app/api/push/live-activity/register",
+		// Live Activity update ack：原生层在 App 未启动时回执；身份以 body.wxId 为准（对齐 register）。
+		"/app/api/push/live-activity/ack",
 	}
 
 	// GET 且路径精确匹配（WebSocket Upgrade 等不要求 HTTP 层 Bearer）。

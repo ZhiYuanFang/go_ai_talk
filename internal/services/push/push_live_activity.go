@@ -26,6 +26,7 @@ type LiveActivityOp struct {
 //   - 开关关闭时仅打日志并返回；
 //   - start / upsert(无 activity) 用 push_to_start；update / upsert(有 activity) / end 用 activity token；
 //   - update 遇 invalidToken：删 activity 行并同拍用同 device_key 的 push_to_start 发 start；
+//   - update send_ok 后注入 ack 并短超时等回执；超时未 ack 同样删行 + push_to_start（start/end 不做）；
 //   - 无 token 时跳过（不视为整次失败）；
 //   - action=end 后清该 wx 全部 activity 行，保留 push_to_start（end invalid 不 restart）。
 func FanoutLiveActivity(ctx context.Context, op LiveActivityOp) {
@@ -108,24 +109,43 @@ func dispatchLiveActivity(ctx context.Context, op LiveActivityOp) {
 		attrs = ensureLiveActivityStartAttributes(op.WxID, attrs)
 	}
 
-	payload := LiveActivityAPNsPayload{
-		Event:          sendEvent,
-		AttributesType: LiveActivityAttributesType(),
-		Attributes:     attrs,
-		ContentState:   op.ContentState,
-		AlertTitle:     op.AlertTitle,
-		AlertBody:      op.AlertBody,
-		DismissalDate:  op.DismissalDate,
-	}
-
 	g.Log().Warningf(ctx, "[push-la] dispatch wxId=%d action=%s sendEvent=%s tokenCount=%d",
 		op.WxID, action, sendEvent, len(tokens))
 	for _, tok := range tokens {
+		// DB 补刀：上一轮 update 已超时未 ack（进程丢 AfterFunc）→ 先失效重启，禁止继续 update。
+		if sendEvent == "update" && failoverStaleActivityIfAckTimedOut(ctx, op, tok) {
+			continue
+		}
+
+		cs := op.ContentState
+		ack := ""
+		if sendEvent == "update" {
+			ack = newLiveActivityAck()
+			cs = cloneContentStateWithAck(op.ContentState, ack)
+		}
+		payload := LiveActivityAPNsPayload{
+			Event:          sendEvent,
+			AttributesType: LiveActivityAttributesType(),
+			Attributes:     attrs,
+			ContentState:   cs,
+			AlertTitle:     op.AlertTitle,
+			AlertBody:      op.AlertBody,
+			DismissalDate:  op.DismissalDate,
+		}
+
 		invalid, sendErr := SendLiveActivityAPNs(ctx, tok.Token, payload)
 		if sendErr != nil {
 			g.Log().Warningf(ctx, "[push-la] send_failed wxId=%d action=%s tokenId=%d err=%v", op.WxID, sendEvent, tok.ID, sendErr)
 		} else {
 			g.Log().Warningf(ctx, "[push-la] send_ok wxId=%d action=%s tokenId=%d", op.WxID, sendEvent, tok.ID)
+			// 仅 update：持久化 sent ack 并单次 AfterFunc 等回执（start/end 不做）。
+			if sendEvent == "update" && ack != "" && tok.ID > 0 {
+				if markErr := MarkLiveActivityAckSent(ctx, tok.ID, ack); markErr != nil {
+					g.Log().Warningf(ctx, "[push-la] mark_ack_sent_failed tokenId=%d err=%v", tok.ID, markErr)
+				} else {
+					scheduleLiveActivityAckTimeout(op, tok, ack)
+				}
+			}
 		}
 		// 方案 B：仅 invalidToken 删行；非 invalid 的失败保留 token、不 restart。
 		if !invalid || tok.ID == 0 {
@@ -156,12 +176,13 @@ func ensureLiveActivityStartAttributes(wxID int64, attrs map[string]interface{})
 	return attrs
 }
 
-// restartLiveActivityViaPushToStart update invalid 后同拍用同 device_key 的 push_to_start 发 start。
+// restartLiveActivityViaPushToStart update 失效后同拍用同 device_key 的 push_to_start 发 start。
 //
 // 业务：
-//  1. 仅方案 B（调用方已确认 invalid）；无匹配 push_to_start 则 WARN 跳过；
-//  2. 复用本次 ContentState / Attributes / alert；Attributes 补 activityId；
-//  3. start 失败仅 WARN，同 dispatch 不重试；若 start 亦 invalid 则删该 push_to_start 行。
+//  1. 进门：APNs invalidToken 或 update ack 超时（调用方已删 activity 行）；
+//  2. 无匹配 push_to_start 则 WARN 跳过；复用本次 ContentState / Attributes / alert；Attributes 补 activityId；
+//  3. start 失败仅 WARN，同 dispatch 不重试；若 start 亦 invalid 则删该 push_to_start 行；
+//  4. start 本身 MUST NOT 再注册 ack 超时。
 //
 // Side Effects: 可能 APNs start；可能 DELETE push_to_start 行。
 func restartLiveActivityViaPushToStart(ctx context.Context, op LiveActivityOp, deadActivity entityLiveActivityToken) {

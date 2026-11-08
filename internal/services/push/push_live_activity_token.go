@@ -20,13 +20,17 @@ const (
 
 // entityLiveActivityToken LA 专用 token 行（与 push_device 分表）。
 // 唯一键为 (wx, device_key, token_kind)；不再含 attributes_kind / activity_id。
+// last_sent_ack / last_acked_ack / ack_sent_at 仅 token_kind=activity 有业务意义（update 送达回执）。
 type entityLiveActivityToken struct {
-	ID        uint64
-	WxID      int64
-	DeviceKey string
-	TokenKind string
-	Token     string
-	UpdatedAt int64
+	ID           uint64
+	WxID         int64
+	DeviceKey    string
+	TokenKind    string
+	Token        string
+	LastSentAck  string `orm:"last_sent_ack"`
+	LastAckedAck string `orm:"last_acked_ack"`
+	AckSentAt    int64  `orm:"ack_sent_at"`
+	UpdatedAt    int64
 }
 
 // RegisterLiveActivityToken 注册/更新 Push-to-Start 或 per-user activity update token。
@@ -53,13 +57,25 @@ func RegisterLiveActivityToken(ctx context.Context, wxID int64, deviceKey, token
 		return gerror.NewCode(gcode.CodeInvalidParameter, "tokenKind 必须是 push_to_start 或 activity")
 	}
 	now := time.Now().Unix()
-	_, err := g.DB().Model(pushLiveActivityTokenTable).Ctx(ctx).Data(g.Map{
+	data := g.Map{
 		"wx_id":      wxID,
 		"device_key": deviceKey,
 		"token_kind": tokenKind,
 		"token":      token,
 		"updated_at": now,
-	}).OnDuplicate("token", "updated_at").Save()
+	}
+	var err error
+	if tokenKind == LATokenKindActivity {
+		// activity 重注册：清空回执字段，避免沿用旧 sent/acked。
+		data["last_sent_ack"] = ""
+		data["last_acked_ack"] = ""
+		data["ack_sent_at"] = 0
+		_, err = g.DB().Model(pushLiveActivityTokenTable).Ctx(ctx).Data(data).
+			OnDuplicate("token", "updated_at", "last_sent_ack", "last_acked_ack", "ack_sent_at").Save()
+	} else {
+		_, err = g.DB().Model(pushLiveActivityTokenTable).Ctx(ctx).Data(data).
+			OnDuplicate("token", "updated_at").Save()
+	}
 	if err != nil {
 		return gerror.WrapCode(gcode.CodeDbOperationError, err, "写入 Live Activity token 失败")
 	}

@@ -17,9 +17,9 @@ import (
 	"github.com/gogf/gf/v2/os/glog"
 )
 
-// RefreshBabyLiveActivity 经 HISTORY_SERVICE_URL 触发统一 Live Activity Refresh。
+// RefreshBabyLiveActivity 经 HISTORY_SERVICE_URL 触发统一 Live Activity Refresh（history 侧 trailing 合并）。
 //
-// 业务：voice pending PUT / MQ 到点调用；history 本进程应直接调 services/history.RefreshBabyLiveActivity。
+// 业务：voice pending PUT / MQ 到点调用；active-eta / history CUD 不得调用。
 // Side Effects: 出站 HTTP；失败仅返回错误，调用方通常 WARN 不阻断主路径。
 func RefreshBabyLiveActivity(ctx context.Context, deviceNo string) error {
 	deviceNo = strings.TrimSpace(deviceNo)

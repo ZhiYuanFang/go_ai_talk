@@ -16,10 +16,12 @@ var maintenanceExactAPI = map[string]struct{}{
 	"GET /voice/app/api/ai-quota":        {},
 	"GET /ucg/app/api/ai-quota":          {},
 	// 全局推送注册/注销：负责人确认不计入 usage（extract-push-service）。
-	"POST /app/api/push/register":           {},
-	"POST /app/api/push/unregister":         {},
+	"POST /app/api/push/register":   {},
+	"POST /app/api/push/unregister": {},
 	// Live Activity token 注册：负责人确认不计入 usage（predict-live-activity-push；对标 push register）。
 	"POST /app/api/push/live-activity/register": {},
+	// Live Activity update ack：负责人确认不计入 usage（live-activity-update-ack-timeout；对标 register）。
+	"POST /app/api/push/live-activity/ack":  {},
 	"GET /device/history/api/event/options": {},
 	"GET /ucg/app/api/conversations":        {},
 	"GET /device/app/api/user/get":          {},

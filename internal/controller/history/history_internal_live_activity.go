@@ -23,7 +23,7 @@ type HistoryInternalLiveActivityRefreshReq struct {
 type HistoryInternalLiveActivityRefreshRes struct{}
 
 // LiveActivityRefresh POST /history/internal/api/live-activity/refresh
-// 业务：重读 pending + 未闭合 history 后 upsert/end；须共享内部密钥。
+// 业务：经 trailing 300ms 合并后重读 pending + 未闭合 history 再 upsert/end；须共享内部密钥。
 func (c *HistoryInternalCtrl) LiveActivityRefresh(ctx context.Context, req *HistoryInternalLiveActivityRefreshReq) (*HistoryInternalLiveActivityRefreshRes, error) {
 	r := ghttp.RequestFromCtx(ctx)
 	if r == nil || !httpmeta.ValidateInternalSecret(httpmeta.InternalSecretFromRequest(r)) {
@@ -33,6 +33,7 @@ func (c *HistoryInternalCtrl) LiveActivityRefresh(ctx context.Context, req *Hist
 	if deviceNo == "" {
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "deviceNo 不能为空")
 	}
-	history.RefreshBabyLiveActivity(ctx, deviceNo)
+	// 预测 PUT / 到点连打时合并为一次投影；立即 200，实际扇出在 coalesce 窗后。
+	history.ScheduleRefreshBabyLiveActivity(deviceNo)
 	return &HistoryInternalLiveActivityRefreshRes{}, nil
 }

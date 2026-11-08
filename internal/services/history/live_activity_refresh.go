@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	deviceclient "hello/internal/clients/device"
@@ -25,9 +26,19 @@ import (
 // liveActivityMaxItems 锁屏列表硬顶：进行中优先截断后合计最多 3 条。
 const liveActivityMaxItems = 3
 
+// liveActivityRefreshCoalesce 同 deviceNo trailing 合并窗：避免 pending PUT / MQ 到点连打多次扇出。
+// 仅为按键短窗 AfterFunc，不是扫表/outbox reconciler ticker。
+const liveActivityRefreshCoalesce = 300 * time.Millisecond
+
 const historyLiveActivityEnabledEnv = "PUSH_LIVE_ACTIVITY_ENABLED"
 
 var historyLACache = cachekit.Default()
+
+// laRefresh 合并态：每 deviceNo 至多一个未触发的 timer。
+var (
+	laRefreshMu     sync.Mutex
+	laRefreshTimers = map[string]*time.Timer{}
+)
 
 func historyLiveActivityEnabled() bool {
 	v := strings.TrimSpace(strings.ToLower(os.Getenv(historyLiveActivityEnabledEnv)))
@@ -69,11 +80,35 @@ func invalidateImminentPending(ctx context.Context, deviceNo string) {
 	}
 }
 
-// afterHistoryMutationLiveActivity history CUD 成功后：先 Del pending，再 Refresh。
-// Side Effects: Del Redis pending；Fanout 统一 LA。
+// afterHistoryMutationLiveActivity history CUD 成功后：仅 Del pending（作废旧日程）。
+// 业务：C/U/D 后客户端会重传预测；LA 改由 pending PUT / MQ 到点触发，此处 MUST NOT Refresh。
+// Side Effects: Del Redis pending。
 func afterHistoryMutationLiveActivity(ctx context.Context, deviceNo string) {
 	invalidateImminentPending(ctx, deviceNo)
-	RefreshBabyLiveActivity(ctx, deviceNo)
+}
+
+// ScheduleRefreshBabyLiveActivity 同 deviceNo trailing 300ms 合并后再投影。
+//
+// 业务：供预测 pending PUT、MQ 到点（经 internal HTTP）调用；窗内多次 schedule 只执行最后一次到期 Refresh。
+// MUST NOT 用于 history CUD。非扫表 ticker。
+// Side Effects: 重置/创建进程内 timer；到期调用 RefreshBabyLiveActivity。
+func ScheduleRefreshBabyLiveActivity(deviceNo string) {
+	deviceNo = strings.TrimSpace(deviceNo)
+	if deviceNo == "" {
+		return
+	}
+	laRefreshMu.Lock()
+	defer laRefreshMu.Unlock()
+	if t, ok := laRefreshTimers[deviceNo]; ok && t != nil {
+		t.Stop()
+	}
+	dn := deviceNo
+	laRefreshTimers[deviceNo] = time.AfterFunc(liveActivityRefreshCoalesce, func() {
+		laRefreshMu.Lock()
+		delete(laRefreshTimers, dn)
+		laRefreshMu.Unlock()
+		RefreshBabyLiveActivity(context.Background(), dn)
+	})
 }
 
 // RefreshBabyLiveActivity 统一投影：读 pending + 未闭合 history → 进窗过滤/截断 → 各绑定 wx upsert 或 end。
@@ -83,6 +118,7 @@ func afterHistoryMutationLiveActivity(ctx context.Context, deviceNo string) {
 //  2. 进行中段：end_time=0，startTime 倒序；总条数≤3，截断进行中优先，展示仍预测在前；
 //  3. 空 items → end；非空 → action=upsert（push 侧有 activity token 则 update，否则 start）；
 //  4. 开关关则跳过扇出；失败仅 WARN。
+//     对外触发应优先 ScheduleRefreshBabyLiveActivity，避免连打。
 //
 // Side Effects: 经 PUSH_SERVICE_URL 调 live-activity；可读 cachekit pending / active-eta。
 func RefreshBabyLiveActivity(ctx context.Context, deviceNo string) {

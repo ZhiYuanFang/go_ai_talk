@@ -137,7 +137,7 @@ func SyncPredictImminentPending(ctx context.Context, wxID int64, deviceNo string
 	if err != nil {
 		return 0, err
 	}
-	// 本 PUT 整表替换日程；统一 LA 由 history Refresh 投影（不再 Imminent end 清屏）。
+	// 本 PUT 整表替换日程；LA 经 history schedule Refresh（trailing 300ms）投影。
 	if len(cleaned) == 0 {
 		// 空列表：清空 Redis，不发取消类 MQ（旧消息靠消费校验作废）。
 		if delErr := predictImminentCache.Del(ctx, pendingKey); delErr != nil {
@@ -191,7 +191,8 @@ func SyncPredictImminentPending(ctx context.Context, wxID int64, deviceNo string
 	return len(cleaned), nil
 }
 
-// refreshUnifiedLiveActivity 经 clients/history 触发统一 LA Refresh；失败仅 WARN。
+// refreshUnifiedLiveActivity 经 clients/history 触发 LA Refresh（history 侧 300ms 合并）；失败仅 WARN。
+// 业务：仅 pending PUT / MQ 到点调用；active-eta / history CUD 不得调用。
 func refreshUnifiedLiveActivity(ctx context.Context, deviceNo string) {
 	if err := historyclient.RefreshBabyLiveActivity(ctx, deviceNo); err != nil {
 		glog.Warningf(ctx, "[predict-imminent] la_refresh_failed deviceNoLen=%d err=%v", len(deviceNo), err)

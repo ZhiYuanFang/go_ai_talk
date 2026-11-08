@@ -1,8 +1,8 @@
 // 进行中计时 ETA：Redis 权威全量列表，供 App 同步与 Python internal 读取。
 // 与 PredictImminentPending（下次发生 + 延时推送）分键；
 // MUST NOT 发延时 MQ / 普通可见 predict alert；
-// 同步成功后经 history 统一 LA Refresh（Refresh 内合并 expectEndAt）。
-// 设计见 openspec/changes/predict-active-timing-eta 与 unify-live-activity-list。
+// MUST NOT 触发 Live Activity（expectEndAt 在下次预测 PUT / 到点 Refresh 时合并）。
+// 设计见 openspec/changes/predict-active-timing-eta 与 live-activity-trigger-predict-only。
 package voice
 
 import (
@@ -83,8 +83,7 @@ func SyncPredictActiveEta(ctx context.Context, wxID int64, deviceNo string, item
 			return 0, gerror.WrapCode(gcode.CodeInternalError, delErr, "清空进行中 ETA 失败")
 		}
 		glog.Infof(ctx, "[predict-active-eta] sync_ok wxId=%d deviceNoLen=%d count=0 cleared=1", wxID, len(deviceNo))
-		// ETA 清空后仍 Refresh：进行中项不再带 expectEndAt；是否 end 由投影决定。
-		refreshUnifiedLiveActivity(ctx, deviceNo)
+		// active-eta MUST NOT 触发 LA；expectEndAt 在下次预测 PUT / 到点 Refresh 时合并。
 		return 0, nil
 	}
 
@@ -93,8 +92,7 @@ func SyncPredictActiveEta(ctx context.Context, wxID int64, deviceNo string, item
 		return 0, gerror.WrapCode(gcode.CodeInternalError, setErr, "写入进行中 ETA 失败")
 	}
 	glog.Infof(ctx, "[predict-active-eta] sync_ok wxId=%d deviceNoLen=%d count=%d", wxID, len(deviceNo), len(cleaned))
-	// Redis 已成功：统一 Refresh（history 合并 expectEndAt）；失败只打日志。
-	refreshUnifiedLiveActivity(ctx, deviceNo)
+	// active-eta MUST NOT 触发 LA；仅写 Redis。
 	return len(cleaned), nil
 }
 
