@@ -10,4 +10,5 @@ type AppointmentNext struct {
 	DeviceNo string `json:"deviceNo" ` // 宝宝设备号
 	EventId  int64  `json:"eventId"  ` // 事件字典 ID
 	NextAt   int64  `json:"nextAt"   ` // 下次约定 unix 秒；0=无约定
+	Remark   string `json:"remark"   ` // 下次约定备注；无约定时须为空
 }

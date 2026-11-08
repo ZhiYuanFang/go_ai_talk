@@ -15,4 +15,5 @@ type AppointmentNext struct {
 	DeviceNo interface{} //
 	EventId  interface{} //
 	NextAt   interface{} //
+	Remark   interface{} // 下次约定备注
 }

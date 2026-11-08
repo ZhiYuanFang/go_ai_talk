@@ -11,7 +11,7 @@ import (
 )
 
 // DeviceAppAppointmentCtrl App 预约下次约定 API（JWT + X-Internal-Wx-Id；须绑机一致）。
-// 业务：仅持久化客户端记忆；与 history / predict-imminent 解耦。
+// 业务：仅持久化客户端记忆（含备注）；与 history / predict-imminent 解耦。
 type DeviceAppAppointmentCtrl struct{}
 
 // NewDeviceAppAppointmentCtrl 构造预约 App 控制器。
@@ -30,11 +30,11 @@ func (c *DeviceAppAppointmentCtrl) NextGet(ctx context.Context, req *v1.DeviceAp
 	if err := device.RequireWxBoundDeviceNo(ctx, wxID, deviceNo); err != nil {
 		return nil, err
 	}
-	nextAt, err := device.GetAppointmentNextAt(ctx, deviceNo, req.EventId)
+	view, err := device.GetAppointmentNext(ctx, deviceNo, req.EventId)
 	if err != nil {
 		return nil, err
 	}
-	return &v1.DeviceAppAppointmentNextGetRes{NextAt: nextAt}, nil
+	return &v1.DeviceAppAppointmentNextGetRes{NextAt: view.NextAt, Remark: view.Remark}, nil
 }
 
 // NextPut PUT /device/app/api/appointment/next
@@ -48,7 +48,7 @@ func (c *DeviceAppAppointmentCtrl) NextPut(ctx context.Context, req *v1.DeviceAp
 	if err := device.RequireWxBoundDeviceNo(ctx, wxID, deviceNo); err != nil {
 		return nil, err
 	}
-	if err := device.PutAppointmentNextAt(ctx, deviceNo, req.EventId, req.NextAt); err != nil {
+	if err := device.PutAppointmentNext(ctx, deviceNo, req.EventId, req.NextAt, req.Remark); err != nil {
 		return nil, err
 	}
 	return &v1.DeviceAppAppointmentNextPutRes{}, nil

@@ -26,6 +26,7 @@ type AppointmentNextColumns struct {
 	DeviceNo string
 	EventId  string
 	NextAt   string
+	Remark   string // 下次约定备注（VARCHAR(512)，默认空）
 }
 
 var appointmentNextColumns = AppointmentNextColumns{
@@ -33,6 +34,7 @@ var appointmentNextColumns = AppointmentNextColumns{
 	DeviceNo: "device_no",
 	EventId:  "event_id",
 	NextAt:   "next_at",
+	Remark:   "remark",
 }
 
 // NewAppointmentNextDao creates and returns a new DAO object.

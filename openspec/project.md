@@ -89,9 +89,16 @@
 - 评审检查项必须包含“**GoFrame 单行空结果查询**”检查：可能无行的单结构体查询是否使用 `.One()`+`IsEmpty()`（或显式处理 `ErrNoRows`），禁止空集 Scan 当系统失败（见「GoFrame 单行空结果查询约定」）。
 - 在没有特别要求的情况下，不用生成关于当前变更需求的md文件。当有要求生成文档时，文档必须在`docs/`文件夹内生成md文件，不要生成到`docs/runbooks/`
 
+### 变更实施后的重部署说明（强制）
+
+- **适用范围**：每次 OpenSpec 变更完成实现（`/opsx:apply` 收尾、或用户要求「实施完」的等价交付）时的 AI 回复与 PR/发布自检。
+- **MUST 输出重部署清单**：按 **进程** 列出需要重新部署的服务（与 `manifest/docker/docker-compose.microservices.yml` / `cmd/*-service` 对齐，如 `device-service`、`history-service`、`voice-service`、`push-service`、`gateway-app-server` 等）。
+- **判定**：代码/配置进入哪个进程的构建产物；启动期 schema ensure 落在哪个 `main`；`gateway_app_auth_exempt` / `usagestats/maintenance_skip` / 反代绑定变更则 **MUST** 含 `gateway-app-server`；仅改 `openspec/changes/**` 文档则写明无需部署业务进程。
+- **环境变量**：若变更依赖新 env 或 compose 注入，MUST 与清单一并说明（改 `.env` 后哪些服务需重建/重启才能读到）。
+- **负向说明**：对「路径已在 gateway 反代前缀内、本次未改 gateway 代码」的 App 字段扩展，可写 **不必重部署 gateway-app-server**，避免默认全量重启。
+
 ### gateway-app 对外 App 接口约定（强制）
 
-- **适用范围**：App 客户端经 **gateway-app-server** 访问的 **新增 HTTP 接口**（`api/v1` / `api/v2` 的 `g.Meta`，以及 gateway 上 `BindHandler` 注册的 App 路径）。领域服务（如 `ucg-service`）单独注册路由 **不等于** 已对 App 开放，须完成下列 gateway 侧检查。
 - **反代覆盖**：UCG App 流量由 `installUcgProxyMiddleware` 绑定 `/ucg/app/api/*`（fuzzy，**含** `/ucg/app/api/v2/...`）。device/voice/history 等域同理，新增 path **MUST** 落在对应 `install*ProxyMiddleware` 已绑定前缀下；若新增顶层前缀，**MUST** 扩展 proxy 绑定。
 - **Bearer 鉴权白名单**：匿名可访问的读接口（如 UCG 推荐 Feed）在 `gateway_app_auth_exempt.go` 维护。**新增 v2 且与 v1 同语义时，MUST 同步登记 v2 精确 path**，不得假设「v1 已豁免则 v2 自动生效」。
 - **与 usage 统计、apiregistry 的关系**：本节约束「能否经 gateway 到达」；usage 统计见下节；中文 summary 依赖 `api/v*` 的 `g.Meta` 嵌入 `apiregistry`。

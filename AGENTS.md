@@ -38,6 +38,13 @@
 ## 测试文件
 - 当前阶段不新增测试文件（包括 `*_test.go`、`*.spec.*`、`*.test.*`）。
 
+## 变更实施后的重部署说明（强制）
+- **每次** OpenSpec `/opsx:apply`（或等价实现收尾）完成后，AI **MUST** 在回复中明确列出：**需要重新部署哪些进程/服务**（Compose 服务名或 `cmd/*` 对应进程，如 `device-service`、`push-service`、`gateway-app-server`）。
+- 判定依据：改动落在哪个进程的二进制/配置/启动 ensure（schema）、以及 gateway 鉴权豁免 / usage skip / 反代是否变更。
+- 若无需重部署某进程，MUST 显式写「不必重部署：…」及简短原因（例如仅改 OpenSpec 文档、或仅领域服务且 gateway 路径未变）。
+- 若需同步环境变量 / `.env` / compose 注入，MUST 与重部署清单一并写出。
+- 细则见 **`openspec/project.md`**「变更实施后的重部署说明」。
+
 ## gateway-app 对外 App 接口（OpenSpec / 实现强制）
 
 新增经 **gateway-app-server** 对外暴露的 App HTTP 接口（含 `api/v1`、`api/v2` 的 `g.Meta` 路由）时，**MUST** 在 propose/apply 与 PR 自检中逐项确认，避免「仅在领域服务注册、网关未放行」：
