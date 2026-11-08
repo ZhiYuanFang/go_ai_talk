@@ -14,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	deviceclient "hello/internal/clients/device"
+	historyclient "hello/internal/clients/history"
 	pushclient "hello/internal/clients/push"
 	"hello/internal/platform/cachekit"
 	"hello/internal/platform/eventkit"
@@ -145,13 +146,14 @@ func SyncPredictImminentPending(ctx context.Context, wxID int64, deviceNo string
 	if err != nil {
 		return 0, err
 	}
-	// Imminent 全员清屏已改挂 history 增/删/改；本 PUT 仅整表替换日程，不再 end LA。
+	// 本 PUT 整表替换日程；统一 LA 由 history Refresh 投影（不再 Imminent end 清屏）。
 	if len(cleaned) == 0 {
 		// 空列表：清空 Redis，不发取消类 MQ（旧消息靠消费校验作废）。
 		if delErr := predictImminentCache.Del(ctx, pendingKey); delErr != nil {
 			glog.Warningf(ctx, "[predict-imminent] clear pending failed deviceNoLen=%d err=%v", len(deviceNo), delErr)
 			return 0, gerror.WrapCode(gcode.CodeInternalError, delErr, "清空待办失败")
 		}
+		refreshUnifiedLiveActivity(ctx, deviceNo)
 		return 0, nil
 	}
 
@@ -194,7 +196,15 @@ func SyncPredictImminentPending(ctx context.Context, wxID int64, deviceNo string
 			return len(cleaned), gerror.WrapCode(gcode.CodeInternalError, err, "延时消息发布失败")
 		}
 	}
+	refreshUnifiedLiveActivity(ctx, deviceNo)
 	return len(cleaned), nil
+}
+
+// refreshUnifiedLiveActivity 经 clients/history 触发统一 LA Refresh；失败仅 WARN。
+func refreshUnifiedLiveActivity(ctx context.Context, deviceNo string) {
+	if err := historyclient.RefreshBabyLiveActivity(ctx, deviceNo); err != nil {
+		glog.Warningf(ctx, "[predict-imminent] la_refresh_failed deviceNoLen=%d err=%v", len(deviceNo), err)
+	}
 }
 
 // LoadPredictImminentPending 读取宝宝当前 imminent 待办（供 Python internal GET 与推送校验）。
@@ -358,17 +368,11 @@ func handlePredictImminentFire(ctx context.Context, body []byte) error {
 	} else if n := strings.TrimSpace(profile.BabyName); n != "" {
 		nick = n
 	}
-	// LA 标题仅为基句；普通通知可追加「，预计这次约…」；结构化 expect 进 LA ContentState，不进 data。
+	// 普通通知：基句 + 可选预计后缀；统一 LA 由 history Refresh 投影（不再 Imminent end+start）。
 	laTitle := nick + "要" + title + "了"
 	alert := laTitle
 	if suffix := buildPredictImminentExpectSuffix(msg); suffix != "" {
 		alert += suffix
-	}
-	laExpect := imminentLAExpect{
-		Kind:        msg.ExpectKind,
-		DurationSec: msg.ExpectDurationSec,
-		Amount:      msg.ExpectAmount,
-		Unit:        msg.ExpectUnit,
 	}
 	data := map[string]string{
 		"bizType":  pushclient.BizPredictImminent,
@@ -378,22 +382,14 @@ func handlePredictImminentFire(ctx context.Context, body []byte) error {
 	}
 	glog.Infof(ctx, "[predict-imminent] push_attempt deviceNoLen=%d eventId=%d nextAt=%d wxCount=%d alertLen=%d expectKind=%s la=%v",
 		len(msg.DeviceNo), msg.EventId, msg.NextAt, len(wxIDs), len(alert), strings.TrimSpace(msg.ExpectKind), predictLiveActivityEnabled())
+	// 设备级统一 LA Refresh 一次（与普通推送同拍）；失败不阻断可见推送。
+	refreshUnifiedLiveActivity(ctx, msg.DeviceNo)
 	for _, wxID := range wxIDs {
-		// 用户级 1/min：未过闸 Ack 跳过，不 requeue。
+		// 用户级 1/min：未过闸 Ack 跳过可见推送，不 requeue。
 		if !tryOccupyImminentRateLimit(ctx, wxID) {
 			glog.Warningf(ctx, "[predict-imminent] skip reason=rate_limit_1min wxId=%d eventId=%d", wxID, msg.EventId)
 			continue
 		}
-		if predictLiveActivityEnabled() {
-			// iOS：Live Activity start（基句 title + 结构化 expect）；无 LA token 由 push-service 跳过。
-			startImminentLiveActivityForWx(ctx, wxID, msg.DeviceNo, laTitle, msg.EventId, msg.NextAt, laExpect)
-			// 非 iOS：仍发可见通知（可含预计中文后缀）；push-service 在 LA 开启时会跳过 APNs alert 通道。
-			if pushErr := pushclient.PushByBizType(ctx, wxID, pushclient.BizPredictImminent, alert, 0, false, data); pushErr != nil {
-				glog.Warningf(ctx, "[predict-imminent] push_failed wxId=%d eventId=%d err=%v", wxID, msg.EventId, pushErr)
-			}
-			continue
-		}
-		// 开关关闭：回退普通可见推送（含 APNs alert）。
 		if pushErr := pushclient.PushByBizType(ctx, wxID, pushclient.BizPredictImminent, alert, 0, false, data); pushErr != nil {
 			glog.Warningf(ctx, "[predict-imminent] push_failed wxId=%d eventId=%d err=%v", wxID, msg.EventId, pushErr)
 		}

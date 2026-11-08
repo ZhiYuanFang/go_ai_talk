@@ -15,15 +15,13 @@ import (
 
 // pushInternalLiveActivityBody voice/history 经 clients/push 调用的 Live Activity 编排请求。
 type pushInternalLiveActivityBody struct {
-	WxId           int64                  `json:"wxId"`
-	Action         string                 `json:"action"`
-	AttributesKind string                 `json:"attributesKind"`
-	ActivityId     string                 `json:"activityId"`
-	Attributes     map[string]interface{} `json:"attributes"`
-	ContentState   map[string]interface{} `json:"contentState"`
-	AlertTitle     string                 `json:"alertTitle"`
-	AlertBody      string                 `json:"alertBody"`
-	DismissalDate  int64                  `json:"dismissalDate"`
+	WxId          int64                  `json:"wxId"`
+	Action        string                 `json:"action"` // start | update | end | upsert
+	Attributes    map[string]interface{} `json:"attributes"`
+	ContentState  map[string]interface{} `json:"contentState"`
+	AlertTitle    string                 `json:"alertTitle"`
+	AlertBody     string                 `json:"alertBody"`
+	DismissalDate int64                  `json:"dismissalDate"`
 }
 
 // InternalLiveActivity POST /push/internal/api/live-activity — 各域经 clients/push 扇出 LA。
@@ -56,22 +54,20 @@ func InternalLiveActivity(r *ghttp.Request) {
 			return
 		}
 	}
-	if body.WxId <= 0 || strings.TrimSpace(body.Action) == "" || strings.TrimSpace(body.AttributesKind) == "" {
-		r.Response.WriteJson(g.Map{"code": 400, "message": "wxId/action/attributesKind 必填"})
+	if body.WxId <= 0 || strings.TrimSpace(body.Action) == "" {
+		r.Response.WriteJson(g.Map{"code": 400, "message": "wxId/action 必填"})
 		return
 	}
-	g.Log().Warningf(ctx, "[push-la] accepted wxId=%d action=%s kind=%s activityIdLen=%d",
-		body.WxId, strings.TrimSpace(body.Action), strings.TrimSpace(body.AttributesKind), len(strings.TrimSpace(body.ActivityId)))
+	g.Log().Warningf(ctx, "[push-la] accepted wxId=%d action=%s",
+		body.WxId, strings.TrimSpace(body.Action))
 	pushsvc.FanoutLiveActivity(ctx, pushsvc.LiveActivityOp{
-		WxID:           body.WxId,
-		Action:         body.Action,
-		AttributesKind: body.AttributesKind,
-		ActivityID:     body.ActivityId,
-		Attributes:     body.Attributes,
-		ContentState:   body.ContentState,
-		AlertTitle:     body.AlertTitle,
-		AlertBody:      body.AlertBody,
-		DismissalDate:  body.DismissalDate,
+		WxID:          body.WxId,
+		Action:        body.Action,
+		Attributes:    body.Attributes,
+		ContentState:  body.ContentState,
+		AlertTitle:    body.AlertTitle,
+		AlertBody:     body.AlertBody,
+		DismissalDate: body.DismissalDate,
 	})
 	r.Response.WriteJson(g.Map{"code": 0, "message": "OK", "data": g.Map{}})
 }

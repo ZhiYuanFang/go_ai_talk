@@ -59,7 +59,7 @@ func (c *AppPushCtrl) LiveActivityRegisterPost(ctx context.Context, req *v1.AppP
 	if req.WxId <= 0 {
 		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "wxId 无效")
 	}
-	if err = pushsvc.RegisterLiveActivityToken(ctx, req.WxId, req.DeviceKey, req.TokenKind, req.AttributesKind, req.ActivityId, req.Token); err != nil {
+	if err = pushsvc.RegisterLiveActivityToken(ctx, req.WxId, req.DeviceKey, req.TokenKind, req.Token); err != nil {
 		return nil, err
 	}
 	return &v1.AppPushLiveActivityRegisterPostRes{}, nil

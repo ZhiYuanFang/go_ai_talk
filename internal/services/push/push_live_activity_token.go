@@ -12,16 +12,14 @@ import (
 
 const pushLiveActivityTokenTable = "push_live_activity_token"
 
-// Live Activity token 种类与业务 attributes 维度（与 Flutter Attributes 对齐，存小写 kind）。
+// Live Activity token 种类（统一单活动后不再按 attributesKind/activityId 分槽）。
 const (
 	LATokenKindPushToStart = "push_to_start"
 	LATokenKindActivity    = "activity"
-
-	LAAttributesImminent = "imminent"
-	LAAttributesTiming   = "timing"
 )
 
 // entityLiveActivityToken LA 专用 token 行（与 push_device 分表）。
+// attributes_kind / activity_id 列保留兼容旧库，业务恒写空串，唯一键为 (wx, device_key, token_kind)。
 type entityLiveActivityToken struct {
 	ID             uint64
 	WxID           int64
@@ -33,22 +31,20 @@ type entityLiveActivityToken struct {
 	UpdatedAt      int64
 }
 
-// RegisterLiveActivityToken 注册/更新 Push-to-Start 或 per-activity update token。
+// RegisterLiveActivityToken 注册/更新 Push-to-Start 或 per-user activity update token。
 //
 // 业务逻辑：
 //  1. MUST NOT 写入 push_device（避免 uk_token 与 device alert token 互顶）；
-//  2. 按 (wx, device_key, token_kind, attributes_kind, activity_id) upsert；
-//  3. push_to_start 时 activity_id 强制空串；activity 时 activity_id 必填。
+//  2. 按 (wx, device_key, token_kind) upsert；不再要求 attributesKind/activityId；
+//  3. attributes_kind、activity_id 列强制空串（兼容旧表结构）。
 //
 // Side Effects: 写 push_live_activity_token。
-func RegisterLiveActivityToken(ctx context.Context, wxID int64, deviceKey, tokenKind, attributesKind, activityID, token string) error {
+func RegisterLiveActivityToken(ctx context.Context, wxID int64, deviceKey, tokenKind, token string) error {
 	if wxID <= 0 {
 		return gerror.NewCode(gcode.CodeInvalidParameter, "wxId 无效")
 	}
 	deviceKey = strings.TrimSpace(deviceKey)
 	tokenKind = strings.TrimSpace(strings.ToLower(tokenKind))
-	attributesKind = strings.TrimSpace(strings.ToLower(attributesKind))
-	activityID = strings.TrimSpace(activityID)
 	token = strings.TrimSpace(token)
 	if deviceKey == "" || len(deviceKey) > 64 {
 		return gerror.NewCode(gcode.CodeInvalidParameter, "deviceKey 无效")
@@ -59,21 +55,13 @@ func RegisterLiveActivityToken(ctx context.Context, wxID int64, deviceKey, token
 	if tokenKind != LATokenKindPushToStart && tokenKind != LATokenKindActivity {
 		return gerror.NewCode(gcode.CodeInvalidParameter, "tokenKind 必须是 push_to_start 或 activity")
 	}
-	if attributesKind != LAAttributesImminent && attributesKind != LAAttributesTiming {
-		return gerror.NewCode(gcode.CodeInvalidParameter, "attributesKind 必须是 imminent 或 timing")
-	}
-	if tokenKind == LATokenKindPushToStart {
-		activityID = ""
-	} else if activityID == "" || len(activityID) > 128 {
-		return gerror.NewCode(gcode.CodeInvalidParameter, "activity 类型须提供合法 activityId")
-	}
 	now := time.Now().Unix()
 	_, err := g.DB().Model(pushLiveActivityTokenTable).Ctx(ctx).Data(g.Map{
 		"wx_id":           wxID,
 		"device_key":      deviceKey,
 		"token_kind":      tokenKind,
-		"attributes_kind": attributesKind,
-		"activity_id":     activityID,
+		"attributes_kind": "",
+		"activity_id":     "",
 		"token":           token,
 		"updated_at":      now,
 	}).OnDuplicate("token", "updated_at").Save()
@@ -83,39 +71,16 @@ func RegisterLiveActivityToken(ctx context.Context, wxID int64, deviceKey, token
 	return nil
 }
 
-// ListLiveActivityTokensForWx 列出某用户某 kind/attributes 的 token（可多机）。
-func ListLiveActivityTokensForWx(ctx context.Context, wxID int64, tokenKind, attributesKind string) ([]entityLiveActivityToken, error) {
+// ListLiveActivityTokensForWx 列出某用户某 tokenKind 的全部 LA token（可多机）。
+func ListLiveActivityTokensForWx(ctx context.Context, wxID int64, tokenKind string) ([]entityLiveActivityToken, error) {
 	if wxID <= 0 {
 		return nil, nil
 	}
 	tokenKind = strings.TrimSpace(strings.ToLower(tokenKind))
-	attributesKind = strings.TrimSpace(strings.ToLower(attributesKind))
 	var rows []entityLiveActivityToken
 	err := g.DB().Model(pushLiveActivityTokenTable).Ctx(ctx).
 		Where("wx_id", wxID).
 		Where("token_kind", tokenKind).
-		Where("attributes_kind", attributesKind).
-		Scan(&rows)
-	if err != nil {
-		return nil, err
-	}
-	return rows, nil
-}
-
-// ListLiveActivityTokensByActivityID 按 wx + activityId 取 update/end 用 token。
-func ListLiveActivityTokensByActivityID(ctx context.Context, wxID int64, activityID string) ([]entityLiveActivityToken, error) {
-	if wxID <= 0 {
-		return nil, nil
-	}
-	activityID = strings.TrimSpace(activityID)
-	if activityID == "" {
-		return nil, nil
-	}
-	var rows []entityLiveActivityToken
-	err := g.DB().Model(pushLiveActivityTokenTable).Ctx(ctx).
-		Where("wx_id", wxID).
-		Where("token_kind", LATokenKindActivity).
-		Where("activity_id", activityID).
 		Scan(&rows)
 	if err != nil {
 		return nil, err
@@ -132,22 +97,16 @@ func DeleteLiveActivityTokenByID(ctx context.Context, id uint64) error {
 	return err
 }
 
-// DeleteLiveActivityTokensByActivityID 删除某用户某 activityId 下全部 token_kind=activity 行。
-// 业务：Live Activity event=end 后主动清库，避免 imminent/timing 结束后无效 update token 累计；
-// MUST NOT 删除 push_to_start（本函数仅按 token_kind=activity 过滤）。
+// DeleteLiveActivityTokensByWxActivity 删除某用户全部 token_kind=activity 行。
+// 业务：统一 LA end 后清 update token，避免脏行；MUST NOT 删除 push_to_start。
 // Side Effects: DELETE push_live_activity_token。
-func DeleteLiveActivityTokensByActivityID(ctx context.Context, wxID int64, activityID string) error {
+func DeleteLiveActivityTokensByWxActivity(ctx context.Context, wxID int64) error {
 	if wxID <= 0 {
-		return nil
-	}
-	activityID = strings.TrimSpace(activityID)
-	if activityID == "" {
 		return nil
 	}
 	_, err := g.DB().Model(pushLiveActivityTokenTable).Ctx(ctx).
 		Where("wx_id", wxID).
 		Where("token_kind", LATokenKindActivity).
-		Where("activity_id", activityID).
 		Delete()
 	return err
 }

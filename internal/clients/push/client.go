@@ -78,15 +78,13 @@ func PushByBizType(ctx context.Context, wxID int64, bizType, alert string, badge
 
 // LiveActivityOp 出站 Live Activity 编排参数（与 push-service internal API 对齐）。
 type LiveActivityOp struct {
-	WxID           int64
-	Action         string // start | update | end
-	AttributesKind string // imminent | timing
-	ActivityID     string
-	Attributes     map[string]interface{}
-	ContentState   map[string]interface{}
-	AlertTitle     string
-	AlertBody      string
-	DismissalDate  int64 // end 时 unix 秒；<=0 由 push-service 组装层填过去时刻（立即摘条）
+	WxID          int64
+	Action        string // start | update | end | upsert
+	Attributes    map[string]interface{}
+	ContentState  map[string]interface{}
+	AlertTitle    string
+	AlertBody     string
+	DismissalDate int64 // end 时 unix 秒；<=0 由 push-service 组装层填过去时刻（立即摘条）
 }
 
 // FanoutLiveActivity 经 push internal API 异步扇出 Live Activity；无 token / 开关关由 push-service 跳过。
@@ -103,15 +101,13 @@ func FanoutLiveActivity(ctx context.Context, op LiveActivityOp) error {
 		return gerror.NewCode(gcode.CodeInternalError, "未配置 DEVICE_GATEWAY_INTERNAL_SECRET")
 	}
 	payload, _ := json.Marshal(map[string]interface{}{
-		"wxId":           op.WxID,
-		"action":         strings.TrimSpace(op.Action),
-		"attributesKind": strings.TrimSpace(op.AttributesKind),
-		"activityId":     strings.TrimSpace(op.ActivityID),
-		"attributes":     op.Attributes,
-		"contentState":   op.ContentState,
-		"alertTitle":     strings.TrimSpace(op.AlertTitle),
-		"alertBody":      strings.TrimSpace(op.AlertBody),
-		"dismissalDate":  op.DismissalDate,
+		"wxId":          op.WxID,
+		"action":        strings.TrimSpace(op.Action),
+		"attributes":    op.Attributes,
+		"contentState":  op.ContentState,
+		"alertTitle":    strings.TrimSpace(op.AlertTitle),
+		"alertBody":     strings.TrimSpace(op.AlertBody),
+		"dismissalDate": op.DismissalDate,
 	})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/push/internal/api/live-activity", bytes.NewReader(payload))
 	if err != nil {

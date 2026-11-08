@@ -2,46 +2,41 @@ package push
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/gogf/gf/v2/frame/g"
 )
 
-// LiveActivityOp 内部编排请求：按 action 选择 Push-to-Start 或 activity token 发送。
+// LiveActivityOp 内部编排请求。
+// Action: start | update | end | upsert（有 activity token→update，否则 start）。
 type LiveActivityOp struct {
-	WxID           int64
-	Action         string // start | update | end
-	AttributesKind string // imminent | timing
-	ActivityID     string
-	Attributes     map[string]interface{}
-	ContentState   map[string]interface{}
-	AlertTitle     string
-	AlertBody      string
-	DismissalDate  int64 // end 时 unix 秒；<=0 由 APNs 组装层填过去时刻（立即摘条），禁止依赖「省略=立即」
+	WxID          int64
+	Action        string
+	Attributes    map[string]interface{}
+	ContentState  map[string]interface{}
+	AlertTitle    string
+	AlertBody     string
+	DismissalDate int64 // end 时 unix 秒；<=0 由 APNs 组装层填过去时刻
 }
 
-// FanoutLiveActivity 异步向某用户的全部相关 LA token 扇出。
+// FanoutLiveActivity 异步向某用户的相关 LA token 扇出。
 //
 // 业务：
-//   - 开关关闭时仅打日志并返回（不发 APNs）；
-//   - start 用 push_to_start token；update/end 用 activity token（按 activityId）；
-//   - 无 token 时跳过（不视为整次失败）。
-//
-// Side Effects: 异步 HTTP 打 APNs；可能删除无效 LA token 行；
-// action=end 时另按 activityId 主动清全部 activity 行（imminent/timing 共用）。
+//   - 开关关闭时仅打日志并返回；
+//   - start / upsert(无 activity) 用 push_to_start；update / upsert(有 activity) / end 用 activity token；
+//   - 无 token 时跳过（不视为整次失败）；
+//   - action=end 后清该 wx 全部 activity 行，保留 push_to_start。
 func FanoutLiveActivity(ctx context.Context, op LiveActivityOp) {
 	if op.WxID <= 0 {
 		return
 	}
 	action := strings.TrimSpace(strings.ToLower(op.Action))
-	kind := strings.TrimSpace(strings.ToLower(op.AttributesKind))
-	activityID := strings.TrimSpace(op.ActivityID)
-	if action == "" || kind == "" {
+	if action == "" {
 		return
 	}
 	if !LiveActivityEnabled() {
-		g.Log().Warningf(ctx, "[push-la] skip reason=feature_off wxId=%d action=%s kind=%s activityIdLen=%d",
-			op.WxID, action, kind, len(activityID))
+		g.Log().Warningf(ctx, "[push-la] skip reason=feature_off wxId=%d action=%s", op.WxID, action)
 		return
 	}
 	asyncPush(op.WxID, func(bg context.Context) {
@@ -49,88 +44,93 @@ func FanoutLiveActivity(ctx context.Context, op LiveActivityOp) {
 	})
 }
 
-// cleanupActivityTokensAfterEnd end 扇出尝试结束后删除该 activityId 的 activity 行。
-// 计时闭合/删除与 Imminent 清屏/换槽共用；发送失败仍删，避免脏行无限积压。
-// MUST NOT 删 push_to_start（DeleteLiveActivityTokensByActivityID 仅打 activity）。
-func cleanupActivityTokensAfterEnd(ctx context.Context, wxID int64, activityID string) {
-	activityID = strings.TrimSpace(activityID)
-	if wxID <= 0 || activityID == "" {
+// cleanupActivityTokensAfterEnd end 后删除该 wx 全部 activity 行。
+func cleanupActivityTokensAfterEnd(ctx context.Context, wxID int64) {
+	if wxID <= 0 {
 		return
 	}
-	if delErr := DeleteLiveActivityTokensByActivityID(ctx, wxID, activityID); delErr != nil {
-		g.Log().Warningf(ctx, "[push-la] delete activity tokens after end failed wxId=%d activityIdLen=%d err=%v",
-			wxID, len(activityID), delErr)
+	if delErr := DeleteLiveActivityTokensByWxActivity(ctx, wxID); delErr != nil {
+		g.Log().Warningf(ctx, "[push-la] delete activity tokens after end failed wxId=%d err=%v", wxID, delErr)
 		return
 	}
-	g.Log().Warningf(ctx, "[push-la] activity tokens cleaned after end wxId=%d activityIdLen=%d", wxID, len(activityID))
+	g.Log().Warningf(ctx, "[push-la] activity tokens cleaned after end wxId=%d", wxID)
 }
 
 func dispatchLiveActivity(ctx context.Context, op LiveActivityOp) {
 	action := strings.TrimSpace(strings.ToLower(op.Action))
-	kind := strings.TrimSpace(strings.ToLower(op.AttributesKind))
-	activityID := strings.TrimSpace(op.ActivityID)
 
 	var tokens []entityLiveActivityToken
 	var err error
+	sendEvent := action
+
 	switch action {
 	case "start":
-		tokens, err = ListLiveActivityTokensForWx(ctx, op.WxID, LATokenKindPushToStart, kind)
+		tokens, err = ListLiveActivityTokensForWx(ctx, op.WxID, LATokenKindPushToStart)
 	case "update", "end":
-		if activityID == "" {
-			g.Log().Warningf(ctx, "[push-la] skip reason=empty_activity_id wxId=%d action=%s", op.WxID, action)
+		tokens, err = ListLiveActivityTokensForWx(ctx, op.WxID, LATokenKindActivity)
+	case "upsert":
+		// 有 activity update token → update；否则 push_to_start → start。
+		actTokens, listErr := ListLiveActivityTokensForWx(ctx, op.WxID, LATokenKindActivity)
+		if listErr != nil {
+			g.Log().Warningf(ctx, "[push-la] skip reason=list_token_err wxId=%d action=upsert err=%v", op.WxID, listErr)
 			return
 		}
-		tokens, err = ListLiveActivityTokensByActivityID(ctx, op.WxID, activityID)
+		if len(actTokens) > 0 {
+			tokens = actTokens
+			sendEvent = "update"
+		} else {
+			tokens, err = ListLiveActivityTokensForWx(ctx, op.WxID, LATokenKindPushToStart)
+			sendEvent = "start"
+		}
 	default:
 		g.Log().Warningf(ctx, "[push-la] skip reason=bad_action wxId=%d action=%s", op.WxID, action)
 		return
 	}
 	if err != nil {
 		g.Log().Warningf(ctx, "[push-la] skip reason=list_token_err wxId=%d action=%s err=%v", op.WxID, action, err)
-		// end 仍尝试清库：列表失败时也可能有残留行可按 activityId 删。
 		if action == "end" {
-			cleanupActivityTokensAfterEnd(ctx, op.WxID, activityID)
+			cleanupActivityTokensAfterEnd(ctx, op.WxID)
 		}
 		return
 	}
 	if len(tokens) == 0 {
-		g.Log().Warningf(ctx, "[push-la] skip reason=no_la_token wxId=%d action=%s kind=%s activityIdLen=%d",
-			op.WxID, action, kind, len(activityID))
-		// 无 token 可发 APNs，但 end 仍清可能残留的 activity 行（幂等）。
+		g.Log().Warningf(ctx, "[push-la] skip reason=no_la_token wxId=%d action=%s sendEvent=%s",
+			op.WxID, action, sendEvent)
 		if action == "end" {
-			cleanupActivityTokensAfterEnd(ctx, op.WxID, activityID)
+			cleanupActivityTokensAfterEnd(ctx, op.WxID)
 		}
 		return
 	}
 
-	attrType := LiveActivityAttributesType(kind)
+	attrs := op.Attributes
+	if sendEvent == "start" {
+		if attrs == nil {
+			attrs = map[string]interface{}{}
+		}
+		// 稳定业务 id 写入 Attributes，供客户端回传 activity token（不入库分槽）。
+		if _, ok := attrs["activityId"]; !ok {
+			attrs["activityId"] = fmt.Sprintf("baby:%d", op.WxID)
+		}
+	}
+
 	payload := LiveActivityAPNsPayload{
-		Event:          action,
-		AttributesType: attrType,
-		Attributes:     op.Attributes,
+		Event:          sendEvent,
+		AttributesType: LiveActivityAttributesType(),
+		Attributes:     attrs,
 		ContentState:   op.ContentState,
 		AlertTitle:     op.AlertTitle,
 		AlertBody:      op.AlertBody,
 		DismissalDate:  op.DismissalDate,
 	}
-	if action == "start" {
-		if payload.Attributes == nil {
-			payload.Attributes = map[string]interface{}{}
-		}
-		// 将服务端权威 activityId 放入 attributes，便于客户端回传 update token。
-		if activityID != "" {
-			payload.Attributes["activityId"] = activityID
-		}
-	}
 
-	g.Log().Warningf(ctx, "[push-la] dispatch wxId=%d action=%s kind=%s tokenCount=%d activityIdLen=%d",
-		op.WxID, action, kind, len(tokens), len(activityID))
+	g.Log().Warningf(ctx, "[push-la] dispatch wxId=%d action=%s sendEvent=%s tokenCount=%d",
+		op.WxID, action, sendEvent, len(tokens))
 	for _, tok := range tokens {
 		invalid, sendErr := SendLiveActivityAPNs(ctx, tok.Token, payload)
 		if sendErr != nil {
-			g.Log().Warningf(ctx, "[push-la] send_failed wxId=%d action=%s tokenId=%d err=%v", op.WxID, action, tok.ID, sendErr)
+			g.Log().Warningf(ctx, "[push-la] send_failed wxId=%d action=%s tokenId=%d err=%v", op.WxID, sendEvent, tok.ID, sendErr)
 		} else {
-			g.Log().Warningf(ctx, "[push-la] send_ok wxId=%d action=%s tokenId=%d", op.WxID, action, tok.ID)
+			g.Log().Warningf(ctx, "[push-la] send_ok wxId=%d action=%s tokenId=%d", op.WxID, sendEvent, tok.ID)
 		}
 		if invalid && tok.ID > 0 {
 			if delErr := DeleteLiveActivityTokenByID(ctx, tok.ID); delErr != nil {
@@ -138,8 +138,7 @@ func dispatchLiveActivity(ctx context.Context, op LiveActivityOp) {
 			}
 		}
 	}
-	// imminent 清屏/换槽与 timing 闭合/删除共用：end 后按 activityId 清 activity 行，保留 push_to_start。
 	if action == "end" {
-		cleanupActivityTokensAfterEnd(ctx, op.WxID, activityID)
+		cleanupActivityTokensAfterEnd(ctx, op.WxID)
 	}
 }
