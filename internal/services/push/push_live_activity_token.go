@@ -19,24 +19,21 @@ const (
 )
 
 // entityLiveActivityToken LA 专用 token 行（与 push_device 分表）。
-// attributes_kind / activity_id 列保留兼容旧库，业务恒写空串，唯一键为 (wx, device_key, token_kind)。
+// 唯一键为 (wx, device_key, token_kind)；不再含 attributes_kind / activity_id。
 type entityLiveActivityToken struct {
-	ID             uint64
-	WxID           int64
-	DeviceKey      string
-	TokenKind      string
-	AttributesKind string
-	ActivityID     string
-	Token          string
-	UpdatedAt      int64
+	ID        uint64
+	WxID      int64
+	DeviceKey string
+	TokenKind string
+	Token     string
+	UpdatedAt int64
 }
 
 // RegisterLiveActivityToken 注册/更新 Push-to-Start 或 per-user activity update token。
 //
 // 业务逻辑：
 //  1. MUST NOT 写入 push_device（避免 uk_token 与 device alert token 互顶）；
-//  2. 按 (wx, device_key, token_kind) upsert；不再要求 attributesKind/activityId；
-//  3. attributes_kind、activity_id 列强制空串（兼容旧表结构）。
+//  2. 按 (wx, device_key, token_kind) upsert；不再要求/写入 attributesKind/activityId。
 //
 // Side Effects: 写 push_live_activity_token。
 func RegisterLiveActivityToken(ctx context.Context, wxID int64, deviceKey, tokenKind, token string) error {
@@ -57,13 +54,11 @@ func RegisterLiveActivityToken(ctx context.Context, wxID int64, deviceKey, token
 	}
 	now := time.Now().Unix()
 	_, err := g.DB().Model(pushLiveActivityTokenTable).Ctx(ctx).Data(g.Map{
-		"wx_id":           wxID,
-		"device_key":      deviceKey,
-		"token_kind":      tokenKind,
-		"attributes_kind": "",
-		"activity_id":     "",
-		"token":           token,
-		"updated_at":      now,
+		"wx_id":      wxID,
+		"device_key": deviceKey,
+		"token_kind": tokenKind,
+		"token":      token,
+		"updated_at": now,
 	}).OnDuplicate("token", "updated_at").Save()
 	if err != nil {
 		return gerror.WrapCode(gcode.CodeDbOperationError, err, "写入 Live Activity token 失败")
@@ -86,6 +81,39 @@ func ListLiveActivityTokensForWx(ctx context.Context, wxID int64, tokenKind stri
 		return nil, err
 	}
 	return rows, nil
+}
+
+// FindLiveActivityTokenByWxDeviceKind 按 (wx, device_key, token_kind) 取单行。
+//
+// 业务：供 update invalid 同拍自愈时定位同机 push_to_start；无行返回 ok=false。
+// Args: wxID、deviceKey、tokenKind（通常为 push_to_start）。
+// Returns: 行、是否找到、错误。
+func FindLiveActivityTokenByWxDeviceKind(ctx context.Context, wxID int64, deviceKey, tokenKind string) (entityLiveActivityToken, bool, error) {
+	var zero entityLiveActivityToken
+	if wxID <= 0 {
+		return zero, false, nil
+	}
+	deviceKey = strings.TrimSpace(deviceKey)
+	tokenKind = strings.TrimSpace(strings.ToLower(tokenKind))
+	if deviceKey == "" || tokenKind == "" {
+		return zero, false, nil
+	}
+	row, err := g.DB().Model(pushLiveActivityTokenTable).Ctx(ctx).
+		Where("wx_id", wxID).
+		Where("device_key", deviceKey).
+		Where("token_kind", tokenKind).
+		One()
+	if err != nil {
+		return zero, false, err
+	}
+	if row.IsEmpty() {
+		return zero, false, nil
+	}
+	var out entityLiveActivityToken
+	if scanErr := row.Struct(&out); scanErr != nil {
+		return zero, false, scanErr
+	}
+	return out, true, nil
 }
 
 // DeleteLiveActivityTokenByID 删除失效 LA token 行。

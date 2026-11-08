@@ -43,15 +43,13 @@ CREATE TABLE IF NOT EXISTS push_device (
 		return err
 	}
 	// Live Activity 专用表：与 push_device 分表，禁止共享 uk_token 语义。
-	// 统一单活动后唯一键为 (wx_id, device_key, token_kind)；attributes_kind/activity_id 列保留兼容、业务恒空。
+	// 统一单活动后唯一键为 (wx_id, device_key, token_kind)；不再保留 attributes_kind/activity_id 分槽列。
 	if _, err := g.DB().Exec(ctx, `
 CREATE TABLE IF NOT EXISTS push_live_activity_token (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   wx_id BIGINT NOT NULL,
   device_key VARCHAR(64) NOT NULL,
   token_kind VARCHAR(32) NOT NULL,
-  attributes_kind VARCHAR(64) NOT NULL DEFAULT '',
-  activity_id VARCHAR(128) NOT NULL DEFAULT '',
   token VARCHAR(512) NOT NULL,
   updated_at BIGINT NOT NULL DEFAULT 0,
   PRIMARY KEY (id),
@@ -61,6 +59,9 @@ CREATE TABLE IF NOT EXISTS push_live_activity_token (
 		return err
 	}
 	if err := ensureLiveActivityUnifiedIndex(ctx); err != nil {
+		return err
+	}
+	if err := ensureDropLiveActivitySlotColumns(ctx); err != nil {
 		return err
 	}
 	return nil
@@ -98,6 +99,29 @@ ALTER TABLE push_live_activity_token ADD UNIQUE KEY uk_la_token (wx_id, device_k
 		return err
 	}
 	glog.Infof(ctx, "[push-schema] push_live_activity_token.%s 已添加", pushLATokenUniqueIndexName)
+	return nil
+}
+
+// ensureDropLiveActivitySlotColumns 幂等 DROP 已废弃的 attributes_kind / activity_id 分槽列。
+// 业务：单活动后无分槽语义；先卸可能仍引用这些列的旧索引，再 DROP 列。
+func ensureDropLiveActivitySlotColumns(ctx context.Context) error {
+	_, _ = g.DB().Exec(ctx, `ALTER TABLE push_live_activity_token DROP INDEX uk_la_slot`)
+	_, _ = g.DB().Exec(ctx, `ALTER TABLE push_live_activity_token DROP INDEX idx_la_activity`)
+	for _, col := range []string{"attributes_kind", "activity_id"} {
+		n, err := g.DB().GetValue(ctx, `
+SELECT COUNT(*) FROM information_schema.COLUMNS
+WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'push_live_activity_token' AND COLUMN_NAME = ?`, col)
+		if err != nil {
+			return err
+		}
+		if n.Int() == 0 {
+			continue
+		}
+		if _, err := g.DB().Exec(ctx, `ALTER TABLE push_live_activity_token DROP COLUMN `+col); err != nil {
+			return err
+		}
+		glog.Infof(ctx, "[push-schema] push_live_activity_token.%s 已删除", col)
+	}
 	return nil
 }
 

@@ -18,6 +18,7 @@ import (
 	pushclient "hello/internal/clients/push"
 	"hello/internal/platform/cachekit"
 	"hello/internal/platform/eventkit"
+	"hello/internal/platform/predictcfg"
 	"hello/internal/shared/mq"
 
 	"github.com/gogf/gf/v2/errors/gcode"
@@ -26,13 +27,11 @@ import (
 )
 
 const (
-	predictImminentLeadSecondsDefault = 300 // 默认提前 5 分钟；可由 VOICE_PREDICT_IMMINENT_LEAD_SECONDS 覆盖
 	predictImminentHistoryWindowSec   = 1800 // 近有操作不推：固定 30 分钟，不跟随 lead
 	predictImminentSyncLockTTL        = 5 * time.Second
 	predictImminentQueueName          = "voice.predict.imminent.q"
 	predictImminentConsumerEnabledEnv = "VOICE_PREDICT_IMMINENT_MQ_CONSUMER_ENABLED"
 	predictImminentPrefetchEnv        = "VOICE_PREDICT_IMMINENT_MQ_PREFETCH"
-	predictImminentLeadSecondsEnv     = "VOICE_PREDICT_IMMINENT_LEAD_SECONDS"
 	// predictImminentMaxDelayMs 对齐 rabbitmq_delayed_message_exchange 的 ERL_MAX_T（2^32−1 毫秒，约 49.7 天）。
 	// 超过该值插件会 nodelay 立刻投递，导致疫苗等远 nextAt 误推；超限时只写 Redis、不发 MQ。
 	predictImminentMaxDelayMs = 4294967295
@@ -42,19 +41,11 @@ const (
 
 var predictImminentCache = cachekit.Default()
 
-// predictImminentLeadSeconds 读取提前叫醒秒数；非法或未配置时回退默认 300。
+// predictImminentLeadSeconds 读取提前叫醒秒数；与 history LA 进窗共用 predictcfg.LeadSeconds。
 // Args: 无（读环境变量 VOICE_PREDICT_IMMINENT_LEAD_SECONDS）
 // Returns: 非负整数秒；0 表示立即发延时消息（火点已过或配置为 0）。
 func predictImminentLeadSeconds() int64 {
-	v := strings.TrimSpace(os.Getenv(predictImminentLeadSecondsEnv))
-	if v == "" {
-		return predictImminentLeadSecondsDefault
-	}
-	n, err := strconv.ParseInt(v, 10, 64)
-	if err != nil || n < 0 {
-		return predictImminentLeadSecondsDefault
-	}
-	return n
+	return predictcfg.LeadSeconds()
 }
 
 // predictImminentPushDedupTTL 推送去重键 TTL，与 leadSeconds 对齐（同一 VOICE_PREDICT_IMMINENT_LEAD_SECONDS）。

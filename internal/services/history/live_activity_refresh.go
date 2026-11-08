@@ -1,4 +1,4 @@
-// 统一 Live Activity Refresh：组装「预测 pending + 进行中 history」列表态 ContentState，
+// 统一 Live Activity Refresh：组装「lead 进窗预测 + 进行中 history」列表态 ContentState（总条数≤3），
 // 经 clients/push 扇出 upsert/end。MUST NOT import services/voice。
 package history
 
@@ -10,15 +10,20 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	deviceclient "hello/internal/clients/device"
 	pushclient "hello/internal/clients/push"
 	"hello/internal/dao"
 	"hello/internal/model/entity"
 	"hello/internal/platform/cachekit"
+	"hello/internal/platform/predictcfg"
 
 	"github.com/gogf/gf/v2/os/glog"
 )
+
+// liveActivityMaxItems 锁屏列表硬顶：进行中优先截断后合计最多 3 条。
+const liveActivityMaxItems = 3
 
 const historyLiveActivityEnabledEnv = "PUSH_LIVE_ACTIVITY_ENABLED"
 
@@ -71,12 +76,13 @@ func afterHistoryMutationLiveActivity(ctx context.Context, deviceNo string) {
 	RefreshBabyLiveActivity(ctx, deviceNo)
 }
 
-// RefreshBabyLiveActivity 统一投影：读 pending + 未闭合 history → 排序 → 各绑定 wx upsert 或 end。
+// RefreshBabyLiveActivity 统一投影：读 pending + 未闭合 history → 进窗过滤/截断 → 各绑定 wx upsert 或 end。
 //
 // 业务：
-//  1. 预测段：pending 全量，nextAt 升序；进行中段：end_time=0，startTime 倒序垫底；
-//  2. 空 items → end；非空 → action=upsert（push 侧有 activity token 则 update，否则 start）；
-//  3. 开关关则跳过扇出；失败仅 WARN。
+//  1. 预测段：仅 lead 进窗（nextAt-leadSeconds≤now，与 VOICE_PREDICT_IMMINENT_LEAD_SECONDS 同语义），nextAt 升序；
+//  2. 进行中段：end_time=0，startTime 倒序；总条数≤3，截断进行中优先，展示仍预测在前；
+//  3. 空 items → end；非空 → action=upsert（push 侧有 activity token 则 update，否则 start）；
+//  4. 开关关则跳过扇出；失败仅 WARN。
 //
 // Side Effects: 经 PUSH_SERVICE_URL 调 live-activity；可读 cachekit pending / active-eta。
 func RefreshBabyLiveActivity(ctx context.Context, deviceNo string) {
@@ -136,11 +142,30 @@ func RefreshBabyLiveActivity(ctx context.Context, deviceNo string) {
 	}
 }
 
-// buildLiveActivityItems 组装列表；禁止写入 logo/color/远程图 URL。
+// buildLiveActivityItems 组装列表：lead 进窗预测 + 进行中，合计≤3（进行中优先截断）；禁止 logo/color/远程图 URL。
+//
+// 业务：
+//  1. 预测候选：pending 中 nextAt-leadSeconds≤now（lead=predictcfg.LeadSeconds，对齐普通推送 fireAt）；
+//  2. 进行中候选：end_time=0，按 startTime 倒序；
+//  3. 截断：先取至多 liveActivityMaxItems 条 timing，剩余名额填预测；发射顺序仍「预测段+进行中段」。
 func buildLiveActivityItems(ctx context.Context, deviceNo string) []map[string]interface{} {
+	now := time.Now().Unix()
+	leadSec := predictcfg.LeadSeconds()
+
 	pending := loadLAPending(ctx, deviceNo)
-	sort.SliceStable(pending, func(i, j int) bool {
-		return pending[i].NextAt < pending[j].NextAt
+	// 仅保留进窗预测；远点仍可留在 Redis 供 MQ，不进锁屏。
+	inWindow := make([]laPendingItem, 0, len(pending))
+	for _, p := range pending {
+		if p.EventId <= 0 || p.NextAt <= 0 {
+			continue
+		}
+		if p.NextAt-leadSec > now {
+			continue
+		}
+		inWindow = append(inWindow, p)
+	}
+	sort.SliceStable(inWindow, func(i, j int) bool {
+		return inWindow[i].NextAt < inWindow[j].NextAt
 	})
 
 	openRows := listOpenHistories(ctx, deviceNo)
@@ -149,11 +174,20 @@ func buildLiveActivityItems(ctx context.Context, deviceNo string) []map[string]i
 	})
 	etaByHistory := loadActiveEtaExpectMap(ctx, deviceNo)
 
-	out := make([]map[string]interface{}, 0, len(pending)+len(openRows))
-	for _, p := range pending {
-		if p.EventId <= 0 || p.NextAt <= 0 {
-			continue
-		}
+	// 进行中优先占位，再把剩余槽位给最近预测。
+	takeT := len(openRows)
+	if takeT > liveActivityMaxItems {
+		takeT = liveActivityMaxItems
+	}
+	takeP := liveActivityMaxItems - takeT
+	if takeP > len(inWindow) {
+		takeP = len(inWindow)
+	}
+	selectedPredict := inWindow[:takeP]
+	selectedTiming := openRows[:takeT]
+
+	out := make([]map[string]interface{}, 0, takeP+takeT)
+	for _, p := range selectedPredict {
 		item := map[string]interface{}{
 			"kind":    "imminent",
 			"eventId": p.EventId,
@@ -165,7 +199,7 @@ func buildLiveActivityItems(ctx context.Context, deviceNo string) []map[string]i
 		applyPendingExpect(item, p)
 		out = append(out, item)
 	}
-	for _, h := range openRows {
+	for _, h := range selectedTiming {
 		item := map[string]interface{}{
 			"kind":      "timing",
 			"historyId": h.Id,
