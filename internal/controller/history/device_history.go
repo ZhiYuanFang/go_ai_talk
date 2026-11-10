@@ -315,6 +315,28 @@ func (c *HistoryCtrl) EventLatest(ctx context.Context, req *v1.DeviceHistoryLate
 	return &v1.DeviceHistoryLatestRes{Item: item}, nil
 }
 
+// EventLatestByEvent 按 eventId 批量最近发生（纯 history；start_time；含未闭合）。
+func (c *HistoryCtrl) EventLatestByEvent(ctx context.Context, req *v1.DeviceHistoryLatestByEventReq) (res *v1.DeviceHistoryLatestByEventRes, err error) {
+	deviceNo := strings.TrimSpace(req.DeviceNo)
+	if deviceNo == "" {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "deviceNo 不能为空")
+	}
+	list, err := c.Svc.ListLatestHistoryByEvent(ctx, deviceNo)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]v1.DeviceHistoryLatestByEventItem, 0, len(list))
+	for _, it := range list {
+		out = append(out, v1.DeviceHistoryLatestByEventItem{
+			EventId:    it.EventId,
+			OccurredAt: it.OccurredAt,
+			Remark:     it.Remark,
+			HistoryId:  it.HistoryId,
+		})
+	}
+	return &v1.DeviceHistoryLatestByEventRes{List: out}, nil
+}
+
 // EventEndLatest 结束指定 eventId 的最近一条未闭合历史（内部契约；语义见 EndLatestHistoryIfMatch）。
 func (c *HistoryCtrl) EventEndLatest(ctx context.Context, req *v1.DeviceHistoryEndLatestReq) (res *v1.DeviceHistoryEndLatestRes, err error) {
 	deviceNo := strings.TrimSpace(req.DeviceNo)

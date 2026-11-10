@@ -38,6 +38,10 @@ func (s *localService) GetLatestHistory(ctx context.Context, deviceNo string) (e
 	return GetLatestDeviceHistory(ctx, deviceNo)
 }
 
+func (s *localService) ListLatestHistoryByEvent(ctx context.Context, deviceNo string) ([]contracts.HistoryLatestByEventItem, error) {
+	return ListLatestDeviceHistoryByEvent(ctx, deviceNo)
+}
+
 func (s *localService) EndLatestHistoryIfMatch(ctx context.Context, deviceNo string, eventID int64, endTimeUnixSec int64, remark string) (bool, error) {
 	return EndLatestDeviceHistoryIfMatch(ctx, deviceNo, eventID, endTimeUnixSec, remark)
 }
@@ -141,6 +145,51 @@ func ListDeviceHistoryPage(ctx context.Context, deviceNo string, page int, pageS
 		items = append(items, historyRowToEntity(row))
 	}
 	return contracts.HistoryPageResult{List: items, Total: total, Page: page, PageSize: pageSize}, nil
+}
+
+// ListLatestDeviceHistoryByEvent 纯 history：每 event_id 取 start_time 最大的一条（含未闭合）。
+// 同 start_time 取 id 较大者。一次读设备全部候选行后内存折叠，避免 N+1。
+// Returns: 摘要列表（无历史为空切片）；Side Effects: 无写库、不加 Redis 读缓存。
+func ListLatestDeviceHistoryByEvent(ctx context.Context, deviceNo string) ([]contracts.HistoryLatestByEventItem, error) {
+	deviceNo = strings.TrimSpace(deviceNo)
+	if deviceNo == "" {
+		return []contracts.HistoryLatestByEventItem{}, nil
+	}
+	c := dao.History.Columns()
+	type row struct {
+		Id        int64  `json:"id"`
+		EventId   int64  `json:"eventId"`
+		StartTime int64  `json:"startTime"`
+		Remark    string `json:"remark"`
+	}
+	rows := make([]row, 0)
+	err := dao.History.Ctx(ctx).
+		Fields(c.Id, c.EventId, c.StartTime, c.Remark).
+		Where(c.DeviceNo, deviceNo).
+		OrderDesc(c.StartTime).
+		OrderDesc(c.Id).
+		Scan(&rows)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]contracts.HistoryLatestByEventItem, 0)
+	seen := make(map[int64]struct{})
+	for _, r := range rows {
+		if r.EventId <= 0 {
+			continue
+		}
+		if _, ok := seen[r.EventId]; ok {
+			continue
+		}
+		seen[r.EventId] = struct{}{}
+		out = append(out, contracts.HistoryLatestByEventItem{
+			EventId:    r.EventId,
+			OccurredAt: r.StartTime,
+			Remark:     strings.TrimSpace(r.Remark),
+			HistoryId:  r.Id,
+		})
+	}
+	return out, nil
 }
 
 func GetLatestDeviceHistory(ctx context.Context, deviceNo string) (entity.History, error) {

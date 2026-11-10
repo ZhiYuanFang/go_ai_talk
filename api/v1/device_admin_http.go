@@ -92,6 +92,7 @@ type DeviceAdminEventAddReq struct {
 	Logo          string `dc:"可选，表单文件字段 logo"`
 	ParentId      int64  `dc:"父事件 ID，0 为根；表单 parentId"`
 	IsAppointment int    `dc:"1=预约事件，表单 isAppointment，默认 0"`
+	MergePredict  int    `dc:"1=合并预测，表单 mergePredict，默认 0；仅有子根可开"`
 }
 
 // DeviceAdminEventAddRes 新增成功。
@@ -107,6 +108,7 @@ type DeviceAdminEventUpdateReq struct {
 	Logo          string `dc:"可选文件 logo"`
 	ParentId      int64  `dc:"父事件 ID，0 为根；编辑时表单 parentId，省略表示不修改"`
 	IsAppointment int    `dc:"1=预约事件，表单 isAppointment"`
+	MergePredict  int    `dc:"1=合并预测，表单 mergePredict；仅有子根可开"`
 }
 
 // DeviceAdminEventUpdateRes 更新成功。

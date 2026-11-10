@@ -34,6 +34,10 @@ func main() {
 		glog.Fatalf(ctx, "event is_appointment schema ensure failed: %v", err)
 		return
 	}
+	if err := device.EnsureEventMergePredictColumn(ctx); err != nil {
+		glog.Fatalf(ctx, "event merge_predict schema ensure failed: %v", err)
+		return
+	}
 	if err := device.EnsureAppointmentNextTable(ctx); err != nil {
 		glog.Fatalf(ctx, "appointment_next schema ensure failed: %v", err)
 		return

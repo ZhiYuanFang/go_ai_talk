@@ -161,6 +161,25 @@ type DeviceHistoryLatestRes struct {
 	Item entity.History `json:"item"`
 }
 
+// DeviceHistoryLatestByEventReq 按事件批量最近发生（纯 history；occurredAt=start_time；含未闭合）。
+type DeviceHistoryLatestByEventReq struct {
+	g.Meta   `path:"/device/history/api/event/latest-by-event" method:"get" tags:"device" summary:"按事件批量最近发生"`
+	DeviceNo string `json:"deviceNo" p:"deviceNo" dc:"设备号"`
+}
+
+// DeviceHistoryLatestByEventItem 单事件最近发生摘要。
+type DeviceHistoryLatestByEventItem struct {
+	EventId    int64  `json:"eventId"`
+	OccurredAt int64  `json:"occurredAt" dc:"发生时刻=start_time unix 秒"`
+	Remark     string `json:"remark,omitempty"`
+	HistoryId  int64  `json:"historyId,omitempty"`
+}
+
+// DeviceHistoryLatestByEventRes 批量最近发生响应。
+type DeviceHistoryLatestByEventRes struct {
+	List []DeviceHistoryLatestByEventItem `json:"list"`
+}
+
 // DeviceHistoryEndLatestReq 条件结束指定 eventId 的最近一条未闭合历史（end_time=0），不要求该行是全局最新。
 type DeviceHistoryEndLatestReq struct {
 	g.Meta   `path:"/device/history/api/event/end-latest" method:"post" tags:"device" summary:"结束指定事件最近一条未闭合历史"`

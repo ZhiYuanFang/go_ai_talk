@@ -105,6 +105,7 @@ type DeviceInternalEventAddReq struct {
 	Unit          string `json:"unit"`
 	ParentId      int64  `json:"parentId"`
 	IsAppointment int    `json:"isAppointment" dc:"1=预约事件，默认 0"`
+	MergePredict  int    `json:"mergePredict" dc:"1=合并预测，默认 0；仅有子根可开"`
 }
 
 type DeviceInternalEventAddRes struct{}
@@ -119,6 +120,7 @@ type DeviceInternalEventUpdateReq struct {
 	// ParentId 非空时修改 parent_id；省略或 null 表示不修改父节点。
 	ParentId      *int64 `json:"parentId"`
 	IsAppointment int    `json:"isAppointment" dc:"1=预约事件，默认 0"`
+	MergePredict  int    `json:"mergePredict" dc:"1=合并预测，默认 0；仅有子根可开"`
 }
 
 type DeviceInternalEventUpdateRes struct{}

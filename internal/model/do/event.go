@@ -20,4 +20,5 @@ type Event struct {
 	Logo          interface{} //
 	ParentId      interface{} // 父类ID
 	IsAppointment interface{} // 1=预约事件
+	MergePredict  interface{} // 1=合并预测（仅有子根）
 }

@@ -29,6 +29,7 @@ type EventColumns struct {
 	Logo          string //
 	ParentId      string // 父类ID
 	IsAppointment string // 1=预约事件（不按作息间隔预测）
+	MergePredict  string // 1=合并预测（仅有子根；供 Flutter）
 }
 
 // eventColumns holds the columns for table event.
@@ -42,6 +43,7 @@ var eventColumns = EventColumns{
 	Logo:          "logo",
 	ParentId:      "parent_id",
 	IsAppointment: "is_appointment",
+	MergePredict:  "merge_predict",
 }
 
 // NewEventDao creates and returns a new DAO object for table data access.

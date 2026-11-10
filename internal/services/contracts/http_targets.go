@@ -85,6 +85,11 @@ func (t HTTPTargets) HistoryEventLatestPath() string {
 	return "/device/history/api/event/latest"
 }
 
+// HistoryEventLatestByEventPath 按事件批量最近发生（纯 history）。
+func (t HTTPTargets) HistoryEventLatestByEventPath() string {
+	return "/device/history/api/event/latest-by-event"
+}
+
 func (t HTTPTargets) HistoryEventEndLatestPath() string {
 	return "/device/history/api/event/end-latest"
 }

@@ -15,6 +15,7 @@ import (
 	sharedtypes "hello/internal/shared/types"
 
 	"github.com/gogf/gf/v2/frame/g"
+	"github.com/gogf/gf/v2/os/glog"
 )
 
 const fixedDeviceAdminPassword = "a521521521"
@@ -240,7 +241,7 @@ func (s *service) List(ctx context.Context) ([]entity.User, error) {
 func eventListFields() []interface{} {
 	c := dao.Event.Columns()
 	return []interface{}{
-		c.Id, c.Name, c.EventType, c.Unit, c.ExtraNames, c.Logo, c.Color, c.ParentId, c.IsAppointment,
+		c.Id, c.Name, c.EventType, c.Unit, c.ExtraNames, c.Logo, c.Color, c.ParentId, c.IsAppointment, c.MergePredict,
 	}
 }
 
@@ -250,6 +251,37 @@ func normalizeIsAppointment(v int) int {
 		return 1
 	}
 	return 0
+}
+
+// normalizeMergePredict 将合并预测标志规范为 0/1。
+func normalizeMergePredict(v int) int {
+	if v != 0 {
+		return 1
+	}
+	return 0
+}
+
+// resolveMergePredictForWrite 仅「parent_id=0 且存在直接子」可保留 1；否则强制 0。
+// eventID<=0 表示新增（尚无子），恒为 0。requested 为请求值；不满足条件时 WARN。
+func resolveMergePredictForWrite(ctx context.Context, eventID, parentID int64, requested int) (int, error) {
+	requested = normalizeMergePredict(requested)
+	if requested == 0 {
+		return 0, nil
+	}
+	parentID = normalizeEventParentID(parentID)
+	if parentID != 0 || eventID <= 0 {
+		glog.Warningf(ctx, "[event-merge-predict] force 0 reason=not_root_with_children eventId=%d parentId=%d", eventID, parentID)
+		return 0, nil
+	}
+	n, err := dao.Event.Ctx(ctx).Where(dao.Event.Columns().ParentId, eventID).Count()
+	if err != nil {
+		return 0, err
+	}
+	if n == 0 {
+		glog.Warningf(ctx, "[event-merge-predict] force 0 reason=root_without_children eventId=%d", eventID)
+		return 0, nil
+	}
+	return 1, nil
 }
 
 // NormalizeEventParentIDForAPI 将 parent_id 规范为非负；0 表示根节点（供 HTTP 层解析表单）。
@@ -337,7 +369,9 @@ func normalizeEventRows(rows []entity.Event) {
 	}
 }
 
-func (s *service) AddEvent(ctx context.Context, name string, eventType string, extraNames, color, unit, logoPath string, parentID int64, isAppointment int) (int64, error) {
+// AddEvent 新增事件字典。
+// mergePredict 入参保留与 Update 对称；新增时尚无子节点，写库恒为 0。
+func (s *service) AddEvent(ctx context.Context, name string, eventType string, extraNames, color, unit, logoPath string, parentID int64, isAppointment, mergePredict int) (int64, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return 0, errors.New("事件名称不能为空")
@@ -351,6 +385,11 @@ func (s *service) AddEvent(ctx context.Context, name string, eventType string, e
 	eventType = NormalizeEventType(eventType)
 	parentID = normalizeEventParentID(parentID)
 	isAppointment = normalizeIsAppointment(isAppointment)
+	// 新增行尚无直接子，合并预测不可开；resolve 用 eventID=0 强制 0。
+	mergePredict, err := resolveMergePredictForWrite(ctx, 0, parentID, mergePredict)
+	if err != nil {
+		return 0, err
+	}
 	if parentID > 0 {
 		parentCount, err := dao.Event.Ctx(ctx).Where(dao.Event.Columns().Id, parentID).Count()
 		if err != nil {
@@ -377,6 +416,7 @@ func (s *service) AddEvent(ctx context.Context, name string, eventType string, e
 		dao.Event.Columns().Logo:          logoPath,
 		dao.Event.Columns().ParentId:      parentID,
 		dao.Event.Columns().IsAppointment: isAppointment,
+		dao.Event.Columns().MergePredict:  mergePredict,
 	}).Insert()
 	if err != nil {
 		msg := strings.ToLower(err.Error())
@@ -419,8 +459,8 @@ func (s *service) CountNonLeafEvents(ctx context.Context) (int, error) {
 }
 
 // UpdateEvent 更新事件字典；parentID 非 nil 时同时修改 parent_id（0 表示升为根）。
-// isAppointment 为 0/1 预约标志（与 eventType 正交）。
-func (s *service) UpdateEvent(ctx context.Context, id int64, name string, eventType string, extraNames, color, unit, logoPath string, parentID *int64, isAppointment int) error {
+// isAppointment 为 0/1 预约标志；mergePredict 仅有子根可置 1，否则强制 0。
+func (s *service) UpdateEvent(ctx context.Context, id int64, name string, eventType string, extraNames, color, unit, logoPath string, parentID *int64, isAppointment, mergePredict int) error {
 	if id <= 0 {
 		return errors.New("事件ID无效")
 	}
@@ -458,6 +498,10 @@ func (s *service) UpdateEvent(ctx context.Context, id int64, name string, eventT
 			}
 		}
 	}
+	mergePredict, err = resolveMergePredictForWrite(ctx, id, targetParent, mergePredict)
+	if err != nil {
+		return err
+	}
 	exists, err := eventNameExistsUnderParent(ctx, targetParent, name, id)
 	if err != nil {
 		return err
@@ -472,6 +516,7 @@ func (s *service) UpdateEvent(ctx context.Context, id int64, name string, eventT
 		dao.Event.Columns().ExtraNames:    strings.TrimSpace(extraNames),
 		dao.Event.Columns().Color:         strings.TrimSpace(color),
 		dao.Event.Columns().IsAppointment: isAppointment,
+		dao.Event.Columns().MergePredict:  mergePredict,
 	}
 	if parentID != nil {
 		data[dao.Event.Columns().ParentId] = targetParent
@@ -492,6 +537,7 @@ func (s *service) UpdateEvent(ctx context.Context, id int64, name string, eventT
 	return err
 }
 
+// DeleteEvent 删除叶子事件；若原父变为「无子根」则清零父的 merge_predict。
 func (s *service) DeleteEvent(ctx context.Context, id int64) error {
 	if id <= 0 {
 		return errors.New("事件ID无效")
@@ -510,9 +556,61 @@ func (s *service) DeleteEvent(ctx context.Context, id int64) error {
 	if childCount > 0 {
 		return ErrEventHasChildren
 	}
+	// 删前记下父 id，供删后判断是否变为无子根。
+	var existing entity.Event
+	if err := dao.Event.Ctx(ctx).Where(dao.Event.Columns().Id, id).
+		Fields(dao.Event.Columns().ParentId).
+		Scan(&existing); err != nil {
+		return err
+	}
+	parentOfDeleted := normalizeEventParentID(existing.ParentId)
 	_, err = dao.Event.Ctx(ctx).Where(dao.Event.Columns().Id, id).Delete()
+	if err != nil {
+		return err
+	}
+	if parentOfDeleted > 0 {
+		if clearErr := clearMergePredictIfChildlessRoot(ctx, parentOfDeleted); clearErr != nil {
+			glog.Warningf(ctx, "[event-merge-predict] clear parent after delete failed parentId=%d err=%v", parentOfDeleted, clearErr)
+		}
+	}
+	refreshEventOptionsCacheAfterMutate(ctx)
+	return nil
+}
+
+// clearMergePredictIfChildlessRoot 若 eventID 为根且已无直接子，则强制 merge_predict=0。
+func clearMergePredictIfChildlessRoot(ctx context.Context, eventID int64) error {
+	if eventID <= 0 {
+		return nil
+	}
+	// 可能无行（父已被删）：用 One+IsEmpty，禁止把空集当系统失败。
+	record, err := dao.Event.Ctx(ctx).Where(dao.Event.Columns().Id, eventID).
+		Fields(dao.Event.Columns().Id, dao.Event.Columns().ParentId, dao.Event.Columns().MergePredict).
+		One()
+	if err != nil {
+		return err
+	}
+	if record.IsEmpty() {
+		return nil
+	}
+	var row entity.Event
+	if err := record.Struct(&row); err != nil {
+		return err
+	}
+	if normalizeEventParentID(row.ParentId) != 0 {
+		return nil
+	}
+	remain, err := dao.Event.Ctx(ctx).Where(dao.Event.Columns().ParentId, eventID).Count()
+	if err != nil {
+		return err
+	}
+	if remain > 0 || normalizeMergePredict(row.MergePredict) == 0 {
+		return nil
+	}
+	_, err = dao.Event.Ctx(ctx).Where(dao.Event.Columns().Id, eventID).Data(g.Map{
+		dao.Event.Columns().MergePredict: 0,
+	}).Update()
 	if err == nil {
-		refreshEventOptionsCacheAfterMutate(ctx)
+		glog.Infof(ctx, "[event-merge-predict] cleared merge_predict on childless root eventId=%d", eventID)
 	}
 	return err
 }

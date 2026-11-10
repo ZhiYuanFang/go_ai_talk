@@ -60,11 +60,11 @@ func (c *VoiceAdminPredictReportCtrl) ImminentPendingGet(ctx context.Context, re
 			EventId:           it.EventId,
 			NextAt:            it.NextAt,
 			Title:             it.Title,
+			ParentEventName:   it.ParentEventName,
 			ExpectKind:        it.ExpectKind,
 			ExpectDurationSec: it.ExpectDurationSec,
 			ExpectAmount:      it.ExpectAmount,
 			ExpectUnit:        it.ExpectUnit,
-			ExpectLeafTitle:   it.ExpectLeafTitle,
 		})
 	}
 	return &v1.VoiceAdminPredictImminentPendingGetRes{Events: out}, nil

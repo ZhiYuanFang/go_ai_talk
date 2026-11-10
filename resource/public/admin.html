@@ -131,6 +131,7 @@
 						<th>色调</th>
 						<th>事件类型</th>
 						<th>预约</th>
+						<th>合并预测</th>
 						<th>单位</th>
 						<th>事件扩展</th>
 						<th>操作</th>
@@ -213,6 +214,11 @@
 				<input type="checkbox" id="eventFormIsAppointment" />
 				<span>预约事件（如疫苗；不按作息间隔预测）</span>
 			</label>
+			<label style="display:flex;align-items:center;gap:8px;margin-top:10px;">
+				<input type="checkbox" id="eventFormMergePredict" />
+				<span>合并预测（仅有子节点的根事件；供 Flutter 预测算法）</span>
+			</label>
+			<p id="eventFormMergePredictHint" class="msg" style="color:#64748b;margin:4px 0 0;font-size:12px;"></p>
 			<div id="eventFormParentWrap" class="hidden" style="margin-top:10px;">
 				<label style="font-size:13px;color:#444;display:block;margin-bottom:6px;">父事件
 					<select id="eventFormParentSelect" style="display:block;margin-top:6px;min-width:260px;max-width:100%;"></select>
@@ -296,6 +302,8 @@ const eventFormEventType = document.getElementById('eventFormEventType');
 const eventFormExtraNames = document.getElementById('eventFormExtraNames');
 const eventFormUnit = document.getElementById('eventFormUnit');
 const eventFormIsAppointment = document.getElementById('eventFormIsAppointment');
+const eventFormMergePredict = document.getElementById('eventFormMergePredict');
+const eventFormMergePredictHint = document.getElementById('eventFormMergePredictHint');
 const eventFormColor = document.getElementById('eventFormColor');
 const eventFormLogo = document.getElementById('eventFormLogo');
 const eventFormLogoPreview = document.getElementById('eventFormLogoPreview');
@@ -495,6 +503,7 @@ async function submitEventRowUpdate(row, opts){
 		fd.append('color', opts && opts.color != null ? opts.color : normalizeEventColor(row.color));
 		fd.append('parentId', String(Number(row.parentId || 0)));
 		fd.append('isAppointment', row.isAppointment ? '1' : '0');
+		fd.append('mergePredict', row.mergePredict ? '1' : '0');
 		if(opts && opts.logoFile){ fd.append('logo', opts.logoFile); }
 		await apiForm('/device/admin/api/event/update', fd);
 		setMsg(eventMsg, '已更新', true);
@@ -597,9 +606,11 @@ async function loadDeviceRecordList(page){
 }
 
 function buildEventRowData(it){
-	// 列表行必须保留接口字段；漏拷 isAppointment 会导致预约列恒为「否」。
+	// 列表行必须保留接口字段；漏拷 isAppointment / mergePredict 会导致列恒为「否」。
 	const apptRaw = it.isAppointment != null ? it.isAppointment : it.is_appointment;
 	const isAppointment = (apptRaw === true || apptRaw === 1 || apptRaw === '1') ? 1 : 0;
+	const mergeRaw = it.mergePredict != null ? it.mergePredict : it.merge_predict;
+	const mergePredict = (mergeRaw === true || mergeRaw === 1 || mergeRaw === '1') ? 1 : 0;
 	return {
 		id: Number(it.id||0),
 		name: String(it.name||''),
@@ -609,8 +620,39 @@ function buildEventRowData(it){
 		logo: String(it.logo||''),
 		unit: String(it.unit||''),
 		eventType: normalizeEventType(it.eventType),
-		isAppointment: isAppointment
+		isAppointment: isAppointment,
+		mergePredict: mergePredict
 	};
+}
+
+/** 是否存在 parentId === eventId 的直接子（用于合并预测勾选条件）。 */
+function eventHasDirectChild(eventId){
+	const id = Number(eventId||0);
+	if(id <= 0) return false;
+	return (eventListCache || []).some(it => Number(it.parentId||0) === id);
+}
+
+/**
+ * 同步合并预测勾选可用性：仅「根且有直接子」可勾；否则禁用并取消勾选。
+ * @param {{parentId?:number, eventId?:number, checked?:boolean}} opts
+ */
+function syncEventFormMergePredictEnabled(opts){
+	if(!eventFormMergePredict) return;
+	const parentId = Number(opts && opts.parentId != null ? opts.parentId : 0);
+	const eventId = Number(opts && opts.eventId != null ? opts.eventId : 0);
+	const can = parentId === 0 && eventId > 0 && eventHasDirectChild(eventId);
+	eventFormMergePredict.disabled = !can;
+	if(!can){
+		eventFormMergePredict.checked = false;
+		if(eventFormMergePredictHint){
+			eventFormMergePredictHint.textContent = parentId !== 0
+				? '叶子事件不可开启合并预测'
+				: (eventId <= 0 ? '新增时尚无子节点，不可开启' : '无子根事件不可开启合并预测');
+		}
+	}else{
+		if(opts && opts.checked != null) eventFormMergePredict.checked = !!opts.checked;
+		if(eventFormMergePredictHint) eventFormMergePredictHint.textContent = '';
+	}
 }
 
 /** 将扁平事件列表按 parentId 排成森林遍历序（根 id 升序，子 id 升序）。 */
@@ -679,6 +721,16 @@ function fillEventFormParentSelect(editingRow){
 	const cur = Number(editingRow.parentId || 0);
 	sel.value = String(cur > 0 ? cur : 0);
 	wrap.classList.remove('hidden');
+	// 改父节点时同步合并预测可用性（叶子 / 无子根不可勾）。
+	sel.onchange = function(){
+		const pid = Number(sel.value || 0);
+		eventFormParentId = pid;
+		syncEventFormMergePredictEnabled({
+			parentId: pid,
+			eventId: editingEventId,
+			checked: eventFormMergePredict ? eventFormMergePredict.checked : false
+		});
+	};
 }
 
 function openEventAddModal(parentRow){
@@ -696,6 +748,7 @@ function openEventAddModal(parentRow){
 	eventFormUnit.value = '';
 	eventFormExtraNames.value = '';
 	if(eventFormIsAppointment) eventFormIsAppointment.checked = false;
+	syncEventFormMergePredictEnabled({ parentId: eventFormParentId, eventId: 0, checked: false });
 	eventFormLogo.value = '';
 	eventFormMsg.textContent = '';
 	updateEventFormVisual(null);
@@ -761,6 +814,8 @@ function appendEventTableRow(tbody, row, depth){
 	tdType.textContent = eventTypeLabel(row.eventType);
 	const tdAppt = document.createElement('td');
 	tdAppt.textContent = row.isAppointment ? '是' : '否';
+	const tdMerge = document.createElement('td');
+	tdMerge.textContent = row.mergePredict ? '是' : '否';
 	const tdUnit = document.createElement('td');
 	tdUnit.textContent = row.unit || '';
 	const tdExtra = document.createElement('td');
@@ -790,6 +845,11 @@ function appendEventTableRow(tbody, row, depth){
 		eventFormMsg.textContent = '';
 		updateEventFormVisual(row);
 		fillEventFormParentSelect(row);
+		syncEventFormMergePredictEnabled({
+			parentId: eventFormParentId,
+			eventId: row.id,
+			checked: !!row.mergePredict
+		});
 		eventModal.classList.add('show');
 	});
 	const btnDel = document.createElement('button');
@@ -813,7 +873,7 @@ function appendEventTableRow(tbody, row, depth){
 	tdAct.appendChild(document.createTextNode(' '));
 	tdAct.appendChild(btnDel);
 
-	tr.append(tdId, tdName, tdLogo, tdColor, tdType, tdAppt, tdUnit, tdExtra, tdAct);
+	tr.append(tdId, tdName, tdLogo, tdColor, tdType, tdAppt, tdMerge, tdUnit, tdExtra, tdAct);
 	tbody.appendChild(tr);
 }
 
@@ -1122,6 +1182,9 @@ eventFormSubmitBtn.addEventListener('click', async () => {
 		fd.append('unit', unit);
 		fd.append('color', color);
 		fd.append('isAppointment', (eventFormIsAppointment && eventFormIsAppointment.checked) ? '1' : '0');
+		// disabled 勾选不会进 FormData 语义外提交；显式按可用状态写 0/1，与服务端强制规则一致。
+		const mergeOn = !!(eventFormMergePredict && !eventFormMergePredict.disabled && eventFormMergePredict.checked);
+		fd.append('mergePredict', mergeOn ? '1' : '0');
 		if(eventFormLogo.files && eventFormLogo.files[0]){
 			fd.append('logo', eventFormLogo.files[0]);
 		}

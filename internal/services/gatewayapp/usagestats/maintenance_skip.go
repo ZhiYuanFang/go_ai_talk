@@ -42,11 +42,13 @@ var maintenanceExactAPI = map[string]struct{}{
 	"GET /cash/app/api/invite/mine":     {},
 	"GET /cash/app/api/invite/invitees": {},
 	"GET /ucg/app/api/force/ledger":     {},
-	// 负责人确认：下列四条不计入 usage，仅精确匹配该方法与路径。
+	// 负责人确认：下列不计入 usage，仅精确匹配该方法与路径。
 	"GET /device/history/api/filter":           {},
-	"GET /ucg/app/api/notifications/comments":  {},
-	"GET /cash/app/api/vip/status":             {},
-	"PUT /device/api/predict/imminent/pending": {},
+	// 按事件批量最近发生：负责人确认不计入 usage（predict-merge-predict-contract；对标 filter）。
+	"GET /device/history/api/event/latest-by-event": {},
+	"GET /ucg/app/api/notifications/comments":       {},
+	"GET /cash/app/api/vip/status":                  {},
+	"PUT /device/api/predict/imminent/pending":       {},
 	// 进行中计时 ETA 全量同步：负责人确认不计入 usage（predict-active-timing-eta；对标 imminent pending）。
 	"PUT /device/api/predict/active-eta/pending": {},
 	// 预约下次约定读写：负责人确认不计入 usage（appointment-event-next-at；客户端日历备忘同步）。

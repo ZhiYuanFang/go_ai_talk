@@ -170,6 +170,24 @@ func (r *historyRemoteClient) GetLatestHistory(ctx context.Context, deviceNo str
 	return resp.Item, err
 }
 
+func (r *historyRemoteClient) ListLatestHistoryByEvent(ctx context.Context, deviceNo string) ([]contracts.HistoryLatestByEventItem, error) {
+	if err := r.notReady(); err != nil {
+		return nil, err
+	}
+	var resp struct {
+		List []contracts.HistoryLatestByEventItem `json:"list"`
+	}
+	t := r.targets
+	err := r.doJSON(ctx, http.MethodGet, r.historyBase, t.HistoryEventLatestByEventPath(), map[string]string{"deviceNo": strings.TrimSpace(deviceNo)}, nil, &resp)
+	if err != nil {
+		return nil, err
+	}
+	if resp.List == nil {
+		return []contracts.HistoryLatestByEventItem{}, nil
+	}
+	return resp.List, nil
+}
+
 func (r *historyRemoteClient) EndLatestHistoryIfMatch(ctx context.Context, deviceNo string, eventID int64, endTimeUnixSec int64, remark string) (bool, error) {
 	if err := r.notReady(); err != nil {
 		return false, err
@@ -550,6 +568,20 @@ func (a *switchAdapter) GetLatestHistory(ctx context.Context, deviceNo string) (
 		glog.Debugf(ctx, "history cache refill type=latest source=remote deviceNo=%s id=%d", deviceNo, item.Id)
 	}
 	return item, err
+}
+
+// ListLatestHistoryByEvent 按事件最近发生；不走 latest 单条 Redis 缓存（批量只读，按次查库）。
+func (a *switchAdapter) ListLatestHistoryByEvent(ctx context.Context, deviceNo string) ([]contracts.HistoryLatestByEventItem, error) {
+	deviceNo = strings.TrimSpace(deviceNo)
+	if !a.shouldUseRemote(deviceNo) {
+		return a.local.ListLatestHistoryByEvent(ctx, deviceNo)
+	}
+	list, err := a.remote.ListLatestHistoryByEvent(ctx, deviceNo)
+	if err != nil && a.cfg.failoverToLocal {
+		glog.Warningf(ctx, "history degrade type=latest-by-event source=remote->local deviceNoLen=%d err=%v", len(deviceNo), err)
+		return a.local.ListLatestHistoryByEvent(ctx, deviceNo)
+	}
+	return list, err
 }
 
 func (a *switchAdapter) EndLatestHistoryIfMatch(ctx context.Context, deviceNo string, eventID int64, endTimeUnixSec int64, remark string) (bool, error) {

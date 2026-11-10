@@ -14,7 +14,7 @@ import (
 	"github.com/gogf/gf/v2/net/ghttp"
 )
 
-// deviceAdminEventAdd 管理端新增事件（multipart：name/eventType/extraNames/color/isAppointment，可选 logo）。
+// deviceAdminEventAdd 管理端新增事件（multipart：name/eventType/extraNames/color/isAppointment/mergePredict，可选 logo）。
 func AdminEventAdd(r *ghttp.Request, c *AdminCtrl) {
 	if r.Method != http.MethodPost {
 		r.Response.WriteStatusExit(http.StatusMethodNotAllowed)
@@ -30,7 +30,7 @@ func AdminEventAdd(r *ghttp.Request, c *AdminCtrl) {
 		writeDeviceAdminFail(r, gcode.CodeInvalidParameter, "multipart 解析失败")
 		return
 	}
-	name, eventType, extraNames, color, unit, isAppointment, err := parseEventMultipartFields(r)
+	name, eventType, extraNames, color, unit, isAppointment, mergePredict, err := parseEventMultipartFields(r)
 	if err != nil {
 		writeDeviceAdminFail(r, gcode.CodeInvalidParameter, err.Error())
 		return
@@ -39,7 +39,7 @@ func AdminEventAdd(r *ghttp.Request, c *AdminCtrl) {
 	if parentID < 0 {
 		parentID = 0
 	}
-	eventID, err := c.Admin.AddEvent(ctx, name, eventType, extraNames, color, unit, "", parentID, isAppointment)
+	eventID, err := c.Admin.AddEvent(ctx, name, eventType, extraNames, color, unit, "", parentID, isAppointment, mergePredict)
 	if err != nil {
 		writeDeviceAdminEventErr(r, err)
 		return
@@ -50,7 +50,7 @@ func AdminEventAdd(r *ghttp.Request, c *AdminCtrl) {
 		return
 	}
 	if logoPath != "" {
-		if err := c.Admin.UpdateEvent(ctx, eventID, name, eventType, extraNames, color, unit, logoPath, nil, isAppointment); err != nil {
+		if err := c.Admin.UpdateEvent(ctx, eventID, name, eventType, extraNames, color, unit, logoPath, nil, isAppointment, mergePredict); err != nil {
 			writeDeviceAdminEventErr(r, err)
 			return
 		}
@@ -79,7 +79,7 @@ func AdminEventUpdate(r *ghttp.Request, c *AdminCtrl) {
 		writeDeviceAdminFail(r, gcode.CodeInvalidParameter, "事件ID无效")
 		return
 	}
-	name, eventType, extraNames, color, unit, isAppointment, err := parseEventMultipartFields(r)
+	name, eventType, extraNames, color, unit, isAppointment, mergePredict, err := parseEventMultipartFields(r)
 	if err != nil {
 		writeDeviceAdminFail(r, gcode.CodeInvalidParameter, err.Error())
 		return
@@ -93,7 +93,7 @@ func AdminEventUpdate(r *ghttp.Request, c *AdminCtrl) {
 	if parentID, ok := eventParentIDFromMultipart(r); ok {
 		parentPtr = &parentID
 	}
-	if err := c.Admin.UpdateEvent(ctx, id, name, eventType, extraNames, color, unit, logoPath, parentPtr, isAppointment); err != nil {
+	if err := c.Admin.UpdateEvent(ctx, id, name, eventType, extraNames, color, unit, logoPath, parentPtr, isAppointment, mergePredict); err != nil {
 		writeDeviceAdminEventErr(r, err)
 		return
 	}
@@ -111,27 +111,28 @@ func eventParentIDFromMultipart(r *ghttp.Request) (int64, bool) {
 	return device.NormalizeEventParentIDForAPI(r.GetForm("parentId").Int64()), true
 }
 
-func parseEventMultipartFields(r *ghttp.Request) (name string, eventType string, extraNames, color, unit string, isAppointment int, err error) {
+func parseEventMultipartFields(r *ghttp.Request) (name string, eventType string, extraNames, color, unit string, isAppointment, mergePredict int, err error) {
 	name = strings.TrimSpace(r.GetForm("name").String())
 	if name == "" {
-		return "", "", "", "", "", 0, gerror.New("事件名称不能为空")
+		return "", "", "", "", "", 0, 0, gerror.New("事件名称不能为空")
 	}
 	eventType = device.NormalizeEventType(r.GetForm("eventType").String())
 	if err := device.ValidateEventType(eventType); err != nil {
-		return "", "", "", "", "", 0, err
+		return "", "", "", "", "", 0, 0, err
 	}
 	extraNames = r.GetForm("extraNames").String()
 	color = strings.TrimSpace(r.GetForm("color").String())
 	if err := device.ValidateEventColor(color); err != nil {
-		return "", "", "", "", "", 0, err
+		return "", "", "", "", "", 0, 0, err
 	}
 	unit = strings.TrimSpace(r.GetForm("unit").String())
-	isAppointment = parseIsAppointmentForm(r.GetForm("isAppointment").String())
-	return name, eventType, extraNames, color, unit, isAppointment, nil
+	isAppointment = parseBoolFormFlag(r.GetForm("isAppointment").String())
+	mergePredict = parseBoolFormFlag(r.GetForm("mergePredict").String())
+	return name, eventType, extraNames, color, unit, isAppointment, mergePredict, nil
 }
 
-// parseIsAppointmentForm 解析表单预约标志；1/true/on/yes 为预约，其余为 0。
-func parseIsAppointmentForm(raw string) int {
+// parseBoolFormFlag 解析表单 0/1 类标志；1/true/on/yes 为 1，其余为 0。
+func parseBoolFormFlag(raw string) int {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "1", "true", "on", "yes":
 		return 1

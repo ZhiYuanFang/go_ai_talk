@@ -11,7 +11,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	deviceclient "hello/internal/clients/device"
 	historyclient "hello/internal/clients/history"
@@ -35,8 +34,6 @@ const (
 	// predictImminentMaxDelayMs 对齐 rabbitmq_delayed_message_exchange 的 ERL_MAX_T（2^32−1 毫秒，约 49.7 天）。
 	// 超过该值插件会 nodelay 立刻投递，导致疫苗等远 nextAt 误推；超限时只写 Redis、不发 MQ。
 	predictImminentMaxDelayMs = 4294967295
-	// predictImminentExpectLeafMaxRunes 推送叶子名截断上限（Unicode 字符），防 alert 膨胀。
-	predictImminentExpectLeafMaxRunes = 32
 )
 
 var predictImminentCache = cachekit.Default()
@@ -60,15 +57,16 @@ func predictImminentPushDedupTTL() time.Duration {
 }
 
 // PredictImminentPendingItem Redis / MQ 共用待办项（含可选 expect，对账仍仅 eventId+nextAt）。
+// ParentEventName 供 Python 意图按根名反推；不参与调度/去重。expectLeafTitle 已废弃不落库。
 type PredictImminentPendingItem struct {
 	EventId           int64   `json:"eventId"`
 	NextAt            int64   `json:"nextAt"`
 	Title             string  `json:"title,omitempty"`
+	ParentEventName   string  `json:"parentEventName,omitempty"`
 	ExpectKind        string  `json:"expectKind,omitempty"`
 	ExpectDurationSec int64   `json:"expectDurationSec,omitempty"`
 	ExpectAmount      float64 `json:"expectAmount,omitempty"`
 	ExpectUnit        string  `json:"expectUnit,omitempty"`
-	ExpectLeafTitle   string  `json:"expectLeafTitle,omitempty"`
 }
 
 // predictImminentFirePayload 延时消息体；消费时须与 Redis 中 eventId+nextAt 一致；expect 透传供拼 alert。
@@ -81,7 +79,6 @@ type predictImminentFirePayload struct {
 	ExpectDurationSec int64   `json:"expectDurationSec,omitempty"`
 	ExpectAmount      float64 `json:"expectAmount,omitempty"`
 	ExpectUnit        string  `json:"expectUnit,omitempty"`
-	ExpectLeafTitle   string  `json:"expectLeafTitle,omitempty"`
 }
 
 // SyncPredictImminentPending 全量替换宝宝待办并为可调度条目发延时叫醒。
@@ -125,6 +122,7 @@ func SyncPredictImminentPending(ctx context.Context, wxID int64, deviceNo string
 			continue
 		}
 		it.Title = strings.TrimSpace(it.Title)
+		it.ParentEventName = strings.TrimSpace(it.ParentEventName)
 		if idx, ok := seen[it.EventId]; ok {
 			cleaned[idx] = it
 			continue
@@ -180,7 +178,6 @@ func SyncPredictImminentPending(ctx context.Context, wxID int64, deviceNo string
 			ExpectDurationSec: it.ExpectDurationSec,
 			ExpectAmount:      it.ExpectAmount,
 			ExpectUnit:        it.ExpectUnit,
-			ExpectLeafTitle:   it.ExpectLeafTitle,
 		}
 		if err := pub.PublishDelayed(ctx, eventkit.RoutingVoicePredictImminentFire.String(), delayMs, payload); err != nil {
 			glog.Warningf(ctx, "[predict-imminent] PublishDelayed failed deviceNoLen=%d eventId=%d err=%v", len(deviceNo), it.EventId, err)
@@ -530,9 +527,9 @@ func buildPredictImminentExpectSuffix(msg predictImminentFirePayload) string {
 		if msg.ExpectAmount <= 0 {
 			return ""
 		}
+		// expectLeafTitle 已废弃：仅拼数量+单位，兼容旧客户端仍传 leaf 但不消费。
 		unit := strings.TrimSpace(msg.ExpectUnit)
-		leaf := truncateRunes(strings.TrimSpace(msg.ExpectLeafTitle), predictImminentExpectLeafMaxRunes)
-		return "，预计这次约" + formatExpectAmountNumber(msg.ExpectAmount) + unit + leaf
+		return "，预计这次约" + formatExpectAmountNumber(msg.ExpectAmount) + unit
 	default:
 		// 空或未知 kind：整段忽略
 		return ""
@@ -581,16 +578,4 @@ func formatExpectAmountNumber(amount float64) string {
 	s := strconv.FormatFloat(amount, 'f', 1, 64)
 	s = strings.TrimRight(strings.TrimRight(s, "0"), ".")
 	return s
-}
-
-// truncateRunes 按 Unicode 字符数截断（非字节）。
-func truncateRunes(s string, max int) string {
-	if max <= 0 || s == "" {
-		return ""
-	}
-	if utf8.RuneCountInString(s) <= max {
-		return s
-	}
-	runes := []rune(s)
-	return string(runes[:max])
 }

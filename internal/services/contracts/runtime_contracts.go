@@ -91,9 +91,9 @@ type DeviceAdminContract interface {
 	ListWxPage(ctx context.Context, page, pageSize int, q string) (WxPageResult, error)
 	// TouchLastAPIAccess 记录设备最近一次对外 HTTP API（网关边缘或 internal 调用）。
 	TouchLastAPIAccess(ctx context.Context, deviceNo, apiPath string, atUnixSec int64) error
-	AddEvent(ctx context.Context, name string, eventType string, extraNames, color, unit, logoPath string, parentID int64, isAppointment int) (int64, error)
+	AddEvent(ctx context.Context, name string, eventType string, extraNames, color, unit, logoPath string, parentID int64, isAppointment, mergePredict int) (int64, error)
 	ListEvents(ctx context.Context) ([]entity.Event, error)
-	UpdateEvent(ctx context.Context, id int64, name string, eventType string, extraNames, color, unit, logoPath string, parentID *int64, isAppointment int) error
+	UpdateEvent(ctx context.Context, id int64, name string, eventType string, extraNames, color, unit, logoPath string, parentID *int64, isAppointment, mergePredict int) error
 	DeleteEvent(ctx context.Context, id int64) error
 	ListQAPage(ctx context.Context, page, pageSize int) (QaPageResult, error)
 	DeleteQA(ctx context.Context, id int64) error
@@ -121,6 +121,14 @@ type HistoryPageResult struct {
 	Total    int
 	Page     int
 	PageSize int
+}
+
+// HistoryLatestByEventItem 某 eventId 最近一次发生摘要（occurredAt=start_time；含未闭合）。
+type HistoryLatestByEventItem struct {
+	EventId     int64  `json:"eventId"`
+	OccurredAt  int64  `json:"occurredAt"`
+	Remark      string `json:"remark,omitempty"`
+	HistoryId   int64  `json:"historyId,omitempty"`
 }
 
 // QaPageResult 问答库分页列表（qa 表权威在 voice 库）。
@@ -174,6 +182,8 @@ type DeviceHistoryContract interface {
 	ListHistoryFilter(ctx context.Context, deviceNo string, eventIds []int64, startTime int64, endTime int64, limit int, remark string, ignoreTimeRange bool) ([]entity.History, error)
 	ListHistoryPageV2(ctx context.Context, deviceNo string, page int, pageSize int, startTime int64, endTime int64, limit int) (HistoryPageResult, error)
 	GetLatestHistory(ctx context.Context, deviceNo string) (entity.History, error)
+	// ListLatestHistoryByEvent 按 eventId 聚合最近一次发生（start_time 最大；含未闭合）；纯 history。
+	ListLatestHistoryByEvent(ctx context.Context, deviceNo string) ([]HistoryLatestByEventItem, error)
 	// EndLatestHistoryIfMatch 若该设备存在 eventID 对应且未闭合（end_time=0）的历史，则闭合其中 id 最大的一条并更新结束时间；
 	// 不要求该行是全局最新一条。remark 非空时同时覆盖备注，空串表示不修改原备注。无未闭合匹配时返回 updated=false。
 	EndLatestHistoryIfMatch(ctx context.Context, deviceNo string, eventID int64, endTimeUnixSec int64, remark string) (bool, error)

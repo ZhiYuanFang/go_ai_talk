@@ -41,11 +41,11 @@ func (c *DevicePredictImminentController) PendingPut(ctx context.Context, req *v
 			EventId:           e.EventId,
 			NextAt:            e.NextAt,
 			Title:             e.Title,
+			ParentEventName:   e.ParentEventName,
 			ExpectKind:        e.ExpectKind,
 			ExpectDurationSec: e.ExpectDurationSec,
 			ExpectAmount:      e.ExpectAmount,
 			ExpectUnit:        e.ExpectUnit,
-			ExpectLeafTitle:   e.ExpectLeafTitle,
 		})
 	}
 	n, err := voice.SyncPredictImminentPending(ctx, wxID, req.DeviceNo, items)

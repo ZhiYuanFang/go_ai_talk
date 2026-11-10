@@ -10,7 +10,7 @@ type PredictActiveEtaItem struct {
 	HistoryId   string `json:"historyId,omitempty" dc:"历史记录 ID；可选"`
 	Title       string `json:"title,omitempty" dc:"展示名；可空"`
 	StartAt     int64  `json:"startAt" dc:"开始 unix 秒"`
-	ExpectEndAt int64  `json:"expectEndAt" dc:"预计结束 unix 秒"`
+	ExpectEndAt int64  `json:"expectEndAt" dc:"预计结束 unix 秒；省略/0=无预计结束"`
 }
 
 // DevicePredictActiveEtaPendingPutReq 全量替换宝宝进行中 ETA 列表（最后写入赢；空 items 清空）。

@@ -15,4 +15,5 @@ type Event struct {
 	Logo          string `json:"logo"          ` //
 	ParentId      int64  `json:"parentId"      ` // 父类ID
 	IsAppointment int    `json:"isAppointment" ` // 1=预约事件（疫苗等；不按作息间隔预测）
+	MergePredict  int    `json:"mergePredict"  ` // 1=合并预测（仅有子根；供 Flutter 算法）
 }

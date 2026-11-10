@@ -157,6 +157,24 @@ func (r *httpDeviceHistoryClient) GetLatestHistory(ctx context.Context, deviceNo
 	return resp.Item, err
 }
 
+func (r *httpDeviceHistoryClient) ListLatestHistoryByEvent(ctx context.Context, deviceNo string) ([]contracts.HistoryLatestByEventItem, error) {
+	if err := r.notReady(); err != nil {
+		return nil, err
+	}
+	var resp struct {
+		List []contracts.HistoryLatestByEventItem `json:"list"`
+	}
+	t := r.targets
+	err := r.doJSON(ctx, http.MethodGet, r.historyBase, t.HistoryEventLatestByEventPath(), map[string]string{"deviceNo": strings.TrimSpace(deviceNo)}, nil, &resp)
+	if err != nil {
+		return nil, err
+	}
+	if resp.List == nil {
+		return []contracts.HistoryLatestByEventItem{}, nil
+	}
+	return resp.List, nil
+}
+
 func (r *httpDeviceHistoryClient) EndLatestHistoryIfMatch(ctx context.Context, deviceNo string, eventID int64, endTimeUnixSec int64, remark string) (bool, error) {
 	if err := r.notReady(); err != nil {
 		return false, err

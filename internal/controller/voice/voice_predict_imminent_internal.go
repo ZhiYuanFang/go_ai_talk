@@ -37,11 +37,11 @@ func (c *VoicePredictImminentInternalCtrl) Get(ctx context.Context, req *v1.Voic
 			EventId:           it.EventId,
 			NextAt:            it.NextAt,
 			Title:             it.Title,
+			ParentEventName:   it.ParentEventName,
 			ExpectKind:        it.ExpectKind,
 			ExpectDurationSec: it.ExpectDurationSec,
 			ExpectAmount:      it.ExpectAmount,
 			ExpectUnit:        it.ExpectUnit,
-			ExpectLeafTitle:   it.ExpectLeafTitle,
 		})
 	}
 	return &v1.VoiceInternalPredictImminentPendingGetRes{Events: out}, nil

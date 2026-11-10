@@ -127,7 +127,8 @@ func LoadPredictActiveEta(ctx context.Context, deviceNo string) ([]PredictActive
 	return list, nil
 }
 
-// cleanPredictActiveEtaItems 按 D3 丢弃非法项；同 leafEventId 后写覆盖；title trim；historyId 空串省略。
+// cleanPredictActiveEtaItems 清洗进行中 ETA：同 leafEventId 后写覆盖；title/historyId trim。
+// expectEndAt：省略/≤0 表示无预计结束，仍保留项；>0 时须 ≥ startAt，否则丢弃该项。
 func cleanPredictActiveEtaItems(items []PredictActiveEtaItem) []PredictActiveEtaItem {
 	cleaned := make([]PredictActiveEtaItem, 0, len(items))
 	seen := make(map[int64]int) // leafEventId -> index in cleaned
@@ -135,7 +136,14 @@ func cleanPredictActiveEtaItems(items []PredictActiveEtaItem) []PredictActiveEta
 		if it.RootEventId <= 0 || it.LeafEventId <= 0 {
 			continue
 		}
-		if it.StartAt <= 0 || it.ExpectEndAt <= 0 || it.ExpectEndAt < it.StartAt {
+		if it.StartAt <= 0 {
+			continue
+		}
+		// 无预计结束：归一为 0；有正结束则校验不早于开始。
+		if it.ExpectEndAt < 0 {
+			it.ExpectEndAt = 0
+		}
+		if it.ExpectEndAt > 0 && it.ExpectEndAt < it.StartAt {
 			continue
 		}
 		it.Title = strings.TrimSpace(it.Title)
