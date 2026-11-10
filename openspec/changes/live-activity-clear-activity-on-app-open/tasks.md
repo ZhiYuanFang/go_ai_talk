@@ -17,7 +17,7 @@
 - [x] 3.1 实现按 `(wxId, deviceKey)` 删除 `token_kind=activity` 的服务方法（无行幂等；不删 push_to_start；不同拍 start）
 - [x] 3.2 新增 `POST /app/api/push/live-activity/activity/clear`（`api/v1` + controller）；身份 `X-Internal-Wx-Id`；body `deviceKey`
 - [x] 3.3 确认 gateway `/app/api/push/*` 反代已覆盖；**不得**把 clear 加入 Bearer 豁免
-- [ ] 3.4 **先问负责人** clear 是否计入 usage；仅在明确答复后决定是否改 `maintenance_skip`（未答复不得假定）
+- [x] 3.4 **先问负责人** clear 是否计入 usage；仅在明确答复后决定是否改 `maintenance_skip`（未答复不得假定）
 
 ## 4. 联调与验收
 

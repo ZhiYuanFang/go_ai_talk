@@ -45,7 +45,7 @@
 5. **Gateway / usage**  
    - 从 `gatewayAppAuthExemptExactPOST` 移除 `/app/api/push/live-activity/ack`。  
    - 从 `maintenance_skip` 移除 ack 条目。  
-   - clear 是否计入 usage：**Open Question**，apply 前问负责人；未答复前 tasks 不得擅自加入 skip。
+   - clear **不计入 usage**：负责人已确认；`maintenance_skip` 增加 `POST /app/api/push/live-activity/activity/clear`（对标 register）。
 
 6. **Env**  
    删除 `LIVE_ACTIVITY_ACK_TIMEOUT_MS`（compose 注入、`.env.example`、`.env.prod` 等注释/赋值）。
@@ -69,4 +69,4 @@
 
 ## Open Questions
 
-- clear 接口是否计入 App API usage 统计？（**须问负责人**；未答复前不得改 `maintenance_skip` 假定策略。）
+- （无）clear 不计入 usage 已确认。

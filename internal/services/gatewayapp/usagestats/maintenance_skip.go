@@ -20,8 +20,9 @@ var maintenanceExactAPI = map[string]struct{}{
 	"POST /app/api/push/unregister": {},
 	// Live Activity token 注册：负责人确认不计入 usage（predict-live-activity-push；对标 push register）。
 	"POST /app/api/push/live-activity/register": {},
-	// live-activity/activity/clear：是否计入 usage 须负责人确认后再登记（live-activity-clear-activity-on-app-open）。
-	"GET /device/history/api/event/options": {},
+	// Live Activity clear activity token：负责人确认不计入 usage（live-activity-clear-activity-on-app-open；对标 register）。
+	"POST /app/api/push/live-activity/activity/clear": {},
+	"GET /device/history/api/event/options":           {},
 	"GET /ucg/app/api/conversations":        {},
 	"GET /device/app/api/user/get":          {},
 	"GET /device/history/api/list":          {},

@@ -26,7 +26,7 @@
 - `internal/services/push`：删 `push_live_activity_ack.go` 及相关 dispatch/schema/entity/upsert 字段；新增 clear 业务。
 - `api/v1` + `internal/controller/push`：删 ack 路由；新增 clear 路由。
 - `gateway-app`：从 `gateway_app_auth_exempt.go` 移除 ack path；clear **不得**加入豁免。
-- `usagestats/maintenance_skip.go`：移除 ack 条目；clear 是否计入 usage **须先问负责人**（未答复前不得假定 skip）。
+- `usagestats/maintenance_skip.go`：移除 ack 条目；clear **不计入 usage**（负责人已确认，已登记 skip）。
 - 环境变量 / compose / `.env*`：去掉 `LIVE_ACTIVITY_ACK_TIMEOUT_MS`。
 - 重部署：`push-service`、`gateway-app-server`（豁免表变更）；env 同步去掉 ack 超时变量。
 - 对照基线：`openspec/specs/v3.0.3`；承接未归档变更 `live-activity-update-ack-timeout` 的行为回滚与替换。
