@@ -65,14 +65,15 @@ func (c *AppPushCtrl) LiveActivityRegisterPost(ctx context.Context, req *v1.AppP
 	return &v1.AppPushLiveActivityRegisterPostRes{}, nil
 }
 
-// LiveActivityAckPost POST /app/api/push/live-activity/ack
-// 业务：iOS 原生在收到 update 后回传 ContentState.ack；对齐 register 免鉴权 + body.wxId。
-func (c *AppPushCtrl) LiveActivityAckPost(ctx context.Context, req *v1.AppPushLiveActivityAckPostReq) (res *v1.AppPushLiveActivityAckPostRes, err error) {
-	if req.WxId <= 0 {
-		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "wxId 无效")
-	}
-	if err = pushsvc.AckLiveActivityUpdate(ctx, req.WxId, req.DeviceKey, req.Ack); err != nil {
+// LiveActivityActivityClearPost POST /app/api/push/live-activity/activity/clear
+// 业务：Flutter 打开 App 发现本机无 LA 时清服务端 activity token；必须鉴权；身份 X-Internal-Wx-Id。
+func (c *AppPushCtrl) LiveActivityActivityClearPost(ctx context.Context, req *v1.AppPushLiveActivityActivityClearPostReq) (res *v1.AppPushLiveActivityActivityClearPostRes, err error) {
+	wxID, err := wxIDFromHeader(ctx)
+	if err != nil {
 		return nil, err
 	}
-	return &v1.AppPushLiveActivityAckPostRes{}, nil
+	if err = pushsvc.ClearLiveActivityActivityToken(ctx, wxID, req.DeviceKey); err != nil {
+		return nil, err
+	}
+	return &v1.AppPushLiveActivityActivityClearPostRes{}, nil
 }

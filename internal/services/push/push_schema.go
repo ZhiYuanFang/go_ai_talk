@@ -51,9 +51,6 @@ CREATE TABLE IF NOT EXISTS push_live_activity_token (
   device_key VARCHAR(64) NOT NULL,
   token_kind VARCHAR(32) NOT NULL,
   token VARCHAR(512) NOT NULL,
-  last_sent_ack VARCHAR(64) NOT NULL DEFAULT '',
-  last_acked_ack VARCHAR(64) NOT NULL DEFAULT '',
-  ack_sent_at BIGINT NOT NULL DEFAULT 0,
   updated_at BIGINT NOT NULL DEFAULT 0,
   PRIMARY KEY (id),
   UNIQUE KEY uk_la_token (wx_id, device_key, token_kind),
@@ -67,7 +64,8 @@ CREATE TABLE IF NOT EXISTS push_live_activity_token (
 	if err := ensureDropLiveActivitySlotColumns(ctx); err != nil {
 		return err
 	}
-	if err := ensureLiveActivityAckColumns(ctx); err != nil {
+	// 下线 update ack 回执列；updated_at 必须保留（upsert/去重）。
+	if err := ensureDropLiveActivityAckColumns(ctx); err != nil {
 		return err
 	}
 	return nil
@@ -108,31 +106,23 @@ ALTER TABLE push_live_activity_token ADD UNIQUE KEY uk_la_token (wx_id, device_k
 	return nil
 }
 
-// ensureLiveActivityAckColumns 幂等补齐 update 送达回执字段（仅 token_kind=activity 有业务意义）。
-// 业务：last_sent_ack / last_acked_ack / ack_sent_at 供 update 超时 failover；push_to_start 行保持默认空值即可。
-func ensureLiveActivityAckColumns(ctx context.Context) error {
-	cols := []struct {
-		name string
-		ddl  string
-	}{
-		{"last_sent_ack", `ALTER TABLE push_live_activity_token ADD COLUMN last_sent_ack VARCHAR(64) NOT NULL DEFAULT '' AFTER token`},
-		{"last_acked_ack", `ALTER TABLE push_live_activity_token ADD COLUMN last_acked_ack VARCHAR(64) NOT NULL DEFAULT '' AFTER last_sent_ack`},
-		{"ack_sent_at", `ALTER TABLE push_live_activity_token ADD COLUMN ack_sent_at BIGINT NOT NULL DEFAULT 0 AFTER last_acked_ack`},
-	}
-	for _, c := range cols {
+// ensureDropLiveActivityAckColumns 幂等 DROP 已废弃的 update ack 回执列。
+// 业务：改为 App 打开鉴权 clear activity token；MUST NOT DROP updated_at。
+func ensureDropLiveActivityAckColumns(ctx context.Context) error {
+	for _, col := range []string{"last_sent_ack", "last_acked_ack", "ack_sent_at"} {
 		n, err := g.DB().GetValue(ctx, `
 SELECT COUNT(*) FROM information_schema.COLUMNS
-WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'push_live_activity_token' AND COLUMN_NAME = ?`, c.name)
+WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'push_live_activity_token' AND COLUMN_NAME = ?`, col)
 		if err != nil {
 			return err
 		}
-		if n.Int() > 0 {
+		if n.Int() == 0 {
 			continue
 		}
-		if _, err := g.DB().Exec(ctx, c.ddl); err != nil {
+		if _, err := g.DB().Exec(ctx, `ALTER TABLE push_live_activity_token DROP COLUMN `+col); err != nil {
 			return err
 		}
-		glog.Infof(ctx, "[push-schema] push_live_activity_token.%s 已添加", c.name)
+		glog.Infof(ctx, "[push-schema] push_live_activity_token.%s 已删除", col)
 	}
 	return nil
 }

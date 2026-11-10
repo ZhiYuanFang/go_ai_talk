@@ -19,18 +19,14 @@ const (
 )
 
 // entityLiveActivityToken LA 专用 token 行（与 push_device 分表）。
-// 唯一键为 (wx, device_key, token_kind)；不再含 attributes_kind / activity_id。
-// last_sent_ack / last_acked_ack / ack_sent_at 仅 token_kind=activity 有业务意义（update 送达回执）。
+// 唯一键为 (wx, device_key, token_kind)；不再含 attributes_kind / activity_id / ack 回执列。
 type entityLiveActivityToken struct {
-	ID           uint64
-	WxID         int64
-	DeviceKey    string
-	TokenKind    string
-	Token        string
-	LastSentAck  string `orm:"last_sent_ack"`
-	LastAckedAck string `orm:"last_acked_ack"`
-	AckSentAt    int64  `orm:"ack_sent_at"`
-	UpdatedAt    int64
+	ID        uint64
+	WxID      int64
+	DeviceKey string
+	TokenKind string
+	Token     string
+	UpdatedAt int64
 }
 
 // RegisterLiveActivityToken 注册/更新 Push-to-Start 或 per-user activity update token。
@@ -64,21 +60,35 @@ func RegisterLiveActivityToken(ctx context.Context, wxID int64, deviceKey, token
 		"token":      token,
 		"updated_at": now,
 	}
-	var err error
-	if tokenKind == LATokenKindActivity {
-		// activity 重注册：清空回执字段，避免沿用旧 sent/acked。
-		data["last_sent_ack"] = ""
-		data["last_acked_ack"] = ""
-		data["ack_sent_at"] = 0
-		_, err = g.DB().Model(pushLiveActivityTokenTable).Ctx(ctx).Data(data).
-			OnDuplicate("token", "updated_at", "last_sent_ack", "last_acked_ack", "ack_sent_at").Save()
-	} else {
-		_, err = g.DB().Model(pushLiveActivityTokenTable).Ctx(ctx).Data(data).
-			OnDuplicate("token", "updated_at").Save()
-	}
+	_, err := g.DB().Model(pushLiveActivityTokenTable).Ctx(ctx).Data(data).
+		OnDuplicate("token", "updated_at").Save()
 	if err != nil {
 		return gerror.WrapCode(gcode.CodeDbOperationError, err, "写入 Live Activity token 失败")
 	}
+	return nil
+}
+
+// ClearLiveActivityActivityToken 按 (wx, deviceKey) 删除 token_kind=activity 行。
+//
+// 业务：App 打开发现本机无 LA 时由鉴权接口调用；无行幂等成功；MUST NOT 删 push_to_start；MUST NOT 同拍 start。
+// Side Effects: 可能 DELETE push_live_activity_token。
+func ClearLiveActivityActivityToken(ctx context.Context, wxID int64, deviceKey string) error {
+	if wxID <= 0 {
+		return gerror.NewCode(gcode.CodeInvalidParameter, "wxId 无效")
+	}
+	deviceKey = strings.TrimSpace(deviceKey)
+	if deviceKey == "" || len(deviceKey) > 64 {
+		return gerror.NewCode(gcode.CodeInvalidParameter, "deviceKey 无效")
+	}
+	_, err := g.DB().Model(pushLiveActivityTokenTable).Ctx(ctx).
+		Where("wx_id", wxID).
+		Where("device_key", deviceKey).
+		Where("token_kind", LATokenKindActivity).
+		Delete()
+	if err != nil {
+		return gerror.WrapCode(gcode.CodeDbOperationError, err, "清除 Live Activity activity token 失败")
+	}
+	g.Log().Warningf(ctx, "[push-la] activity_token_cleared wxId=%d deviceKey=%s", wxID, deviceKey)
 	return nil
 }
 

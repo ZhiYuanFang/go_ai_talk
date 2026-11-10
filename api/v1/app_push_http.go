@@ -36,14 +36,12 @@ type AppPushLiveActivityRegisterPostReq struct {
 // AppPushLiveActivityRegisterPostRes 注册成功。
 type AppPushLiveActivityRegisterPostRes struct{}
 
-// AppPushLiveActivityAckPostReq 回执 Live Activity update 送达（ContentState.ack）。
-// 业务：可无 Bearer（gateway 精确豁免，对齐 register）；身份 MUST 为 body.wxId；仅 ack==last_sent_ack 时更新 last_acked。
-type AppPushLiveActivityAckPostReq struct {
-	g.Meta    `path:"/app/api/push/live-activity/ack" method:"post" tags:"push" summary:"回执 Live Activity update ack"`
-	WxId      int64  `json:"wxId" v:"required|min:1" dc:"归属用户 wx 主键；免鉴权路径唯一身份来源"`
-	DeviceKey string `json:"deviceKey" v:"required|max-length:64"`
-	Ack       string `json:"ack" v:"required|max-length:64" dc:"与最近一次 update ContentState.ack 一致"`
+// AppPushLiveActivityActivityClearPostReq 清除本机 Live Activity activity update token。
+// 业务：必须 Bearer（gateway 不得豁免）；身份 MUST 为 X-Internal-Wx-Id；仅删该机 token_kind=activity，不删 push_to_start，不同拍 start。
+type AppPushLiveActivityActivityClearPostReq struct {
+	g.Meta    `path:"/app/api/push/live-activity/activity/clear" method:"post" tags:"push" summary:"清除本机 Live Activity activity token"`
+	DeviceKey string `json:"deviceKey" v:"required|max-length:64" dc:"本机 deviceKey；仅清该机 activity 行"`
 }
 
-// AppPushLiveActivityAckPostRes 回执受理（含 no-op 匹配失败 / 无行）。
-type AppPushLiveActivityAckPostRes struct{}
+// AppPushLiveActivityActivityClearPostRes 清除受理（无行亦成功）。
+type AppPushLiveActivityActivityClearPostRes struct{}
