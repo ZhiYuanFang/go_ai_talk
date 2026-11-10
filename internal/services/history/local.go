@@ -82,6 +82,10 @@ func (s *localService) DeleteHistory(ctx context.Context, id int64, deviceNo str
 	return DeleteDeviceHistory(ctx, id, deviceNo)
 }
 
+func (s *localService) ExpectBatchHistory(ctx context.Context, deviceNo string, items []contracts.HistoryExpectPatchItem) (bool, error) {
+	return ExpectBatchDeviceHistory(ctx, deviceNo, items)
+}
+
 func ListDeviceHistory(ctx context.Context, deviceNo string) ([]entity.History, error) {
 	deviceNo = strings.TrimSpace(deviceNo)
 	if deviceNo == "" {
@@ -514,6 +518,69 @@ func UpdateDeviceHistory(ctx context.Context, item entity.History) error {
 		afterHistoryMutationLiveActivity(ctx, item.DeviceNo)
 	}
 	return err
+}
+
+// expectBatchMaxItems tip 链最坏可接受上限（与 OpenSpec design 一致）。
+const expectBatchMaxItems = 200
+
+// ExpectBatchDeviceHistory 逐条只写 expect_*；单条失败跳过，不回滚已成功行。
+// 返回 ok=本批至少一条写成功。空 items / 超上限由 HTTP 层先拦 400；此处再防御一次并返回 err。
+func ExpectBatchDeviceHistory(ctx context.Context, deviceNo string, items []contracts.HistoryExpectPatchItem) (ok bool, err error) {
+	deviceNo = strings.TrimSpace(deviceNo)
+	if deviceNo == "" {
+		return false, fmt.Errorf("deviceNo 不能为空")
+	}
+	if len(items) == 0 {
+		return false, fmt.Errorf("items 不能为空")
+	}
+	if len(items) > expectBatchMaxItems {
+		return false, fmt.Errorf("items 超过上限 %d", expectBatchMaxItems)
+	}
+	success := 0
+	db := g.DB(dao.History.Group())
+	for _, it := range items {
+		// id 无效：跳过，不拖死其它条。
+		if it.Id <= 0 {
+			continue
+		}
+		data := historyExpectPatchData(it.ExpectStartTime, it.ExpectEndTime, it.ExpectAmount)
+		// 无 expect 列可写：不算成功更新，直接跳过。
+		if len(data) == 0 {
+			continue
+		}
+		// 先确认归属；避免外机 id 被当成功，也避免同值 UPDATE RowsAffected=0 误判失败。
+		row, qErr := db.Model(dao.History.Table()).
+			Fields(dao.History.Columns().Id).
+			Where(dao.History.Columns().Id, it.Id).
+			Where(dao.History.Columns().DeviceNo, deviceNo).
+			One()
+		if qErr != nil || row.IsEmpty() {
+			continue
+		}
+		_, uErr := db.Model(dao.History.Table()).
+			Where(dao.History.Columns().Id, it.Id).
+			Where(dao.History.Columns().DeviceNo, deviceNo).
+			Data(data).
+			Update()
+		if uErr != nil {
+			continue
+		}
+		// 写成功后再 reload：cache/WS 带完整 expect*（含未出现在补丁中的列）。
+		full, gErr := GetDeviceHistoryByID(ctx, it.Id, deviceNo)
+		if gErr != nil {
+			// 库已更新仍计成功；通知失败不回滚，也不拖死后续条。
+			success++
+			continue
+		}
+		historyCache.patchHistoryOnUpdate(ctx, full)
+		publishHistoryChange(ctx, deviceNo, "update", historyToNotifyPayload(ctx, full))
+		success++
+	}
+	if success > 0 {
+		bumpPieceCacheEpoch(ctx, deviceNo)
+		afterHistoryMutationLiveActivity(ctx, deviceNo)
+	}
+	return success > 0, nil
 }
 
 func DeleteDeviceHistory(ctx context.Context, id int64, deviceNo string) error {

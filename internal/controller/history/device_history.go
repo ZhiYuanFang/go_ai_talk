@@ -381,6 +381,36 @@ func (c *HistoryCtrl) EventOpenExists(ctx context.Context, req *v1.DeviceHistory
 	return &v1.DeviceHistoryOpenExistsRes{Open: open}, nil
 }
 
+// EventExpectBatch 批量只改 expect*；空 items / 超 200 → 400。
+// 逐条尝试：失败跳过；≥1 条成功 → {ok:true}，全失败 → {ok:false}（合法 batch 仍 200，无 results）。
+func (c *HistoryCtrl) EventExpectBatch(ctx context.Context, req *v1.DeviceHistoryEventExpectBatchReq) (res *v1.DeviceHistoryEventExpectBatchRes, err error) {
+	deviceNo := strings.TrimSpace(req.DeviceNo)
+	if deviceNo == "" {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "deviceNo 不能为空")
+	}
+	if len(req.Items) == 0 {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "items 不能为空")
+	}
+	if len(req.Items) > 200 {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "items 超过上限 200")
+	}
+	items := make([]contracts.HistoryExpectPatchItem, 0, len(req.Items))
+	for _, it := range req.Items {
+		// id<=0 交由 service 跳过，不因此 400 整请求。
+		items = append(items, contracts.HistoryExpectPatchItem{
+			Id:              it.Id,
+			ExpectStartTime: it.ExpectStartTime,
+			ExpectEndTime:   it.ExpectEndTime,
+			ExpectAmount:    it.ExpectAmount,
+		})
+	}
+	ok, svcErr := c.Svc.ExpectBatchHistory(ctx, deviceNo, items)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	return &v1.DeviceHistoryEventExpectBatchRes{Ok: ok}, nil
+}
+
 // EventBatch 按顺序执行多条增/改/删/结束；单条失败写入 results，不整单回滚。
 func (c *HistoryCtrl) EventBatch(ctx context.Context, req *v1.DeviceHistoryEventBatchReq) (res *v1.DeviceHistoryEventBatchRes, err error) {
 	deviceNo := strings.TrimSpace(req.DeviceNo)

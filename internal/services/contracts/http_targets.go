@@ -73,6 +73,11 @@ func (t HTTPTargets) HistoryEventBatchPath() string {
 	return "/device/history/api/event/batch"
 }
 
+// HistoryEventExpectBatchPath Flutter 锚点链批量只改 expect*（整批事务，响应 {ok}）。
+func (t HTTPTargets) HistoryEventExpectBatchPath() string {
+	return "/device/history/api/event/expect-batch"
+}
+
 func (t HTTPTargets) HistoryEventUpdatePath() string {
 	return "/device/history/api/event/update"
 }

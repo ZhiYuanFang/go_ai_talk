@@ -338,6 +338,40 @@ func (r *httpDeviceHistoryClient) DeleteHistory(ctx context.Context, id int64, d
 	return r.doJSON(ctx, http.MethodPost, r.historyBase, t.HistoryEventDeletePath(), nil, map[string]interface{}{"id": id, "deviceNo": strings.TrimSpace(deviceNo)}, nil)
 }
 
+// ExpectBatchHistory 调用 history expect-batch；仅透传非 nil expect*（omit 不改列）。
+// 返回对端 data.ok（≥1 条成功为 true）；HTTP/契约错误才返回 err。
+func (r *httpDeviceHistoryClient) ExpectBatchHistory(ctx context.Context, deviceNo string, items []contracts.HistoryExpectPatchItem) (bool, error) {
+	if err := r.notReady(); err != nil {
+		return false, err
+	}
+	bodyItems := make([]map[string]interface{}, 0, len(items))
+	for _, it := range items {
+		one := map[string]interface{}{"id": it.Id}
+		if it.ExpectStartTime != nil {
+			one["expectStartTime"] = *it.ExpectStartTime
+		}
+		if it.ExpectEndTime != nil {
+			one["expectEndTime"] = *it.ExpectEndTime
+		}
+		if it.ExpectAmount != nil {
+			one["expectAmount"] = *it.ExpectAmount
+		}
+		bodyItems = append(bodyItems, one)
+	}
+	t := r.targets
+	var resp struct {
+		Ok bool `json:"ok"`
+	}
+	err := r.doJSON(ctx, http.MethodPost, r.historyBase, t.HistoryEventExpectBatchPath(), nil, map[string]interface{}{
+		"deviceNo": strings.TrimSpace(deviceNo),
+		"items":    bodyItems,
+	}, &resp)
+	if err != nil {
+		return false, err
+	}
+	return resp.Ok, nil
+}
+
 type responseEnvelope struct {
 	Code    int             `json:"code"`
 	Message string          `json:"message"`

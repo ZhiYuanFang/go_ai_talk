@@ -185,6 +185,24 @@ func historyInsertData(item entity.History) map[string]interface{} {
 	return data
 }
 
+// historyExpectPatchData 构造 expect-batch 专用 UPDATE 列集合。
+// 业务约束：仅包含非 nil 的 expect_*；全缺则返回空 map（调用方做归属校验后 no-op）。
+// 与 historyUpdateData 隔离：普通 update/batch 冻结路径永不写 expect_*。
+func historyExpectPatchData(expectStartTime, expectEndTime *int64, expectAmount *float64) map[string]interface{} {
+	c := dao.History.Columns()
+	data := make(map[string]interface{}, 3)
+	if expectStartTime != nil {
+		data[c.ExpectStartTime] = *expectStartTime
+	}
+	if expectEndTime != nil {
+		data[c.ExpectEndTime] = *expectEndTime
+	}
+	if expectAmount != nil {
+		data[c.ExpectAmount] = *expectAmount
+	}
+	return data
+}
+
 // historyUpdateData 构造 UPDATE 列集合。
 // 业务约束：永远不包含 expect_*，避免停表/改名等路径用结构体零值抹掉已落库的预计字段。
 func historyUpdateData(item entity.History) map[string]interface{} {

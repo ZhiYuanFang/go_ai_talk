@@ -242,6 +242,28 @@ type DeviceHistoryEventBatchRes struct {
 	Results []DeviceHistoryEventBatchItemRes `json:"results"`
 }
 
+// DeviceHistoryEventExpectBatchItem expect-batch 单条补丁：仅出现的 expect* 键会更新对应列。
+// v1 不做 JSON null 清列；缺键 = 不改。
+type DeviceHistoryEventExpectBatchItem struct {
+	Id              int64    `json:"id" dc:"历史行主键，MUST > 0"`
+	ExpectStartTime *int64   `json:"expectStartTime,omitempty" dc:"预计开始，Unix 秒；可选"`
+	ExpectEndTime   *int64   `json:"expectEndTime,omitempty" dc:"预计结束，Unix 秒；可选"`
+	ExpectAmount    *float64 `json:"expectAmount,omitempty" dc:"预计数量；可选"`
+}
+
+// DeviceHistoryEventExpectBatchReq Flutter 锚点链批量只改 expect*；空 items / 超 200 条 → 400。
+// 逐条尝试，单条失败跳过；响应仅 {ok}，无 per-item results。
+type DeviceHistoryEventExpectBatchReq struct {
+	g.Meta   `path:"/device/history/api/event/expect-batch" method:"post" tags:"device" summary:"批量补丁历史预计字段"`
+	DeviceNo string                              `json:"deviceNo" dc:"设备号"`
+	Items    []DeviceHistoryEventExpectBatchItem `json:"items" dc:"补丁列表，1～200 条"`
+}
+
+// DeviceHistoryEventExpectBatchRes ≥1 条写成功为 ok=true；全失败 ok=false；无 per-item results。
+type DeviceHistoryEventExpectBatchRes struct {
+	Ok bool `json:"ok" dc:"本批至少一条成功更新为 true"`
+}
+
 // DeviceHistoryPieceReq 区段内某类事件的历史记录（用于趋势图）。
 type DeviceHistoryPieceReq struct {
 	g.Meta    `path:"/device/history/api/piece" method:"get" tags:"device" summary:"历史区段查询"`

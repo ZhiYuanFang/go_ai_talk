@@ -198,4 +198,16 @@ type DeviceHistoryContract interface {
 	AddHistory(ctx context.Context, item entity.History) (int64, error)
 	UpdateHistory(ctx context.Context, item entity.History) error
 	DeleteHistory(ctx context.Context, id int64, deviceNo string) error
+	// ExpectBatchHistory 逐条只写 expect_*；items 须非空且 ≤200（由调用方或实现校验）。
+	// 缺键不改列；单条失败跳过、不回滚其它。ok=true 表示本批至少一条写成功；合法 batch 时 err 应为 nil。
+	// 成功条由实现侧 reload 全行再刷 cache/WS。
+	ExpectBatchHistory(ctx context.Context, deviceNo string, items []HistoryExpectPatchItem) (ok bool, err error)
+}
+
+// HistoryExpectPatchItem expect-batch 单条补丁（指针 omit = 不改该列）。
+type HistoryExpectPatchItem struct {
+	Id              int64
+	ExpectStartTime *int64
+	ExpectEndTime   *int64
+	ExpectAmount    *float64
 }

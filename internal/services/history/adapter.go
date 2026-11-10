@@ -351,6 +351,38 @@ func (r *historyRemoteClient) DeleteHistory(ctx context.Context, id int64, devic
 	return r.doJSON(ctx, http.MethodPost, r.historyBase, t.HistoryEventDeletePath(), nil, map[string]interface{}{"id": id, "deviceNo": strings.TrimSpace(deviceNo)}, nil)
 }
 
+func (r *historyRemoteClient) ExpectBatchHistory(ctx context.Context, deviceNo string, items []contracts.HistoryExpectPatchItem) (bool, error) {
+	if err := r.notReady(); err != nil {
+		return false, err
+	}
+	bodyItems := make([]map[string]interface{}, 0, len(items))
+	for _, it := range items {
+		one := map[string]interface{}{"id": it.Id}
+		if it.ExpectStartTime != nil {
+			one["expectStartTime"] = *it.ExpectStartTime
+		}
+		if it.ExpectEndTime != nil {
+			one["expectEndTime"] = *it.ExpectEndTime
+		}
+		if it.ExpectAmount != nil {
+			one["expectAmount"] = *it.ExpectAmount
+		}
+		bodyItems = append(bodyItems, one)
+	}
+	t := r.targets
+	var resp struct {
+		Ok bool `json:"ok"`
+	}
+	err := r.doJSON(ctx, http.MethodPost, r.historyBase, t.HistoryEventExpectBatchPath(), nil, map[string]interface{}{
+		"deviceNo": strings.TrimSpace(deviceNo),
+		"items":    bodyItems,
+	}, &resp)
+	if err != nil {
+		return false, err
+	}
+	return resp.Ok, nil
+}
+
 type responseEnvelope struct {
 	Code    int             `json:"code"`
 	Message string          `json:"message"`
@@ -721,6 +753,21 @@ func (a *switchAdapter) DeleteHistory(ctx context.Context, id int64, deviceNo st
 		historyCache.patchHistoryOnDelete(ctx, deviceNo, id)
 	}
 	return err
+}
+
+// ExpectBatchHistory 转发 local/remote；通知与 cache 由下游 ExpectBatchDeviceHistory / HTTP 对端完成，此处不二次裸 patch。
+func (a *switchAdapter) ExpectBatchHistory(ctx context.Context, deviceNo string, items []contracts.HistoryExpectPatchItem) (bool, error) {
+	var ok bool
+	err := a.run(a.shouldUseRemote(deviceNo), func() error {
+		var e error
+		ok, e = a.remote.ExpectBatchHistory(ctx, deviceNo, items)
+		return e
+	}, func() error {
+		var e error
+		ok, e = a.local.ExpectBatchHistory(ctx, deviceNo, items)
+		return e
+	})
+	return ok, err
 }
 
 var (
