@@ -114,18 +114,20 @@ func buildLiveActivityAPNsBody(payload LiveActivityAPNsPayload) ([]byte, error) 
 		}
 		aps["dismissal-date"] = dismissAt
 	}
-	title := strings.TrimSpace(payload.AlertTitle)
-	body := strings.TrimSpace(payload.AlertBody)
-	if title != "" || body != "" {
-		alert := map[string]string{}
-		if title != "" {
-			alert["title"] = title
-		}
-		if body != "" {
-			alert["body"] = body
-		}
-		aps["alert"] = alert
-	}
+	// 锁屏 / Dynamic Island 只靠 content-state（及 start attributes、end dismissal-date）。
+	// 产品暂时省略 aps.alert，避免横幅与提示音；恢复伴随提醒时取消下方注释即可（payload.AlertTitle/AlertBody 仍透传保留）。
+	// title := strings.TrimSpace(payload.AlertTitle)
+	// body := strings.TrimSpace(payload.AlertBody)
+	// if title != "" || body != "" {
+	// 	alert := map[string]string{}
+	// 	if title != "" {
+	// 		alert["title"] = title
+	// 	}
+	// 	if body != "" {
+	// 		alert["body"] = body
+	// 	}
+	// 	aps["alert"] = alert
+	// }
 	root := map[string]interface{}{"aps": aps}
 	return json.Marshal(root)
 }

@@ -165,13 +165,14 @@ func RefreshBabyLiveActivity(ctx context.Context, deviceNo string) {
 			"activityId": fmt.Sprintf("baby:%d", wxID),
 			"deviceNo":   deviceNo,
 		}
+		// AlertTitle/AlertBody 暂时注释：push 组装层已省略 aps.alert；恢复伴随提醒时取消本段与 liveActivityAlertBody 注释即可。
 		if pushErr := pushclient.FanoutLiveActivity(ctx, pushclient.LiveActivityOp{
 			WxID:         wxID,
 			Action:       "upsert",
 			Attributes:   attrs,
 			ContentState: cs,
-			AlertTitle:   "宝宝动态",
-			AlertBody:    liveActivityAlertBody(items),
+			// AlertTitle: "宝宝动态",
+			// AlertBody:  liveActivityAlertBody(items),
 		}); pushErr != nil {
 			glog.Warningf(ctx, "[history-la] refresh_upsert_failed wxId=%d err=%v", wxID, pushErr)
 		}
@@ -389,18 +390,20 @@ func loadActiveEtaExpectMap(ctx context.Context, deviceNo string) map[int64]int6
 }
 
 // liveActivityAlertBody APNs 伴随文案：首条 imminent 用投影后的成品 title（已含 nick）；否则 eventName / 兜底。
-func liveActivityAlertBody(items []map[string]interface{}) string {
-	if len(items) == 0 {
-		return ""
-	}
-	first := items[0]
-	if kind, _ := first["kind"].(string); kind == "imminent" {
-		if t, ok := first["title"].(string); ok && strings.TrimSpace(t) != "" {
-			return strings.TrimSpace(t)
-		}
-	}
-	if n, ok := first["eventName"].(string); ok && strings.TrimSpace(n) != "" {
-		return strings.TrimSpace(n)
-	}
-	return "有新的动态"
-}
+// 暂时整体注释：与 upsert AlertTitle/AlertBody、aps.alert 一并停用；恢复 alert 时取消本函数注释即可。
+//
+// func liveActivityAlertBody(items []map[string]interface{}) string {
+// 	if len(items) == 0 {
+// 		return ""
+// 	}
+// 	first := items[0]
+// 	if kind, _ := first["kind"].(string); kind == "imminent" {
+// 		if t, ok := first["title"].(string); ok && strings.TrimSpace(t) != "" {
+// 			return strings.TrimSpace(t)
+// 		}
+// 	}
+// 	if n, ok := first["eventName"].(string); ok && strings.TrimSpace(n) != "" {
+// 		return strings.TrimSpace(n)
+// 	}
+// 	return "有新的动态"
+// }
