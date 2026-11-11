@@ -1,13 +1,14 @@
 ## Why
 
-统一列表态 Live Activity 的 upsert/start 目前会附带 `aps.alert`（`AlertTitle`/`AlertBody`），系统会额外出横幅并常伴随提示音；锁屏条本身由 `content-state` 驱动，并不依赖 alert。产品希望 Live Activity 远程推送不再「喊一声」，只静默更新锁屏 / Dynamic Island。
+统一列表态 Live Activity 的 upsert 若一律附带 `aps.alert`，update 会反复横幅/提示音；但真机确认：**push-to-start 的 `event=start` 若无 `aps.alert`，系统不会呈现 Live Activity**。因此需要「start 必带 alert 才能弹出；update/end 省略 alert 以静默刷新」。
 
 ## What Changes
 
-- Live Activity APNs 组装层在存在 `content-state` 的 start/update/end 路径上 **MUST NOT** 再写入 `aps.alert`（含 title/body/sound）；实现上注释或移除现有 alert 拼装逻辑。
-- history Refresh upsert **MUST NOT** 再填充 `AlertTitle`/`AlertBody`（注释或清空调用）；`end` 本就无 alert，行为不变。
-- ContentState / Attributes / `event` / `dismissal-date` / token 解析与 invalid→restart **不变**；锁屏列表展示继续只靠 `content-state`。
-- **非目标**：不改 Android / 非 iOS 的普通 `predict_imminent` 可见推送；不改 UCG 等非 LA 通道；不引入静音音效资源。
+- APNs 组装层：**仅当 `event=start`** 写入 `aps.alert`（title/body；调用方为空时用默认兜底）；`update` / `end` **MUST NOT** 写 `aps.alert`。
+- history Refresh upsert **恢复**填充 `AlertTitle`/`AlertBody`（供解析成 start 时使用）；组装层对 update 忽略这些字段。
+- invalid→restart 的 start 与首次 push-to-start 同规则（有 alert）。
+- ContentState / Attributes / dismissal-date / token 解析 **不变**。
+- **非目标**：不改 Android 普通 `predict_imminent`；不引入静音音效资源；不在本变更内强制 start 无声。
 
 ## Capabilities
 
@@ -17,11 +18,10 @@
 
 ### Modified Capabilities
 
-- `unified-live-activity-push`：统一 Live Activity 远程推送 MUST 省略 `aps.alert`；Refresh 扇出不再携带伴随通知文案。
+- `unified-live-activity-push`：Live Activity APNs 仅 start 含 `aps.alert`；update/end 省略；Refresh 继续提供 start 所需伴随文案。
 
 ## Impact
 
-- `internal/services/push/push_live_activity_apns.go`：注释/停用 `aps.alert` 写入。
-- `internal/services/history/live_activity_refresh.go`：注释/停用 upsert 的 `AlertTitle`/`AlertBody`。
-- 进程：需重部署 **push-service**（APNs 组装）与 **history-service**（Refresh 入参）；gateway / voice / device 不必仅为该变更重部署。
-- 风险：个别 iOS 版本对 **push-to-start 且完全无 alert** 的呈现可能变差；需真机验收 start/update/end。
+- `internal/services/push/push_live_activity_apns.go`：按 event 条件写 alert。
+- `internal/services/history/live_activity_refresh.go`：恢复 upsert 的 `AlertTitle`/`AlertBody` 与 `liveActivityAlertBody`。
+- 进程：需重部署 **push-service** 与 **history-service**；gateway / voice / device 不必仅为该变更重部署。
