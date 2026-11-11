@@ -25,10 +25,11 @@ type LiveActivityOp struct {
 // 业务：
 //   - 开关关闭时仅打日志并返回；
 //   - start / upsert(无 activity) 用 push_to_start；update / upsert(有 activity) / end 用 activity token；
-//   - update 遇 invalidToken：删 activity 行并同拍用同 device_key 的 push_to_start 发 start；
+//   - start 前须该 wx 仍有至少一条 push_device（任意 channel，近似代理「消息通知」未关）；无则 skip；
+//   - update 遇 invalidToken：仅删该 activity 行，不同拍 restart；后续靠 upsert/clear 再走 start；
 //   - 无 token 时跳过（不视为整次失败）；
-//   - action=end 后清该 wx 全部 activity 行，保留 push_to_start（end invalid 不 restart）；
-//   - 划掉后脏 activity 由客户端鉴权 clear（App 打开无 LA 时）清理，下次 upsert 走 start（不做 update ack 超时）。
+//   - action=end 后清该 wx 全部 activity 行，保留 push_to_start；
+//   - 划掉后脏 activity 由客户端鉴权 clear（App 打开无 LA 时）清理，下次 upsert 走 start。
 func FanoutLiveActivity(ctx context.Context, op LiveActivityOp) {
 	if op.WxID <= 0 {
 		return
@@ -104,6 +105,21 @@ func dispatchLiveActivity(ctx context.Context, op LiveActivityOp) {
 		return
 	}
 
+	// 仅 start：无 push_device 则视为消息通知已关（unregister），跳过弹出；update/end 不闸。
+	if sendEvent == "start" {
+		devices, listDevErr := ListPushDevicesForWx(ctx, op.WxID)
+		if listDevErr != nil {
+			g.Log().Warningf(ctx, "[push-la] skip reason=list_push_device_err wxId=%d action=%s err=%v",
+				op.WxID, action, listDevErr)
+			return
+		}
+		if len(devices) == 0 {
+			g.Log().Warningf(ctx, "[push-la] skip reason=no_push_device wxId=%d action=%s sendEvent=start",
+				op.WxID, action)
+			return
+		}
+	}
+
 	attrs := op.Attributes
 	if sendEvent == "start" {
 		attrs = ensureLiveActivityStartAttributes(op.WxID, attrs)
@@ -129,17 +145,12 @@ func dispatchLiveActivity(ctx context.Context, op LiveActivityOp) {
 		} else {
 			g.Log().Warningf(ctx, "[push-la] send_ok wxId=%d action=%s tokenId=%d", op.WxID, sendEvent, tok.ID)
 		}
-		// 方案 B：仅 invalidToken 删行；非 invalid 的失败保留 token、不 restart。
+		// 仅 invalidToken 删行；非 invalid 的失败保留 token。不同拍 restart。
 		if !invalid || tok.ID == 0 {
 			continue
 		}
 		if delErr := DeleteLiveActivityTokenByID(ctx, tok.ID); delErr != nil {
 			g.Log().Warningf(ctx, "[push-la] delete invalid la token failed id=%d err=%v", tok.ID, delErr)
-			continue
-		}
-		// update（含 upsert→update）失效：同拍用同机 push_to_start 重启；end MUST NOT restart。
-		if sendEvent == "update" {
-			restartLiveActivityViaPushToStart(ctx, op, tok)
 		}
 	}
 	if action == "end" {
@@ -156,57 +167,4 @@ func ensureLiveActivityStartAttributes(wxID int64, attrs map[string]interface{})
 		attrs["activityId"] = fmt.Sprintf("baby:%d", wxID)
 	}
 	return attrs
-}
-
-// restartLiveActivityViaPushToStart update 失效后同拍用同 device_key 的 push_to_start 发 start。
-//
-// 业务：
-//  1. 进门：APNs invalidToken（调用方已删 activity 行）；
-//  2. 无匹配 push_to_start 则 WARN 跳过；复用本次 ContentState / Attributes / alert；Attributes 补 activityId；
-//  3. start 失败仅 WARN，同 dispatch 不重试；若 start 亦 invalid 则删该 push_to_start 行。
-//
-// Side Effects: 可能 APNs start；可能 DELETE push_to_start 行。
-func restartLiveActivityViaPushToStart(ctx context.Context, op LiveActivityOp, deadActivity entityLiveActivityToken) {
-	deviceKey := strings.TrimSpace(deadActivity.DeviceKey)
-	g.Log().Warningf(ctx, "[push-la] la_update_invalid_restart wxId=%d deviceKey=%s activityTokenId=%d",
-		op.WxID, deviceKey, deadActivity.ID)
-	if deviceKey == "" {
-		g.Log().Warningf(ctx, "[push-la] la_update_invalid_restart skip reason=empty_device_key wxId=%d activityTokenId=%d",
-			op.WxID, deadActivity.ID)
-		return
-	}
-	pts, ok, findErr := FindLiveActivityTokenByWxDeviceKind(ctx, op.WxID, deviceKey, LATokenKindPushToStart)
-	if findErr != nil {
-		g.Log().Warningf(ctx, "[push-la] la_update_invalid_restart skip reason=find_pts_err wxId=%d deviceKey=%s err=%v",
-			op.WxID, deviceKey, findErr)
-		return
-	}
-	if !ok || strings.TrimSpace(pts.Token) == "" {
-		g.Log().Warningf(ctx, "[push-la] la_update_invalid_restart skip reason=no_push_to_start wxId=%d deviceKey=%s",
-			op.WxID, deviceKey)
-		return
-	}
-
-	startPayload := LiveActivityAPNsPayload{
-		Event:          "start",
-		AttributesType: LiveActivityAttributesType(),
-		Attributes:     ensureLiveActivityStartAttributes(op.WxID, op.Attributes),
-		ContentState:   op.ContentState,
-		AlertTitle:     op.AlertTitle,
-		AlertBody:      op.AlertBody,
-	}
-	invalid, sendErr := SendLiveActivityAPNs(ctx, pts.Token, startPayload)
-	if sendErr != nil {
-		g.Log().Warningf(ctx, "[push-la] la_update_invalid_restart start_failed wxId=%d deviceKey=%s ptsTokenId=%d err=%v",
-			op.WxID, deviceKey, pts.ID, sendErr)
-	} else {
-		g.Log().Warningf(ctx, "[push-la] la_update_invalid_restart start_ok wxId=%d deviceKey=%s ptsTokenId=%d",
-			op.WxID, deviceKey, pts.ID)
-	}
-	// start 自身 invalid：清脏 push_to_start，禁止同循环再试。
-	if invalid && pts.ID > 0 {
-		if delErr := DeleteLiveActivityTokenByID(ctx, pts.ID); delErr != nil {
-			g.Log().Warningf(ctx, "[push-la] la_update_invalid_restart delete_pts_failed id=%d err=%v", pts.ID, delErr)
-		}
-	}
 }

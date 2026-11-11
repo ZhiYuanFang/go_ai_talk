@@ -111,7 +111,7 @@ func ListLiveActivityTokensForWx(ctx context.Context, wxID int64, tokenKind stri
 
 // FindLiveActivityTokenByWxDeviceKind 按 (wx, device_key, token_kind) 取单行。
 //
-// 业务：供 update invalid 同拍自愈时定位同机 push_to_start；无行返回 ok=false。
+// 业务：按机精确查找 LA token；无行返回 ok=false。
 // Args: wxID、deviceKey、tokenKind（通常为 push_to_start）。
 // Returns: 行、是否找到、错误。
 func FindLiveActivityTokenByWxDeviceKind(ctx context.Context, wxID int64, deviceKey, tokenKind string) (entityLiveActivityToken, bool, error) {

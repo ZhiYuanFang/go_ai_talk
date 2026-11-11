@@ -29,7 +29,7 @@ type LiveActivityAPNsPayload struct {
 // SendLiveActivityAPNs 使用现有 .p8 JWT 向 APNs 发送 liveactivity。
 //
 // 业务：apns-push-type=liveactivity；topic={bundleId}.push-type.liveactivity（后缀代码拼接，勿写入 env Bundle ID）。
-// 可观测：组装最终 JSON 后、HTTP 前以 Info 打印完整请求体（覆盖 update/start/end 及 invalid→restart 的 start）；仅记 tokenLen，禁止打完整 deviceToken。
+// 可观测：组装最终 JSON 后、HTTP 前以 Info 打印完整请求体（覆盖 update/start/end）；仅记 tokenLen，禁止打完整 deviceToken。
 // Returns: invalidToken 表示应删除该 LA token 行。
 func SendLiveActivityAPNs(ctx context.Context, deviceToken string, payload LiveActivityAPNsPayload) (invalidToken bool, err error) {
 	cfg := loadPushConfig(ctx)
