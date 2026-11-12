@@ -21,6 +21,14 @@ func FeatureRuleSummary(featureID string) string {
 		return inviteCommonRulePrefix +
 			" 本功能：开放主体=对人（user），一人一份。邀请：同宝宝可兑多个不同好友码；同一人对本功能任意邀请码仅能成功一次；授予天数看「邀请授予天数」。" +
 			"付费：对人开通（种子多为 30 天限时）。VIP 可覆盖 turn 使用权，快照页不含 VIP。"
+	case FeatureIDPredictCapabilityBasic:
+		return inviteCommonRulePrefix +
+			" 本功能：开放主体=对人（user），一人一份。邀请：同一人对本功能任意邀请码仅能成功一次。试用：点开起算 7 日（每人一次）。" +
+			"付费：对人开通（种子多为 30 天）。用途：门禁预测临近提醒（imminent）；VIP 可覆盖推送。快照页不含 VIP。"
+	case FeatureIDPredictCapabilityPro:
+		return inviteCommonRulePrefix +
+			" 本功能：开放主体=对人（user）。开通（试用/付费/邀请）前置：当前绑机喂养资格场景 predict_pro_entry（默认连续 7 有效日）。" +
+			"不依赖基础版是否开通；能力含基础版推送。试用点开起算 7 日。VIP 可覆盖使用，快照页不含 VIP。"
 	default:
 		return inviteCommonRulePrefix + " 请以功能「开放主体」与「允许的开通方式」为准；具体邀请防刷规则以服务端常量为准。"
 	}

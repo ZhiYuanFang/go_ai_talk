@@ -32,9 +32,14 @@ func AdminUpdateFeatureDef(ctx context.Context, featureID, title, desc, unlockMe
 		glog.Warningf(ctx, "[cash] prediction_unlock 已下线，拒绝改定义 featureId=%s", featureID)
 		return gerror.NewCode(gcode.CodeInvalidOperation, "预测事项开通数量已下线")
 	}
-	if durationDays < 1 || inviteDurationDays < 1 || adDurationDays < 1 {
+	if durationDays < 1 || inviteDurationDays < 1 {
 		return gerror.NewCode(gcode.CodeInvalidParameter, "授予天数须≥1，不支持永久")
 	}
+	// 广告通道已下线：拒绝写入 unlock_methods 含 ad；ad_duration_days 不再作为开通参数（保留列，缺省写 0）。
+	if UnlockMethodsContainAd(unlockMethods) {
+		return gerror.NewCode(gcode.CodeInvalidParameter, "广告开通已下线，请勿选择 ad")
+	}
+	_ = adDurationDays // 兼容旧 Admin 入参；持久化恒写 0
 	if defaultAllowedCount < 0 {
 		defaultAllowedCount = 0
 	}
@@ -53,7 +58,7 @@ func AdminUpdateFeatureDef(ctx context.Context, featureID, title, desc, unlockMe
 	data := g.Map{
 		"title": title, "description": desc, "unlock_methods": unlockMethods,
 		"duration_days":        durationDays,
-		"invite_duration_days": inviteDurationDays, "ad_duration_days": adDurationDays,
+		"invite_duration_days": inviteDurationDays, "ad_duration_days": 0,
 		"default_allowed_count": defaultAllowedCount,
 		"color":                 color,
 		"status":                status, "sort_order": sortOrder, "updated_at": now,

@@ -55,6 +55,11 @@ func ActivateFeature(ctx context.Context, req ActivateFeatureRequest) error {
 	default:
 		return gerror.NewCode(gcode.CodeInvalidParameter, "未知开通通道")
 	}
+	// 广告通道已下线：一律拒绝授予。
+	if channel == UnlockMethodAd {
+		glog.Warningf(ctx, "[cash] 广告开通已下线 featureId=%s", featureID)
+		return gerror.NewCode(gcode.CodeInvalidOperation, "广告开通已下线")
+	}
 
 	grantQty := req.GrantQty
 	if grantQty <= 0 {
@@ -85,12 +90,11 @@ func ActivateFeature(ctx context.Context, req ActivateFeatureRequest) error {
 		return GrantUserEntitlementHours(ctx, wxID, featureID, channel, grantQty, durationHours, req.ChannelRef)
 	}
 
-	// 邀请/广告：权益型天数分列读取。
-	if channel == UnlockMethodInviteCode || channel == UnlockMethodAd {
+	// 邀请：权益型天数读 invite_duration_days。
+	if channel == UnlockMethodInviteCode {
 		var def struct {
 			FeatureId          string `json:"feature_id"`
 			InviteDurationDays int    `json:"invite_duration_days"`
-			AdDurationDays     int    `json:"ad_duration_days"`
 			Status             int    `json:"status"`
 		}
 		// 功能定义可能不存在：One+IsEmpty，禁止 Scan 空集 ErrNoRows 被吞掉
@@ -107,11 +111,7 @@ func ActivateFeature(ctx context.Context, req ActivateFeatureRequest) error {
 		if def.FeatureId == "" || def.Status != 1 {
 			return gerror.NewCode(gcode.CodeInvalidParameter, "功能不存在或已停用")
 		}
-		if channel == UnlockMethodInviteCode {
-			durationDays = def.InviteDurationDays
-		} else {
-			durationDays = def.AdDurationDays
-		}
+		durationDays = def.InviteDurationDays
 		grantKind = GrantKindEntitlement
 	}
 	if grantKind == "" {

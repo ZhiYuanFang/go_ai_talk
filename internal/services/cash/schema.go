@@ -377,14 +377,16 @@ func EnsureSchema(ctx context.Context) error {
 			return err
 		}
 	}
-	// 每次 Ensure：care / growth 均为账号维开通。
-	if _, err := db.Exec(ctx, `UPDATE feature_def SET activation_subject='user' WHERE feature_id IN (?,?)`,
-		FeatureIDCareAlertSmartRemind, FeatureIDGrowthTrajectoryPredict); err != nil {
+	// 每次 Ensure：care / growth / 预测两档均为账号维开通。
+	if _, err := db.Exec(ctx, `UPDATE feature_def SET activation_subject='user' WHERE feature_id IN (?,?,?,?)`,
+		FeatureIDCareAlertSmartRemind, FeatureIDGrowthTrajectoryPredict,
+		FeatureIDPredictCapabilityBasic, FeatureIDPredictCapabilityPro); err != nil {
 		return err
 	}
-	// 剥离 ad 开通方式（care / growth）。预测槽位不再在启动时写回。
-	if _, err := db.Exec(ctx, `UPDATE feature_def SET unlock_methods='payment,invite_code', invite_duration_days=IF(invite_duration_days<=0,7,invite_duration_days), updated_at=? WHERE feature_id IN (?,?)`,
-		time.Now().Unix(), FeatureIDCareAlertSmartRemind, FeatureIDGrowthTrajectoryPredict); err != nil {
+	// 剥离 ad 开通方式（care / growth / 预测两档）。
+	if _, err := db.Exec(ctx, `UPDATE feature_def SET unlock_methods='payment,invite_code', invite_duration_days=IF(invite_duration_days<=0,7,invite_duration_days), updated_at=? WHERE feature_id IN (?,?,?,?)`,
+		time.Now().Unix(), FeatureIDCareAlertSmartRemind, FeatureIDGrowthTrajectoryPredict,
+		FeatureIDPredictCapabilityBasic, FeatureIDPredictCapabilityPro); err != nil {
 		return err
 	}
 	// 功能视觉：logo（OSS objectKey）与主色 hex；已有库补列。
@@ -472,11 +474,53 @@ VALUES (?, ?, 'entitlement', 1, 1900, 0, 30, '', 1, ?)`,
 	if err != nil {
 		return err
 	}
+	// 预测能力基础版：账号维；支付/邀请；默认主色蓝紫。
+	_, err = db.Exec(ctx, `
+INSERT INTO feature_def (feature_id, title, description, unlock_methods, duration_days, invite_duration_days, ad_duration_days, default_allowed_count, activation_subject, logo, color, status, sort_order, updated_at)
+VALUES (?, '预测能力基础版', '开通后可接收预测临近提醒', 'payment,invite_code', 7, 7, 0, 0, 'user', '', '#2563EB', 1, 40, ?)
+ON DUPLICATE KEY UPDATE
+  activation_subject='user',
+  unlock_methods='payment,invite_code',
+  invite_duration_days=IF(invite_duration_days<=0, VALUES(invite_duration_days), invite_duration_days),
+  color=IF(color='' OR color IS NULL, VALUES(color), color),
+  updated_at=VALUES(updated_at)`,
+		FeatureIDPredictCapabilityBasic, now)
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec(ctx, `
+INSERT IGNORE INTO feature_product (product_code, feature_id, grant_kind, grant_quantity, price_fen, original_price_fen, duration_days, apple_product_id, status, updated_at)
+VALUES (?, ?, 'entitlement', 1, 990, 0, 30, '', 1, ?)`,
+		PredictCapabilityBasicProductCode, FeatureIDPredictCapabilityBasic, now)
+	if err != nil {
+		return err
+	}
+	// 预测能力 Pro：账号维；开通另需喂养资格；默认主色靛蓝。
+	_, err = db.Exec(ctx, `
+INSERT INTO feature_def (feature_id, title, description, unlock_methods, duration_days, invite_duration_days, ad_duration_days, default_allowed_count, activation_subject, logo, color, status, sort_order, updated_at)
+VALUES (?, '预测能力Pro版', '开通后具备预测 Pro 能力（含基础版推送）', 'payment,invite_code', 7, 7, 0, 0, 'user', '', '#4F46E5', 1, 50, ?)
+ON DUPLICATE KEY UPDATE
+  activation_subject='user',
+  unlock_methods='payment,invite_code',
+  invite_duration_days=IF(invite_duration_days<=0, VALUES(invite_duration_days), invite_duration_days),
+  color=IF(color='' OR color IS NULL, VALUES(color), color),
+  updated_at=VALUES(updated_at)`,
+		FeatureIDPredictCapabilityPro, now)
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec(ctx, `
+INSERT IGNORE INTO feature_product (product_code, feature_id, grant_kind, grant_quantity, price_fen, original_price_fen, duration_days, apple_product_id, status, updated_at)
+VALUES (?, ?, 'entitlement', 1, 1900, 0, 30, '', 1, ?)`,
+		PredictCapabilityProProductCode, FeatureIDPredictCapabilityPro, now)
+	if err != nil {
+		return err
+	}
 	// 喂养资格场景种子：仅 INSERT 忽略已存在，不覆盖运维已改阈值。
 	_, err = db.Exec(ctx, `
 INSERT IGNORE INTO feeding_eligibility_scene (scene_key, required_days, min_records_per_day, updated_at)
-VALUES (?, 7, 10, ?), (?, 2, 10, ?)`,
-		SceneKeyUCGEntry, now, SceneKeyCareAlertEntry, now)
+VALUES (?, 7, 10, ?), (?, 2, 10, ?), (?, 7, 10, ?)`,
+		SceneKeyUCGEntry, now, SceneKeyCareAlertEntry, now, SceneKeyPredictProEntry, now)
 	if err != nil {
 		return err
 	}

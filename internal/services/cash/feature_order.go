@@ -200,6 +200,15 @@ func CreateFeatureOrder(ctx context.Context, deviceNo string, wxID int64, produc
 	if err != nil {
 		return nil, err
 	}
+	// 功能下架不可建单；Pro 须喂养资格合格。
+	if err := RequireFeatureDefActive(ctx, prod.FeatureId); err != nil {
+		return nil, err
+	}
+	if prod.FeatureId == FeatureIDPredictCapabilityPro {
+		if err := RequirePredictProFeedingQualified(ctx, deviceNo); err != nil {
+			return nil, err
+		}
+	}
 	orderNo, err := newOrderNo()
 	if err != nil {
 		return nil, err

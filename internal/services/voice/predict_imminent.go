@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	cashclient "hello/internal/clients/cash"
 	deviceclient "hello/internal/clients/device"
 	historyclient "hello/internal/clients/history"
 	pushclient "hello/internal/clients/push"
@@ -374,6 +375,15 @@ func handlePredictImminentFire(ctx context.Context, body []byte) error {
 	// 设备级统一 LA Refresh 一次（与普通推送同拍）；失败不阻断可见推送。
 	refreshUnifiedLiveActivity(ctx, msg.DeviceNo)
 	for _, wxID := range wxIDs {
+		// 预测能力门禁：无基础版/Pro/VIP 不发可见推送（LA 清屏由 history Refresh 豁免）。
+		if access, aErr := cashclient.RemotePredictCapabilityAccess(ctx, msg.DeviceNo, wxID); aErr != nil {
+			glog.Warningf(ctx, "[predict-imminent] skip reason=capability_access_err wxId=%d eventId=%d err=%v",
+				wxID, msg.EventId, aErr)
+			continue
+		} else if access == nil || !access.Allowed {
+			glog.Warningf(ctx, "[predict-imminent] skip reason=capability_denied wxId=%d eventId=%d", wxID, msg.EventId)
+			continue
+		}
 		// 用户级 1/min：未过闸 Ack 跳过可见推送，不 requeue。
 		if !tryOccupyImminentRateLimit(ctx, wxID) {
 			glog.Warningf(ctx, "[predict-imminent] skip reason=rate_limit_1min wxId=%d eventId=%d", wxID, msg.EventId)

@@ -53,14 +53,15 @@ type FeatureCatalogItem struct {
 	AllowedCount          *int                    `json:"allowedCount,omitempty"`
 	DefaultCount          *int                    `json:"defaultCount,omitempty"` // 预测：定义表默认免费条数
 	TotalActivatableCount *int                    `json:"totalActivatableCount,omitempty"`
-	InviteDurationDays    int                     `json:"inviteDurationDays"`
-	AdDurationDays        int                     `json:"adDurationDays"`
+	InviteDurationDays int `json:"inviteDurationDays"`
+	// Status 1=上架 0=下架；下架项仍返回，由客户端决定展示。
+	Status int `json:"status"`
 	// TrialAvailable 试用未用且当前无用户权益；客户端再与 !VIP 合成展示。
 	TrialAvailable bool `json:"trialAvailable"`
 	// InviteAvailable unlock_methods 含 invite 且该人尚未 InviteOncePerUser 成功。
-	InviteAvailable bool                   `json:"inviteAvailable"`
-	Logo            string                 `json:"logo"`  // CDN URL；无则空串
-	Color           string                 `json:"color"` // 主色 hex
+	InviteAvailable bool                    `json:"inviteAvailable"`
+	Logo            string                  `json:"logo"`  // CDN URL；无则空串
+	Color           string                  `json:"color"` // 主色 hex
 	Products        []FeatureCatalogProduct `json:"products"`
 }
 
@@ -80,7 +81,9 @@ type featureDefDB struct {
 	SortOrder           int    `json:"sort_order"`
 }
 
-// ListActiveFeatureDefs 启用功能定义（全站 Redis 热读）。
+// ListActiveFeatureDefs 功能定义目录热读（含上架与下架；排除 prediction_unlock）。
+//
+// 业务：App catalog 需带回 status，下架项仍出现；缓存键沿用 CashFeatureDefCatalogKey，Admin 改定义时 Del。
 func ListActiveFeatureDefs(ctx context.Context) ([]FeatureDefRow, error) {
 	c := cachekit.Default()
 	key := cachekit.CashFeatureDefCatalogKey()
@@ -93,7 +96,7 @@ func ListActiveFeatureDefs(ctx context.Context) ([]FeatureDefRow, error) {
 	var rawRows []featureDefDB
 	err := g.DB().Model("feature_def").Ctx(ctx).
 		Fields("feature_id,title,description,unlock_methods,duration_days,invite_duration_days,ad_duration_days,default_allowed_count,activation_subject,logo,color,status,sort_order").
-		Where("status", 1).
+		WhereNot("feature_id", FeatureIDPredictionUnlock).
 		OrderAsc("sort_order").OrderAsc("feature_id").
 		Scan(&rawRows)
 	if err != nil {
@@ -106,7 +109,7 @@ func ListActiveFeatureDefs(ctx context.Context) ([]FeatureDefRow, error) {
 			UnlockMethods: r.UnlockMethods, DurationDays: r.DurationDays,
 			InviteDurationDays: r.InviteDurationDays, AdDurationDays: r.AdDurationDays,
 			DefaultAllowedCount: r.DefaultAllowedCount,
-			ActivationSubject:    NormalizeActivationSubject(r.ActivationSubject),
+			ActivationSubject:   NormalizeActivationSubject(r.ActivationSubject),
 			Logo: featurelogo.NormalizeObjectKey(r.Logo), Color: strings.TrimSpace(r.Color),
 			Status: r.Status, SortOrder: r.SortOrder,
 		})
@@ -182,12 +185,15 @@ func GetFeatureCatalog(ctx context.Context, deviceNo string, wxID int64) (*Featu
 			FeatureId: d.FeatureId, Title: d.Title, Description: d.Description,
 			UnlockMethods:      d.UnlockMethods,
 			InviteDurationDays: d.InviteDurationDays,
-			AdDurationDays:     d.AdDurationDays,
+			Status:             d.Status,
 			Logo:               featurelogo.CdnURL(ctx, d.Logo),
 			Color:              strings.TrimSpace(d.Color),
 			Products:           prodByFeature[d.FeatureId],
 		}
-		if item.Products == nil {
+		// 下架功能不展示可售 SKU（停售）。
+		if d.Status != 1 {
+			item.Products = []FeatureCatalogProduct{}
+		} else if item.Products == nil {
 			item.Products = []FeatureCatalogProduct{}
 		}
 		subj := NormalizeActivationSubject(d.ActivationSubject)

@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	cashclient "hello/internal/clients/cash"
 	deviceclient "hello/internal/clients/device"
 	pushclient "hello/internal/clients/push"
 	"hello/internal/dao"
@@ -151,6 +152,7 @@ func RefreshBabyLiveActivity(ctx context.Context, deviceNo string) {
 		if wxID <= 0 {
 			continue
 		}
+		// 空投影：清屏 end，不受预测能力开通门禁（避免到期常驻）。
 		if len(items) == 0 {
 			if pushErr := pushclient.FanoutLiveActivity(ctx, pushclient.LiveActivityOp{
 				WxID:         wxID,
@@ -161,6 +163,24 @@ func RefreshBabyLiveActivity(ctx context.Context, deviceNo string) {
 			}
 			continue
 		}
+		// 无预测能力：剥离 imminent 段，仅保留 timing；若剥空则 end（清屏豁免）。
+		fanoutItems := items
+		if access, aErr := cashclient.RemotePredictCapabilityAccess(ctx, deviceNo, wxID); aErr != nil {
+			glog.Warningf(ctx, "[history-la] capability_access_err wxId=%d err=%v (strip imminent)", wxID, aErr)
+			fanoutItems = filterLiveActivityTimingOnly(items)
+		} else if access == nil || !access.Allowed {
+			fanoutItems = filterLiveActivityTimingOnly(items)
+		}
+		if len(fanoutItems) == 0 {
+			cleared := map[string]interface{}{"items": []map[string]interface{}{}, "phase": "cleared"}
+			if pushErr := pushclient.FanoutLiveActivity(ctx, pushclient.LiveActivityOp{
+				WxID: wxID, Action: "end", ContentState: cleared,
+			}); pushErr != nil {
+				glog.Warningf(ctx, "[history-la] refresh_end_after_strip_failed wxId=%d err=%v", wxID, pushErr)
+			}
+			continue
+		}
+		fanoutCS := map[string]interface{}{"items": fanoutItems, "phase": "active"}
 		attrs := map[string]interface{}{
 			"activityId": fmt.Sprintf("baby:%d", wxID),
 			"deviceNo":   deviceNo,
@@ -171,13 +191,26 @@ func RefreshBabyLiveActivity(ctx context.Context, deviceNo string) {
 			WxID:         wxID,
 			Action:       "upsert",
 			Attributes:   attrs,
-			ContentState: cs,
+			ContentState: fanoutCS,
 			AlertTitle:   "宝宝动态",
-			AlertBody:    liveActivityAlertBody(items),
+			AlertBody:    liveActivityAlertBody(fanoutItems),
 		}); pushErr != nil {
 			glog.Warningf(ctx, "[history-la] refresh_upsert_failed wxId=%d err=%v", wxID, pushErr)
 		}
 	}
+}
+
+// filterLiveActivityTimingOnly 去掉 kind=imminent，保留 timing（预测能力门禁下仍可刷新进行中）。
+func filterLiveActivityTimingOnly(items []map[string]interface{}) []map[string]interface{} {
+	out := make([]map[string]interface{}, 0, len(items))
+	for _, it := range items {
+		kind, _ := it["kind"].(string)
+		if strings.TrimSpace(kind) == "imminent" {
+			continue
+		}
+		out = append(out, it)
+	}
+	return out
 }
 
 // buildLiveActivityItems 组装列表：lead 进窗预测 + 进行中，合计≤3（进行中优先截断）；禁止 logo/color/远程图 URL。

@@ -249,8 +249,14 @@ func RedeemInviteCode(ctx context.Context, redeemerWxID int64, deviceNo, code, f
 		if def.FeatureId == "" || def.Status != 1 || !strings.Contains(def.UnlockMethods, UnlockMethodInviteCode) {
 			return gerror.NewCode(gcode.CodeInvalidParameter, "功能不支持邀请码开通")
 		}
+		// 预测 Pro：邀请开通前须喂养资格合格（事务外已校验亦可；此处再拦）。
+		if featureID == FeatureIDPredictCapabilityPro {
+			if err := RequirePredictProFeedingQualified(ctx, deviceNo); err != nil {
+				return err
+			}
+		}
 
-		// care/growth：同一人对本功能邀请仅一次（跨任意邀请码）。
+		// care/growth/预测：同一人对本功能邀请仅一次（跨任意邀请码）。
 		if InviteOncePerUser(featureID) {
 			un, err := tx.Model("feature_invite_feature_grant").Ctx(ctx).
 				Where("redeemer_wx_id", redeemerWxID).

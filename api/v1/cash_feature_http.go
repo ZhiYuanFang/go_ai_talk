@@ -90,7 +90,7 @@ type CashFeatureCatalogProductItem struct {
 }
 
 // CashFeatureCatalogItem 目录项（开通态 + 可售 products）。
-// TrialAvailable / InviteAvailable：试用与邀请入口可用性。
+// TrialAvailable / InviteAvailable：试用与邀请入口可用性；Status 含下架。
 type CashFeatureCatalogItem struct {
 	FeatureId             string                          `json:"featureId"`
 	Title                 string                          `json:"title"`
@@ -103,12 +103,51 @@ type CashFeatureCatalogItem struct {
 	DefaultCount          *int                            `json:"defaultCount,omitempty"`
 	TotalActivatableCount *int                            `json:"totalActivatableCount,omitempty"`
 	InviteDurationDays    int                             `json:"inviteDurationDays"`
-	AdDurationDays        int                             `json:"adDurationDays"`
+	Status                int                             `json:"status" dc:"1上架 0下架；下架仍返回由前端展示"`
 	TrialAvailable        bool                            `json:"trialAvailable"`
 	InviteAvailable       bool                            `json:"inviteAvailable"`
 	Logo                  string                          `json:"logo" dc:"CDN URL；无则空串"`
 	Color                 string                          `json:"color" dc:"主色 #RGB/#RRGGBB"`
 	Products              []CashFeatureCatalogProductItem `json:"products"`
+}
+
+// CashPredictProEligibilityReq GET 预测 Pro 喂养资格（计入 usage）。
+type CashPredictProEligibilityReq struct {
+	g.Meta `path:"/cash/app/api/predict-pro/eligibility" method:"get" tags:"cash" summary:"预测Pro喂养资格（自昨天起连续有效喂养日）"`
+}
+
+// CashPredictProEligibilityRes 与 UCG 资格字段同构。
+type CashPredictProEligibilityRes struct {
+	Qualified     bool   `json:"qualified"`
+	RequiredDays  int    `json:"requiredDays"`
+	EffectiveDays int    `json:"effectiveDays"`
+	RemainingDays int    `json:"remainingDays"`
+	Message       string `json:"message,omitempty"`
+}
+
+// CashFeatureTrialStartReq POST 点试用（预测能力 7 日起算）。
+type CashFeatureTrialStartReq struct {
+	g.Meta    `path:"/cash/app/api/feature/trial/start" method:"post" tags:"cash" summary:"功能点试用（预测能力7日）"`
+	FeatureId string `json:"featureId" v:"required"`
+}
+
+// CashFeatureTrialStartRes 空 data。
+type CashFeatureTrialStartRes struct{}
+
+// CashInternalPredictCapabilityAccessReq 内部：预测能力可推送合成。
+type CashInternalPredictCapabilityAccessReq struct {
+	g.Meta   `path:"/cash/internal/api/predict-capability/access" method:"get" tags:"cash" summary:"内部预测能力开通合成"`
+	DeviceNo string `json:"deviceNo" p:"deviceNo" dc:"设备号"`
+	WxId     int64  `json:"wxId" p:"wxId" dc:"接收者 wx 主键"`
+}
+
+// CashInternalPredictCapabilityAccessRes 内部可推送 data。
+type CashInternalPredictCapabilityAccessRes struct {
+	Allowed       bool `json:"allowed"`
+	BasicActive   bool `json:"basicActive"`
+	ProActive     bool `json:"proActive"`
+	FeatureActive bool `json:"featureActive"`
+	IsVip         bool `json:"isVip"`
 }
 
 // CashFeatureCatalogRes 目录 data。

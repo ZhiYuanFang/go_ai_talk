@@ -53,6 +53,38 @@ func (c *CashFeatureController) UCGEligibility(ctx context.Context, _ *v1.CashUC
 	}, nil
 }
 
+// PredictProEligibility GET /cash/app/api/predict-pro/eligibility（计入 usage）。
+func (c *CashFeatureController) PredictProEligibility(ctx context.Context, _ *v1.CashPredictProEligibilityReq) (*v1.CashPredictProEligibilityRes, error) {
+	dn, err := cashDeviceNoFromHeader(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out, err := cash.GetPredictProFeedingEligibility(ctx, dn)
+	if err != nil {
+		return nil, err
+	}
+	return &v1.CashPredictProEligibilityRes{
+		Qualified: out.Qualified, RequiredDays: out.RequiredDays,
+		EffectiveDays: out.EffectiveDays, RemainingDays: out.RemainingDays, Message: out.Message,
+	}, nil
+}
+
+// FeatureTrialStart POST /cash/app/api/feature/trial/start — 预测能力点试用。
+func (c *CashFeatureController) FeatureTrialStart(ctx context.Context, req *v1.CashFeatureTrialStartReq) (*v1.CashFeatureTrialStartRes, error) {
+	dn, err := cashDeviceNoFromHeader(ctx)
+	if err != nil {
+		return nil, err
+	}
+	wxID, err := cashWxIDFromHeader(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := cash.StartFeatureTrial(ctx, wxID, dn, req.FeatureId); err != nil {
+		return nil, err
+	}
+	return &v1.CashFeatureTrialStartRes{}, nil
+}
+
 // CareAlertEligibility GET /cash/app/api/care-alert/eligibility
 func (c *CashFeatureController) CareAlertEligibility(ctx context.Context, _ *v1.CashCareAlertEligibilityReq) (*v1.CashCareAlertEligibilityRes, error) {
 	dn, err := cashDeviceNoFromHeader(ctx)
@@ -118,6 +150,31 @@ func (c *CashFeatureController) InternalGrowthTrajectoryAccess(ctx context.Conte
 	}, nil
 }
 
+// InternalPredictCapabilityAccess GET /cash/internal/api/predict-capability/access
+// 供 voice imminent 写入门禁；须内部密钥。
+func (c *CashFeatureController) InternalPredictCapabilityAccess(ctx context.Context, req *v1.CashInternalPredictCapabilityAccessReq) (*v1.CashInternalPredictCapabilityAccessRes, error) {
+	r := ghttp.RequestFromCtx(ctx)
+	if !cash.ValidateInternalSecret(cash.InternalSecretFromRequest(r)) {
+		return nil, gerror.NewCode(gcode.CodeNotAuthorized, "内部接口未授权")
+	}
+	dn := strings.TrimSpace(req.DeviceNo)
+	if dn == "" {
+		dn = strings.TrimSpace(r.Get("deviceNo").String())
+	}
+	wxID := req.WxId
+	if wxID <= 0 {
+		wxID = r.Get("wxId").Int64()
+	}
+	out, err := cash.GetPredictCapabilityAccess(ctx, dn, wxID)
+	if err != nil {
+		return nil, err
+	}
+	return &v1.CashInternalPredictCapabilityAccessRes{
+		Allowed: out.Allowed, BasicActive: out.BasicActive, ProActive: out.ProActive,
+		FeatureActive: out.FeatureActive, IsVip: out.IsVip,
+	}, nil
+}
+
 // InternalFeatureTrialClaim POST /cash/internal/api/feature/trial/claim
 // 供 voice 成功落库后 claim 试用；须内部密钥；幂等。
 func (c *CashFeatureController) InternalFeatureTrialClaim(ctx context.Context, req *v1.CashInternalFeatureTrialClaimReq) (*v1.CashInternalFeatureTrialClaimRes, error) {
@@ -155,7 +212,7 @@ func (c *CashFeatureController) Catalog(ctx context.Context, _ *v1.CashFeatureCa
 			UnlockMethods: it.UnlockMethods, Unlocked: it.Unlocked,
 			UnlockMethod: it.UnlockMethod, ExpiresAt: it.ExpiresAt, AllowedCount: it.AllowedCount,
 			DefaultCount: it.DefaultCount, TotalActivatableCount: it.TotalActivatableCount,
-			InviteDurationDays: it.InviteDurationDays, AdDurationDays: it.AdDurationDays,
+			InviteDurationDays: it.InviteDurationDays, Status: it.Status,
 			TrialAvailable: it.TrialAvailable, InviteAvailable: it.InviteAvailable,
 			Logo: it.Logo, Color: it.Color,
 			Products: make([]v1.CashFeatureCatalogProductItem, 0, len(it.Products)),
