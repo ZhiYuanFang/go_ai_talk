@@ -12,12 +12,14 @@ import (
 )
 
 const (
-	predictProIdeaMaxTextLen    = 200
-	predictProIdeaDailyLimit    = 10
-	predictProIdeaDefaultPage   = 20
-	predictProIdeaMaxPageSize   = 100
-	predictProIdeaTable         = "predict_pro_idea"
-	predictProIdeaLikeTable     = "predict_pro_idea_like"
+	predictProIdeaMaxTextLen  = 200
+	predictProIdeaDailyLimit  = 10
+	predictProIdeaDefaultPage = 20
+	predictProIdeaMaxPageSize = 100
+	predictProIdeaTable       = "predict_pro_idea"
+	predictProIdeaLikeTable   = "predict_pro_idea_like"
+	// predictProIdeaAliveWhere 未删谓词：兼容线上默认 0 与存量 NULL（>0 为软删 unix 秒）。
+	predictProIdeaAliveWhere = "(deleted_at IS NULL OR deleted_at = 0)"
 )
 
 var (
@@ -144,8 +146,9 @@ func hasIdeaLike(ctx context.Context, ideaID, wxID int64) (bool, error) {
 }
 
 func loadActiveIdea(ctx context.Context, ideaID int64) (*predictProIdeaRow, error) {
+	// 业务逻辑：仅加载未删想法（deleted_at=0 或 NULL）。
 	one, err := g.DB().Model(predictProIdeaTable).Ctx(ctx).
-		Where("id", ideaID).WhereNull("deleted_at").One()
+		Where("id", ideaID).Where(predictProIdeaAliveWhere).One()
 	if err != nil {
 		return nil, err
 	}
@@ -163,8 +166,9 @@ func loadActiveIdea(ctx context.Context, ideaID int64) (*predictProIdeaRow, erro
 // Args: viewerWxID 当前登录用户（算 likedByMe/isMine）。
 func (s *service) ListPredictProIdeasApp(ctx context.Context, viewerWxID int64) ([]PredictProIdeaAppItem, error) {
 	var rows []predictProIdeaRow
+	// 业务逻辑：列表必须包含 deleted_at=0 的活跃行，不能只用 IS NULL。
 	err := g.DB().Model(predictProIdeaTable).Ctx(ctx).
-		WhereNull("deleted_at").
+		Where(predictProIdeaAliveWhere).
 		OrderDesc("created_at").OrderDesc("id").
 		Scan(&rows)
 	if err != nil {
@@ -226,6 +230,7 @@ func (s *service) SubmitPredictProIdea(ctx context.Context, wxID int64, text str
 		return nil, ErrPredictProIdeaQuota
 	}
 	now := time.Now().Unix()
+	// 业务逻辑：显式写入 deleted_at=0，避免环境 DEFAULT 为 NULL 时与「0=未删」分裂。
 	id, err := g.DB().Model(predictProIdeaTable).Ctx(ctx).Data(g.Map{
 		"wx_id":        wxID,
 		"device_no":    deviceNo,
@@ -234,6 +239,7 @@ func (s *service) SubmitPredictProIdea(ctx context.Context, wxID int64, text str
 		"display_text": text,
 		"created_at":   now,
 		"updated_at":   now,
+		"deleted_at":   0,
 	}).InsertAndGetId()
 	if err != nil {
 		return nil, err
@@ -301,14 +307,15 @@ func buildLikeResult(ctx context.Context, ideaID, wxID int64) (*PredictProIdeaLi
 // ListPredictProIdeasAdmin Admin 分页（默认排除软删）。
 func (s *service) ListPredictProIdeasAdmin(ctx context.Context, page, pageSize int) (*PredictProIdeaAdminPage, error) {
 	page, pageSize = normalizePredictProIdeaPage(page, pageSize)
-	m := g.DB().Model(predictProIdeaTable).Ctx(ctx).WhereNull("deleted_at")
+	// 业务逻辑：与 App 同一未删谓词，避免 Hub 空而库中有 deleted_at=0 行。
+	m := g.DB().Model(predictProIdeaTable).Ctx(ctx).Where(predictProIdeaAliveWhere)
 	total, err := m.Count()
 	if err != nil {
 		return nil, err
 	}
 	var rows []predictProIdeaRow
 	err = g.DB().Model(predictProIdeaTable).Ctx(ctx).
-		WhereNull("deleted_at").
+		Where(predictProIdeaAliveWhere).
 		OrderDesc("created_at").OrderDesc("id").
 		Page(page, pageSize).
 		Scan(&rows)
@@ -345,7 +352,7 @@ func (s *service) UpdatePredictProIdeaDisplayText(ctx context.Context, ideaID in
 	}
 	now := time.Now().Unix()
 	_, err = g.DB().Model(predictProIdeaTable).Ctx(ctx).
-		Where("id", ideaID).WhereNull("deleted_at").
+		Where("id", ideaID).Where(predictProIdeaAliveWhere).
 		Data(g.Map{"display_text": displayText, "updated_at": now}).
 		Update()
 	return err
@@ -357,8 +364,9 @@ func (s *service) SoftDeletePredictProIdea(ctx context.Context, ideaID int64) er
 		return err
 	}
 	now := time.Now().Unix()
+	// 业务逻辑：软删写入 >0 的 unix 秒；前置与更新条件均用未删谓词。
 	_, err := g.DB().Model(predictProIdeaTable).Ctx(ctx).
-		Where("id", ideaID).WhereNull("deleted_at").
+		Where("id", ideaID).Where(predictProIdeaAliveWhere).
 		Data(g.Map{"deleted_at": now, "updated_at": now}).
 		Update()
 	return err

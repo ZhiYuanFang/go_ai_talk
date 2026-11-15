@@ -23,6 +23,7 @@ WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'predict_pro_idea'`)
 	if err != nil {
 		return err
 	}
+	// 业务逻辑：表已存在则跳过，不做 ALTER；查询侧兼容 deleted_at=0 与 NULL。
 	if n.Int() > 0 {
 		return nil
 	}
@@ -36,7 +37,7 @@ CREATE TABLE predict_pro_idea (
   display_text VARCHAR(200) NOT NULL COMMENT '对外展示文案（运营可改）',
   created_at BIGINT NOT NULL DEFAULT 0 COMMENT '创建 unix 秒',
   updated_at BIGINT NOT NULL DEFAULT 0 COMMENT '更新 unix 秒',
-  deleted_at BIGINT NULL DEFAULT NULL COMMENT '软删 unix 秒；NULL=未删',
+  deleted_at BIGINT NOT NULL DEFAULT 0 COMMENT '软删 unix 秒；0=未删；>0=已删',
   PRIMARY KEY (id),
   KEY idx_ppi_wx_created (wx_id, created_at),
   KEY idx_ppi_created (created_at),
