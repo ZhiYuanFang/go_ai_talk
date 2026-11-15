@@ -191,15 +191,11 @@ document.getElementById('deleteBtn').addEventListener('click', async () => {
 	}
 });
 
-(async function init(){
-	try {
-		await AdminCommon.requireAdmin();
-		mainCard.classList.remove('hidden');
-		await loadPage(1);
-	} catch(e){
-		setMsg(mainMsg, e.message||String(e));
-	}
-})();
+// 业务逻辑：与 qa/feedback 一致——无 Admin token 只跳转登录，不发 list。
+if (AdminCommon.requireAdmin()) {
+	mainCard.classList.remove('hidden');
+	loadPage(1).catch(e => setMsg(mainMsg, e.message || String(e)));
+}
 </script>
 </body>
 </html>

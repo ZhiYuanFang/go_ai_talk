@@ -121,6 +121,12 @@ window.ADMIN_MODULES = [
 		showInNav: true
 	},
 	{
+		id: 'predict-pro-ideas',
+		title: '预测 Pro 想法',
+		pagePath: '/device/admin/predict-pro-ideas',
+		showInNav: true
+	},
+	{
 		id: 'app-status-admin',
 		title: 'App 维护通知',
 		externalUrl: 'https://notify.cuplay.top/admin',
