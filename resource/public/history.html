@@ -13,7 +13,7 @@
         <div class="logo">胖宝</div>
         <div>
             <h1>设备数据运维</h1>
-            <p>查看与修正单设备档案、历史事件与成长建议 · 须在运维 Hub 登录</p>
+            <p>查看与修正单设备档案与历史事件 · 须在运维 Hub 登录</p>
         </div>
     </header>
     <div class="hub-cards-2col">
@@ -177,7 +177,8 @@
         <div class="section-head">
             <h3>历史成长建议</h3>
         </div>
-        <div id="suggestWrap" class="scroll-max-20"></div>
+        <p class="muted" style="margin:0;">成长建议生成与运维入口已退役；历史 suggest 行可仍留库。</p>
+        <div id="suggestWrap" class="scroll-max-20" style="display:none;"></div>
     </div>
 
     <div class="card glass hub-card-span-2">
@@ -185,7 +186,7 @@
             <h3>AI 调试台</h3>
         </div>
         <p class="muted" style="margin:0 0 10px;">
-            使用 <strong>App 用户名密码</strong>登录（与 Hub Admin JWT 分钥）。tip / 值得留意走正式 App 接口；文字对话走 <code>/voice/chat/ws</code> 文模式（硬件通道）。登录账号绑定的设备号应与当前页一致。
+            使用 <strong>App 用户名密码</strong>登录（与 Hub Admin JWT 分钥）。文字对话走 <code>/voice/chat/ws</code> 文模式（硬件通道）。登录账号绑定的设备号应与当前页一致。
         </p>
         <div class="meta-row" style="flex-wrap:wrap;gap:8px;align-items:center;">
             <input id="appLoginUser" type="text" placeholder="App 用户名" autocomplete="username" style="max-width:140px;" />
@@ -204,14 +205,6 @@
                     <button id="wsChatDisconnectBtn" class="btn-secondary" type="button">断开</button>
                 </div>
                 <pre id="wsChatLog" class="scroll-max-20" style="margin-top:8px;white-space:pre-wrap;font-size:12px;background:rgba(0,0,0,.04);padding:8px;border-radius:8px;min-height:80px;"></pre>
-            </div>
-            <div>
-                <h4 style="margin:0 0 6px;">值得留意（care-alert）</h4>
-                <div class="meta-row" style="gap:8px;">
-                    <button id="careAlertLoadBtn" class="btn-secondary" type="button">拉取当日</button>
-                    <button id="careAlertForceBtn" class="btn-primary" type="button">强刷 force=1</button>
-                </div>
-                <pre id="careAlertLog" class="scroll-max-20" style="margin-top:8px;white-space:pre-wrap;font-size:12px;background:rgba(0,0,0,.04);padding:8px;border-radius:8px;min-height:80px;"></pre>
             </div>
         </div>
     </div>
@@ -1385,24 +1378,6 @@
             document.getElementById('wsChatDisconnectBtn').addEventListener('click', () => {
                 if(feedWs){ try { feedWs.send(JSON.stringify({type:'end'})); } catch(_){} feedWs.close(); feedWs = null; }
             });
-            async function loadCareAlert(force){
-                const log = document.getElementById('careAlertLog');
-                const tok = getAppToken();
-                if(!tok){ alert('请先 App 登录'); return; }
-                log.textContent = '';
-                let url = '/device/api/care-alert/daily?deviceNo=' + encodeURIComponent(deviceNo);
-                if(force){ url += '&force=1'; }
-                try {
-                    const res = await fetch(url, {headers: {'Authorization': 'Bearer ' + tok}});
-                    const data = await res.json().catch(() => ({}));
-                    if(!res.ok || data.code !== 0){
-                        throw new Error(data.message || ('HTTP ' + res.status));
-                    }
-                    appendLog(log, JSON.stringify(data.data || data, null, 2));
-                } catch(e){ appendLog(log, '[fail] ' + (e.message || e)); }
-            }
-            document.getElementById('careAlertLoadBtn').addEventListener('click', () => loadCareAlert(false));
-            document.getElementById('careAlertForceBtn').addEventListener('click', () => loadCareAlert(true));
             const xiaozhiAddBtn = document.getElementById('xiaozhiAddBtn');
             if(xiaozhiAddBtn){
                 xiaozhiAddBtn.addEventListener('click', async () => {

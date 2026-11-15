@@ -770,21 +770,7 @@ func (s *VoiceService) HandleTranscriptForIntentStream(ctx context.Context, devi
 	normalizedTranscript := pre.NormalizedTranscript
 	glog.Infof(ctx, "问题=%q intent_path=stream_land", normalizedTranscript)
 
-	// 4. 额度：澄清续聊免计；VIP/硬件/额尽不计；有额非 VIP 计次
-	clarifyResume := pendingConversationID(deviceNo) != ""
-	var wxID int64
-	var shouldConsume bool
-	if clarifyResume {
-		glog.Infof(ctx, "[Clarify] stream 续聊免计 AI 额度。deviceNo=%s conversation_id=%s intent_path=stream_land",
-			deviceNo, pendingConversationID(deviceNo))
-	} else {
-		var qErr error
-		wxID, shouldConsume, ctx, qErr = s.guardVoiceAIQuota(ctx, deviceNo)
-		if qErr != nil {
-			return nil, qErr
-		}
-	}
-
+	// 直调 Python 流式 intent：不传 model、无额度预检/计次（retire-non-predict-ai-surface）。
 	streamRes, streamErr := s.callDeepSeekUnifiedIntentStream(ctx, deviceNo, normalizedTranscript, cb)
 	if streamErr != nil {
 		// Stream 失败：返回错误，禁止回退非流式 AnalyzeIntent；失败不 clear cid
@@ -804,12 +790,9 @@ func (s *VoiceService) HandleTranscriptForIntentStream(ctx context.Context, devi
 	}
 
 	intent := mapPythonRespToIntent(streamRes.Result)
-	if !clarifyResume && shouldConsume {
-		s.consumeVoiceAIQuotaOnSuccess(ctx, wxID)
-	}
-
-	glog.Infof(ctx, "[IntentStream] intent_path=stream_land deviceNo=%s target_type=%s action=%s need_confirm=%v conversation_id=%s clarify_resume=%v should_consume=%v",
-		deviceNo, intent.TargetType, intent.Action, intent.NeedConfirm, intent.ConversationID, clarifyResume, shouldConsume)
+	clarifyResume := pendingConversationID(deviceNo) != ""
+	glog.Infof(ctx, "[IntentStream] intent_path=stream_land deviceNo=%s target_type=%s action=%s need_confirm=%v conversation_id=%s clarify_resume=%v",
+		deviceNo, intent.TargetType, intent.Action, intent.NeedConfirm, intent.ConversationID, clarifyResume)
 
 	chatRes, chatErr := s.applyUnifiedIntentResult(ctx, deviceNo, normalizedTranscript, intent)
 	return &contracts.IntentStreamResult{
@@ -876,69 +859,6 @@ func (s *VoiceService) insertQa(ctx context.Context, question, answer string) er
 		Replay:   answer,
 	})
 	return err
-}
-
-// getOrCreateDailySuggestion 每设备每天只生成一次建议，其余请求直接复用当日记录。
-func (s *VoiceService) getOrCreateDailySuggestion(ctx context.Context, deviceNo string) (string, error) {
-	loc := time.Local
-	now := time.Now().In(loc)
-	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc).Unix()
-	endOfDay := startOfDay + 86400
-	var existing entity.Suggest
-	// 当日可能尚无建议：One+IsEmpty；真 DB 错才失败，空集继续生成
-	one, err := dao.Suggest.Ctx(ctx).
-		Where(dao.Suggest.Columns().DeviceNo, deviceNo).
-		WhereGTE(dao.Suggest.Columns().Time, startOfDay).
-		WhereLT(dao.Suggest.Columns().Time, endOfDay).
-		OrderDesc(dao.Suggest.Columns().Id).
-		Limit(1).
-		One()
-	if err != nil {
-		return "", err
-	}
-	if !one.IsEmpty() {
-		if err = one.Struct(&existing); err != nil {
-			return "", err
-		}
-		if existing.Id > 0 && strings.TrimSpace(existing.Suggest) != "" {
-			return existing.Suggest, nil
-		}
-	}
-
-	suggestion, callErr := s.callDeepSeekGrowthSuggestion(ctx, deviceNo)
-	if callErr != nil {
-		return "", callErr
-	}
-	suggestion = strings.TrimSpace(suggestion)
-	if suggestion == "" {
-		suggestion = "今天建议保持规律作息，按需喂养，关注精神状态与排便情况。"
-	}
-
-	_, insertErr := dao.Suggest.Ctx(ctx).Data(g.Map{
-		dao.Suggest.Columns().DeviceNo: deviceNo,
-		dao.Suggest.Columns().Suggest:  suggestion,
-		dao.Suggest.Columns().Time:     nowUnixSec(),
-	}).Insert()
-	if insertErr != nil {
-		glog.Warningf(ctx, "insert suggest failed: %v", insertErr)
-	}
-	return suggestion, nil
-}
-
-func (s *VoiceService) loadDeviceProfile(ctx context.Context, deviceNo string) (string, string) {
-	profile, err := DeviceProfile().GetProfile(ctx, deviceNo)
-	if err != nil {
-		glog.Warningf(ctx, "load device profile failed: deviceNo=%s err=%v", deviceNo, err)
-	}
-	birthday := "未设置"
-	if profile.Birthday > 0 {
-		birthday = time.Unix(profile.Birthday, 0).In(time.Local).Format("2006-01-02")
-	}
-	sexText := "女"
-	if profile.Sex > 0 {
-		sexText = "男"
-	}
-	return birthday, sexText
 }
 
 func truncateVoiceLogText(input string, max int) string {

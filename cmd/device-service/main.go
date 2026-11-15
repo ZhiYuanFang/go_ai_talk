@@ -26,8 +26,9 @@ func main() {
 		glog.Fatalf(ctx, "dependency check failed: %v", err)
 		return
 	}
-	if err := device.EnsureWxIsSimulatedColumn(ctx); err != nil {
-		glog.Fatalf(ctx, "wx schema ensure failed: %v", err)
+	// sim-user 退役：幂等清理模拟号行并 DROP wx.is_simulated。
+	if err := device.EnsureWxIsSimulatedColumnDropped(ctx); err != nil {
+		glog.Fatalf(ctx, "wx is_simulated drop failed: %v", err)
 		return
 	}
 	if err := device.EnsureEventIsAppointmentColumn(ctx); err != nil {
@@ -44,6 +45,10 @@ func main() {
 	}
 	if err := device.EnsureSurveyTables(ctx); err != nil {
 		glog.Fatalf(ctx, "survey schema ensure failed: %v", err)
+		return
+	}
+	if err := device.EnsurePredictProIdeaTables(ctx); err != nil {
+		glog.Fatalf(ctx, "predict_pro_idea schema ensure failed: %v", err)
 		return
 	}
 	if _, err := device.EnsureSurveySingleCampaign(ctx); err != nil {

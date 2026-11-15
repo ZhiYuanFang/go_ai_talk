@@ -54,17 +54,6 @@ type UcgMediaDeleteRes struct {
 	Skipped []string `json:"skipped"`
 }
 
-type UcgPostsPolishReq struct {
-	g.Meta    `path:"/ucg/app/api/posts/polish" method:"post" tags:"ucg" summary:"AI 润笔正文"`
-	ImageKeys []string `json:"imageKeys" v:"required"`
-	Text      string   `json:"text"`
-}
-
-type UcgPostsPolishRes struct {
-	PolishedText  string `json:"polishedText"`
-	QuotaDegraded bool   `json:"quotaDegraded"`
-}
-
 // UcgHealthReq 进程健康探测（供 compose/k8s 与联调）。
 type UcgHealthReq struct {
 	g.Meta `path:"/ucg/app/api/health" method:"get" tags:"ucg" summary:"UCG 服务健康检查"`

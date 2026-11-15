@@ -1,11 +1,12 @@
 # 检查 internal/services 业务包之间是否互引（service-package-isolation）。
-# 允许：同包、platform、contracts、aimodel、clients、标准库与第三方。
+# 允许：同包、platform、contracts、clients、标准库与第三方。
+# 注：simuser / aimodel 已退役，不得再出现在域名列表。
 # 用法：powershell -File hack/check-service-import.ps1
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
-$domains = @("cash", "voice", "device", "history", "ucg", "push", "gatewayapp", "simuser", "mcpbridge", "appstatus")
+$domains = @("cash", "voice", "device", "history", "ucg", "push", "gatewayapp", "mcpbridge", "appstatus")
 $fail = 0
 
 function Get-ImportHits([string]$srcDir, [string]$dst) {

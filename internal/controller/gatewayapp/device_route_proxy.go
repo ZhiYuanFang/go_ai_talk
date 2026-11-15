@@ -61,6 +61,7 @@ func installDeviceProxyMiddleware(s *ghttp.Server) {
 		"/device/admin/api/*",
 		"/device/app/api/user/*",
 		"/device/app/api/feedback/*",
+		"/device/app/api/predict-pro-ideas/*",
 		"/device/app/api/appointment/*",
 		"/device/app/api/survey/*",
 		"/device/app/api/xiaozhi-mcp/*",

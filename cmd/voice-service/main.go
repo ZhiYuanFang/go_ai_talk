@@ -20,7 +20,6 @@ import (
 
 func main() {
 	prepareVoiceServiceRuntime()
-	voice.InitVoiceLLMProfileStore()
 	ctx := gctx.New()
 	// voice-service 启动前强制检查 Redis/MQ，保证会话缓存与事件发布链路可用。
 	if err := runtimecheck.CheckDependencies(ctx, runtimecheck.DependencyOptions{RequireRabbitMQ: false}); err != nil {

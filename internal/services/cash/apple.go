@@ -20,11 +20,12 @@ type AppleVerifyInput struct {
 	SignedTransaction string `json:"signedTransaction"` // JWS，可选；有则解析声明
 }
 
-// VerifyAppleIAP 校验 Apple IAP 并履约开通（VIP 或功能订单共用入口）。
+// VerifyAppleIAP 校验 Apple IAP 并履约开通（功能订单 / 小智 MCP 共用入口）。
 //
 // 权威开通路径为 ASN（POST …/apple/notifications）；本接口为可选加速，
 // 与 ASN 共用 Fulfill* / channel_txn_id 幂等。生产须提交 signedTransaction 并验签（与 ASN 共用 VerifyAndDecodeAppleJWS）。
 // CASH_PAYMENT_DEV_BYPASS=1 仅非生产：允许无 JWS；有 JWS 时仍尽量验签。
+// VIP 履约已下线：未命中 feature / 小智 MCP 映射时直接拒绝。
 func VerifyAppleIAP(ctx context.Context, wxID int64, in AppleVerifyInput) error {
 	if wxID <= 0 {
 		return gerror.NewCode(gcode.CodeInvalidParameter, "缺少 X-Internal-Wx-Id")
@@ -66,7 +67,7 @@ func VerifyAppleIAP(ctx context.Context, wxID int64, in AppleVerifyInput) error 
 		return gerror.NewCode(gcode.CodeInvalidParameter, "生产环境须提交 signedTransaction（JWS）；开发可设 CASH_PAYMENT_DEV_BYPASS=1")
 	}
 
-	// 功能/小智 MCP 订单优先：已有 orderNo 属于 feature_order，或 Apple ID 命中 SKU。
+	// 功能/小智 MCP 订单：已有 orderNo 属于 feature_order，或 Apple ID 命中 SKU。
 	if orderNo != "" {
 		if ok, _ := EnsureFeatureOrderExists(ctx, orderNo); ok {
 			fo, err := loadFeatureOrderByNo(ctx, orderNo)
@@ -109,37 +110,7 @@ func VerifyAppleIAP(ctx context.Context, wxID int64, in AppleVerifyInput) error 
 		return FulfillFeaturePaid(ctx, orderNo, ChannelAppleIAP, txn, fp.PriceFen)
 	}
 
-	prod, err := GetActiveProduct(ctx, ProductMonthly19)
-	if err != nil {
-		return err
-	}
-	expectPID := strings.TrimSpace(prod.AppleProductId)
-	if expectPID == "" {
-		return gerror.NewCode(gcode.CodeInternalError, "未在开通功能管理配置 VIP 的 Apple 商品 ID")
-	}
-	if productID != expectPID {
-		return gerror.NewCode(gcode.CodeInvalidParameter, "productId 与一期 VIP 商品不匹配")
-	}
-
-	if orderNo == "" {
-		created, cErr := CreateOrder(ctx, wxID, ProductMonthly19, ChannelAppleIAP)
-		if cErr != nil {
-			return cErr
-		}
-		orderNo = created.OrderNo
-	} else {
-		order, oErr := loadOrderByNo(ctx, orderNo)
-		if oErr != nil {
-			return oErr
-		}
-		if order.WxId != wxID {
-			return gerror.NewCode(gcode.CodeNotAuthorized, "订单不属于当前账号")
-		}
-		if order.Channel != ChannelAppleIAP {
-			return gerror.NewCode(gcode.CodeInvalidParameter, "订单渠道不是 apple_iap")
-		}
-	}
-	return FulfillPaid(ctx, orderNo, ChannelAppleIAP, txn, prod.PriceFen)
+	return gerror.NewCode(gcode.CodeInvalidParameter, "未找到功能或小智 MCP Apple 商品映射（VIP 已下线）")
 }
 
 // decodeJWSPayloadUnverified 仅 Base64 解码 payload（无签名校验；仅 DEV_BYPASS 回退）。

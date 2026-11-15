@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>预测 Pro 想法 — 运维 Hub</title>
+	<link rel="stylesheet" href="/resource/public/pangbao-theme.css" />
+	<link rel="stylesheet" href="/resource/public/admin-pages.css" />
+</head>
+<body>
+<div class="page">
+	<header class="admin-header glass">
+		<div class="logo">PI</div>
+		<div>
+			<h1>预测 Pro 想法</h1>
+			<p>用户提交的 Pro 能力想法；可改展示文案、删除</p>
+		</div>
+	</header>
+	<div class="card glass hidden" id="mainCard">
+		<div class="hub-md">
+			<div class="hub-md-master">
+				<div class="card-head">
+					<h3>想法列表</h3>
+					<div class="card-actions">
+						<button id="refreshBtn" type="button">刷新</button>
+						<a class="link-btn" href="/device/admin">返回运维 Hub</a>
+					</div>
+				</div>
+				<div id="mainMsg" class="msg"></div>
+				<div class="table-wrap">
+					<table>
+						<thead>
+							<tr>
+								<th>ID</th>
+								<th>wxId</th>
+								<th>宝宝名</th>
+								<th>原文</th>
+								<th>展示文案</th>
+								<th>热度</th>
+								<th>提交时间</th>
+								<th>操作</th>
+							</tr>
+						</thead>
+						<tbody id="ideaTbody"></tbody>
+					</table>
+				</div>
+				<div class="pager">
+					<button id="prevBtn" type="button">上一页</button>
+					<button id="nextBtn" type="button">下一页</button>
+					<span id="pagerInfo"></span>
+				</div>
+			</div>
+			<div class="hub-md-detail">
+				<div class="hub-md-empty" id="detailEmpty">选中一行可编辑展示文案</div>
+				<div class="detail-panel hidden" id="detailPanel">
+					<h4>编辑展示文案</h4>
+					<p class="msg" id="detailMeta" style="color:#64748b"></p>
+					<textarea id="displayTextInput" rows="5" style="width:100%;box-sizing:border-box" maxlength="200" placeholder="展示文案（最多 200 字）"></textarea>
+					<div class="card-actions" style="margin-top:12px">
+						<button id="saveDisplayBtn" type="button">保存</button>
+						<button id="deleteBtn" type="button">删除</button>
+					</div>
+					<div id="detailMsg" class="msg"></div>
+				</div>
+			</div>
+		</div>
+	</div>
+</div>
+
+<script src="/resource/public/admin-common.js"></script>
+<script>
+let currentPage = 1;
+const pageSize = 20;
+let selectedId = 0;
+let selectedRow = null;
+
+const mainCard = document.getElementById('mainCard');
+const mainMsg = document.getElementById('mainMsg');
+const ideaTbody = document.getElementById('ideaTbody');
+const pagerInfo = document.getElementById('pagerInfo');
+const prevBtn = document.getElementById('prevBtn');
+const nextBtn = document.getElementById('nextBtn');
+const detailEmpty = document.getElementById('detailEmpty');
+const detailPanel = document.getElementById('detailPanel');
+const detailMeta = document.getElementById('detailMeta');
+const displayTextInput = document.getElementById('displayTextInput');
+const detailMsg = document.getElementById('detailMsg');
+
+function setMsg(el, text, ok){
+	el.textContent = text || '';
+	el.style.color = ok ? '#0a6' : '#c1121f';
+}
+
+function escapeHtml(s){
+	return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function formatTime(ts){
+	if(!ts) return '';
+	const d = new Date(Number(ts) * 1000);
+	if(Number.isNaN(d.getTime())) return '';
+	const pad = n => String(n).padStart(2,'0');
+	return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+' '+pad(d.getHours())+':'+pad(d.getMinutes());
+}
+
+function api(path, options={}){ return AdminCommon.adminFetch(path, options); }
+
+function asPaged(d){
+	const list = Array.isArray(d) ? d : (d && Array.isArray(d.list) ? d.list : []);
+	const total = d && typeof d.total === 'number' ? d.total : list.length;
+	const page = d && typeof d.page === 'number' ? d.page : currentPage;
+	const ps = d && typeof d.pageSize === 'number' ? d.pageSize : pageSize;
+	return { list, total, page, pageSize: ps };
+}
+
+function clearDetail(){
+	selectedId = 0;
+	selectedRow = null;
+	detailPanel.classList.add('hidden');
+	detailEmpty.classList.remove('hidden');
+	setMsg(detailMsg, '');
+}
+
+function selectRow(it){
+	selectedId = Number(it.id || 0);
+	selectedRow = it;
+	detailEmpty.classList.add('hidden');
+	detailPanel.classList.remove('hidden');
+	detailMeta.textContent = 'ID '+selectedId+' · wxId '+(it.wxId??'')+' · 宝宝 '+(it.babyName||'')+' · 热度 '+(it.likeCount??0);
+	displayTextInput.value = it.displayText || '';
+	setMsg(detailMsg, '');
+}
+
+async function loadPage(page){
+	const paged = asPaged(await api('/device/admin/api/predict-pro-ideas/list?page='+page+'&pageSize='+pageSize));
+	currentPage = paged.page || page;
+	ideaTbody.innerHTML = '';
+	(paged.list || []).forEach(it => {
+		const tr = document.createElement('tr');
+		tr.style.cursor = 'pointer';
+		tr.innerHTML =
+			'<td>'+escapeHtml(it.id||'')+'</td>'+
+			'<td>'+escapeHtml(it.wxId??'')+'</td>'+
+			'<td>'+escapeHtml(it.babyName||'')+'</td>'+
+			'<td class="wrapcell">'+escapeHtml(it.content||'')+'</td>'+
+			'<td class="wrapcell">'+escapeHtml(it.displayText||'')+'</td>'+
+			'<td>'+escapeHtml(it.likeCount??0)+'</td>'+
+			'<td>'+formatTime(it.createdAt)+'</td>'+
+			'<td><button type="button" class="link-btn edit-btn">编辑</button></td>';
+		tr.addEventListener('click', (e) => {
+			if(e.target && e.target.classList.contains('edit-btn')) e.stopPropagation();
+			selectRow(it);
+		});
+		tr.querySelector('.edit-btn').addEventListener('click', () => selectRow(it));
+		ideaTbody.appendChild(tr);
+	});
+	const totalPages = Math.max(1, Math.ceil((paged.total||0) / (paged.pageSize||pageSize)));
+	pagerInfo.textContent = '第 '+currentPage+' / '+totalPages+' 页 · 共 '+(paged.total||0)+' 条';
+	prevBtn.disabled = currentPage <= 1;
+	nextBtn.disabled = currentPage >= totalPages;
+	setMsg(mainMsg, '', true);
+}
+
+document.getElementById('refreshBtn').addEventListener('click', () => loadPage(currentPage).catch(e => setMsg(mainMsg, e.message||String(e))));
+prevBtn.addEventListener('click', () => { if(currentPage>1) loadPage(currentPage-1).catch(e => setMsg(mainMsg, e.message||String(e))); });
+nextBtn.addEventListener('click', () => loadPage(currentPage+1).catch(e => setMsg(mainMsg, e.message||String(e))); });
+
+document.getElementById('saveDisplayBtn').addEventListener('click', async () => {
+	if(!selectedId){ setMsg(detailMsg, '请先选择想法'); return; }
+	const text = displayTextInput.value.trim();
+	if(!text){ setMsg(detailMsg, '展示文案不能为空'); return; }
+	try {
+		await api('/device/admin/api/predict-pro-ideas/update', { method:'POST', body: JSON.stringify({ id: selectedId, displayText: text }) });
+		setMsg(detailMsg, '已保存', true);
+		await loadPage(currentPage);
+	} catch(e){
+		setMsg(detailMsg, e.message||String(e));
+	}
+});
+
+document.getElementById('deleteBtn').addEventListener('click', async () => {
+	if(!selectedId){ setMsg(detailMsg, '请先选择想法'); return; }
+	if(!confirm('确认删除想法 #'+selectedId+'？删除后 App 列表不可见。')) return;
+	try {
+		await api('/device/admin/api/predict-pro-ideas/delete', { method:'POST', body: JSON.stringify({ id: selectedId }) });
+		setMsg(mainMsg, '已删除', true);
+		clearDetail();
+		await loadPage(currentPage);
+	} catch(e){
+		setMsg(detailMsg, e.message||String(e));
+	}
+});
+
+(async function init(){
+	try {
+		await AdminCommon.requireAdmin();
+		mainCard.classList.remove('hidden');
+		await loadPage(1);
+	} catch(e){
+		setMsg(mainMsg, e.message||String(e));
+	}
+})();
+</script>
+</body>
+</html>

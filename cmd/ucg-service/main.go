@@ -19,7 +19,6 @@ import (
 
 func main() {
 	prepareUcgServiceRuntime()
-	ucgsvc.InitUcgPolishProfileStore()
 	ctx := gctx.New()
 	// 与 history/voice 一致：Redis 不可用时 fail-fast；RabbitMQ 探活失败不阻断启动（容灾）。
 	if err := runtimecheck.CheckDependencies(ctx, runtimecheck.DependencyOptions{RequireRabbitMQ: true}); err != nil {

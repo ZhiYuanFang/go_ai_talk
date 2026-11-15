@@ -44,7 +44,6 @@ var (
 		"/device/app/ws/history",
 		"/voice/chat/ws",
 		"/voice/asr/ws",
-		"/voice/clinic/ws",
 		"/ucg/app/ws/chat",
 	}
 
@@ -58,6 +57,7 @@ var (
 		"/device/admin/",
 		"/device/admin/qa-records",
 		"/device/admin/feedback-records",
+		"/device/admin/predict-pro-ideas",
 		"/device/admin/api-usage-stats",
 		"/device/admin/client-usage-stats",
 		"/device/app/api/site/home",
@@ -65,11 +65,8 @@ var (
 		"/device/history/api/event/options",
 		"/ucg/app/api/feed/recommend",
 		"/ucg/app/api/health",
-		// VIP 商品现价/原价：落地页未登录可读；建单/支付仍须登录。
-		"/cash/app/api/vip/product",
 		"/device/app/version-admin.html",
 		"/device/admin/ucg-admin.html",
-		"/device/admin/voice-admin.html",
 		"/device/admin/intent-agent-admin.html",
 		"/device/admin/intent-vector-admin.html",
 		"/device/admin/type-vector-admin.html",
@@ -83,9 +80,6 @@ var (
 		"/device/admin/history-speak-vector-admin.html",
 		"/device/admin/rule-gaps-admin.html",
 		"/device/admin/miss-inbox-admin.html",
-		"/device/admin/ai-model-admin.html",
-		"/device/admin/sim-admin.html",
-		"/device/admin/cash-vip-admin.html",
 		"/device/admin/cash-feature-admin.html",
 		"/device/admin/cash-xiaozhi-mcp-admin.html",
 		"/device/admin/cash-feeding-eligibility-admin.html",

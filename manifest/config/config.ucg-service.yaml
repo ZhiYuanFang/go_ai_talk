@@ -77,15 +77,6 @@ ucg:
     indexStartupHealMaxPosts: 10000  # 启动 heal 帖数上限
     indexStartupHealLockSeconds: 1800 # 启动 heal 锁 TTL（秒）
     commentsPreviewMax: 6      # Feed 内联评论预览条数（v2 API）
-  # AI 润笔（polish lane）：provider/model/maxInFlight/maxWaiters 可由 Admin 热更新；API Key 仅 env。
-  # zhipu → GLM_API_KEY；dashscope → UCG_DASHSCOPE_API_KEY。yaml 冷启动兜底见 default_*。
-  ai:
-    dashscope_api_key: ""
-    vision_endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
-    default_provider: "zhipu"
-    default_vision_model: "glm-4.6v-flash"
-    default_max_images_per_request: 9
-    timeout_seconds: 60
   admin:
     # 管理口令：生产 MUST 用 env UCG_ADMIN_PASSWORD 注入；yaml 留空。gateway-app 校验 Admin JWT 后注入 X-Admin-Password。
     password: ""

@@ -22,12 +22,11 @@ type DeviceUcgWxBatchReq struct {
 }
 
 type DeviceUcgWxBatchItem struct {
-	WxId        int64  `json:"wxId"`
-	Exists      bool   `json:"exists"`
-	DeviceNo    string `json:"deviceNo"`
-	BabyName    string `json:"babyName"`
-	IpLocation  string `json:"ipLocation,omitempty"`
-	IsSimulated bool   `json:"isSimulated"`
+	WxId       int64  `json:"wxId"`
+	Exists     bool   `json:"exists"`
+	DeviceNo   string `json:"deviceNo"`
+	BabyName   string `json:"babyName"`
+	IpLocation string `json:"ipLocation,omitempty"`
 }
 
 // DeviceUcgWxIpLocationPutReq 更新 wx IP 属地（网关解析后由 ucg-service 写入）。

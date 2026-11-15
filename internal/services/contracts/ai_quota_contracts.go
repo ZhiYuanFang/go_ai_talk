@@ -6,128 +6,29 @@ import (
 	"github.com/gogf/gf/v2/errors/gcode"
 )
 
+// 历史兼容业务码：额度/clinic/care-alert 能力已退役，但仍可能出现在旧客户端或
+// history 本地反代对 voice 响应的透传映射中，故保留稳定数字码。
+
 const (
 	// CodeAINotLoggedIn wxId=0 或未绑定账号时禁止 AI 功能。
 	CodeAINotLoggedIn = 40301
-	// CodeAIQuotaExhausted 当月额度已用尽。
+	// CodeAIQuotaExhausted 当月额度已用尽（能力已退役；保留码值兼容）。
 	CodeAIQuotaExhausted = 40302
-	// CodeGrowthTrajectoryDailyLimit 成长轨迹当日次数已用尽。
-	CodeGrowthTrajectoryDailyLimit = 40303
-	// BizCodeGrowthTrajectoryDailyLimit 成长轨迹日限业务码（契约字符串）。
-	BizCodeGrowthTrajectoryDailyLimit = "GROWTH_TRAJECTORY_DAILY_LIMIT"
-	// CodeCareAlertDailyLimit 值得留意当日生成次数已用尽。
-	CodeCareAlertDailyLimit = 40304
-	// BizCodeCareAlertDailyLimit 值得留意日限业务码。
-	BizCodeCareAlertDailyLimit = "CARE_ALERT_DAILY_LIMIT"
 )
 
 var (
 	// ErrAINotLoggedIn 未登录账号不可使用 AI。
 	ErrAINotLoggedIn = errors.New("请先登录账号")
-	// ErrAIQuotaExhausted 本月 AI 额度已用尽。
+	// ErrAIQuotaExhausted 本月 AI 额度已用尽（能力已退役；保留文案兼容）。
 	ErrAIQuotaExhausted = errors.New("本月额度已用完")
-	// ErrGrowthTrajectoryDailyLimit 今日成长轨迹预测次数已用完。
-	ErrGrowthTrajectoryDailyLimit = errors.New("今日成长轨迹预测次数已用完，请明日再来")
-	// ErrCareAlertDailyLimit 今日值得留意分析次数已用完。
-	ErrCareAlertDailyLimit = errors.New("今日值得留意分析次数已用完，请明日再来")
 )
 
-// GCodeAINotLoggedIn 供 controller 返回稳定业务码。
+// GCodeAINotLoggedIn 供 controller / history 反代返回稳定业务码。
 func GCodeAINotLoggedIn() gcode.Code {
 	return gcode.New(CodeAINotLoggedIn, ErrAINotLoggedIn.Error(), nil)
 }
 
-// GCodeAIQuotaExhausted 供 controller 返回稳定业务码。
+// GCodeAIQuotaExhausted 供 history 反代透传旧额度耗尽码。
 func GCodeAIQuotaExhausted() gcode.Code {
 	return gcode.New(CodeAIQuotaExhausted, ErrAIQuotaExhausted.Error(), nil)
-}
-
-// GCodeGrowthTrajectoryDailyLimit 供 controller 返回成长轨迹日限业务码。
-// Code.Message 为契约字符串 GROWTH_TRAJECTORY_DAILY_LIMIT；对外 Toast 用 NewCode 第二参中文文案。
-func GCodeGrowthTrajectoryDailyLimit() gcode.Code {
-	return gcode.New(CodeGrowthTrajectoryDailyLimit, BizCodeGrowthTrajectoryDailyLimit, nil)
-}
-
-// GCodeCareAlertDailyLimit 供 controller 返回值得留意日限业务码。
-func GCodeCareAlertDailyLimit() gcode.Code {
-	return gcode.New(CodeCareAlertDailyLimit, BizCodeCareAlertDailyLimit, nil)
-}
-
-// AIQuotaFeature 额度维度。
-type AIQuotaFeature string
-
-const (
-	AIQuotaPolish    AIQuotaFeature = "polish"
-	AIQuotaVoiceAI   AIQuotaFeature = "voice_ai"
-	AIQuotaClinicAI  AIQuotaFeature = "clinic_ai"
-	AIQuotaCareAlert AIQuotaFeature = "care_alert"
-)
-
-// AIQuotaSnapshot 某 feature 当月 used/limit 快照。
-type AIQuotaSnapshot struct {
-	Used     int  `json:"used"`
-	Limit    int  `json:"limit"`
-	Allowed  bool `json:"allowed"`
-	Degraded bool `json:"degraded"` // 额度用尽且允许降速 fallback（polish / clinic_ai / voice_ai）
-}
-
-// VoiceAIQuotaDefaultDTO voice 域全局默认（voice_ai + clinic_ai + care_alert）。
-type VoiceAIQuotaDefaultDTO struct {
-	VoiceAiMonthlyLimit    int   `json:"voiceAiMonthlyLimit"`
-	ClinicAiMonthlyLimit   int   `json:"clinicAiMonthlyLimit"`
-	CareAlertMonthlyLimit  int   `json:"careAlertMonthlyLimit"`
-	UpdatedAt              int64 `json:"updatedAt"`
-}
-
-// VoiceAIQuotaUserOverrideDTO voice 域 per-wxId override。
-type VoiceAIQuotaUserOverrideDTO struct {
-	WxId                   int64 `json:"wxId"`
-	VoiceAiMonthlyLimit    *int  `json:"voiceAiMonthlyLimit,omitempty"`
-	ClinicAiMonthlyLimit   *int  `json:"clinicAiMonthlyLimit,omitempty"`
-	CareAlertMonthlyLimit  *int  `json:"careAlertMonthlyLimit,omitempty"`
-	UpdatedAt              int64 `json:"updatedAt"`
-}
-
-// PolishAIQuotaDefaultDTO ucg 域全局润笔默认。
-type PolishAIQuotaDefaultDTO struct {
-	PolishMonthlyLimit int   `json:"polishMonthlyLimit"`
-	UpdatedAt          int64 `json:"updatedAt"`
-}
-
-// PolishAIQuotaUserOverrideDTO ucg 域 per-wxId 润笔 override。
-type PolishAIQuotaUserOverrideDTO struct {
-	WxId               int64 `json:"wxId"`
-	PolishMonthlyLimit *int  `json:"polishMonthlyLimit,omitempty"`
-	UpdatedAt          int64 `json:"updatedAt"`
-}
-
-// VoiceAIQuotaAppStatus App 读 API：voice 域 voiceAi + clinicAi + careAlert。
-type VoiceAIQuotaAppStatus struct {
-	VoiceAi   AIQuotaSnapshot `json:"voiceAi"`
-	ClinicAi  AIQuotaSnapshot `json:"clinicAi"`
-	CareAlert AIQuotaSnapshot `json:"careAlert"`
-}
-
-// VoiceAIQuotaUserListItem Admin 用户额度列表行（身份 + 有效 used/limit）。
-type VoiceAIQuotaUserListItem struct {
-	DeviceNo  string          `json:"deviceNo"`
-	WxId      int64           `json:"wxId"`
-	Account   string          `json:"account"`
-	BabyName  string          `json:"babyName"`
-	VoiceAi   AIQuotaSnapshot `json:"voiceAi"`
-	ClinicAi  AIQuotaSnapshot `json:"clinicAi"`
-	CareAlert AIQuotaSnapshot `json:"careAlert"`
-}
-
-// VoiceAIQuotaUserPageResult Admin 用户额度分页。
-type VoiceAIQuotaUserPageResult struct {
-	List     []VoiceAIQuotaUserListItem
-	Total    int
-	Page     int
-	PageSize int
-}
-
-// PolishAIQuotaAppStatus App 读 API：ucg 域 polish。
-type PolishAIQuotaAppStatus struct {
-	Polish AIQuotaSnapshot `json:"polish"`
 }

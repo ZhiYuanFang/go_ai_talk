@@ -18,51 +18,6 @@ type CashUCGEligibilityRes struct {
 	Message       string `json:"message,omitempty"`
 }
 
-// CashCareAlertEligibilityReq GET 值得留意喂养资格（cash 合成）。
-type CashCareAlertEligibilityReq struct {
-	g.Meta `path:"/cash/app/api/care-alert/eligibility" method:"get" tags:"cash" summary:"值得留意喂养资格（自昨天起连续有效喂养日）"`
-}
-
-// CashCareAlertEligibilityRes 与 UCG 资格字段同构。
-type CashCareAlertEligibilityRes struct {
-	Qualified     bool   `json:"qualified"`
-	RequiredDays  int    `json:"requiredDays"`
-	EffectiveDays int    `json:"effectiveDays"`
-	RemainingDays int    `json:"remainingDays"`
-	Message       string `json:"message,omitempty"`
-}
-
-// CashInternalCareAlertAccessReq 内部：值得留意可看合成（喂养 ∧ 开通∨VIP）。
-type CashInternalCareAlertAccessReq struct {
-	g.Meta   `path:"/cash/internal/api/care-alert/access" method:"get" tags:"cash" summary:"内部值得留意可看合成"`
-	DeviceNo string `json:"deviceNo" p:"deviceNo" dc:"设备号"`
-	WxId     int64  `json:"wxId" p:"wxId" dc:"触发者 wx 主键"`
-}
-
-// CashInternalCareAlertAccessRes 内部可看 data。
-type CashInternalCareAlertAccessRes struct {
-	Allowed              bool  `json:"allowed"`
-	FeedingQualified     bool  `json:"feedingQualified"`
-	FeatureActive        bool  `json:"featureActive"`
-	TrialAvailable       bool  `json:"trialAvailable"`
-	EntitlementExpiresAt int64 `json:"entitlementExpiresAt,omitempty"`
-}
-
-// CashInternalGrowthTrajectoryAccessReq 内部：成长轨迹可看合成（账号开通∨VIP∨试用；无喂养门闸）。
-type CashInternalGrowthTrajectoryAccessReq struct {
-	g.Meta   `path:"/cash/internal/api/growth-trajectory/access" method:"get" tags:"cash" summary:"内部成长轨迹可看合成"`
-	DeviceNo string `json:"deviceNo" p:"deviceNo" dc:"设备号（兼容校验非空；开通不依赖设备）"`
-	WxId     int64  `json:"wxId" p:"wxId" dc:"触发者 wx 主键"`
-}
-
-// CashInternalGrowthTrajectoryAccessRes 内部可看 data。
-type CashInternalGrowthTrajectoryAccessRes struct {
-	Allowed              bool  `json:"allowed"`
-	FeatureActive        bool  `json:"featureActive"`
-	TrialAvailable       bool  `json:"trialAvailable"`
-	EntitlementExpiresAt int64 `json:"entitlementExpiresAt,omitempty"`
-}
-
 // CashInternalFeatureTrialClaimReq 内部：成功落库后 claim 试用（voice 调用）。
 type CashInternalFeatureTrialClaimReq struct {
 	g.Meta    `path:"/cash/internal/api/feature/trial/claim" method:"post" tags:"cash" summary:"内部试用 claim"`
@@ -127,28 +82,12 @@ type CashPredictProEligibilityRes struct {
 
 // CashFeatureTrialStartReq POST 点试用（预测能力 7 日起算）。
 type CashFeatureTrialStartReq struct {
-	g.Meta    `path:"/cash/app/api/feature/trial/start" method:"post" tags:"cash" summary:"功能点试用（预测能力7日）"`
+	g.Meta    `path:"/cash/app/api/feature/trial/start" method:"post" tags:"cash" summary:"功能点试用（预测Pro7日）"`
 	FeatureId string `json:"featureId" v:"required"`
 }
 
 // CashFeatureTrialStartRes 空 data。
 type CashFeatureTrialStartRes struct{}
-
-// CashInternalPredictCapabilityAccessReq 内部：预测能力可推送合成。
-type CashInternalPredictCapabilityAccessReq struct {
-	g.Meta   `path:"/cash/internal/api/predict-capability/access" method:"get" tags:"cash" summary:"内部预测能力开通合成"`
-	DeviceNo string `json:"deviceNo" p:"deviceNo" dc:"设备号"`
-	WxId     int64  `json:"wxId" p:"wxId" dc:"接收者 wx 主键"`
-}
-
-// CashInternalPredictCapabilityAccessRes 内部可推送 data。
-type CashInternalPredictCapabilityAccessRes struct {
-	Allowed       bool `json:"allowed"`
-	BasicActive   bool `json:"basicActive"`
-	ProActive     bool `json:"proActive"`
-	FeatureActive bool `json:"featureActive"`
-	IsVip         bool `json:"isVip"`
-}
 
 // CashFeatureCatalogRes 目录 data。
 type CashFeatureCatalogRes struct {
@@ -174,6 +113,20 @@ type CashFeatureCreateOrderRes struct {
 	AlipayOrderStr  string `json:"alipayOrderStr,omitempty"`
 	PayTip          string `json:"payTip,omitempty"`
 }
+
+// CashAppleVerifyReq POST Apple IAP 验单（可选加速履约）。
+// 业务说明：历史路径仍为 /cash/app/api/vip/apple/verify，供 Flutter 兼容；
+// 实际履约功能单（含预测 Pro）与小智 MCP，VIP 已下线。权威路径仍为 ASN。
+type CashAppleVerifyReq struct {
+	g.Meta            `path:"/cash/app/api/vip/apple/verify" method:"post" tags:"cash" summary:"Apple IAP 验单开通（功能/小智；历史 vip 路径）"`
+	OrderNo           string `json:"orderNo" dc:"可选，缺省则按 productId 自动建单"`
+	TransactionId     string `json:"transactionId" v:"required"`
+	ProductId         string `json:"productId" v:"required"`
+	SignedTransaction string `json:"signedTransaction" dc:"JWS，生产必填"`
+}
+
+// CashAppleVerifyRes 验单结果（空 data；错误走统一 envelope）。
+type CashAppleVerifyRes struct{}
 
 // CashFeatureInviteRedeemReq POST 邀请码兑换单功能。
 type CashFeatureInviteRedeemReq struct {

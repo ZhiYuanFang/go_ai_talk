@@ -16,9 +16,8 @@ import (
 
 // 喂养资格场景键（与客户端约定，Admin 不可新建）。
 const (
-	SceneKeyUCGEntry         = "ucg_entry"
-	SceneKeyCareAlertEntry   = "care_alert_entry"
-	SceneKeyPredictProEntry  = "predict_pro_entry" // 预测 Pro 开通前置；独立于 UCG
+	SceneKeyUCGEntry        = "ucg_entry"
+	SceneKeyPredictProEntry = "predict_pro_entry" // 预测 Pro 开通前置；独立于 UCG
 )
 
 // FeedingEligibilityScene 场景阈值行。
@@ -86,8 +85,6 @@ func GetFeedingEligibilityScene(ctx context.Context, sceneKey string) (FeedingEl
 
 func defaultScene(sceneKey string) FeedingEligibilityScene {
 	switch sceneKey {
-	case SceneKeyCareAlertEntry:
-		return FeedingEligibilityScene{SceneKey: sceneKey, RequiredDays: 2, MinRecordsPerDay: 10}
 	case SceneKeyPredictProEntry, SceneKeyUCGEntry:
 		return FeedingEligibilityScene{SceneKey: sceneKey, RequiredDays: 7, MinRecordsPerDay: 10}
 	default:
@@ -187,9 +184,6 @@ func GetFeedingEligibilityByScene(ctx context.Context, deviceNo, sceneKey string
 	case SceneKeyUCGEntry:
 		// 还需要连续喂养x天才能解锁广场,拥有个人邀请码
 		pendingMsg = "继续保持每日有效喂养记录以解锁广场,拥有个人邀请码"
-	case SceneKeyCareAlertEntry:
-		qualifiedMsg = "已满足值得留意喂养资格"
-		pendingMsg = "继续累计有效喂养日以激活值得留意"
 	case SceneKeyPredictProEntry:
 		qualifiedMsg = "已满足预测 Pro 喂养资格"
 		pendingMsg = "继续累计有效喂养日以开通预测 Pro"
@@ -204,11 +198,6 @@ func GetFeedingEligibilityByScene(ctx context.Context, deviceNo, sceneKey string
 // GetUCGEligibility UCG 入场资格（场景 ucg_entry）。
 func GetUCGEligibility(ctx context.Context, deviceNo string) (*FeedingEligibilityResult, error) {
 	return GetFeedingEligibilityByScene(ctx, deviceNo, SceneKeyUCGEntry)
-}
-
-// GetCareAlertFeedingEligibility 值得留意喂养资格（场景 care_alert_entry）。
-func GetCareAlertFeedingEligibility(ctx context.Context, deviceNo string) (*FeedingEligibilityResult, error) {
-	return GetFeedingEligibilityByScene(ctx, deviceNo, SceneKeyCareAlertEntry)
 }
 
 // GetPredictProFeedingEligibility 预测 Pro 开通喂养资格（场景 predict_pro_entry）。
@@ -241,7 +230,7 @@ func AdminListFeedingEligibilityScenes(ctx context.Context) ([]FeedingEligibilit
 // AdminUpdateFeedingEligibilityScene 更新已有场景阈值；禁止新建未知 scene_key。
 func AdminUpdateFeedingEligibilityScene(ctx context.Context, sceneKey string, requiredDays, minRecordsPerDay int) error {
 	sceneKey = strings.TrimSpace(sceneKey)
-	if sceneKey != SceneKeyUCGEntry && sceneKey != SceneKeyCareAlertEntry && sceneKey != SceneKeyPredictProEntry {
+	if sceneKey != SceneKeyUCGEntry && sceneKey != SceneKeyPredictProEntry {
 		return gerror.NewCode(gcode.CodeInvalidParameter, "未知场景（须与客户端约定）")
 	}
 	if requiredDays <= 0 {

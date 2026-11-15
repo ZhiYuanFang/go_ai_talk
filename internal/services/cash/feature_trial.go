@@ -32,7 +32,7 @@ func IsTrialUnused(ctx context.Context, wxID int64, featureID string) (bool, err
 
 // ClaimTrialAfterSuccess 首次成功落库后原子 claim：trial→used + ActivateFeature(channel=trial, 24h)。
 //
-// 业务：仅 soft access（试用未用且无有效用户权益且非 VIP）时领取；已 used / 已开通 / VIP 则幂等跳过。
+// 业务：仅 soft access（试用未用且无有效用户权益）时领取；已 used / 已开通则幂等跳过。
 // Returns: 参数错误或授予失败。
 func ClaimTrialAfterSuccess(ctx context.Context, wxID int64, featureID string) error {
 	featureID = strings.TrimSpace(featureID)
@@ -52,12 +52,6 @@ func ClaimTrialAfterSuccess(ctx context.Context, wxID int64, featureID string) e
 		return eErr
 	}
 	if entActive {
-		return nil
-	}
-	// VIP 覆盖期间保留 unused，到期后仍可 soft access。
-	if st, vErr := GetVipStatus(ctx, wxID); vErr != nil {
-		glog.Warningf(ctx, "[cash-trial] VIP 查询失败 wxId=%d err=%v，继续尝试 claim", wxID, vErr)
-	} else if st.IsVip {
 		return nil
 	}
 

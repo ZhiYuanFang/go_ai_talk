@@ -99,6 +99,16 @@
 		</div>
 	</div>
 
+	<div class="card glass hidden" id="predictProIdeaCard">
+		<div class="card-head">
+			<h3>预测 Pro 想法</h3>
+			<div class="card-actions">
+				<a class="link-btn" href="/device/admin/predict-pro-ideas">打开管理页</a>
+			</div>
+		</div>
+		<p class="msg" style="color:#64748b;margin:0">收集用户对预测 Pro 能力的想法；可改展示文案、删除。</p>
+	</div>
+
 	<div class="card glass hidden" id="eventCard">
 		<div class="card-head">
 			<h3>事件管理</h3>
@@ -288,6 +298,7 @@ const mainCard = document.getElementById('mainCard');
 const eventCard = document.getElementById('eventCard');
 const qaCard = document.getElementById('qaCard');
 const feedbackCard = document.getElementById('feedbackCard');
+const predictProIdeaCard = document.getElementById('predictProIdeaCard');
 const actionCard = document.getElementById('actionCard');
 const loginMsg = document.getElementById('loginMsg');
 const mainMsg = document.getElementById('mainMsg');
@@ -337,7 +348,6 @@ const ACTION_TARGET_PRESETS = [
 	['end', '结束记录计时'],
 	['one', '一次性记录'],
 	['exit', '退出'],
-	['suggest', '成长建议'],
 	['search', '搜索']
 ];
 
@@ -1083,6 +1093,7 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
 		eventCard.classList.remove('hidden');
 		qaCard.classList.remove('hidden');
 		feedbackCard.classList.remove('hidden');
+		if(predictProIdeaCard) predictProIdeaCard.classList.remove('hidden');
 		actionCard.classList.remove('hidden');
 		setMsg(mainMsg, '登录成功', true);
 	} catch (e) {

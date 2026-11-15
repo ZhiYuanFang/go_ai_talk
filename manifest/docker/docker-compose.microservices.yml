@@ -97,7 +97,6 @@ services:
       DEVICE_API_PROXY_URL: http://device-service:9803
       UCG_SERVICE_BASE_URL: "http://ucg-service:9804"
       UCG_SERVICE_URL: "http://ucg-service:9804"
-      SIM_SERVICE_BASE_URL: "http://sim-user-service:9805"
       UCG_WS_ROUTE_MODE: proxy
       UCG_WS_PROXY_URL: http://ucg-service:9804
       # 全局推送：/app/api/push/* → push-service
@@ -117,7 +116,6 @@ services:
       GATEWAY_APP_ADMIN_PASSWORD: "${GATEWAY_APP_ADMIN_PASSWORD:-}"
       DEVICE_ADMIN_PASSWORD: "${DEVICE_ADMIN_PASSWORD:-}"
       UCG_ADMIN_PASSWORD: "${UCG_ADMIN_PASSWORD:-}"
-      SIM_ADMIN_PASSWORD: "${SIM_ADMIN_PASSWORD:-}"
       # 可选；空则注入时回退 GATEWAY_APP_ADMIN_PASSWORD（VIP 权益 Admin）
       CASH_ADMIN_PASSWORD: "${CASH_ADMIN_PASSWORD:-}"
       # 可选；空则注入时回退 DEVICE_ADMIN_PASSWORD / GATEWAY_APP_ADMIN_PASSWORD（推送设备 Admin）
@@ -436,42 +434,6 @@ services:
       retries: 6
     logging: *docker-logging
 
-  sim-user-service:
-    build:
-      context: ../..
-      dockerfile: manifest/docker/Dockerfile.sim-user-service
-    image: go-ai-talk/sim-user-service:local
-    container_name: go-ai-talk-sim-user-service
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    restart: on-failure:1
-    environment:
-      <<: *logger-env
-      TZ: Asia/Shanghai
-      GF_GCFG_FILE: manifest/config/config.sim-user-service.yaml
-      SIM_DB_LINK: "${SIM_DB_LINK:-${APP_DB_LINK:-}}"
-      MYSQL_TCP_HOST: "${MYSQL_TCP_HOST:-}"
-      SIM_USER_SERVICE_ADDR: ":9805"
-      SIM_USER_SERVICE_ENABLED: "${SIM_USER_SERVICE_ENABLED:-false}"
-      # 任务开关/周期/LLM lane 默认在 sim DB（EnsureSchema 种子），经 Admin 在线修改；勿再注入 SIM_TASK_* / SIM_LLM_* 等
-      GATEWAY_APP_URL: "http://gateway-app:9702"
-      DEVICE_SERVICE_URL: "http://device-service:9803"
-      UCG_SERVICE_URL: "http://ucg-service:9804"
-      DEVICE_GATEWAY_INTERNAL_SECRET: "${DEVICE_GATEWAY_INTERNAL_SECRET:-gateway-internal-change-me}"
-      GLM_API_KEY: "${GLM_API_KEY:-}"
-      DEEPSEEK_API_KEY: "${DEEPSEEK_API_KEY:-}"
-      UCG_DASHSCOPE_API_KEY: "${UCG_DASHSCOPE_API_KEY:-}"
-      SIM_ADMIN_PASSWORD: "${SIM_ADMIN_PASSWORD:-}"
-      GF_REDIS_DEFAULT_ADDRESS: "${GF_REDIS_DEFAULT_ADDRESS:-}"
-    healthcheck:
-      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:9805/api.json > /dev/null || exit 1"]
-      interval: 10s
-      timeout: 3s
-      retries: 6
-    logging: *docker-logging
-
-  # xiaozhi-mcp-service：小智 MCP 多设备接入（Manager + 内部 HTTP :9809），replicas 语义上单实例。
-  # 绑定权威在 device-service；本进程拉全量 + 接受 Upsert/Remove；喂养经 voice chat WS。
   xiaozhi-mcp-service:
     build:
       context: ../..

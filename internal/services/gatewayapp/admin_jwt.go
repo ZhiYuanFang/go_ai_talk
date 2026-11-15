@@ -145,14 +145,6 @@ func VoiceAdminPassword() string {
 	return AdminPassword()
 }
 
-// SimAdminPassword 网关注入 sim-user-service 反代用的 X-Admin-Password。
-func SimAdminPassword() string {
-	if v := strings.TrimSpace(os.Getenv("SIM_ADMIN_PASSWORD")); v != "" {
-		return v
-	}
-	return AdminPassword()
-}
-
 // CashAdminPassword 网关注入 cash-service 反代用的 X-Admin-Password。
 // 优先 CASH_ADMIN_PASSWORD；否则回退 Hub 口令 GATEWAY_APP_ADMIN_PASSWORD。
 func CashAdminPassword() string {

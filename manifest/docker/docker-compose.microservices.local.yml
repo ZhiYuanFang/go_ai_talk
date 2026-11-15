@@ -34,10 +34,6 @@ services:
     ports:
       - "9808:9808"
 
-  sim-user-service:
-    ports:
-      - "9805:9805"
-
   notify-service:
     ports:
       - "9806:9806"

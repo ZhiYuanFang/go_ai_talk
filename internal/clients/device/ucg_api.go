@@ -23,12 +23,11 @@ import (
 
 // UcgWxDisplay device 域向 ucg 暴露的 wx 展示字段（与 device-service JSON 对齐）。
 type UcgWxDisplay struct {
-	WxId        int64  `json:"wxId"`
-	Exists      bool   `json:"exists"`
-	DeviceNo    string `json:"deviceNo"`
-	BabyName    string `json:"babyName"`
-	IpLocation  string `json:"ipLocation,omitempty"`
-	IsSimulated bool   `json:"isSimulated"`
+	WxId       int64  `json:"wxId"`
+	Exists     bool   `json:"exists"`
+	DeviceNo   string `json:"deviceNo"`
+	BabyName   string `json:"babyName"`
+	IpLocation string `json:"ipLocation,omitempty"`
 }
 
 // DeviceClient ucg-service 调用 device internal UCG API 的 HTTP 客户端（禁止直连 wx DAO）。

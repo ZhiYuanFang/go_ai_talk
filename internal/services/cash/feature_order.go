@@ -348,18 +348,20 @@ func FulfillFeaturePaid(ctx context.Context, orderNo, channel, channelTxnID stri
 	})
 }
 
-// DispatchFulfillPaid 按订单号分流 VIP / 功能履约（共用支付回调入口）。
+// DispatchFulfillPaid 按订单号履约功能单（含小智 MCP）；共用支付回调入口。
+//
+// 业务：VIP 履约已下线；order_no 不在 feature_order 时返回 NotFound，不写 vip_*。
 func DispatchFulfillPaid(ctx context.Context, orderNo, channel, channelTxnID string, amountFen int) error {
 	orderNo = strings.TrimSpace(orderNo)
-	// 先查功能订单，再查 VIP。空结果用 .One，避免 Scan 抛 sql.ErrNoRows。
+	// 空结果用 .One，避免 Scan 抛 sql.ErrNoRows。
 	one, err := g.DB().Model("feature_order").Ctx(ctx).Where("order_no", orderNo).Limit(1).One()
 	if err != nil {
 		return err
 	}
-	if !one.IsEmpty() {
-		return FulfillFeaturePaid(ctx, orderNo, channel, channelTxnID, amountFen)
+	if one.IsEmpty() {
+		return gerror.NewCode(gcode.CodeNotFound, "功能订单不存在（VIP 履约已下线）")
 	}
-	return FulfillPaid(ctx, orderNo, channel, channelTxnID, amountFen)
+	return FulfillFeaturePaid(ctx, orderNo, channel, channelTxnID, amountFen)
 }
 
 // EnsureFeatureOrderExists 判断 order_no 是否功能单（供 Apple 分流）。

@@ -21,6 +21,7 @@ func RegisterDeviceServiceHTTP(s *ghttp.Server) {
 		group.Bind(admin)
 		group.Bind(devicectrl.NewDeviceAppUserCtrl())
 		group.Bind(devicectrl.NewDeviceAppFeedbackCtrl())
+		group.Bind(devicectrl.NewDeviceAppPredictProIdeaCtrl())
 		group.Bind(devicectrl.NewDeviceAppAppointmentCtrl())
 		group.Bind(devicectrl.NewDeviceAppSurveyCtrl())
 		group.Bind(devicectrl.NewDeviceAppXiaozhiMcpCtrl())
@@ -29,7 +30,6 @@ func RegisterDeviceServiceHTTP(s *ghttp.Server) {
 	s.Group("/", func(group *ghttp.RouterGroup) {
 		group.Middleware(devicectrl.InternalSecretMiddleware)
 		group.Bind(devicectrl.NewDeviceUcgInternalCtrl())
-		group.Bind(devicectrl.NewDeviceSimInternalCtrl())
 		group.Bind(devicectrl.NewDeviceXiaozhiMcpInternalCtrl())
 		// Python 预测兜底读预约约定（与 App appointment/next 字段对齐）
 		group.Bind(devicectrl.NewDeviceAppointmentInternalCtrl())

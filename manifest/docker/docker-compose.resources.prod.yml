@@ -61,10 +61,6 @@ services:
     cpus: "0.4"
     <<: *go-gomemlimit-ucg
   # 推广前可不部署；若容器仍 up，limit 保持低于 voice
-  sim-user-service:
-    mem_limit: 128m
-    cpus: "0.15"
-    <<: *go-gomemlimit-sim
   notify-service:
     mem_limit: 96m
     cpus: "0.1"

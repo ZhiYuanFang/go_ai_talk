@@ -26,11 +26,10 @@ type WxColumns struct {
 	AppleSub   string // Apple JWT sub
 	Platform   string // 平台来源
 	IpLocation string // IP属地展示文案（省/市，客户端上报）
-	Account     string // 账户
-	Password    string // 密码哈希（bcrypt，不可逆）
-	IsSimulated string // 1=模拟用户
-	ForceValue  string // 原力值
-	CreatedAt   string // wx 账号创建 Unix 秒
+	Account    string // 账户
+	Password   string // 密码哈希（bcrypt，不可逆）
+	ForceValue string // 原力值
+	CreatedAt  string // wx 账号创建 Unix 秒
 }
 
 // wxColumns holds the columns for table wx.
@@ -41,11 +40,10 @@ var wxColumns = WxColumns{
 	AppleSub:   "apple_sub",
 	Platform:   "platform",
 	IpLocation: "ip_location",
-	Account:     "account",
-	Password:    "password",
-	IsSimulated: "is_simulated",
-	ForceValue:  "force_value",
-	CreatedAt:   "created_at",
+	Account:    "account",
+	Password:   "password",
+	ForceValue: "force_value",
+	CreatedAt:  "created_at",
 }
 
 // NewWxDao creates and returns a new DAO object for table data access.

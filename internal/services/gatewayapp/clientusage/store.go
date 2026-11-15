@@ -1,7 +1,7 @@
 // Package clientusage 客户端功能使用统计（gateway-app 本机 Redis）。
 //
 // 业务说明：App 主动上报 featureId，与 App API 使用统计并存；仅 Redis、可丢。
-// 设计：日桶聚合 + 每用户时间线；3 秒限流；模拟用户跳过；窗口/TTL ≈30 天；时间线 ≤1 万条。
+// 设计：日桶聚合 + 每用户时间线；限流；窗口/TTL ≈30 天；时间线 ≤1 万条。
 package clientusage
 
 import (
@@ -96,11 +96,6 @@ func Report(ctx context.Context, wxID int64, featureID, description string) erro
 	}
 	if strings.Contains(description, timelineSep) || strings.Contains(description, crossFieldSep) {
 		return gerror.NewCode(gcode.CodeInvalidParameter, "description 含非法字符")
-	}
-
-	if usagestats.IsSimulatedWx(ctx, wxID) {
-		glog.Debugf(ctx, "[clientusage] skip simulated wxId=%d feature=%s", wxID, featureID)
-		return nil
 	}
 
 	ok, err := featCache.SetNXEX(ctx, cachekit.GatewayFeatUsageRateLimitKey(wxID), "1", rateLimitTTL)

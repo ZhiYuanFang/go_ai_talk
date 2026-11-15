@@ -1,14 +1,12 @@
 package ucgctrl
 
 import (
-	"hello/internal/platform/httpmeta"
 	"context"
-	"errors"
 	"strconv"
 	"strings"
 
 	v1 "hello/api/v1"
-	"hello/internal/services/contracts"
+	"hello/internal/platform/httpmeta"
 	ucgsvc "hello/internal/services/ucg"
 
 	"github.com/gogf/gf/v2/errors/gcode"
@@ -102,53 +100,6 @@ func (c *UcgAppCtrl) MediaDelete(ctx context.Context, req *v1.UcgMediaDeleteReq)
 		return nil, err
 	}
 	return &v1.UcgMediaDeleteRes{Deleted: deleted, Skipped: skipped}, nil
-}
-
-// PostsPolish POST /ucg/app/api/posts/polish
-func (c *UcgAppCtrl) PostsPolish(ctx context.Context, req *v1.UcgPostsPolishReq) (res *v1.UcgPostsPolishRes, err error) {
-	_ = c
-	wxID, err := wxIDFromUcgHeader(ghttp.RequestFromCtx(ctx))
-	if err != nil {
-		return nil, err
-	}
-	ent, profile, _, err := ucgsvc.ResolvePolishRuntimeProfile(ctx, wxID)
-	if err != nil {
-		return nil, err
-	}
-	polished, err := ucgsvc.PolishPostText(ctx, req.ImageKeys, req.Text, profile)
-	if err != nil {
-		return nil, err
-	}
-	if ent.ShouldConsumePolish() {
-		if _, err = ucgsvc.ConsumePolishAIQuota(ctx, wxID); err != nil {
-			if errors.Is(err, contracts.ErrAIQuotaExhausted) {
-				return nil, gerror.NewCode(contracts.GCodeAIQuotaExhausted(), err.Error())
-			}
-			return nil, err
-		}
-	}
-	return &v1.UcgPostsPolishRes{PolishedText: polished, QuotaDegraded: !ent.Premium}, nil
-}
-
-// AIQuotaGet GET /ucg/app/api/ai-quota
-func (c *UcgAppCtrl) AIQuotaGet(ctx context.Context, req *v1.UcgAppAIQuotaGetReq) (res *v1.UcgAppAIQuotaGetRes, err error) {
-	_ = c
-	_ = req
-	wxID, err := wxIDFromUcgHeader(ghttp.RequestFromCtx(ctx))
-	if err != nil {
-		return nil, err
-	}
-	status, err := ucgsvc.GetPolishAIQuotaAppStatus(ctx, wxID)
-	if err != nil {
-		return nil, mapAIQuotaErr(err)
-	}
-	return &v1.UcgAppAIQuotaGetRes{
-		Polish: v1.UcgAppAIQuotaFeatureStatus{
-			Used:     status.Polish.Used,
-			Limit:    status.Polish.Limit,
-			Degraded: status.Polish.Degraded,
-		},
-	}, nil
 }
 
 func (c *UcgAppCtrl) ProfileMeGet(ctx context.Context, req *v1.UcgProfileMeGetReq) (res *v1.UcgProfileRes, err error) {
@@ -797,19 +748,4 @@ func pageResultToRes(page *ucgsvc.PageResult) *v1.UcgPageRes {
 		}
 	}
 	return res
-}
-
-// mapAIQuotaErr 将 contracts AI 额度错误映射为 GoFrame 业务码。
-func mapAIQuotaErr(err error) error {
-	if err == nil {
-		return nil
-	}
-	switch {
-	case errors.Is(err, contracts.ErrAINotLoggedIn):
-		return gerror.NewCode(contracts.GCodeAINotLoggedIn(), err.Error())
-	case errors.Is(err, contracts.ErrAIQuotaExhausted):
-		return gerror.NewCode(contracts.GCodeAIQuotaExhausted(), err.Error())
-	default:
-		return err
-	}
 }

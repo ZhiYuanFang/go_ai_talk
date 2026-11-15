@@ -1,7 +1,7 @@
-// Admin 手工授 VIP / 功能：补付款未开通与推广赠送。
+// Admin 手工授功能：补付款未开通与推广赠送。
 //
-// 业务：复用 vip_order / feature_order（channel=admin、amount=0、status=paid）落审查；
-// grant_reason 必填；权益续期语义与支付一致。
+// 业务：复用 feature_order（channel=admin、amount=0、status=paid）落审查；
+// grant_reason 必填；权益续期语义与支付一致。VIP 手工授已下线。
 package cash
 
 import (
@@ -23,13 +23,6 @@ const (
 	// grantReasonMaxRunes 授权理由最大字符数（与 VARCHAR(256) 对齐，按 rune 计）。
 	grantReasonMaxRunes = 200
 )
-
-// AdminGrantVipResult 授 VIP 成功结果。
-type AdminGrantVipResult struct {
-	OrderNo  string `json:"orderNo"`
-	WxId     int64  `json:"wxId"`
-	ExpireAt int64  `json:"expireAt"`
-}
 
 // AdminGrantFeatureResult 授功能成功结果。
 type AdminGrantFeatureResult struct {
@@ -55,54 +48,6 @@ func newAdminOrderNo(prefix string) (string, error) {
 		return "", err
 	}
 	return fmt.Sprintf("%s%s%s", prefix, time.Now().Format("20060102150405"), hex.EncodeToString(b[:])), nil
-}
-
-// AdminGrantVip 手工授 VIP：写 admin 订单 + ExtendEntitlement。
-//
-// Args: wxID>0；durationDays≥1；reason 非空。
-// Side Effects: 插入 vip_order；续期 vip_entitlement；履约失败时将订单标 failed。
-func AdminGrantVip(ctx context.Context, wxID int64, durationDays int, reason string) (*AdminGrantVipResult, error) {
-	if wxID <= 0 {
-		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "wxId 无效")
-	}
-	if durationDays < 1 {
-		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "durationDays 须≥1")
-	}
-	reason, err := normalizeGrantReason(reason)
-	if err != nil {
-		return nil, err
-	}
-	orderNo, err := newAdminOrderNo("ADM")
-	if err != nil {
-		return nil, err
-	}
-	now := time.Now().Unix()
-	txnID := "admin-" + orderNo
-	_, err = g.DB().Model("vip_order").Ctx(ctx).Data(g.Map{
-		"order_no":       orderNo,
-		"wx_id":          wxID,
-		"product_code":   ProductMonthly19,
-		"channel":        ChannelAdmin,
-		"amount_fen":     0,
-		"currency":       "CNY",
-		"status":         OrderPaid,
-		"channel_txn_id": txnID,
-		"grant_reason":   reason,
-		"created_at":     now,
-		"paid_at":        now,
-	}).Insert()
-	if err != nil {
-		return nil, err
-	}
-	expireAt, err := ExtendEntitlement(ctx, wxID, durationDays)
-	if err != nil {
-		_, _ = g.DB().Model("vip_order").Ctx(ctx).Where("order_no", orderNo).Data(g.Map{
-			"status": OrderFailed,
-		}).Update()
-		glog.Warningf(ctx, "[cash-admin-grant] VIP 履约失败 orderNo=%s wxId=%d err=%v", orderNo, wxID, err)
-		return nil, err
-	}
-	return &AdminGrantVipResult{OrderNo: orderNo, WxId: wxID, ExpireAt: expireAt}, nil
 }
 
 // AdminGrantFeatureInput 手工授功能入参。
@@ -134,7 +79,7 @@ func resolveAdminFeatureProductCode(ctx context.Context, featureID string) (stri
 	return "admin_" + featureID, nil, nil
 }
 
-// AdminGrantFeature 手工授功能：写 admin feature_order + ActivateFeature / 预测增量。
+// AdminGrantFeature 手工授功能：写 admin feature_order + ActivateFeature。
 func AdminGrantFeature(ctx context.Context, in AdminGrantFeatureInput) (*AdminGrantFeatureResult, error) {
 	featureID := strings.TrimSpace(in.FeatureID)
 	if featureID == "" {

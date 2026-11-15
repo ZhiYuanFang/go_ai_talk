@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -131,7 +130,8 @@ func voiceChatWS(r *ghttp.Request) {
 			finishTalk bool
 			pErr       error
 		)
-		chatCtx := voice.WithModelPrivilege(voice.WithVoiceWxID(ctx, headerWxID), voice.PrivilegeHardware)
+		// 硬件聊天通道：仅注入 wxId 供可观测/鉴权上下文；理解路径已不再选模/计次。
+		chatCtx := voice.WithVoiceWxID(ctx, headerWxID)
 		// 流式意图：下发 thinking_delta / answer；outputModality=audio 时再走 TTS，text 时跳过音频帧。
 		streamRes, streamErr := voice.Voice().HandleTranscriptForIntentStream(
 			chatCtx,
@@ -200,12 +200,7 @@ func voiceChatWS(r *ghttp.Request) {
 			}
 		}
 		if pErr != nil {
-			var qErr *voice.VoiceAIQuotaError
-			if errors.As(pErr, &qErr) && qErr != nil {
-				writeWSErrorCode(safeWriteMessage, qErr.Code, qErr.Message)
-			} else {
-				safeWriteWSError("service", pErr.Error())
-			}
+			safeWriteWSError("service", pErr.Error())
 			resetStreamBuffers()
 			resetStreamASRUntilNextValid()
 			resetRealtimeState(true)

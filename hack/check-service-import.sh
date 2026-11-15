@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # 检查 internal/services 业务包之间是否互引（service-package-isolation）。
-# 允许：同包（含 gatewayapp/usagestats→gatewayapp）、platform、contracts、aimodel、clients。
+# 允许：同包（含 gatewayapp/usagestats→gatewayapp）、platform、contracts、clients。
+# 注：simuser / aimodel 已退役，不得再出现在域名列表。
 # 用法：bash hack/check-service-import.sh
 set -eu
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
 
-domains="cash voice device history ucg push gatewayapp simuser mcpbridge appstatus"
+domains="cash voice device history ucg push gatewayapp mcpbridge appstatus"
 fail=0
 
 if ! command -v rg >/dev/null 2>&1; then

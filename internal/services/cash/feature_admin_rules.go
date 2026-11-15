@@ -13,22 +13,10 @@ const inviteCommonRulePrefix = "共用：不可使用同一宝宝（同 deviceNo
 // Returns: 中文多句说明（含主体、邀请、付费口径）。
 func FeatureRuleSummary(featureID string) string {
 	switch strings.TrimSpace(featureID) {
-	case FeatureIDCareAlertSmartRemind:
-		return inviteCommonRulePrefix +
-			" 本功能：开放主体=对机（device），全家共享权益。邀请：同一宝宝对本功能仅能成功邀请开通一次；授予天数须≥1。" +
-			"付费：对机写入权益（限时，不支持永久）。VIP 可覆盖使用权，但开通快照页不含 VIP 旁路。"
-	case FeatureIDGrowthTrajectoryPredict:
-		return inviteCommonRulePrefix +
-			" 本功能：开放主体=对人（user），一人一份。邀请：同宝宝可兑多个不同好友码；同一人对本功能任意邀请码仅能成功一次；授予天数看「邀请授予天数」。" +
-			"付费：对人开通（种子多为 30 天限时）。VIP 可覆盖 turn 使用权，快照页不含 VIP。"
-	case FeatureIDPredictCapabilityBasic:
-		return inviteCommonRulePrefix +
-			" 本功能：开放主体=对人（user），一人一份。邀请：同一人对本功能任意邀请码仅能成功一次。试用：点开起算 7 日（每人一次）。" +
-			"付费：对人开通（种子多为 30 天）。用途：门禁预测临近提醒（imminent）；VIP 可覆盖推送。快照页不含 VIP。"
 	case FeatureIDPredictCapabilityPro:
 		return inviteCommonRulePrefix +
 			" 本功能：开放主体=对人（user）。开通（试用/付费/邀请）前置：当前绑机喂养资格场景 predict_pro_entry（默认连续 7 有效日）。" +
-			"不依赖基础版是否开通；能力含基础版推送。试用点开起算 7 日。VIP 可覆盖使用，快照页不含 VIP。"
+			"试用点开起算 7 日。本轮仅为开通壳，具体 Pro 能力后续开放。"
 	default:
 		return inviteCommonRulePrefix + " 请以功能「开放主体」与「允许的开通方式」为准；具体邀请防刷规则以服务端常量为准。"
 	}

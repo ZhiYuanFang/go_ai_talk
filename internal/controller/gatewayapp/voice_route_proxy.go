@@ -32,16 +32,12 @@ func installVoiceProxyMiddleware(s *ghttp.Server) {
 		proxy.ServeHTTP(r.Response.Writer, r.Request)
 		r.ExitAll()
 	}
-	// /device/api/care-alert/*：护理留意日缓存（GET daily / DELETE item / POST feedback）；宿主 voice。
-	// /device/api/growth-trajectory/*：成长轨迹 latest + turn SSE；宿主 voice。
 	// /device/api/predict/*：预测临近 pending + 进行中 ETA 同步；宿主 voice。
-	// tip SSE 与 clinic|tip HTTP 飞轮已下线（remove-tip-and-clinic-feedback）。
+	// care-alert / growth-trajectory / clinic 已随 retire-non-predict-ai-surface 下线。
 	for _, pattern := range []string{
 		"/voice/text/*",
 		"/voice/app/api/*",
 		"/voice/admin/api/*",
-		"/device/api/care-alert/*",
-		"/device/api/growth-trajectory/*",
 		"/device/api/predict/*",
 	} {
 		s.BindMiddleware(pattern, serve)

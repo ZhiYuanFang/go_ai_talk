@@ -13,8 +13,6 @@ var maintenanceExactAPI = map[string]struct{}{
 	"POST /device/app/api/token/refresh": {},
 	"GET /device/app/api/version/check":  {},
 	"GET /device/app/api/site/home":      {},
-	"GET /voice/app/api/ai-quota":        {},
-	"GET /ucg/app/api/ai-quota":          {},
 	// 全局推送注册/注销：负责人确认不计入 usage（extract-push-service）。
 	"POST /app/api/push/register":   {},
 	"POST /app/api/push/unregister": {},
@@ -28,9 +26,7 @@ var maintenanceExactAPI = map[string]struct{}{
 	"GET /ucg/app/api/conversations":        {},
 	"GET /device/app/api/user/get":          {},
 	"GET /device/history/api/list":          {},
-	// VIP 商品现价/原价：负责人确认匿名读价不计入 usage（vip-price-db）。
-	"GET /cash/app/api/vip/product": {},
-	// Apple ASN / 支付宝 notify：渠道机器回调，不计入 App usage（负责人确认）。
+	// Apple ASN / 支付宝 notify：渠道机器回调，不计入 App usage（负责人确认）；路径仍为历史 /vip/*。
 	"POST /cash/app/api/vip/apple/notifications": {},
 	"POST /cash/app/api/vip/alipay/notify":       {},
 	// 客户端功能上报：统计基础设施，不计入 App API 使用统计（负责人确认）。
@@ -38,8 +34,6 @@ var maintenanceExactAPI = map[string]struct{}{
 	// 商业功能：查询链路不计入 usage；开通意图 POST（建单/兑码/广告）仍统计。
 	"GET /cash/app/api/ucg/eligibility": {},
 	"GET /cash/app/api/feature/catalog": {},
-	// 值得留意喂养资格：与 UCG eligibility 同属资格查询读路径；按商业资格查询不计入策略对齐（feeding-eligibility-admin-scenes）。
-	"GET /cash/app/api/care-alert/eligibility": {},
 	// 邀请码/原力：非开通意图的查询不计入；redeem 仍统计（invite-peer-force-ucg）。
 	"GET /cash/app/api/invite/mine":     {},
 	"GET /cash/app/api/invite/invitees": {},
@@ -49,7 +43,6 @@ var maintenanceExactAPI = map[string]struct{}{
 	// 按事件批量最近发生：负责人确认不计入 usage（predict-merge-predict-contract；对标 filter）。
 	"GET /device/history/api/event/latest-by-event": {},
 	"GET /ucg/app/api/notifications/comments":       {},
-	"GET /cash/app/api/vip/status":                  {},
 	"PUT /device/api/predict/imminent/pending":       {},
 	// 进行中计时 ETA 全量同步：负责人确认不计入 usage（predict-active-timing-eta；对标 imminent pending）。
 	"PUT /device/api/predict/active-eta/pending": {},

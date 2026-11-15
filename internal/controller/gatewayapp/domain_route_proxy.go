@@ -33,7 +33,6 @@ func installDomainProxyMiddlewares(s *ghttp.Server) {
 	installVoiceProxyMiddleware(s)
 	installDeviceProxyMiddleware(s)
 	installUcgProxyMiddleware(s)
-	installSimProxyMiddleware(s)
 	installCashProxyMiddleware(s)
 	installPushProxyMiddleware(s)
 }

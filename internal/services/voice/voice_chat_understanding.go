@@ -9,7 +9,6 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"hello/internal/services/aimodel"
 	contracts "hello/internal/services/contracts"
 
 	"github.com/gogf/gf/v2/os/glog"
@@ -127,7 +126,7 @@ func (s *VoiceService) applyUnifiedIntentResult(ctx context.Context, deviceNo, n
 // chatWithResult 对话核心流程（非流式意图分析入口）：
 // - 前置：prepareChatPreamble 文本校验；澄清 cid 由 AnalyzeIntent 携带
 // - 常规：非流式 callDeepSeekUnifiedIntent → applyUnifiedIntentResult 透传回复（落库在 Python）
-// - 额度：澄清续聊免计；冷启动额度内计次；用尽走智谱降速且不计次
+// - 选模/额度已退役：直调 Python intent，不传 model、不 Acquire、不计次
 func (s *VoiceService) chatWithResult(ctx context.Context, deviceNo, transcript string) (chatResult, error) {
 	pre := s.prepareChatPreamble(ctx, deviceNo, transcript)
 	if !pre.Continue {
@@ -136,19 +135,6 @@ func (s *VoiceService) chatWithResult(ctx context.Context, deviceNo, transcript 
 	normalizedTranscript := pre.NormalizedTranscript
 
 	glog.Infof(ctx, "问题=%q", normalizedTranscript)
-
-	clarifyResume := pendingConversationID(deviceNo) != ""
-	var wxID int64
-	var shouldConsume bool
-	if clarifyResume {
-		glog.Infof(ctx, "[Clarify] 续聊免计 AI 额度。deviceNo=%s conversation_id=%s", deviceNo, pendingConversationID(deviceNo))
-	} else {
-		var qErr error
-		wxID, shouldConsume, ctx, qErr = s.guardVoiceAIQuota(ctx, deviceNo)
-		if qErr != nil {
-			return chatResult{}, qErr
-		}
-	}
 
 	intent, err := s.callDeepSeekUnifiedIntent(ctx, deviceNo, normalizedTranscript)
 	if err != nil {
@@ -159,40 +145,23 @@ func (s *VoiceService) chatWithResult(ctx context.Context, deviceNo, transcript 
 			FinishTalk: false,
 		}, err
 	}
-	if !clarifyResume && shouldConsume {
-		s.consumeVoiceAIQuotaOnSuccess(ctx, wxID)
-	}
 
 	return s.applyUnifiedIntentResult(ctx, deviceNo, normalizedTranscript, intent)
 }
 
+// callDeepSeekUnifiedIntent 调用 Python 非流式意图分析；请求体省略 model，由 Python 定死 LLM。
 func (s *VoiceService) callDeepSeekUnifiedIntent(ctx context.Context, deviceNo, transcript string) (deepSeekUnifiedIntent, error) {
-	wxID := VoiceWxIDFromCtx(ctx)
-	if wxID <= 0 {
-		if id, e := VoiceWxIDFromRequest(ctx, deviceNo); e == nil {
-			wxID = id
-		}
-	}
-	ent, runtime, modelCfg, _ := resolveVoiceUnderstandingModel(ctx, wxID)
-	if modelCfg != nil {
-		rel, acqErr := aimodel.Acquire(ctx, runtime)
-		if acqErr != nil {
-			return deepSeekUnifiedIntent{}, acqErr
-		}
-		defer rel()
-	}
 	pythonClient := PythonAIClientFromCfg()
 	req := &AnalyzeIntentRequest{
 		Text:           transcript,
 		DeviceNo:       deviceNo,
-		Model:          modelCfg,
 		ConversationID: pendingConversationID(deviceNo),
 	}
 	pythonResp, pythonErr := pythonClient.AnalyzeIntent(ctx, req)
 	if pythonErr == nil && pythonResp != nil {
 		intent := mapPythonRespToIntent(pythonResp)
-		glog.Debugf(ctx, "[Python AI] 意图分析成功。deviceNo=%s target_type=%s action=%s need_confirm=%v premium=%v vip=%v",
-			deviceNo, intent.TargetType, intent.Action, intent.NeedConfirm, ent.Premium, ent.VIP)
+		glog.Debugf(ctx, "[Python AI] 意图分析成功。deviceNo=%s target_type=%s action=%s need_confirm=%v",
+			deviceNo, intent.TargetType, intent.Action, intent.NeedConfirm)
 		return intent, nil
 	}
 	if pythonErr != nil {
@@ -228,22 +197,8 @@ func mapPythonRespToIntent(pythonResp *AnalyzeIntentResponse) deepSeekUnifiedInt
 	return intent
 }
 
-// callDeepSeekUnifiedIntentStream 调用流式 Python 意图分析接口。
+// callDeepSeekUnifiedIntentStream 调用流式 Python 意图分析；请求体省略 model，无额度/Acquire。
 func (s *VoiceService) callDeepSeekUnifiedIntentStream(ctx context.Context, deviceNo, transcript string, cb *contracts.IntentStreamCallback) (*AnalyzeIntentStreamResponse, error) {
-	wxID := VoiceWxIDFromCtx(ctx)
-	if wxID <= 0 {
-		if id, e := VoiceWxIDFromRequest(ctx, deviceNo); e == nil {
-			wxID = id
-		}
-	}
-	ent, runtime, modelCfg, _ := resolveVoiceUnderstandingModel(ctx, wxID)
-	if modelCfg != nil {
-		rel, acqErr := aimodel.Acquire(ctx, runtime)
-		if acqErr != nil {
-			return nil, acqErr
-		}
-		defer rel()
-	}
 	pythonClient := PythonAIClientFromCfg()
 	streamCb := &AnalyzeIntentStreamCallback{}
 	if cb != nil && cb.OnThinking != nil {
@@ -254,7 +209,6 @@ func (s *VoiceService) callDeepSeekUnifiedIntentStream(ctx context.Context, devi
 	streamRes, streamErr := pythonClient.AnalyzeIntentStream(ctx, &AnalyzeIntentStreamRequest{
 		Text:           transcript,
 		DeviceNo:       deviceNo,
-		Model:          modelCfg,
 		ConversationID: pendingConversationID(deviceNo),
 	}, streamCb)
 	if streamErr != nil {
@@ -262,8 +216,8 @@ func (s *VoiceService) callDeepSeekUnifiedIntentStream(ctx context.Context, devi
 		return nil, streamErr
 	}
 	if streamRes != nil && streamRes.Result != nil {
-		glog.Debugf(ctx, "[Python AI] 流式意图分析成功。deviceNo=%s target_type=%s action=%s need_confirm=%v premium=%v",
-			deviceNo, streamRes.Result.TargetType, streamRes.Result.Action, streamRes.Result.NeedConfirm, ent.Premium)
+		glog.Debugf(ctx, "[Python AI] 流式意图分析成功。deviceNo=%s target_type=%s action=%s need_confirm=%v",
+			deviceNo, streamRes.Result.TargetType, streamRes.Result.Action, streamRes.Result.NeedConfirm)
 	} else {
 		glog.Warningf(ctx, "[Python AI] 流式意图分析返回空 Result。deviceNo=%s", deviceNo)
 	}
@@ -375,13 +329,3 @@ func appendRemark(existing, extra string) string {
 	return existing + "；" + extra
 }
 
-// isGrowthSuggestionIntent 判断用户是否在询问成长建议。
-func (s *VoiceService) isGrowthSuggestionIntent(text string) bool {
-	keys := []string{"成长建议", "生长建议", "发育建议", "育儿建议", "喂养建议", "孩子建议", "建议"}
-	for _, key := range keys {
-		if strings.Contains(text, key) {
-			return true
-		}
-	}
-	return false
-}

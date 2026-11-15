@@ -105,102 +105,45 @@ func handleAppleFulfill(ctx context.Context, token, txnID, productID, nType stri
 		glog.Infof(ctx, "[cash] apple ASN fulfill skip refunded feature orderNo=%s", orderNo)
 		return nil
 	}
-	if vo, e := loadOrderByNo(ctx, orderNo); e == nil && vo != nil && vo.Status == OrderRefunded {
-		glog.Infof(ctx, "[cash] apple ASN fulfill skip refunded vip orderNo=%s", orderNo)
-		return nil
-	}
 	glog.Infof(ctx, "[cash] apple ASN fulfill type=%s orderNo=%s txn=%s product=%s", nType, orderNo, txnID, productID)
 	// amountFen=0：跳过金额比对（Apple 通知不以人民币「分」回传）
 	return DispatchFulfillPaid(ctx, orderNo, ChannelAppleIAP, txnID, 0)
 }
 
-// handleAppleRefund 退款/撤销：标记订单 refunded 并回退该笔权益（幂等）。
+// handleAppleRefund 退款/撤销：标记功能订单 refunded 并回退该笔权益（幂等）。VIP 退款路径已下线。
 func handleAppleRefund(ctx context.Context, token, txnID, productID, nType string) error {
 	if token == "" && txnID == "" {
 		return gerror.NewCode(gcode.CodeInvalidParameter, "REFUND 缺少 appAccountToken 与 transactionId")
 	}
-	var vip *Order
 	var feat *FeatureOrder
 	var err error
 	if token != "" {
-		vip, err = loadVipOrderByAppAccountToken(ctx, token)
+		feat, err = loadFeatureOrderByAppAccountToken(ctx, token)
 		if err != nil {
 			return err
 		}
-		if vip == nil {
-			feat, err = loadFeatureOrderByAppAccountToken(ctx, token)
-			if err != nil {
-				return err
-			}
-		}
 	}
-	if vip == nil && feat == nil && txnID != "" {
-		vip, err = loadOrderByChannelTxn(ctx, ChannelAppleIAP, txnID)
+	if feat == nil && txnID != "" {
+		feat, err = loadFeatureOrderByChannelTxn(ctx, ChannelAppleIAP, txnID)
 		if err != nil {
 			return err
 		}
-		if vip == nil {
-			feat, err = loadFeatureOrderByChannelTxn(ctx, ChannelAppleIAP, txnID)
-			if err != nil {
-				return err
-			}
-		}
 	}
-	if vip == nil && feat == nil {
-		glog.Warningf(ctx, "[cash] apple ASN %s 未找到订单 token=%s txn=%s product=%s", nType, token, txnID, productID)
+	if feat == nil {
+		glog.Warningf(ctx, "[cash] apple ASN %s 未找到功能订单 token=%s txn=%s product=%s", nType, token, txnID, productID)
 		return nil
-	}
-	if vip != nil {
-		return refundVipOrder(ctx, vip)
 	}
 	return refundFeatureOrder(ctx, feat)
 }
 
+// resolveOrderNoByAppAccountToken 仅查 feature_order（含小智 MCP）；VIP 订单反查已下线。
 func resolveOrderNoByAppAccountToken(ctx context.Context, token string) (string, error) {
 	if fo, e := loadFeatureOrderByAppAccountToken(ctx, token); e != nil {
 		return "", e
 	} else if fo != nil {
 		return fo.OrderNo, nil
 	}
-	vo, e := loadVipOrderByAppAccountToken(ctx, token)
-	if e != nil {
-		return "", e
-	}
-	if vo == nil {
-		return "", gerror.NewCode(gcode.CodeNotFound, "appAccountToken 无对应订单")
-	}
-	return vo.OrderNo, nil
-}
-
-// refundVipOrder 将 VIP 订单标 refunded；若曾 paid 则按商品 duration 回退 expire_at。
-func refundVipOrder(ctx context.Context, order *Order) error {
-	if order.Status == OrderRefunded {
-		return nil
-	}
-	wasPaid := order.Status == OrderPaid
-	res, err := g.DB().Model("vip_order").Ctx(ctx).
-		Where("id", order.Id).WhereNot("status", OrderRefunded).
-		Data(g.Map{"status": OrderRefunded}).Update()
-	if err != nil {
-		return err
-	}
-	affected, _ := res.RowsAffected()
-	if affected == 0 {
-		return nil
-	}
-	if !wasPaid {
-		glog.Infof(ctx, "[cash] apple refund vip (unpaid) orderNo=%s", order.OrderNo)
-		return nil
-	}
-	days := ProductDurationD
-	if prod, pErr := GetActiveProduct(ctx, order.ProductCode); pErr == nil && prod != nil && prod.DurationDays > 0 {
-		days = prod.DurationDays
-	}
-	if err := ShrinkEntitlement(ctx, order.WxId, days); err != nil {
-		return err
-	}
-	glog.Infof(ctx, "[cash] apple refund vip orderNo=%s wxId=%d shrinkDays=%d", order.OrderNo, order.WxId, days)
-	return nil
+	return "", gerror.NewCode(gcode.CodeNotFound, "appAccountToken 无对应功能订单")
 }
 
 // refundFeatureOrder 将功能订单标 refunded，并撤销该笔授予（权益到期 / 数量回退）。

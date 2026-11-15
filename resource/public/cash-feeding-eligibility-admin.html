@@ -77,10 +77,11 @@
 	const show = (t, ok) => { msg.textContent = t; msg.style.color = ok ? '#059669' : '#dc2626'; };
 	const label = (k) => {
 		if (k === 'ucg_entry') return 'UCG 入场 (ucg_entry)';
-		if (k === 'care_alert_entry') return '值得留意 (care_alert_entry)';
 		if (k === 'predict_pro_entry') return '预测 Pro 开通 (predict_pro_entry)';
 		return k;
 	};
+	// care_alert_entry 已退役：列表与下拉均过滤，仅保留 UCG + Pro。
+	const isActiveScene = (k) => k === 'ucg_entry' || k === 'predict_pro_entry';
 	try {
 		await AdminCommon.requireAdmin();
 		document.getElementById('mainCard').classList.remove('hidden');
@@ -101,7 +102,7 @@
 	}
 	async function load() {
 		const data = await AdminCommon.adminFetch('/cash/admin/api/feeding-eligibility/scenes');
-		list = data.list || [];
+		list = (data.list || []).filter(r => isActiveScene(r.sceneKey));
 		fillSelect();
 		const tb = document.getElementById('body');
 		tb.innerHTML = list.map(r => {

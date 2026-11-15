@@ -8,17 +8,15 @@ import (
 )
 
 // RegisterVoiceServiceHTTP 注册 voice-service 独立进程所需路由。
+// 业务说明：clinic / care-alert / growth-trajectory / AI 额度 / llm-lanes 已随
+// retire-non-predict-ai-surface 下线；保留聊天 WS、飞轮 Admin、预测与 suggest/qa 内部口。
 func RegisterVoiceServiceHTTP(s *ghttp.Server) {
 	s.Use(ghttp.MiddlewareHandlerResponse)
 	voicectrl.RegisterVoiceChatWS(s)
 	voicectrl.RegisterVoiceAsrWS(s)
-	voicectrl.RegisterVoiceClinicWS(s)
 	s.Group("/", func(group *ghttp.RouterGroup) {
 		group.Bind(voicectrl.NewVoiceSuggestInternalCtrl())
 		group.Bind(voicectrl.NewVoiceQaInternalCtrl())
-		group.Bind(voicectrl.NewVoiceAppAIQuotaCtrl())
-		group.Bind(voicectrl.NewVoiceAdminAIQuotaCtrl())
-		group.Bind(voicectrl.NewVoiceAdminLLMLanesCtrl())
 		group.Bind(voicectrl.NewVoiceAdminIntentVectorsCtrl())
 		group.Bind(voicectrl.NewVoiceAdminTypeVectorsCtrl())
 		group.Bind(voicectrl.NewVoiceAdminOpVectorsCtrl())
@@ -35,15 +33,12 @@ func RegisterVoiceServiceHTTP(s *ghttp.Server) {
 		group.Bind(voicectrl.NewVoiceAdminMissInboxCtrl())
 		// Hub 预测上报只读：imminent + active-eta（Admin 口令；非 InternalSecret）。
 		group.Bind(voicectrl.NewVoiceAdminPredictReportCtrl())
-		// tip SSE / clinic|tip HTTP 飞轮已下线（remove-tip-and-clinic-feedback）；care-alert / growth-trajectory 保留。
-		group.Bind(&voicectrl.DeviceCareAlertController{})
-		group.Bind(&voicectrl.DeviceGrowthTrajectoryController{})
+		// 预测临近 / 进行中 ETA：宿主 voice（care-alert / growth-trajectory / clinic 已退役）。
 		group.Bind(&voicectrl.DevicePredictImminentController{})
 		group.Bind(&voicectrl.DevicePredictActiveEtaController{})
 	})
 	s.Group("/", func(group *ghttp.RouterGroup) {
 		group.Middleware(devicectrl.InternalSecretMiddleware)
-		group.Bind(voicectrl.NewVoiceAIQuotaInternalCtrl())
 		// 进行中 ETA 内部读：供 Python；须 X-Device-Gateway-Internal-Secret。
 		group.Bind(voicectrl.NewVoicePredictActiveEtaInternalCtrl())
 		// 预测临近待办内部读：供 Python intent next 通道；同组密钥中间件。

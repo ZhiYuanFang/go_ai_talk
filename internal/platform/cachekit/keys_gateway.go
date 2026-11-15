@@ -2,13 +2,11 @@ package cachekit
 
 import (
 	"fmt"
-	"strconv"
 )
 
 const (
 	gatewayRefreshKeyPrefix     = "gw:app:rt:"
 	gatewayAppVersionLatestBase = "gw:app:version:latest"
-	gatewayUsageSimWxSetKey     = "usage:sim_wx_ids"
 )
 
 // GatewayRefreshTokenKey App refresh token；TTL 见 gatewayApp.refreshTtlSeconds。
@@ -52,16 +50,6 @@ func GatewayUsageLastGlobalKey() string {
 // GatewayUsageLastWxKey 单用户 API 最近调用时间 Hash。
 func GatewayUsageLastWxKey(wxID int64) string {
 	return fmt.Sprintf("gw:usage:last:w:%d", wxID)
-}
-
-// GatewayUsageSimWxSetKey 模拟用户 wxId 集合；device 注册 sim 用户时 SADD。
-func GatewayUsageSimWxSetKey() string {
-	return gatewayUsageSimWxSetKey
-}
-
-// GatewayUsageSimWxMember 模拟用户 SET member 字符串形式。
-func GatewayUsageSimWxMember(wxID int64) string {
-	return strconv.FormatInt(wxID, 10)
 }
 
 // —— 客户端功能使用统计（client-usage；仅 Redis，可丢；窗口约 30 天）——

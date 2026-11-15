@@ -19,18 +19,6 @@ window.ADMIN_MODULES = [
 		showInNav: true
 	},
 	{
-		id: 'ai-model-admin',
-		title: 'AI 模型与并发',
-		pagePath: '/device/admin/ai-model-admin.html',
-		showInNav: true
-	},
-	{
-		id: 'voice-admin',
-		title: 'Voice AI 额度',
-		pagePath: '/device/admin/voice-admin.html',
-		showInNav: true
-	},
-	{
 		id: 'intent-agent-admin',
 		title: '意图智能体',
 		pagePath: '/device/admin/intent-agent-admin.html',
@@ -106,18 +94,6 @@ window.ADMIN_MODULES = [
 		id: 'miss-inbox-admin',
 		title: '覆盖缺口',
 		pagePath: '/device/admin/miss-inbox-admin.html',
-		showInNav: false
-	},
-	{
-		id: 'sim-admin',
-		title: '模拟用户管理',
-		pagePath: '/device/admin/sim-admin.html',
-		showInNav: true
-	},
-	{
-		id: 'cash-vip-admin',
-		title: 'VIP 权益',
-		pagePath: '/device/admin/cash-vip-admin.html',
 		showInNav: false
 	},
 	{

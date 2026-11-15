@@ -3,8 +3,8 @@ package cash
 // 管理端收益统计。
 //
 // 业务：开通功能管理对比标价收入与手填成本。
-// 设计：cash_manual_ledger 只记管理者手填的进账/出账；VIP 与功能实付打开时对订单求和，不落快照。
-// 使用场景：Hub「收益统计」面板的增删改查与合计。
+// 设计：cash_manual_ledger 只记管理者手填的进账/出账；功能实付打开时对订单求和，不落快照。
+// 使用场景：Hub「收益统计」面板的增删改查与合计。VIP 实付已下线。
 
 import (
 	"context"
@@ -54,8 +54,9 @@ type RevenueFeatureLine struct {
 }
 
 // RevenueSummary 只读合计。订单金额是用户支付的标价，不是到账净额。
+// VipFen 保留 JSON 字段恒为 0，避免 Hub 旧前端读 undefined。
 type RevenueSummary struct {
-	VipFen       int                  `json:"vipFen"`
+	VipFen       int                  `json:"vipFen"` // 恒 0：VIP 实付已下线
 	Features     []RevenueFeatureLine `json:"features"`
 	ManualInFen  int                  `json:"manualInFen"`
 	ManualOutFen int                  `json:"manualOutFen"`
@@ -181,19 +182,15 @@ func AdminListManualLedger(ctx context.Context, win RevenueWindow) ([]ManualLedg
 	return out, nil
 }
 
-// AdminRevenueSummary 现场汇总 VIP 实付、按功能名拆开的功能实付、手填进账/出账与差额。
+// AdminRevenueSummary 现场汇总按功能名拆开的功能实付、手填进账/出账与差额。
 //
 // 业务：只计 status=paid 且 channel 为 alipay 或 apple_iap。手工授与退款不计入。
-// 差额 = VIP + 各功能付费 + 手填进账 − 手填出账。
+// 差额 = 各功能付费 + 小智 MCP + 手填进账 − 手填出账（不再含 VIP）。
 // Args: 时间窗作用于订单 paid_at 与手填 occurred_at。
 func AdminRevenueSummary(ctx context.Context, win RevenueWindow) (RevenueSummary, error) {
 	var out RevenueSummary
 	out.Features = []RevenueFeatureLine{}
-	vip, err := sumPaidOrders(ctx, "vip_order", win)
-	if err != nil {
-		return out, err
-	}
-	out.VipFen = vip
+	out.VipFen = 0
 	features, featureSum, err := sumFeaturePaidByName(ctx, win)
 	if err != nil {
 		return out, err
@@ -212,7 +209,7 @@ func AdminRevenueSummary(ctx context.Context, win RevenueWindow) (RevenueSummary
 	}
 	out.ManualInFen = inFen
 	out.ManualOutFen = outFen
-	out.NetFen = vip + featureSum + mcpFen + inFen - outFen
+	out.NetFen = featureSum + mcpFen + inFen - outFen
 	return out, nil
 }
 
@@ -246,19 +243,6 @@ func normalizeLedgerFields(direction, name string, amountFen int) (string, strin
 		return "", "", gerror.NewCode(gcode.CodeInvalidParameter, "金额须≥1 分")
 	}
 	return dir, name, nil
-}
-
-// sumPaidOrders 对一张订单表求实付金额（分）。
-func sumPaidOrders(ctx context.Context, table string, win RevenueWindow) (int, error) {
-	// 表名仅来自本文件常量，不拼接外部输入。
-	sql := `SELECT COALESCE(SUM(amount_fen),0) FROM ` + table + `
-WHERE status=? AND channel IN (?,?)
-AND (?=0 OR paid_at>=?) AND (?=0 OR paid_at<?)`
-	v, err := g.DB().GetValue(ctx, sql, paidSumArgs(win)...)
-	if err != nil {
-		return 0, err
-	}
-	return v.Int(), nil
 }
 
 // sumFeaturePaidByName 功能实付按功能名分组。对不上商品的订单用商品编码单独成组。
@@ -311,13 +295,6 @@ GROUP BY direction`
 		}
 	}
 	return inFen, outFen, nil
-}
-
-func paidSumArgs(win RevenueWindow) []interface{} {
-	return []interface{}{
-		OrderPaid, ChannelAlipay, ChannelAppleIAP,
-		win.Start, win.Start, win.End, win.End,
-	}
 }
 
 // paidSumArgsFeature 功能实付求和：排除小智 MCP 专用 product_code（独立商品，不进开通功能汇总）。

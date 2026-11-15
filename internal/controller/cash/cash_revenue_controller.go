@@ -10,10 +10,10 @@ import (
 	"hello/internal/services/cash"
 )
 
-// AdminRevenueSummary GET /cash/admin/api/revenue/summary — VIP、按功能名的实付、手填与差额。
+// AdminRevenueSummary GET /cash/admin/api/revenue/summary — 按功能名的实付、手填与差额。
 //
 // Args: start/end 可选，作用于订单 paid_at。
-// Returns: 标价合计，不是到账净额。
+// Returns: 标价合计，不是到账净额；VipFen 恒为 0（VIP 已下线）。
 // Side Effects: 只读。
 func (c *CashFeatureController) AdminRevenueSummary(ctx context.Context, req *v1.CashAdminRevenueSummaryReq) (*v1.CashAdminRevenueSummaryRes, error) {
 	if err := requireCashAdmin(ctx); err != nil {

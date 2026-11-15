@@ -1,7 +1,7 @@
 // Admin 撤销手工授：仅最近一笔 paid 且 channel=admin、权益仍有效时可撤。
 //
-// 业务：权益表只有一根到期时钟。撤销把 expire/expires_at 写成 now（直接过期），
-// 并把该笔 admin 订单标为 revoked。不按天数回退，不走 ShrinkEntitlement，不用 refunded。
+// 业务：权益表只有一根到期时钟。撤销把 expires_at 写成 now（直接过期），
+// 并把该笔 admin 订单标为 revoked。不按天数回退，不用 refunded。VIP 撤销已下线。
 package cash
 
 import (
@@ -15,60 +15,6 @@ import (
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/glog"
 )
-
-// AdminRevokeVip 撤销该 wx 最近一笔手工授 VIP，使权益立即过期。
-//
-// Args: wxID>0。
-// Returns: 错误（已过期、最近一笔非 admin、口令由 controller 校验）。
-// Side Effects: vip_entitlement.expire_at=now；对应 vip_order.status=revoked。
-func AdminRevokeVip(ctx context.Context, wxID int64) error {
-	if wxID <= 0 {
-		return gerror.NewCode(gcode.CodeInvalidParameter, "wxId 无效")
-	}
-	st, err := GetVipStatus(ctx, wxID)
-	if err != nil {
-		return err
-	}
-	if !st.IsVip {
-		return gerror.NewCode(gcode.CodeInvalidOperation, "权益已过期，无法撤销")
-	}
-	one, err := g.DB().Model("vip_order").Ctx(ctx).
-		Fields("order_no,channel").
-		Where("wx_id", wxID).Where("status", OrderPaid).
-		OrderDesc("paid_at").OrderDesc("id").Limit(1).One()
-	if err != nil {
-		return err
-	}
-	if one.IsEmpty() || one["channel"].String() != ChannelAdmin {
-		return gerror.NewCode(gcode.CodeInvalidOperation, "仅最近一笔手工授可撤销")
-	}
-	orderNo := one["order_no"].String()
-	now := time.Now().Unix()
-	err = g.DB().Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
-		if _, e := tx.Model("vip_entitlement").Ctx(ctx).Where("wx_id", wxID).Data(g.Map{
-			"expire_at":  now,
-			"updated_at": now,
-		}).Update(); e != nil {
-			return e
-		}
-		res, e := tx.Model("vip_order").Ctx(ctx).
-			Where("order_no", orderNo).Where("status", OrderPaid).
-			Data(g.Map{"status": OrderRevoked}).Update()
-		if e != nil {
-			return e
-		}
-		n, _ := res.RowsAffected()
-		if n == 0 {
-			return gerror.NewCode(gcode.CodeInvalidOperation, "订单已撤销或状态已变")
-		}
-		return nil
-	})
-	if err != nil {
-		return err
-	}
-	glog.Infof(ctx, "[cash-admin-revoke] VIP orderNo=%s wxId=%d", orderNo, wxID)
-	return nil
-}
 
 // AdminRevokeFeature 撤销该功能该主体最近一笔手工授，使权益立即过期。
 //

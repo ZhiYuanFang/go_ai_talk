@@ -9,16 +9,9 @@ import (
 )
 
 const (
-	// ProductMonthly19 一期唯一 SKU：19 元 / 30 天。
-	ProductMonthly19 = "vip_monthly_19"
-	ProductPriceFen  = 1900
-	// ProductOriginalPriceFen 种子划线原价（分）；0 表示不展示。运维可用 SQL 改库。
-	ProductOriginalPriceFen = 9900
-	ProductDurationD        = 30
-
 	ChannelAlipay   = "alipay"
 	ChannelAppleIAP = "apple_iap"
-	// ChannelAdmin Hub 手工授 VIP/功能（0 元 paid 订单 + grant_reason）。
+	// ChannelAdmin Hub 手工授功能（0 元 paid 订单 + grant_reason）。
 	ChannelAdmin = "admin"
 
 	OrderCreated  = "created"
@@ -30,52 +23,15 @@ const (
 	OrderClosed  = "closed"
 )
 
-// EnsureSchema 创建 VIP 表、商业功能开通表并种子一期商品（幂等）。
+// EnsureSchema 创建商业功能开通表并种子预测 Pro / 小智 MCP（幂等）；不再创建 VIP 表。
 func EnsureSchema(ctx context.Context) error {
 	db := g.DB()
 	stmts := []string{
-		`CREATE TABLE IF NOT EXISTS vip_product (
-  product_code         VARCHAR(64)  NOT NULL,
-  title                VARCHAR(128) NOT NULL DEFAULT '',
-  price_fen            INT          NOT NULL DEFAULT 0,
-  original_price_fen   INT          NOT NULL DEFAULT 0,
-  duration_days        INT          NOT NULL DEFAULT 30,
-  apple_product_id     VARCHAR(128) NOT NULL DEFAULT '',
-  status               TINYINT      NOT NULL DEFAULT 1,
-  updated_at           BIGINT       NOT NULL DEFAULT 0,
-  PRIMARY KEY (product_code)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
-		`CREATE TABLE IF NOT EXISTS vip_order (
-  id                 BIGINT       NOT NULL AUTO_INCREMENT,
-  order_no           VARCHAR(64)  NOT NULL,
-  wx_id              BIGINT       NOT NULL,
-  product_code       VARCHAR(64)  NOT NULL,
-  channel            VARCHAR(32)  NOT NULL,
-  amount_fen         INT          NOT NULL DEFAULT 0,
-  currency           VARCHAR(8)   NOT NULL DEFAULT 'CNY',
-  status             VARCHAR(16)  NOT NULL DEFAULT 'created',
-  channel_txn_id     VARCHAR(128) NOT NULL DEFAULT '',
-  app_account_token  CHAR(36)     NULL DEFAULT NULL COMMENT 'Apple StoreKit appAccountToken(UUID)；仅 apple_iap',
-  grant_reason       VARCHAR(256) NOT NULL DEFAULT '' COMMENT 'Admin 手工授理由；支付单为空',
-  created_at         BIGINT       NOT NULL DEFAULT 0,
-  paid_at            BIGINT       NOT NULL DEFAULT 0,
-  PRIMARY KEY (id),
-  UNIQUE KEY uk_order_no (order_no),
-  UNIQUE KEY uk_app_account_token (app_account_token),
-  KEY idx_wx_created (wx_id, created_at),
-  KEY idx_channel_txn (channel, channel_txn_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
-		`CREATE TABLE IF NOT EXISTS vip_entitlement (
-  wx_id       BIGINT NOT NULL,
-  expire_at   BIGINT NOT NULL DEFAULT 0,
-  updated_at  BIGINT NOT NULL DEFAULT 0,
-  PRIMARY KEY (wx_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 		// —— 商业功能开通域（commercial-feature-entitlement）——
 		`CREATE TABLE IF NOT EXISTS feature_def (
   feature_id             VARCHAR(64)  NOT NULL,
   title                  VARCHAR(128) NOT NULL DEFAULT '',
-  description            VARCHAR(512) NOT NULL DEFAULT '',
+  description            TEXT         NOT NULL,
   unlock_methods         VARCHAR(128) NOT NULL DEFAULT '',
   duration_days          INT          NOT NULL DEFAULT 0,
   invite_duration_days   INT          NOT NULL DEFAULT 0,
@@ -298,17 +254,14 @@ func EnsureSchema(ctx context.Context) error {
 			return err
 		}
 	}
-	// 已有库升级：补列（重复执行忽略 Duplicate column）。
+	// 已有库升级：补列（重复执行忽略 Duplicate column）。VIP 表 ALTER 已移除。
 	alterCols := []string{
-		`ALTER TABLE vip_product ADD COLUMN original_price_fen INT NOT NULL DEFAULT 0`,
 		`ALTER TABLE feature_def ADD COLUMN default_allowed_count INT NOT NULL DEFAULT 0`,
 		`ALTER TABLE feature_allowed_count ADD COLUMN full_access TINYINT NOT NULL DEFAULT 0`,
 		`ALTER TABLE feature_allowed_count ADD COLUMN full_access_expires_at BIGINT NOT NULL DEFAULT 0`,
 		// Admin 手工授审查：授权理由；支付建单不写该列则保持默认空串。
-		`ALTER TABLE vip_order ADD COLUMN grant_reason VARCHAR(256) NOT NULL DEFAULT '' COMMENT 'Admin 手工授理由；支付单为空'`,
 		`ALTER TABLE feature_order ADD COLUMN grant_reason VARCHAR(256) NOT NULL DEFAULT '' COMMENT 'Admin 手工授理由；支付单为空'`,
 		// Apple ASN：建单写入 UUID，通知用 appAccountToken 反查；可空以兼容历史/支付宝行。
-		`ALTER TABLE vip_order ADD COLUMN app_account_token CHAR(36) NULL DEFAULT NULL COMMENT 'Apple appAccountToken UUID；仅 apple_iap'`,
 		`ALTER TABLE feature_order ADD COLUMN app_account_token CHAR(36) NULL DEFAULT NULL COMMENT 'Apple appAccountToken UUID；仅 apple_iap'`,
 		// 小智 MCP：试用截止列；已有永久行保持 expires_at=0。
 		`ALTER TABLE xiaozhi_mcp_entitlement ADD COLUMN expires_at BIGINT NOT NULL DEFAULT 0 COMMENT '0=永久；>0=试用截止'`,
@@ -323,7 +276,6 @@ func EnsureSchema(ctx context.Context) error {
 	}
 	// 唯一索引：MySQL 允许多个 NULL；重复执行忽略 Duplicate key name。
 	for _, idxSQL := range []string{
-		`ALTER TABLE vip_order ADD UNIQUE KEY uk_app_account_token (app_account_token)`,
 		`ALTER TABLE feature_order ADD UNIQUE KEY uk_app_account_token (app_account_token)`,
 	} {
 		if _, err := db.Exec(ctx, idxSQL); err != nil {
@@ -362,32 +314,25 @@ func EnsureSchema(ctx context.Context) error {
 			return err
 		}
 	}
-	// 开通主体：device=对机全家共享；user=对人一人一份。首次加列回填 device，并将成长轨迹定为 user。
-	subjectColAdded := false
+	// 开通主体：device=对机全家共享；user=对人一人一份。首次加列回填 device。
 	if _, err := db.Exec(ctx, `ALTER TABLE feature_def ADD COLUMN activation_subject VARCHAR(16) NOT NULL DEFAULT 'device'`); err != nil {
 		msg := err.Error()
 		if !strings.Contains(msg, "Duplicate column") && !strings.Contains(msg, "1060") {
 			return err
 		}
-	} else {
-		subjectColAdded = true
 	}
-	if subjectColAdded {
-		if _, err := db.Exec(ctx, `UPDATE feature_def SET activation_subject='user' WHERE feature_id=?`, FeatureIDGrowthTrajectoryPredict); err != nil {
-			return err
+	// 每次 Ensure：预测 Pro 为账号维开通；剥离 ad。
+	if _, err := db.Exec(ctx, `UPDATE feature_def SET activation_subject='user', unlock_methods='payment,invite_code', invite_duration_days=IF(invite_duration_days<=0,7,invite_duration_days), updated_at=? WHERE feature_id=?`,
+		time.Now().Unix(), FeatureIDPredictCapabilityPro); err != nil {
+		return err
+	}
+	// 功能介绍：长 Markdown；已有库从 VARCHAR(512) 升 TEXT（幂等）。
+	if _, err := db.Exec(ctx, `ALTER TABLE feature_def MODIFY COLUMN description TEXT NOT NULL`); err != nil {
+		msg := err.Error()
+		// 已是 TEXT / 语法差异：不阻断启动
+		if !strings.Contains(msg, "TEXT") && !strings.Contains(msg, "Duplicate") {
+			g.Log().Warningf(ctx, "[cash-schema] feature_def.description TEXT migrate: %v", err)
 		}
-	}
-	// 每次 Ensure：care / growth / 预测两档均为账号维开通。
-	if _, err := db.Exec(ctx, `UPDATE feature_def SET activation_subject='user' WHERE feature_id IN (?,?,?,?)`,
-		FeatureIDCareAlertSmartRemind, FeatureIDGrowthTrajectoryPredict,
-		FeatureIDPredictCapabilityBasic, FeatureIDPredictCapabilityPro); err != nil {
-		return err
-	}
-	// 剥离 ad 开通方式（care / growth / 预测两档）。
-	if _, err := db.Exec(ctx, `UPDATE feature_def SET unlock_methods='payment,invite_code', invite_duration_days=IF(invite_duration_days<=0,7,invite_duration_days), updated_at=? WHERE feature_id IN (?,?,?,?)`,
-		time.Now().Unix(), FeatureIDCareAlertSmartRemind, FeatureIDGrowthTrajectoryPredict,
-		FeatureIDPredictCapabilityBasic, FeatureIDPredictCapabilityPro); err != nil {
-		return err
 	}
 	// 功能视觉：logo（OSS objectKey）与主色 hex；已有库补列。
 	for _, alterSQL := range []string{
@@ -411,99 +356,23 @@ func EnsureSchema(ctx context.Context) error {
 		}
 	}
 	now := time.Now().Unix()
-	// 种子 Apple 商品 ID 为空；Admin/SQL 已写入的非空值不覆盖。价格与 duration_days 同样不覆盖已有行。
+	// 停用 VIP/care/growth/预测基础版：已有行 status=0，不再种子。
+	_, _ = db.Exec(ctx, `UPDATE feature_def SET status=0, updated_at=? WHERE feature_id IN (?,?,?)`,
+		now, FeatureIDCareAlertSmartRemindLegacy, FeatureIDGrowthTrajectoryPredictLegacy, FeatureIDPredictCapabilityBasic)
+	_, _ = db.Exec(ctx, `UPDATE feature_product SET status=0, updated_at=? WHERE product_code IN (?,?,?,?) OR feature_id IN (?,?,?)`,
+		now,
+		CareAlertSmartRemindProductCodeLegacy, CareAlertSmartRemindProductCodeLegacyPerm, GrowthTrajectoryPredictProductCodeLegacy, PredictCapabilityBasicProductCode,
+		FeatureIDCareAlertSmartRemindLegacy, FeatureIDGrowthTrajectoryPredictLegacy, FeatureIDPredictCapabilityBasic)
+	// 预测能力 Pro：账号维开通壳；开通另需喂养资格；默认主色靛蓝。
 	_, err := db.Exec(ctx, `
-INSERT INTO vip_product (product_code, title, price_fen, original_price_fen, duration_days, apple_product_id, status, updated_at)
-VALUES (?, 'VIP月会员', ?, ?, ?, '', 1, ?)
+INSERT INTO feature_def (feature_id, title, description, unlock_methods, duration_days, invite_duration_days, ad_duration_days, default_allowed_count, activation_subject, logo, color, status, sort_order, updated_at)
+VALUES (?, '预测能力Pro版', '开通后具备预测 Pro 能力（具体能力后续开放）', 'payment,invite_code', 7, 7, 0, 0, 'user', '', '#4F46E5', 1, 50, ?)
 ON DUPLICATE KEY UPDATE
-  title=VALUES(title),
-  apple_product_id=IF(VALUES(apple_product_id)='', apple_product_id, VALUES(apple_product_id)),
-  original_price_fen=IF(original_price_fen=0, VALUES(original_price_fen), original_price_fen),
+  activation_subject='user',
+  unlock_methods='payment,invite_code',
+  invite_duration_days=IF(invite_duration_days<=0, VALUES(invite_duration_days), invite_duration_days),
+  color=IF(color='' OR color IS NULL, VALUES(color), color),
   status=1,
-  updated_at=VALUES(updated_at)`,
-		ProductMonthly19, ProductPriceFen, ProductOriginalPriceFen, ProductDurationD, now)
-	if err != nil {
-		return err
-	}
-	// 值得留意：账号维；支付/邀请；邀请 7 天；默认主色青绿。
-	_, err = db.Exec(ctx, `
-INSERT INTO feature_def (feature_id, title, description, unlock_methods, duration_days, invite_duration_days, ad_duration_days, default_allowed_count, activation_subject, logo, color, status, sort_order, updated_at)
-VALUES (?, '值得留意智能提醒', '开通后可查看值得留意智能提醒', 'payment,invite_code', 7, 7, 0, 0, 'user', '', '#0D9488', 1, 20, ?)
-ON DUPLICATE KEY UPDATE
-  activation_subject='user',
-  unlock_methods='payment,invite_code',
-  invite_duration_days=IF(invite_duration_days<=0, VALUES(invite_duration_days), invite_duration_days),
-  color=IF(color='' OR color IS NULL, VALUES(color), color),
-  updated_at=VALUES(updated_at)`,
-		FeatureIDCareAlertSmartRemind, now)
-	if err != nil {
-		return err
-	}
-	// 值得留意付费 30 天 SKU；INSERT IGNORE 不覆盖运维改价。
-	_, err = db.Exec(ctx, `
-INSERT IGNORE INTO feature_product (product_code, feature_id, grant_kind, grant_quantity, price_fen, original_price_fen, duration_days, apple_product_id, status, updated_at)
-VALUES (?, ?, 'entitlement', 1, 990, 0, 30, '', 1, ?)`,
-		CareAlertSmartRemindProductCode, FeatureIDCareAlertSmartRemind, now)
-	if err != nil {
-		return err
-	}
-	// 停用旧永久 SKU；若运维已把旧码改成 30d 则仅保证 duration。
-	_, _ = db.Exec(ctx, `UPDATE feature_product SET status=0, updated_at=? WHERE product_code=?`,
-		now, CareAlertSmartRemindProductCodeLegacyPerm)
-	_, _ = db.Exec(ctx, `UPDATE feature_product SET duration_days=30, updated_at=? WHERE product_code=? AND duration_days=0 AND status=1`,
-		now, CareAlertSmartRemindProductCode)
-	// 成长轨迹：账号维；支付/邀请；邀请 7 天；默认主色橙。
-	_, err = db.Exec(ctx, `
-INSERT INTO feature_def (feature_id, title, description, unlock_methods, duration_days, invite_duration_days, ad_duration_days, default_allowed_count, activation_subject, logo, color, status, sort_order, updated_at)
-VALUES (?, '成长轨迹预测', '开通后可使用成长轨迹预测', 'payment,invite_code', 7, 7, 0, 0, 'user', '', '#EA580C', 1, 30, ?)
-ON DUPLICATE KEY UPDATE
-  activation_subject='user',
-  unlock_methods='payment,invite_code',
-  invite_duration_days=IF(invite_duration_days<=0, VALUES(invite_duration_days), invite_duration_days),
-  color=IF(color='' OR color IS NULL, VALUES(color), color),
-  updated_at=VALUES(updated_at)`,
-		FeatureIDGrowthTrajectoryPredict, now)
-	if err != nil {
-		return err
-	}
-	// 成长轨迹付费 30 天 SKU（1900 分）；INSERT IGNORE 不覆盖运维改价；无永久 SKU。
-	_, err = db.Exec(ctx, `
-INSERT IGNORE INTO feature_product (product_code, feature_id, grant_kind, grant_quantity, price_fen, original_price_fen, duration_days, apple_product_id, status, updated_at)
-VALUES (?, ?, 'entitlement', 1, 1900, 0, 30, '', 1, ?)`,
-		GrowthTrajectoryPredictProductCode, FeatureIDGrowthTrajectoryPredict, now)
-	if err != nil {
-		return err
-	}
-	// 预测能力基础版：账号维；支付/邀请；默认主色蓝紫。
-	_, err = db.Exec(ctx, `
-INSERT INTO feature_def (feature_id, title, description, unlock_methods, duration_days, invite_duration_days, ad_duration_days, default_allowed_count, activation_subject, logo, color, status, sort_order, updated_at)
-VALUES (?, '预测能力基础版', '开通后可接收预测临近提醒', 'payment,invite_code', 7, 7, 0, 0, 'user', '', '#2563EB', 1, 40, ?)
-ON DUPLICATE KEY UPDATE
-  activation_subject='user',
-  unlock_methods='payment,invite_code',
-  invite_duration_days=IF(invite_duration_days<=0, VALUES(invite_duration_days), invite_duration_days),
-  color=IF(color='' OR color IS NULL, VALUES(color), color),
-  updated_at=VALUES(updated_at)`,
-		FeatureIDPredictCapabilityBasic, now)
-	if err != nil {
-		return err
-	}
-	_, err = db.Exec(ctx, `
-INSERT IGNORE INTO feature_product (product_code, feature_id, grant_kind, grant_quantity, price_fen, original_price_fen, duration_days, apple_product_id, status, updated_at)
-VALUES (?, ?, 'entitlement', 1, 990, 0, 30, '', 1, ?)`,
-		PredictCapabilityBasicProductCode, FeatureIDPredictCapabilityBasic, now)
-	if err != nil {
-		return err
-	}
-	// 预测能力 Pro：账号维；开通另需喂养资格；默认主色靛蓝。
-	_, err = db.Exec(ctx, `
-INSERT INTO feature_def (feature_id, title, description, unlock_methods, duration_days, invite_duration_days, ad_duration_days, default_allowed_count, activation_subject, logo, color, status, sort_order, updated_at)
-VALUES (?, '预测能力Pro版', '开通后具备预测 Pro 能力（含基础版推送）', 'payment,invite_code', 7, 7, 0, 0, 'user', '', '#4F46E5', 1, 50, ?)
-ON DUPLICATE KEY UPDATE
-  activation_subject='user',
-  unlock_methods='payment,invite_code',
-  invite_duration_days=IF(invite_duration_days<=0, VALUES(invite_duration_days), invite_duration_days),
-  color=IF(color='' OR color IS NULL, VALUES(color), color),
   updated_at=VALUES(updated_at)`,
 		FeatureIDPredictCapabilityPro, now)
 	if err != nil {
@@ -516,11 +385,11 @@ VALUES (?, ?, 'entitlement', 1, 1900, 0, 30, '', 1, ?)`,
 	if err != nil {
 		return err
 	}
-	// 喂养资格场景种子：仅 INSERT 忽略已存在，不覆盖运维已改阈值。
+	// 喂养资格场景种子：仅 UCG + 预测 Pro；不覆盖运维已改阈值；不再种子 care_alert_entry。
 	_, err = db.Exec(ctx, `
 INSERT IGNORE INTO feeding_eligibility_scene (scene_key, required_days, min_records_per_day, updated_at)
-VALUES (?, 7, 10, ?), (?, 2, 10, ?), (?, 7, 10, ?)`,
-		SceneKeyUCGEntry, now, SceneKeyCareAlertEntry, now, SceneKeyPredictProEntry, now)
+VALUES (?, 7, 10, ?), (?, 7, 10, ?)`,
+		SceneKeyUCGEntry, now, SceneKeyPredictProEntry, now)
 	if err != nil {
 		return err
 	}

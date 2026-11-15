@@ -1,9 +1,8 @@
 package cash
 
-// feature_trial_start.go：预测能力显式点试用（7 日起算，人对人）。
+// feature_trial_start.go：预测 Pro 显式点试用（7 日起算，人对人）。
 //
-// 业务：仅 predict_capability_basic / predict_capability_pro；Pro 须先过喂养资格。
-// 成长轨迹/值得留意仍走 soft + ClaimTrialAfterSuccess（24h），不走本入口。
+// 业务：仅 predict_capability_pro；须先过喂养资格。开通壳暂不驱动业务能力。
 
 import (
 	"context"
@@ -17,7 +16,7 @@ import (
 	"github.com/gogf/gf/v2/os/glog"
 )
 
-// StartFeatureTrial App 点试用：预测两档 7 日；写 trial used + user entitlement。
+// StartFeatureTrial App 点试用：仅预测 Pro，7 日起算；写 trial used + user entitlement。
 //
 // Args: wxID 账号；deviceNo 绑机（Pro 喂养资格用）；featureID 须为预测能力功能。
 // Returns: 参数/门禁/写库错误。
@@ -28,19 +27,17 @@ func StartFeatureTrial(ctx context.Context, wxID int64, deviceNo, featureID stri
 	if wxID <= 0 || featureID == "" {
 		return gerror.NewCode(gcode.CodeInvalidParameter, "wxId/featureId 无效")
 	}
-	if !IsPredictCapabilityFeature(featureID) {
-		return gerror.NewCode(gcode.CodeInvalidParameter, "该功能不支持点试用（请走原试用逻辑）")
+	if !IsPredictCapabilityProFeature(featureID) {
+		return gerror.NewCode(gcode.CodeInvalidParameter, "仅预测能力 Pro 支持点试用")
 	}
 	if err := RequireFeatureDefActive(ctx, featureID); err != nil {
 		return err
 	}
-	if featureID == FeatureIDPredictCapabilityPro {
-		if deviceNo == "" {
-			return gerror.NewCode(gcode.CodeInvalidParameter, "缺少设备号")
-		}
-		if err := RequirePredictProFeedingQualified(ctx, deviceNo); err != nil {
-			return err
-		}
+	if deviceNo == "" {
+		return gerror.NewCode(gcode.CodeInvalidParameter, "缺少设备号")
+	}
+	if err := RequirePredictProFeedingQualified(ctx, deviceNo); err != nil {
+		return err
 	}
 
 	unused, err := IsTrialUnused(ctx, wxID, featureID)
@@ -56,12 +53,6 @@ func StartFeatureTrial(ctx context.Context, wxID int64, deviceNo, featureID stri
 	}
 	if entActive {
 		return gerror.NewCode(gcode.CodeInvalidOperation, "已开通该功能，无需试用")
-	}
-	// VIP 覆盖期间不消耗试用资格。
-	if st, vErr := GetVipStatus(ctx, wxID); vErr != nil {
-		glog.Warningf(ctx, "[cash-trial-start] VIP 查询失败 wxId=%d err=%v，继续尝试领取", wxID, vErr)
-	} else if st.IsVip {
-		return gerror.NewCode(gcode.CodeInvalidOperation, "VIP 期间无需领取试用")
 	}
 
 	now := time.Now().Unix()

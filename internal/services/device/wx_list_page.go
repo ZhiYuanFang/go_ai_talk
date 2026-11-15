@@ -13,7 +13,8 @@ const wxListDefaultPageSize = 20
 const wxListMaxPageSize = 100
 
 // ListWxPage 管理端 wx 账号分页；q 模糊匹配 id/deviceNo/unionid/account。
-// 业务逻辑：排除模拟号；对本页 deviceNo 批量联查 user.baby_name，填充 BabyName（无则空串）。
+// 业务逻辑：对本页 deviceNo 批量联查 user.baby_name，填充 BabyName（无则空串）。
+// 注：sim-user / is_simulated 已退役，不再按模拟号过滤。
 func (s *service) ListWxPage(ctx context.Context, page, pageSize int, q string) (contracts.WxPageResult, error) {
 	if page <= 0 {
 		page = 1
@@ -25,7 +26,7 @@ func (s *service) ListWxPage(ctx context.Context, page, pageSize int, q string) 
 		pageSize = wxListMaxPageSize
 	}
 	cols := dao.Wx.Columns()
-	m := dao.Wx.Ctx(ctx).Where(cols.IsSimulated, 0)
+	m := dao.Wx.Ctx(ctx)
 	q = strings.TrimSpace(q)
 	if q != "" {
 		like := "%" + q + "%"

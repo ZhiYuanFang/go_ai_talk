@@ -85,96 +85,6 @@ func (c *CashFeatureController) FeatureTrialStart(ctx context.Context, req *v1.C
 	return &v1.CashFeatureTrialStartRes{}, nil
 }
 
-// CareAlertEligibility GET /cash/app/api/care-alert/eligibility
-func (c *CashFeatureController) CareAlertEligibility(ctx context.Context, _ *v1.CashCareAlertEligibilityReq) (*v1.CashCareAlertEligibilityRes, error) {
-	dn, err := cashDeviceNoFromHeader(ctx)
-	if err != nil {
-		return nil, err
-	}
-	out, err := cash.GetCareAlertFeedingEligibility(ctx, dn)
-	if err != nil {
-		return nil, err
-	}
-	return &v1.CashCareAlertEligibilityRes{
-		Qualified: out.Qualified, RequiredDays: out.RequiredDays,
-		EffectiveDays: out.EffectiveDays, RemainingDays: out.RemainingDays, Message: out.Message,
-	}, nil
-}
-
-// InternalCareAlertAccess GET /cash/internal/api/care-alert/access
-// 供 voice 双门禁：喂养资格 ∧（设备开通 ∨ VIP）；须内部密钥。
-func (c *CashFeatureController) InternalCareAlertAccess(ctx context.Context, req *v1.CashInternalCareAlertAccessReq) (*v1.CashInternalCareAlertAccessRes, error) {
-	r := ghttp.RequestFromCtx(ctx)
-	if !cash.ValidateInternalSecret(cash.InternalSecretFromRequest(r)) {
-		return nil, gerror.NewCode(gcode.CodeNotAuthorized, "内部接口未授权")
-	}
-	dn := strings.TrimSpace(req.DeviceNo)
-	if dn == "" {
-		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "deviceNo 不能为空")
-	}
-	if req.WxId <= 0 {
-		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "wxId 无效")
-	}
-	out, err := cash.GetCareAlertAccess(ctx, dn, req.WxId)
-	if err != nil {
-		return nil, err
-	}
-	return &v1.CashInternalCareAlertAccessRes{
-		Allowed: out.Allowed, FeedingQualified: out.FeedingQualified,
-		FeatureActive: out.FeatureActive, TrialAvailable: out.TrialAvailable,
-		EntitlementExpiresAt: out.EntitlementExpiresAt,
-	}, nil
-}
-
-// InternalGrowthTrajectoryAccess GET /cash/internal/api/growth-trajectory/access
-// 供 voice 门禁：账号开通 ∨ VIP ∨ 试用未用（无喂养门闸）；须内部密钥。
-func (c *CashFeatureController) InternalGrowthTrajectoryAccess(ctx context.Context, req *v1.CashInternalGrowthTrajectoryAccessReq) (*v1.CashInternalGrowthTrajectoryAccessRes, error) {
-	r := ghttp.RequestFromCtx(ctx)
-	if !cash.ValidateInternalSecret(cash.InternalSecretFromRequest(r)) {
-		return nil, gerror.NewCode(gcode.CodeNotAuthorized, "内部接口未授权")
-	}
-	dn := strings.TrimSpace(req.DeviceNo)
-	if dn == "" {
-		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "deviceNo 不能为空")
-	}
-	if req.WxId <= 0 {
-		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "wxId 无效")
-	}
-	out, err := cash.GetGrowthTrajectoryAccess(ctx, dn, req.WxId)
-	if err != nil {
-		return nil, err
-	}
-	return &v1.CashInternalGrowthTrajectoryAccessRes{
-		Allowed: out.Allowed, FeatureActive: out.FeatureActive,
-		TrialAvailable: out.TrialAvailable, EntitlementExpiresAt: out.EntitlementExpiresAt,
-	}, nil
-}
-
-// InternalPredictCapabilityAccess GET /cash/internal/api/predict-capability/access
-// 供 voice imminent 写入门禁；须内部密钥。
-func (c *CashFeatureController) InternalPredictCapabilityAccess(ctx context.Context, req *v1.CashInternalPredictCapabilityAccessReq) (*v1.CashInternalPredictCapabilityAccessRes, error) {
-	r := ghttp.RequestFromCtx(ctx)
-	if !cash.ValidateInternalSecret(cash.InternalSecretFromRequest(r)) {
-		return nil, gerror.NewCode(gcode.CodeNotAuthorized, "内部接口未授权")
-	}
-	dn := strings.TrimSpace(req.DeviceNo)
-	if dn == "" {
-		dn = strings.TrimSpace(r.Get("deviceNo").String())
-	}
-	wxID := req.WxId
-	if wxID <= 0 {
-		wxID = r.Get("wxId").Int64()
-	}
-	out, err := cash.GetPredictCapabilityAccess(ctx, dn, wxID)
-	if err != nil {
-		return nil, err
-	}
-	return &v1.CashInternalPredictCapabilityAccessRes{
-		Allowed: out.Allowed, BasicActive: out.BasicActive, ProActive: out.ProActive,
-		FeatureActive: out.FeatureActive, IsVip: out.IsVip,
-	}, nil
-}
-
 // InternalFeatureTrialClaim POST /cash/internal/api/feature/trial/claim
 // 供 voice 成功落库后 claim 试用；须内部密钥；幂等。
 func (c *CashFeatureController) InternalFeatureTrialClaim(ctx context.Context, req *v1.CashInternalFeatureTrialClaimReq) (*v1.CashInternalFeatureTrialClaimRes, error) {
@@ -246,6 +156,27 @@ func (c *CashFeatureController) Orders(ctx context.Context, req *v1.CashFeatureC
 		AppAccountToken: out.AppAccountToken,
 		AlipayOrderStr:  out.AlipayOrderStr, PayTip: out.PayTip,
 	}, nil
+}
+
+// AppleVerify POST /cash/app/api/vip/apple/verify
+// 业务逻辑：可选加速履约；权威路径为 ASN（…/apple/notifications）。
+// 与 ASN 共用 VerifyAppleIAP → Fulfill* 幂等；覆盖预测 Pro 功能单与小智 MCP。
+// Args: 须登录（X-Internal-Wx-Id）；body 含 transactionId/productId，生产须带 signedTransaction。
+// Returns: 空 Res；失败返回业务错误码。
+func (c *CashFeatureController) AppleVerify(ctx context.Context, req *v1.CashAppleVerifyReq) (*v1.CashAppleVerifyRes, error) {
+	wxID, err := cashWxIDFromHeader(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := cash.VerifyAppleIAP(ctx, wxID, cash.AppleVerifyInput{
+		OrderNo:           req.OrderNo,
+		TransactionId:     req.TransactionId,
+		ProductId:         req.ProductId,
+		SignedTransaction: req.SignedTransaction,
+	}); err != nil {
+		return nil, err
+	}
+	return &v1.CashAppleVerifyRes{}, nil
 }
 
 // InviteCodesRedeem POST /cash/app/api/feature/invite-codes/redeem
