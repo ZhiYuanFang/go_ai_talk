@@ -63,6 +63,27 @@ func wxIDFromAppUserHeader(r *ghttp.Request) (int64, error) {
 	return id, nil
 }
 
+// BindPreview POST /device/app/api/user/bind_preview
+// 业务逻辑：绑定前只读预览宝宝昵称；须登录会话（X-Internal-Wx-Id）；不写 wx.device_no；非 auth-exempt。
+func (c *DeviceAppUserCtrl) BindPreview(ctx context.Context, req *v1.DeviceProfileBindPreviewReq) (res *v1.DeviceProfileBindPreviewRes, err error) {
+	r := ghttp.RequestFromCtx(ctx)
+	wxID, err := wxIDFromAppUserHeader(r)
+	if err != nil {
+		return nil, err
+	}
+	dn, babyName, err := device.WxBindPreview(ctx, wxID, req.DeviceNo)
+	if err != nil {
+		if errors.Is(err, device.ErrWxIDInvalid) || errors.Is(err, device.ErrWxDeviceLoginDeviceNoEmpty) {
+			return nil, gerror.NewCode(gcode.CodeInvalidParameter, err.Error())
+		}
+		if errors.Is(err, device.ErrDeviceNotRegistered) {
+			return nil, gerror.NewCode(gcode.CodeBusinessValidationFailed, err.Error())
+		}
+		return nil, err
+	}
+	return &v1.DeviceProfileBindPreviewRes{DeviceNo: dn, BabyName: babyName}, nil
+}
+
 // BindWx POST /device/app/api/user/bindwx（wx 主键来自 Header X-Internal-Wx-Id）。
 func (c *DeviceAppUserCtrl) BindWx(ctx context.Context, req *v1.DeviceProfileBindWxReq) (res *v1.DeviceProfileBindWxRes, err error) {
 	r := ghttp.RequestFromCtx(ctx)

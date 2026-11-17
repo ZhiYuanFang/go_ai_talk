@@ -30,6 +30,18 @@ type DeviceProfileSaveReq struct {
 // DeviceProfileSaveRes 保存成功。
 type DeviceProfileSaveRes struct{}
 
+// DeviceProfileBindPreviewReq 绑定前只读预览宝宝昵称（不写绑定关系）。
+type DeviceProfileBindPreviewReq struct {
+	g.Meta   `path:"/device/app/api/user/bind_preview" method:"post" tags:"device" summary:"绑定前预览宝宝昵称"`
+	DeviceNo string `json:"deviceNo" dc:"设备号"`
+}
+
+// DeviceProfileBindPreviewRes 预览结果（最小字段）。
+type DeviceProfileBindPreviewRes struct {
+	DeviceNo string `json:"deviceNo" dc:"回显设备号"`
+	BabyName string `json:"babyName" dc:"宝宝昵称，可空"`
+}
+
 // DeviceProfileBindWxReq 绑定设备到当前 wx（wx 主键来自 Header X-Internal-Wx-Id，由 gateway-app 从 JWT sub 注入）。
 type DeviceProfileBindWxReq struct {
 	g.Meta   `path:"/device/app/api/user/bindwx" method:"post" tags:"device" summary:"wx 绑定设备"`

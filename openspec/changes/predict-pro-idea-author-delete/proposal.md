@@ -22,5 +22,5 @@ Hub Admin 已有 `POST /device/admin/api/predict-pro-ideas/delete` 软删，但 
 
 - 代码：`api/v1/device_app_predict_pro_idea_http.go`、`device_app_predict_pro_idea.go` controller、`predict_pro_idea.go` service（可扩展 `SoftDeletePredictProIdea` 或新增带 `wxId` 校验的方法）。
 - 进程：`device-service`（必）；`gateway-app-server`（若代理/白名单需改则一并）。
-- **姊妹提案（后做）**：`d:\work\flutter_ai_talk\openspec\changes\predict-pro-idea-author-delete\`。
+- **姊妹提案（后做）**：`d:\work\flutter_ai_talk\openspec\changes\predict-pro-idea-author-delete\`（Flutter 侧另含 client-usage：想法 submit/like/unlike/delete 与预测入口点击统计；**不**要求本仓新增 report 字段或接口，沿用既有 `client-usage/report`）。
 - 顺序：本变更 apply/部署完成后，再通知 Flutter `/opsx-apply`。

@@ -131,6 +131,29 @@ func WxLogin(ctx context.Context, jsCode, platform string) (*WxLoginResult, erro
 	}, nil
 }
 
+// WxBindPreview 绑定前只读预览宝宝昵称。
+// 业务逻辑：校验登录 wx 与已注册 deviceNo 后读画像；禁止写 wx.device_no / 调用 WxBindDevice。
+// Args: wxID 会话用户（须 >0）；deviceNo 待预览设备号。
+// Returns: 回显 deviceNo、babyName（可空）；空 dn / 无效 wx / 未注册 → 业务错误。
+func WxBindPreview(ctx context.Context, wxID int64, deviceNo string) (echoDeviceNo string, babyName string, err error) {
+	deviceNo = strings.TrimSpace(deviceNo)
+	if wxID <= 0 {
+		return "", "", ErrWxIDInvalid
+	}
+	if deviceNo == "" {
+		return "", "", ErrWxDeviceLoginDeviceNoEmpty
+	}
+	// 业务逻辑：未注册不得冒充成功空档（与 bindwx 同一 EnsureRegistered 语义）。
+	if err := DeviceAdmin().EnsureRegistered(ctx, deviceNo); err != nil {
+		return "", "", err
+	}
+	profile, err := DeviceProfile().GetProfile(ctx, deviceNo)
+	if err != nil {
+		return "", "", err
+	}
+	return deviceNo, strings.TrimSpace(profile.BabyName), nil
+}
+
 // WxBindDevice 将 deviceNo 绑定到 wx 行（wx 主键由 Header X-Internal-Wx-Id 标识，由 controller 传入 id）。
 func WxBindDevice(ctx context.Context, wxID int64, deviceNo string) error {
 	deviceNo = strings.TrimSpace(deviceNo)
