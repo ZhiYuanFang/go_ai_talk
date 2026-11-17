@@ -59,3 +59,12 @@ type DeviceAppPredictProIdeaLikeRes struct {
 	LikeCount int  `json:"likeCount"`
 	LikedByMe bool `json:"likedByMe"`
 }
+
+// DeviceAppPredictProIdeaDeleteReq 作者自删想法。
+type DeviceAppPredictProIdeaDeleteReq struct {
+	g.Meta `path:"/device/app/api/predict-pro-ideas/delete" method:"post" tags:"app" summary:"作者删除自己的预测 Pro 想法"`
+	Id     int64 `json:"id" v:"required" dc:"想法 id"`
+}
+
+// DeviceAppPredictProIdeaDeleteRes 删除成功（空 data）。
+type DeviceAppPredictProIdeaDeleteRes struct{}

@@ -34,7 +34,8 @@ func mapPredictProIdeaBizErr(err error) error {
 	switch {
 	case errors.Is(err, device.ErrPredictProIdeaNotFound):
 		return gerror.NewCode(gcode.CodeNotFound, err.Error())
-	case errors.Is(err, device.ErrPredictProIdeaQuota),
+	case errors.Is(err, device.ErrPredictProIdeaForbidden),
+		errors.Is(err, device.ErrPredictProIdeaQuota),
 		errors.Is(err, device.ErrPredictProIdeaNoBind),
 		errors.Is(err, device.ErrPredictProIdeaNoBabyName):
 		return gerror.NewCode(gcode.CodeInvalidParameter, err.Error())
@@ -109,4 +110,21 @@ func (c *DeviceAppPredictProIdeaCtrl) Unlike(ctx context.Context, req *v1.Device
 		return nil, mapPredictProIdeaBizErr(err)
 	}
 	return &v1.DeviceAppPredictProIdeaLikeRes{LikeCount: out.LikeCount, LikedByMe: out.LikedByMe}, nil
+}
+
+// Delete POST /device/app/api/predict-pro-ideas/delete
+// 业务逻辑：JWT 取 wxId，仅作者可软删本人未删想法；不要求 Pro 权益；非 auth-exempt。
+func (c *DeviceAppPredictProIdeaCtrl) Delete(ctx context.Context, req *v1.DeviceAppPredictProIdeaDeleteReq) (*v1.DeviceAppPredictProIdeaDeleteRes, error) {
+	r := ghttp.RequestFromCtx(ctx)
+	wxID, err := wxIDFromAppUserHeader(r)
+	if err != nil {
+		return nil, err
+	}
+	if req.Id <= 0 {
+		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "id 无效")
+	}
+	if err := device.DeviceAdmin().SoftDeletePredictProIdeaByAuthor(ctx, req.Id, wxID); err != nil {
+		return nil, mapPredictProIdeaBizErr(err)
+	}
+	return &v1.DeviceAppPredictProIdeaDeleteRes{}, nil
 }

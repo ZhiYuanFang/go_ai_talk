@@ -25,6 +25,8 @@ const (
 var (
 	// ErrPredictProIdeaNotFound 想法不存在或已软删。
 	ErrPredictProIdeaNotFound = errors.New("想法不存在")
+	// ErrPredictProIdeaForbidden 非作者不得删除他人想法。
+	ErrPredictProIdeaForbidden = errors.New("无权删除该想法")
 	// ErrPredictProIdeaQuota 当日提交次数已达上限。
 	ErrPredictProIdeaQuota = errors.New("今日提交次数已达上限")
 	// ErrPredictProIdeaNoBind 未绑定设备，无法提交。
@@ -367,6 +369,27 @@ func (s *service) SoftDeletePredictProIdea(ctx context.Context, ideaID int64) er
 	// 业务逻辑：软删写入 >0 的 unix 秒；前置与更新条件均用未删谓词。
 	_, err := g.DB().Model(predictProIdeaTable).Ctx(ctx).
 		Where("id", ideaID).Where(predictProIdeaAliveWhere).
+		Data(g.Map{"deleted_at": now, "updated_at": now}).
+		Update()
+	return err
+}
+
+// SoftDeletePredictProIdeaByAuthor App 作者自删。
+// 业务逻辑：仅当想法未删且 row.wx_id 等于调用者时写 deleted_at；禁止复用无 owner 校验的 Admin 软删。
+// Args: ideaID 想法主键；wxID 会话用户。
+// Returns: 不存在/已删 → ErrPredictProIdeaNotFound；非作者 → ErrPredictProIdeaForbidden。
+func (s *service) SoftDeletePredictProIdeaByAuthor(ctx context.Context, ideaID, wxID int64) error {
+	row, err := loadActiveIdea(ctx, ideaID)
+	if err != nil {
+		return err
+	}
+	// 业务逻辑：所有权校验失败不得改行，且不得装成功。
+	if row.WxId != wxID {
+		return ErrPredictProIdeaForbidden
+	}
+	now := time.Now().Unix()
+	_, err = g.DB().Model(predictProIdeaTable).Ctx(ctx).
+		Where("id", ideaID).Where(predictProIdeaAliveWhere).Where("wx_id", wxID).
 		Data(g.Map{"deleted_at": now, "updated_at": now}).
 		Update()
 	return err
