@@ -7,8 +7,9 @@ server:
   address: ":9804"
   openapiPath: "/api.json"
   swaggerPath: "/swagger"
-  # 视频上传上限 20MB；须大于 Flutter maxUcgVideoBytes，默认 GoFrame 8MB 会导致 Web 代理上传失败。
-  clientMaxBodySize: "25MB"
+  # 须覆盖版本 APK 内网上传（约 200MB）及社交视频；默认 GoFrame 8MB 会在进 handler 前断连。
+  # 可用环境变量覆盖；与 ucg.apkMaxBytes / UCG_APK_MAX_BYTES 对齐时建议 ≥ 220MB。
+  clientMaxBodySize: "220MB"
 
 logger:
   level: "all"
@@ -18,6 +19,8 @@ database:
   default:
     link: "mysql:root:password@tcp(127.0.0.1:3306)/ai_voice_ucg_test"
 ucg:
+  # 版本 APK 内部上传上限（字节）；可用 UCG_APK_MAX_BYTES 覆盖；默认 200MB。
+  apkMaxBytes: 209715200
   comments:
     listMax: 500
   deviceServiceUrl: ""

@@ -235,7 +235,7 @@ func (c *GatewayAppCtrl) VersionCheck(ctx context.Context, req *v1.GatewayAppVer
 	if !ok {
 		return versionCheckWhenNoPublishedRow(cur), nil
 	}
-	return buildVersionRes(cur, row), nil
+	return buildVersionRes(ctx, cur, row), nil
 }
 
 // versionCheckWhenNoPublishedRow 版本表无行或无可用的 latestVersion：业务成功、无需更新；latestVersion 回填为客户端当前版本（与历史 Scan 失败兜底一致）。
@@ -250,7 +250,7 @@ func versionCheckWhenNoPublishedRow(current string) *v1.GatewayAppVersionCheckRe
 	}
 }
 
-func buildVersionRes(current string, row entity.AppVersion) *v1.GatewayAppVersionCheckRes {
+func buildVersionRes(ctx context.Context, current string, row entity.AppVersion) *v1.GatewayAppVersionCheckRes {
 	latest := strings.TrimSpace(row.LatestVersion)
 	need := gatewayapp.ShouldNeedAppUpdate(current, latest)
 	return &v1.GatewayAppVersionCheckRes{
@@ -258,8 +258,9 @@ func buildVersionRes(current string, row entity.AppVersion) *v1.GatewayAppVersio
 		LatestVersion: latest,
 		ReleaseDate:   row.ReleaseDate,
 		ReleaseNotes:  strings.TrimSpace(row.ReleaseNotes),
-		DownloadUrl:   gatewayapp.NormalizeAssetPath(strings.TrimSpace(row.DownloadUrl)),
-		ForceUpdate:   row.ForceUpdate != 0,
+		// OSS 行→CDN 绝对 URL；历史 path 行仍 path-only（客户端拼 gateway 基址）。
+		DownloadUrl: gatewayapp.ResolveVersionDownloadURL(ctx, strings.TrimSpace(row.DownloadUrl)),
+		ForceUpdate: row.ForceUpdate != 0,
 	}
 }
 

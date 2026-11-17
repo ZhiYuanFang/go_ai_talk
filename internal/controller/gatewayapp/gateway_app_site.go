@@ -86,7 +86,8 @@ func buildGatewayAppSiteAndroidDownload(ctx context.Context, publicBaseURL strin
 			UnavailableTip: "当前暂无可用 Android 安装包，请稍后再试。",
 		}
 	}
-	downloadURL := gatewayAppAbsoluteAssetURL(publicBaseURL, strings.TrimSpace(row.DownloadUrl))
+	// OSS→CDN；历史 path→publicBaseUrl 拼接（未发新版时官网仍可下旧包）。
+	downloadURL := gatewayapp.ResolveVersionDownloadAbsoluteURL(ctx, strings.TrimSpace(row.DownloadUrl), publicBaseURL)
 	if downloadURL == "" {
 		return v1.GatewayAppSiteAndroidDownload{
 			Available:      false,
@@ -137,18 +138,4 @@ func gatewayAppPublicBaseURL(ctx context.Context) string {
 		return ""
 	}
 	return strings.TrimRight(scheme+"://"+host, "/")
-}
-
-func gatewayAppAbsoluteAssetURL(publicBaseURL, raw string) string {
-	path := gatewayapp.NormalizeAssetPath(strings.TrimSpace(raw))
-	if path == "" {
-		return ""
-	}
-	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
-		return path
-	}
-	if publicBaseURL == "" {
-		return path
-	}
-	return strings.TrimRight(publicBaseURL, "/") + path
 }

@@ -172,7 +172,7 @@
   - 更新时未传 `logo` 文件则保留原 logo
 - **存储**：库内 `event.logo` 为 OSS objectKey（`event/...`）；API 响应返回 CDN URL。上传经 ucg-service OSS；详见 `docs/runbooks/event-logo-oss-migration.md`。
 - **管理页**：`admin.html` 事件表展示 Logo、色调；**点击**色块或 Logo 可直接更新
-- **BREAKING**：`GET /device/app/api/version/check` 的 `downloadUrl` 仍为**路径**（非绝对 URL），App 须自行拼接网关基址。
+- **版本 APK**：新上传经 ucg 写入 OSS（`apk/`），`version/check` / 官网 / 管理列表对**新发版**返回 **CDN 绝对 URL**，App **直接使用**；历史 `/device/app/apk/*.apk` 行仍为 path-only（可拼 gateway 基址）并由本地下载。
 
 ---
 

@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	ucgclient "hello/internal/clients/ucg"
 	"hello/internal/dao"
 	"hello/internal/model/entity"
 	"hello/internal/services/gatewayapp"
@@ -108,48 +109,44 @@ func gatewayAppVersionAdminUpload(r *ghttp.Request) {
 		r.Response.WriteJson(g.Map{"code": 400, "message": "仅支持 .apk 文件"})
 		return
 	}
-
-	dir := filepath.Clean(gatewayapp.ApkStorageDir(ctx))
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		glog.Warningf(ctx, "[gateway-app-version-admin] 创建目录失败 dir=%s err=%v", dir, err)
-		r.Response.Status = http.StatusInternalServerError
-		r.Response.WriteJson(g.Map{"code": 500, "message": "创建存储目录失败"})
-		return
-	}
 	safeVer := sanitizeVersionForFilename(latestVer)
 	serverName := fmt.Sprintf("%s_%d.apk", safeVer, time.Now().UnixNano())
-	dest := filepath.Join(dir, serverName)
 	if strings.Contains(serverName, "..") || strings.ContainsAny(serverName, `/\`) {
 		r.Response.Status = http.StatusBadRequest
 		r.Response.WriteJson(g.Map{"code": 400, "message": "非法文件名"})
 		return
 	}
-
-	out, err := os.Create(dest)
-	if err != nil {
-		glog.Warningf(ctx, "[gateway-app-version-admin] 创建目标文件失败 path=%s err=%v", dest, err)
-		r.Response.Status = http.StatusInternalServerError
-		r.Response.WriteJson(g.Map{"code": 500, "message": "保存文件失败"})
+	// 以 multipart 头 Size 为准；未知大小则拒绝，避免无界上传。
+	size := hdr.Size
+	if size <= 0 {
+		r.Response.Status = http.StatusBadRequest
+		r.Response.WriteJson(g.Map{"code": 400, "message": "无法确定 APK 大小"})
 		return
 	}
-	defer func() { _ = out.Close() }()
-	lr := io.LimitReader(file, maxBytes+1)
-	written, err := io.Copy(out, lr)
-	if err != nil {
-		_ = os.Remove(dest)
-		glog.Warningf(ctx, "[gateway-app-version-admin] 写入 apk 失败 err=%v", err)
-		r.Response.Status = http.StatusInternalServerError
-		r.Response.WriteJson(g.Map{"code": 500, "message": "写入文件失败"})
-		return
-	}
-	if written > maxBytes {
-		_ = os.Remove(dest)
+	if size > maxBytes {
 		r.Response.Status = http.StatusRequestEntityTooLarge
 		r.Response.WriteJson(g.Map{"code": 413, "message": fmt.Sprintf("文件过大，上限 %d 字节", maxBytes)})
 		return
 	}
 
-	dlPath := "/device/app/apk/" + serverName
+	// 方案 A：经 ucg 内网直传 OSS；权威存储为 objectKey，不再落盘 /apk/ai_talk。
+	objectKey, cdnURL, err := ucgclient.UploadApk(ctx, serverName, io.LimitReader(file, size), size)
+	if err != nil {
+		glog.Warningf(ctx, "[gateway-app-version-admin] OSS 上传失败 size=%d err=%v", size, err)
+		r.Response.Status = http.StatusBadGateway
+		r.Response.WriteJson(g.Map{"code": 502, "message": "APK 上传至对象存储失败"})
+		return
+	}
+	objectKey = strings.TrimSpace(objectKey)
+	cdnURL = strings.TrimSpace(cdnURL)
+	if objectKey == "" {
+		r.Response.Status = http.StatusBadGateway
+		r.Response.WriteJson(g.Map{"code": 502, "message": "对象存储未返回 objectKey"})
+		return
+	}
+	if cdnURL == "" {
+		cdnURL = gatewayapp.ResolveVersionDownloadURL(ctx, objectKey)
+	}
 
 	forceN := 0
 	if force {
@@ -157,13 +154,16 @@ func gatewayAppVersionAdminUpload(r *ghttp.Request) {
 	}
 	_, err = dao.AppVersion.Ctx(ctx).Data(g.Map{
 		dao.AppVersion.Columns().LatestVersion: latestVer,
-		dao.AppVersion.Columns().DownloadUrl:   dlPath,
+		dao.AppVersion.Columns().DownloadUrl:   objectKey,
 		dao.AppVersion.Columns().ReleaseNotes:  releaseNotes,
 		dao.AppVersion.Columns().ForceUpdate:   forceN,
 		dao.AppVersion.Columns().ReleaseDate:   time.Now().Unix(),
 	}).Insert()
 	if err != nil {
-		_ = os.Remove(dest)
+		// 写库失败：尽力删除已上传 OSS 对象，避免孤儿包。
+		if delErr := ucgclient.DeleteApkObject(ctx, objectKey); delErr != nil {
+			glog.Warningf(ctx, "[gateway-app-version-admin] 写库失败后清理 OSS 失败 key=%s err=%v", objectKey, delErr)
+		}
 		glog.Warningf(ctx, "[gateway-app-version-admin] 写库失败 err=%v", err)
 		r.Response.Status = http.StatusInternalServerError
 		r.Response.WriteJson(g.Map{"code": 500, "message": "数据库写入失败"})
@@ -174,8 +174,9 @@ func gatewayAppVersionAdminUpload(r *ghttp.Request) {
 	r.Response.WriteJson(g.Map{
 		"code":          0,
 		"message":       "ok",
-		"downloadUrl":   dlPath,
+		"downloadUrl":   cdnURL,
 		"latestVersion": latestVer,
+		"objectKey":     objectKey,
 		"savedFile":     serverName,
 	})
 }
@@ -222,7 +223,7 @@ func gatewayAppVersionAdminList(r *ghttp.Request) {
 			glog.Warningf(ctx, "[gateway-app-version-admin] 解析版本行失败 id=%v", rec[dao.AppVersion.Columns().Id])
 			continue
 		}
-		items = append(items, appVersionItemJSON(row, maxID > 0 && row.Id == maxID))
+		items = append(items, appVersionItemJSON(ctx, row, maxID > 0 && row.Id == maxID))
 	}
 	if int(total) > len(items) && len(rows) > 0 {
 		glog.Warningf(ctx, "[gateway-app-version-admin] 列表行解析不完整 total=%d parsed=%d rows=%d", total, len(items), len(rows))
@@ -261,7 +262,7 @@ func gatewayAppVersionAdminGet(r *ghttp.Request) {
 	r.Response.WriteJson(g.Map{
 		"code":    0,
 		"message": "ok",
-		"item":    appVersionItemJSON(row, maxID > 0 && row.Id == maxID),
+		"item":    appVersionItemJSON(ctx, row, maxID > 0 && row.Id == maxID),
 	})
 }
 
@@ -345,7 +346,7 @@ func gatewayAppVersionAdminUpdate(r *ghttp.Request) {
 	r.Response.WriteJson(g.Map{
 		"code":    0,
 		"message": "ok",
-		"item":    appVersionItemJSON(row, maxID > 0 && row.Id == maxID),
+		"item":    appVersionItemJSON(ctx, row, maxID > 0 && row.Id == maxID),
 	})
 }
 
@@ -423,22 +424,35 @@ func appVersionFromRecord(rec gdb.Record) (entity.AppVersion, bool) {
 	}, true
 }
 
-func appVersionItemJSON(row entity.AppVersion, isLatest bool) g.Map {
+func appVersionItemJSON(ctx context.Context, row entity.AppVersion, isLatest bool) g.Map {
+	// 对外 downloadUrl：OSS→CDN；历史 path 保持可点开（同源管理页）。
 	return g.Map{
 		"id":            row.Id,
 		"latestVersion": strings.TrimSpace(row.LatestVersion),
 		"releaseDate":   row.ReleaseDate,
 		"releaseNotes":  strings.TrimSpace(row.ReleaseNotes),
-		"downloadUrl":   gatewayapp.NormalizeAssetPath(strings.TrimSpace(row.DownloadUrl)),
+		"downloadUrl":   gatewayapp.ResolveVersionDownloadURL(ctx, strings.TrimSpace(row.DownloadUrl)),
 		"forceUpdate":   row.ForceUpdate != 0,
 		"minVersion":    strings.TrimSpace(row.MinVersion),
 		"isLatest":      isLatest,
 	}
 }
 
-// tryRemoveApkForDownloadPath 删行后尽力删除约定目录下的 APK；失败仅记日志。
+// tryRemoveApkForDownloadPath 删行后尽力清理关联 APK：path→本地文件；apk/→OSS；失败仅记日志。
 func tryRemoveApkForDownloadPath(ctx context.Context, dlPath string) {
-	dlPath = gatewayapp.NormalizeAssetPath(strings.TrimSpace(dlPath))
+	raw := strings.TrimSpace(dlPath)
+	if raw == "" {
+		return
+	}
+	// 新上传：OSS objectKey
+	if gatewayapp.IsApkObjectKey(raw) {
+		key := strings.TrimPrefix(raw, "/")
+		if err := ucgclient.DeleteApkObject(ctx, key); err != nil {
+			glog.Warningf(ctx, "[gateway-app-version-admin] 尽力删除 OSS APK 失败 key=%s err=%v", key, err)
+		}
+		return
+	}
+	dlPath = gatewayapp.NormalizeAssetPath(raw)
 	if !strings.HasPrefix(dlPath, versionAdminApkURLPrefix) {
 		return
 	}
