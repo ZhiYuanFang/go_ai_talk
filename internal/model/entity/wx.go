@@ -10,10 +10,11 @@ type Wx struct {
 	DeviceNo   string `json:"deviceNo"   ` //
 	Unionid    string `json:"unionid"    ` //
 	AppleSub   string `json:"appleSub"   ` // Apple JWT sub
-	Platform   string `json:"platform"   ` // 平台来源
-	IpLocation string `json:"ipLocation" ` // IP属地展示文案（省/市，客户端上报）
-	Account    string `json:"account"    ` // 账户
-	Password   string `json:"password"   ` // 密码哈希（bcrypt，不可逆）
-	ForceValue int    `json:"forceValue" ` // 原力值
-	CreatedAt  int64  `json:"createdAt"  ` // wx 账号创建 Unix 秒；0 表示未知（历史行）
+	Platform    string `json:"platform"    ` // 平台来源
+	DeviceModel string `json:"deviceModel" ` // 设备型号展示文案（客户端上报，可空）
+	IpLocation  string `json:"ipLocation"  ` // IP属地展示文案（省/市，客户端上报）
+	Account     string `json:"account"     ` // 账户
+	Password    string `json:"password"    ` // 密码哈希（bcrypt，不可逆）
+	ForceValue  int    `json:"forceValue"  ` // 原力值
+	CreatedAt   int64  `json:"createdAt"   ` // wx 账号创建 Unix 秒；0 表示未知（历史行）
 }

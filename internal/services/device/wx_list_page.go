@@ -50,7 +50,7 @@ func (s *service) ListWxPage(ctx context.Context, page, pageSize int, q string) 
 		return contracts.WxPageResult{List: []contracts.AdminWxListItem{}, Total: 0, Page: page, PageSize: pageSize}, nil
 	}
 	rows := make([]contracts.AdminWxListItem, 0)
-	err = m.Fields(cols.Id, cols.DeviceNo, cols.Unionid, cols.Platform, cols.Account, cols.CreatedAt).
+	err = m.Fields(cols.Id, cols.DeviceNo, cols.Unionid, cols.Platform, cols.DeviceModel, cols.Account, cols.CreatedAt).
 		OrderDesc(cols.Id).
 		Page(page, pageSize).
 		Scan(&rows)

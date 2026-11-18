@@ -12,7 +12,9 @@ import (
 var maintenanceExactAPI = map[string]struct{}{
 	"POST /device/app/api/token/refresh": {},
 	"GET /device/app/api/version/check":  {},
-	"GET /device/app/api/site/home":      {},
+	"GET /device/app/api/site/home": {},
+	// 小智引导视频清单：官网匿名只读 + App 同源 list；负责人确认不计入 usage（refresh-pangbao-home-capability-story）。
+	"GET /cash/app/api/xiaozhi-mcp/guide-videos": {},
 	// 全局推送注册/注销：负责人确认不计入 usage（extract-push-service）。
 	"POST /app/api/push/register":   {},
 	"POST /app/api/push/unregister": {},

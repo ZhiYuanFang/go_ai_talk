@@ -56,13 +56,14 @@ type DeviceAdminWxListReq struct {
 
 // DeviceAdminWxListItem wx 列表项（不含 password）。
 type DeviceAdminWxListItem struct {
-	Id        int64  `json:"id"`
-	DeviceNo  string `json:"deviceNo"`
-	Unionid   string `json:"unionid"`
-	Platform  string `json:"platform"`
-	Account   string `json:"account"`
-	CreatedAt int64  `json:"createdAt"`
-	BabyName  string `json:"babyName" dc:"宝宝名字，来自 user 画像"`
+	Id          int64  `json:"id"`
+	DeviceNo    string `json:"deviceNo"`
+	Unionid     string `json:"unionid"`
+	Platform    string `json:"platform"`
+	DeviceModel string `json:"deviceModel" dc:"设备型号展示文案，可空"`
+	Account     string `json:"account"`
+	CreatedAt   int64  `json:"createdAt"`
+	BabyName    string `json:"babyName" dc:"宝宝名字，来自 user 画像"`
 }
 
 // DeviceAdminWxListRes wx 账号分页响应。

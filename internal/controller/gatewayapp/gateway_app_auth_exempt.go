@@ -61,6 +61,8 @@ var (
 		"/device/admin/api-usage-stats",
 		"/device/admin/client-usage-stats",
 		"/device/app/api/site/home",
+		// 小智引导视频清单：官网匿名只读；带 Bearer 的 App 请求语义相同（refresh-pangbao-home-capability-story）。
+		"/cash/app/api/xiaozhi-mcp/guide-videos",
 		"/device/app/api/version/check",
 		"/device/history/api/event/options",
 		"/ucg/app/api/feed/recommend",

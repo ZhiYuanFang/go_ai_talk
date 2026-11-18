@@ -342,6 +342,29 @@ func (c *DeviceAppUserCtrl) Profile(ctx context.Context, req *v1.DeviceUserProfi
 	}, nil
 }
 
+// DeviceModelPut PUT /device/app/api/user/device-model
+// 业务逻辑：登录用户上报设备型号原文；空串清空；值未变跳过写；非 auth-exempt。
+func (c *DeviceAppUserCtrl) DeviceModelPut(ctx context.Context, req *v1.DeviceUserDeviceModelPutReq) (res *v1.DeviceUserDeviceModelPutRes, err error) {
+	r := ghttp.RequestFromCtx(ctx)
+	wxID, err := wxIDFromAppUserHeader(r)
+	if err != nil {
+		return nil, err
+	}
+	if err = device.WxUpdateDeviceModel(ctx, wxID, req.DeviceModel); err != nil {
+		if errors.Is(err, device.ErrWxDeviceModelInvalid) {
+			return nil, gerror.NewCode(gcode.CodeInvalidParameter, err.Error())
+		}
+		if errors.Is(err, device.ErrWxDeactivateWxIDInvalid) {
+			return nil, gerror.NewCode(gcode.CodeInvalidParameter, err.Error())
+		}
+		if errors.Is(err, device.ErrWxDeactivateNotFound) {
+			return nil, gerror.NewCode(gcode.CodeNotFound, err.Error())
+		}
+		return nil, err
+	}
+	return &v1.DeviceUserDeviceModelPutRes{}, nil
+}
+
 // Detail GET /device/app/api/user/detail
 func (c *DeviceAppUserCtrl) Detail(ctx context.Context, req *v1.DeviceWxDetailReq) (res *v1.DeviceWxDetailRes, err error) {
 	_ = req

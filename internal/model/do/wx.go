@@ -15,10 +15,11 @@ type Wx struct {
 	DeviceNo   interface{} //
 	Unionid    interface{} //
 	AppleSub   interface{} // Apple JWT sub
-	Platform   interface{} // 平台来源
-	IpLocation interface{} // IP属地展示文案（省/市，客户端上报）
-	Account    interface{} // 账户
-	Password   interface{} // 密码哈希（bcrypt，不可逆）
-	ForceValue interface{} // 原力值
-	CreatedAt  interface{} // wx 账号创建 Unix 秒
+	Platform    interface{} // 平台来源
+	DeviceModel interface{} // 设备型号展示文案（客户端上报，可空）
+	IpLocation  interface{} // IP属地展示文案（省/市，客户端上报）
+	Account     interface{} // 账户
+	Password    interface{} // 密码哈希（bcrypt，不可逆）
+	ForceValue  interface{} // 原力值
+	CreatedAt   interface{} // wx 账号创建 Unix 秒
 }

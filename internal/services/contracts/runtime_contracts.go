@@ -161,8 +161,10 @@ type AdminWxListItem struct {
 	DeviceNo  string `json:"deviceNo"`
 	Unionid   string `json:"unionid"`
 	Platform  string `json:"platform"`
-	Account   string `json:"account"`
-	CreatedAt int64  `json:"createdAt"`
+	// DeviceModel 客户端上报的设备型号展示文案；未上报时为空串。
+	DeviceModel string `json:"deviceModel"`
+	Account     string `json:"account"`
+	CreatedAt   int64  `json:"createdAt"`
 	// BabyName 来自 device user 画像；无绑定设备或无档案时为空串。
 	BabyName string `json:"babyName"`
 }

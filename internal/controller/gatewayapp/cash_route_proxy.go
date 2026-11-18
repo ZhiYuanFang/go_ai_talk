@@ -20,7 +20,7 @@ var (
 // installCashProxyMiddleware gateway-app 反代 cash-service。
 //
 // 绑定：
-//   - /cash/app/api/*：App VIP 支付/状态（Bearer + X-Internal-Wx-Id 由 Hook 注入）
+//   - /cash/app/api/*：App 支付/权益等（多数需 Bearer；guide-videos GET 已豁免供官网匿名）
 //   - /cash/admin/api/*：运维 Hub VIP 权益 Admin API（Admin JWT + X-Admin-Password 注入）
 func installCashProxyMiddleware(s *ghttp.Server) {
 	proxy := cashProxyFromEnv()

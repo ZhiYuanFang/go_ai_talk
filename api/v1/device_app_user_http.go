@@ -207,6 +207,16 @@ type DeviceUserProfileRes struct {
 	DeviceNo      string   `json:"deviceNo" dc:"已绑定设备号，未绑定时为空字符串"`
 }
 
+// DeviceUserDeviceModelPutReq 上报/覆盖当前账号设备型号展示文案（wx 主键来自 Header X-Internal-Wx-Id）。
+// 业务：客户端原文入库，服务端不做枚举；空串表示清空；最长 128。
+type DeviceUserDeviceModelPutReq struct {
+	g.Meta      `path:"/device/app/api/user/device-model" method:"put" tags:"device" summary:"上报设备型号"`
+	DeviceModel string `json:"deviceModel" dc:"设备型号展示文案，可空；最长 128；勿含控制字符"`
+}
+
+// DeviceUserDeviceModelPutRes 上报成功（空 data）。
+type DeviceUserDeviceModelPutRes struct{}
+
 // DeviceWxDetailReq 按 wx 查询已绑定设备号（wx 主键来自 Header X-Internal-Wx-Id）。
 type DeviceWxDetailReq struct {
 	g.Meta `path:"/device/app/api/user/detail" method:"get" tags:"device" summary:"wx 绑定设备号"`

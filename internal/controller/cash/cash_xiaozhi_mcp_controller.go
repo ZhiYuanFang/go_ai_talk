@@ -211,11 +211,14 @@ func mapXiaozhiGuideItem(it cash.XiaozhiGuideVideoSlot) v1.CashXiaozhiMcpGuideVi
 	}
 }
 
-// GuideVideos GET /cash/app/api/xiaozhi-mcp/guide-videos — 仅已配置槽（计入 usage）。
+// GuideVideos GET /cash/app/api/xiaozhi-mcp/guide-videos — 仅已配置槽（与用户无关的公开读模型）。
+// 经 gateway-app 时可匿名访问（官网）；App 带 Bearer 时 list 语义相同。
+// 负责人确认不计入 usage（maintenance_skip：GET /cash/app/api/xiaozhi-mcp/guide-videos）。
+//
+// Args: ctx 请求上下文（无需 X-Internal-Wx-Id）。
+// Returns: 已配置槽列表；DB/OSS 映射失败时返回错误。
 func (c *CashXiaozhiMcpController) GuideVideos(ctx context.Context, _ *v1.CashAppXiaozhiMcpGuideVideosReq) (*v1.CashAppXiaozhiMcpGuideVideosRes, error) {
-	if _, err := cashWxIDFromHeader(ctx); err != nil {
-		return nil, err
-	}
+	// 业务逻辑：引导视频为全局槽配置，不绑定登录用户；去掉 wxId 校验以支持官网匿名拉取。
 	list, err := cash.ListXiaozhiGuideVideosApp(ctx)
 	if err != nil {
 		return nil, err

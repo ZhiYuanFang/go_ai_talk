@@ -123,15 +123,16 @@ func (c *GatewayAppUsageAdminCtrl) UsageWxList(ctx context.Context, req *v1.Devi
 	list := make([]v1.DeviceAdminUsageWxListItem, 0, len(rows))
 	for _, row := range rows {
 		list = append(list, v1.DeviceAdminUsageWxListItem{
-			Id:        row.Id,
-			DeviceNo:  row.DeviceNo,
-			Unionid:   row.Unionid,
-			Platform:  row.Platform,
-			Account:   row.Account,
-			CreatedAt: row.CreatedAt,
-			Nickname:  nickMap[row.Id],
-			BabyName:  row.BabyName,
-			LastAt:    lastMap[row.Id],
+			Id:          row.Id,
+			DeviceNo:    row.DeviceNo,
+			Unionid:     row.Unionid,
+			Platform:    row.Platform,
+			DeviceModel: row.DeviceModel,
+			Account:     row.Account,
+			CreatedAt:   row.CreatedAt,
+			Nickname:    nickMap[row.Id],
+			BabyName:    row.BabyName,
+			LastAt:      lastMap[row.Id],
 		})
 	}
 	return &v1.DeviceAdminUsageWxListRes{

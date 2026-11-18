@@ -146,7 +146,8 @@ func (c *GatewayAppClientUsageCtrl) ClientUsageWxList(ctx context.Context, req *
 	for _, row := range rows {
 		list = append(list, v1.DeviceAdminClientUsageWxListItem{
 			Id: row.Id, DeviceNo: row.DeviceNo, Unionid: row.Unionid,
-			Platform: row.Platform, Account: row.Account, CreatedAt: row.CreatedAt,
+			Platform: row.Platform, DeviceModel: row.DeviceModel,
+			Account: row.Account, CreatedAt: row.CreatedAt,
 			Nickname: nickMap[row.Id],
 			BabyName: row.BabyName,
 			LastAt:   lastMap[row.Id],

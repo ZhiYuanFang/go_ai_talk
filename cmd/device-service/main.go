@@ -31,6 +31,11 @@ func main() {
 		glog.Fatalf(ctx, "wx is_simulated drop failed: %v", err)
 		return
 	}
+	// usage 运维「型号」列：幂等补齐 wx.device_model（客户端上报原文，可空）。
+	if err := device.EnsureWxDeviceModelColumn(ctx); err != nil {
+		glog.Fatalf(ctx, "wx device_model schema ensure failed: %v", err)
+		return
+	}
 	if err := device.EnsureEventIsAppointmentColumn(ctx); err != nil {
 		glog.Fatalf(ctx, "event is_appointment schema ensure failed: %v", err)
 		return

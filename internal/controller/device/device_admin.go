@@ -87,13 +87,14 @@ func (c *AdminCtrl) WxList(ctx context.Context, req *v1.DeviceAdminWxListReq) (r
 	list := make([]v1.DeviceAdminWxListItem, 0, len(result.List))
 	for _, it := range result.List {
 		list = append(list, v1.DeviceAdminWxListItem{
-			Id:        it.Id,
-			DeviceNo:  it.DeviceNo,
-			Unionid:   it.Unionid,
-			Platform:  it.Platform,
-			Account:   it.Account,
-			CreatedAt: it.CreatedAt,
-			BabyName:  it.BabyName,
+			Id:          it.Id,
+			DeviceNo:    it.DeviceNo,
+			Unionid:     it.Unionid,
+			Platform:    it.Platform,
+			DeviceModel: it.DeviceModel,
+			Account:     it.Account,
+			CreatedAt:   it.CreatedAt,
+			BabyName:    it.BabyName,
 		})
 	}
 	return &v1.DeviceAdminWxListRes{

@@ -107,15 +107,16 @@ type DeviceAdminClientUsageWxListReq struct {
 
 // DeviceAdminClientUsageWxListItem wx 行。
 type DeviceAdminClientUsageWxListItem struct {
-	Id        int64  `json:"id"`
-	DeviceNo  string `json:"deviceNo"`
-	Unionid   string `json:"unionid"`
-	Platform  string `json:"platform"`
-	Account   string `json:"account"`
-	CreatedAt int64  `json:"createdAt"`
-	Nickname  string `json:"nickname"`
-	BabyName  string `json:"babyName" dc:"宝宝名字，透传 device wx/list"`
-	LastAt    int64  `json:"lastAt" dc:"窗口内最近客户端上报 Unix 秒；无则 0"`
+	Id          int64  `json:"id"`
+	DeviceNo    string `json:"deviceNo"`
+	Unionid     string `json:"unionid"`
+	Platform    string `json:"platform"`
+	DeviceModel string `json:"deviceModel" dc:"设备型号展示文案，透传 device wx/list，可空"`
+	Account     string `json:"account"`
+	CreatedAt   int64  `json:"createdAt"`
+	Nickname    string `json:"nickname"`
+	BabyName    string `json:"babyName" dc:"宝宝名字，透传 device wx/list"`
+	LastAt      int64  `json:"lastAt" dc:"窗口内最近客户端上报 Unix 秒；无则 0"`
 }
 
 // DeviceAdminClientUsageWxListRes wx 列表。

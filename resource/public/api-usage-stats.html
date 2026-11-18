@@ -127,6 +127,7 @@
 									<th>设备号</th>
 									<th>unionid</th>
 									<th>平台</th>
+									<th>型号</th>
 									<th>用户名账号</th>
 								</tr>
 							</thead>
@@ -447,6 +448,7 @@ function renderWxList(){
 			'<td>'+ deviceNoCellHtml(it.deviceNo) +'</td>' +
 			'<td class="wrapcell">'+ escapeHtml(it.unionid||'-') +'</td>' +
 			'<td>'+ escapeHtml(it.platform||'') +'</td>' +
+			'<td>'+ escapeHtml((it.deviceModel||'').trim() || '—') +'</td>' +
 			'<td>'+ escapeHtml(it.account||'-') +'</td>';
 		const link = tr.querySelector('a.device-link');
 		if(link){

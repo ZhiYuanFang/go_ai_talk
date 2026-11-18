@@ -25,4 +25,11 @@ await api.post('/device/app/api/client-usage/report', body: {
 
 设备管理 → **客户端使用统计**（`/device/admin/client-usage-stats`）：按功能 / 按用户；列表与时间线均展示 **事件名 + 说明**。
 
+「按用户」表除 **平台**（`wx.platform`：ios/android/web）外另有 **型号**列（`deviceModel`）：来自客户端上报的 `wx.device_model` 原文，可空；旧客户端/Web 未上报时显示「—」。型号**不是** Redis 聚合维度。
+
+App 上报型号（与功能事件分开）：
+
+- `PUT /device/app/api/user/device-model`（须 Bearer）
+- Body：`{ "deviceModel": "huawei" }`（可空串清空；最长 128；服务端无枚举）
+
 Admin API（`/device/admin/api/client-usage/*`）由 **gateway-app 本机**处理，device 反代须旁路（与 `/device/admin/api/usage/*` 同）；漏旁路时会 404。

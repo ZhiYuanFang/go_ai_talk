@@ -24,9 +24,9 @@ func (c *GatewayAppCtrl) SiteHome(ctx context.Context, req *v1.GatewayAppSiteHom
 	android := buildGatewayAppSiteAndroidDownload(ctx, publicBaseURL)
 	return &v1.GatewayAppSiteHomeRes{
 		BrandName:      "胖宝",
-		HeroTitle:      "每一口奶、每一次觉，都有人帮你记着",
-		HeroSubtitle:   "宝宝还在小月龄，手在忙、心在慌。胖宝用语音帮你记喂奶和睡眠，连接同阶段妈妈，AI 结合喂养记录按月龄回答你的疑问。",
-		ServiceSummary: "胖宝面向 0–18 月新手妈妈：智能喂养记录、同月龄轻社交、AI 随时在。",
+		HeroTitle:      "喂养有迹可循，预判与陪伴都在身边",
+		HeroSubtitle:   "面向 0–18 月新手妈妈：记录吃睡换尿布，智能预测提醒，语音 AI 结合你的记录作答，小智音箱也能问喂养。",
+		ServiceSummary: "胖宝由杭州彩逗科技有限公司运营，面向 0–18 月新手妈妈：宝宝信息记录、智能预测提醒、语音 AI 与小智音箱。",
 		PublicBaseUrl:  publicBaseURL,
 		AppDatabase:    gatewayapp.ResolvedAppDatabaseName(),
 		Events:         events,
