@@ -4,7 +4,7 @@
 	<meta charset="UTF-8" />
 	<meta name="viewport" content="width=device-width, initial-scale=1" />
 	<title>胖宝 - 0–18 月喂养记录 · 智能预测 · 语音陪伴</title>
-	<meta name="description" content="胖宝面向 0–18 月新手妈妈：宝宝信息记录与统计、智能预测提醒、语音 AI 问答、小智音箱喂养助手。杭州彩逗科技有限公司出品。" />
+	<meta name="description" content="胖宝面向 0–18 月新手妈妈：宝宝信息记录与统计、智能预测提醒、语音 AI 问答、实体音箱连接能力。杭州彩逗科技有限公司出品。" />
 	<link rel="preconnect" href="https://fonts.googleapis.com" />
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 	<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,560;9..144,700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -123,16 +123,14 @@
 		.xiaozhi-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:18px}
 		.scene-list{margin:0;padding:0;list-style:none;display:grid;gap:10px}
 		.scene-list li{padding:14px 16px;border-radius:14px;background:#f7fafb;border:1px solid var(--line);font-size:14px;line-height:1.6;color:#314049}
+		/* 能力演示内嵌：随容器缩放，整段可见，不走弹层 */
 		.video-box{display:none;flex-direction:column;gap:10px}
 		.video-box.show{display:flex}
-		.video-btn{
-			display:flex;align-items:center;justify-content:space-between;gap:12px;
-			padding:14px 16px;border-radius:14px;border:1px solid var(--line);background:#fff;
-			cursor:pointer;font:inherit;text-align:left;width:100%
+		.video-box .promo-label{margin:0;font-size:13px;color:var(--muted);font-weight:600}
+		.video-box video{
+			width:100%;height:auto;max-height:min(56vh,420px);
+			border-radius:14px;background:#000;object-fit:contain;display:block
 		}
-		.video-btn:hover{border-color:rgba(13,115,119,.35)}
-		.video-btn strong{display:block;font-size:14px}
-		.video-btn span{font-size:12px;color:var(--muted)}
 		.ai-disclaimer{margin:14px 0 0;font-size:12px;color:var(--muted);line-height:1.6}
 		.status{display:none;margin-bottom:16px;padding:14px 16px;border-radius:14px;color:#9f1239;background:#fff1f2;border:1px solid #fecdd3}
 		.status.show{display:block}
@@ -162,7 +160,6 @@
 		.dl-card p{margin:0 0 8px;font-size:13px;color:var(--muted);line-height:1.55}
 		.qr-wrap{display:grid;place-items:center;min-height:180px;margin:8px 0;background:#fff;border-radius:12px;border:1px dashed var(--line)}
 		#qrCanvas{width:160px;height:160px;max-width:100%}
-		.video-modal video{width:100%;border-radius:12px;background:#000;max-height:60vh}
 		.loading{opacity:.72}
 		@media (max-width:960px){
 			.hero,.record-layout,.xiaozhi-grid,.predict-grid,.ai-loop,.download-cols{grid-template-columns:1fr}
@@ -190,7 +187,7 @@
 				<a class="nav-link" href="#predict">预测提醒</a>
 				<a class="nav-link" href="#records">宝宝记录</a>
 				<a class="nav-link" href="#ai">语音 AI</a>
-				<a class="nav-link" href="#xiaozhi">小智音箱</a>
+				<a class="nav-link" href="#xiaozhi">实体音箱</a>
 				<button type="button" class="btn btn-primary" data-open-download>下载 App</button>
 			</div>
 		</nav>
@@ -201,7 +198,7 @@
 			<div class="hero-main card">
 				<div class="kicker">0–18 月 · 记录 · 预判 · 陪伴</div>
 				<h1 id="heroTitle">喂养有迹可循，预判与陪伴都在身边</h1>
-				<p class="lead" id="heroSubtitle">面向 0–18 月新手妈妈：记清吃睡与换尿布，智能预测下次窗口，语音 AI 结合你的记录作答，小智音箱也能问喂养。</p>
+				<p class="lead" id="heroSubtitle">面向 0–18 月新手妈妈：记清吃睡与换尿布，智能预测下次窗口，语音 AI 结合你的记录作答，也可连接家里的实体音箱问喂养。</p>
 				<div class="hero-actions">
 					<button type="button" class="btn btn-primary" data-open-download>下载胖宝 App</button>
 					<a class="btn btn-ghost" href="#predict">了解能力</a>
@@ -210,11 +207,11 @@
 			<aside class="hero-aside card">
 				<div class="aside-block">
 					<h3>品牌定位</h3>
-					<p id="serviceSummary">胖宝由杭州彩逗科技有限公司运营，面向 0–18 月新手妈妈：宝宝信息记录、智能预测提醒、语音 AI 与小智音箱。</p>
+					<p id="serviceSummary">胖宝由杭州彩逗科技有限公司运营，面向 0–18 月新手妈妈：宝宝信息记录、智能预测提醒、语音 AI 与实体音箱连接能力。</p>
 				</div>
 				<div class="aside-block">
 					<h3>当下能做什么</h3>
-					<p>语音或点选记事件，看趋势；临近事项主动提醒；横屏语音助手与小智音箱延续同一套喂养上下文。</p>
+					<p>语音或点选记事件，看趋势；临近事项主动提醒；横屏语音助手与家里的实体音箱延续同一套喂养上下文。</p>
 				</div>
 			</aside>
 		</section>
@@ -303,8 +300,8 @@
 		<section class="section card" id="xiaozhi">
 			<div class="section-head">
 				<div>
-					<h2>小智音箱</h2>
-					<p>在家用音箱延续喂养助手：查记录、问节奏，少掏手机也能问一句。</p>
+					<h2>实体音箱连接能力</h2>
+					<p>把喂养助手连到家里的实体音箱：查记录、问节奏，少掏手机也能问一句。</p>
 				</div>
 				<span class="tag">音箱</span>
 			</div>
@@ -312,11 +309,11 @@
 				<ul class="scene-list">
 					<li>「宝宝上次喂奶是什么时候」——口语查最近记录</li>
 					<li>「大概什么时候该再喂」——结合预测窗口随口一问</li>
-					<li>绑定教学与能力介绍见右侧引导视频（有配置时展示）</li>
+					<li>右侧为能力演示（有配置时直接在页面内播放）</li>
 				</ul>
 				<div>
 					<div class="video-box" id="videoBox"></div>
-					<p class="ai-disclaimer" id="videoEmptyHint" style="display:none">引导视频准备中，配置完成后将在此展示。</p>
+					<p class="ai-disclaimer" id="videoEmptyHint" style="display:none">能力演示视频准备中，配置完成后将在此直接展示。</p>
 				</div>
 			</div>
 		</section>
@@ -360,15 +357,6 @@
 		</div>
 	</div>
 
-	<div class="modal-backdrop" id="videoModal" role="dialog" aria-modal="true">
-		<div class="modal">
-			<button type="button" class="modal-close" data-close-video aria-label="关闭">×</button>
-			<h2 id="videoTitle">引导视频</h2>
-			<p class="sub" id="videoSub"></p>
-			<video id="videoPlayer" controls playsinline></video>
-		</div>
-	</div>
-
 	<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
 	<script>
 	(function(){
@@ -383,12 +371,8 @@
 		const qrCanvas = document.getElementById('qrCanvas');
 		const qrFallback = document.getElementById('qrFallback');
 		const downloadModal = document.getElementById('downloadModal');
-		const videoModal = document.getElementById('videoModal');
 		const videoBox = document.getElementById('videoBox');
 		const videoEmptyHint = document.getElementById('videoEmptyHint');
-		const videoPlayer = document.getElementById('videoPlayer');
-		const videoTitle = document.getElementById('videoTitle');
-		const videoSub = document.getElementById('videoSub');
 
 		function escapeHtml(text){
 			return String(text || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -399,12 +383,6 @@
 		}
 		function openDownload(){ downloadModal.classList.add('open'); }
 		function closeDownload(){ downloadModal.classList.remove('open'); }
-		function closeVideo(){
-			videoModal.classList.remove('open');
-			videoPlayer.pause();
-			videoPlayer.removeAttribute('src');
-			videoPlayer.load();
-		}
 
 		document.querySelectorAll('[data-open-download]').forEach(function(el){
 			el.addEventListener('click', openDownload);
@@ -412,13 +390,9 @@
 		document.querySelectorAll('[data-close-download]').forEach(function(el){
 			el.addEventListener('click', closeDownload);
 		});
-		document.querySelectorAll('[data-close-video]').forEach(function(el){
-			el.addEventListener('click', closeVideo);
-		});
 		downloadModal.addEventListener('click', function(e){ if(e.target === downloadModal) closeDownload(); });
-		videoModal.addEventListener('click', function(e){ if(e.target === videoModal) closeVideo(); });
 		document.addEventListener('keydown', function(e){
-			if(e.key === 'Escape'){ closeDownload(); closeVideo(); }
+			if(e.key === 'Escape'){ closeDownload(); }
 		});
 
 		function renderLogoStack(events){
@@ -478,36 +452,24 @@
 			}
 		}
 
+		/* 官网仅内嵌 promo；tutorial 即使接口返回也不展示 */
 		function renderVideos(list){
-			const items = Array.isArray(list) ? list.filter(function(x){ return x && x.videoCdnUrl; }) : [];
+			const items = Array.isArray(list)
+				? list.filter(function(x){ return x && x.slot === 'promo' && x.videoCdnUrl; })
+				: [];
 			if(!items.length){
 				videoBox.classList.remove('show');
 				videoBox.innerHTML = '';
-				/* 双空：完全不展示入口，也不用「暂无」占位主块 */
-				videoEmptyHint.style.display = 'none';
+				videoEmptyHint.style.display = 'block';
 				return;
 			}
+			const item = items[0];
+			const title = escapeHtml(item.title || '能力演示');
 			videoEmptyHint.style.display = 'none';
 			videoBox.classList.add('show');
-			videoBox.innerHTML = items.map(function(item, idx){
-				const title = escapeHtml(item.title || (item.slot === 'tutorial' ? '绑定教学' : '能力介绍'));
-				const slot = escapeHtml(item.slot || '');
-				return '<button type="button" class="video-btn" data-video-idx="' + idx + '">'
-					+ '<div><strong>' + title + '</strong><span>' + slot + '</span></div>'
-					+ '<span>播放</span></button>';
-			}).join('');
-			videoBox.querySelectorAll('[data-video-idx]').forEach(function(btn){
-				btn.addEventListener('click', function(){
-					const i = Number(btn.getAttribute('data-video-idx'));
-					const item = items[i];
-					if(!item) return;
-					videoTitle.textContent = item.title || '引导视频';
-					videoSub.textContent = item.slot === 'tutorial' ? '绑定教学' : (item.slot === 'promo' ? '能力宣传' : '');
-					videoPlayer.src = item.videoCdnUrl;
-					videoModal.classList.add('open');
-					videoPlayer.play().catch(function(){});
-				});
-			});
+			videoBox.innerHTML = '<p class="promo-label">' + title + '</p>'
+				+ '<video id="promoPlayer" controls playsinline preload="metadata" src="'
+				+ escapeHtml(item.videoCdnUrl) + '"></video>';
 		}
 
 		/* 官网文案以页面硬编码为准；聚合接口仅用于事件与下载 */
