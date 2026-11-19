@@ -65,6 +65,14 @@
 		.section{padding:16px 0;border-top:1px solid var(--line)}
 		.section:first-of-type{border-top:none;padding-top:0}
 		.foot{margin-top:18px;padding:16px 18px;color:var(--muted);line-height:1.75;font-size:13px}
+		/* 第三方 SDK 目录：窄屏可横滑 */
+		.sdk-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:8px 0 4px;border:1px solid var(--line);border-radius:14px}
+		.sdk-table{width:100%;min-width:640px;border-collapse:collapse;font-size:13px;line-height:1.55}
+		.sdk-table th,.sdk-table td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;color:#314049}
+		.sdk-table th{background:#f7fafb;font-weight:700;color:var(--ink);white-space:nowrap}
+		.sdk-table tr:last-child td{border-bottom:none}
+		.sdk-table a{word-break:break-all}
+		.sdk-note{margin:8px 0 0;font-size:12px;color:var(--muted);line-height:1.65}
 		@media (max-width:600px){
 			.page{width:min(100% - 24px, 820px);padding-top:18px}
 			.main{padding:22px}
@@ -102,8 +110,8 @@
 					<li>宝宝个人档案：宝宝昵称、性别、出生日期由监护人提供，用于计算月龄、趋势展示与个性化功能。宝宝头像仅保存在您的设备本地，我们<strong>不会</strong>收集或上传宝宝头像。</li>
 					<li>成长记录数据：您主动输入的各种记录（喂养、睡眠、排泄等动作及时间）。成长记录配图仅缓存在您的设备本地，我们<strong>不会</strong>收集这些图片。</li>
 					<li>音频数据：当您使用语音录入记事或口语查询记录时，我们会请求使用麦克风权限。音频流用于转换为文本以完成记录或查询；我们不会持久化保留您的原始通话/环境音频。相关语音识别经具备相应资质的云端语音识别服务处理。</li>
-					<li>推送通知标识：为向您发送离线提醒（含可能发送的预测临近提醒等），我们可能收集并使用设备推送标识（如 APNs、华为推送、小米推送等厂商 token）。您可在系统设置中关闭通知。</li>
-					<li>商业化与权益：当您付费开通部分功能时，我们会处理与订单、支付渠道回执及功能权益状态相关的必要信息（具体以您实际开通的产品为准）。</li>
+					<li>推送通知标识：为向您发送离线提醒（含可能发送的预测临近提醒等），我们可能收集并使用设备推送标识（如 APNs，以及华为、小米、荣耀、OPPO、VIVO 等厂商推送 token，按设备通道启用）。您可在系统设置中关闭通知。</li>
+					<li>商业化与权益：当您付费开通部分功能时，我们会处理与订单、支付渠道回执及功能权益状态相关的必要信息。Android 端付费开通以支付宝为主；具体以您实际开通的产品与支付确认页为准。</li>
 					<li>设备型号：客户端可上报设备型号展示字符串，用于崩溃排查与运维统计；该信息<strong>不会</strong>用于广告跟踪。</li>
 				</ul>
 			</section>
@@ -144,19 +152,124 @@
 				<p>为实现上述功能，我们可能委托以下第三方服务处理相关数据：</p>
 				<ul>
 					<li><strong>云端语音识别服务提供方</strong>：具备相应资质的云端语音识别服务，用于将语音转为文本以支持记事与查询。</li>
-					<li><strong>苹果 / 华为 / 小米等推送通道</strong>：用于向您的设备投递系统通知。</li>
-					<li><strong>应用内支付相关平台</strong>（如 Apple、各安卓应用商店支付渠道、支付宝等）：用于处理您主动发起的付费开通。</li>
+					<li><strong>苹果 / 华为 / 小米 / 荣耀 / OPPO / VIVO 等推送通道</strong>：用于向您的设备投递系统通知（按设备厂商通道启用）。</li>
+					<li><strong>支付相关平台</strong>：Android 端以支付宝为主处理您主动发起的付费开通；iOS 端可能经 App Store 应用内购买处理。</li>
 				</ul>
-				<p>上述第三方均须遵守适用的数据保护要求；我们不会向无关第三方出售您的个人信息。</p>
+				<p>上述第三方均须遵守适用的数据保护要求；我们不会向无关第三方出售您的个人信息。客户端集成的 SDK 明细见下文「第三方 SDK 目录」。</p>
 			</section>
 
 			<section class="section">
-				<h2>6. 信息安全</h2>
+				<h2>6. 第三方 SDK 目录</h2>
+				<p>为提供登录、通知、支付、语音记事与查询等功能，App 可能集成下列第三方 SDK 或服务（以实际打包版本为准；厂商推送按设备通道启用）：</p>
+				<div class="sdk-wrap">
+					<table class="sdk-table">
+						<thead>
+							<tr>
+								<th>名称</th>
+								<th>提供方</th>
+								<th>用途</th>
+								<th>可能涉及的信息</th>
+								<th>对方说明</th>
+							</tr>
+						</thead>
+						<tbody>
+							<tr>
+								<td>微信 OpenSDK</td>
+								<td>腾讯科技</td>
+								<td>微信登录</td>
+								<td>经微信授权的账号识别标识（我们仅使用 unionid，不收集微信头像、昵称）</td>
+								<td><a href="https://support.weixin.qq.com/cgi-bin/mmsupportacctnodeweb-bin/pages/RYiYJkLOrQwu0nb8" target="_blank" rel="noopener">微信隐私保护指引</a></td>
+							</tr>
+							<tr>
+								<td>Sign in with Apple</td>
+								<td>Apple</td>
+								<td>iOS「通过 Apple 登录」（仅 iOS）</td>
+								<td>Apple 提供的匿名用户标识符</td>
+								<td><a href="https://www.apple.com/legal/privacy/" target="_blank" rel="noopener">Apple 隐私政策</a></td>
+							</tr>
+							<tr>
+								<td>华为推送（HMS Push）</td>
+								<td>华为</td>
+								<td>系统通知（经 china_push 等集成）</td>
+								<td>推送标识（token）等</td>
+								<td><a href="https://developer.huawei.com/consumer/cn/doc/HMSCore-Guides/sdk-data-security-0000001050042177" target="_blank" rel="noopener">华为推送 SDK 隐私说明</a></td>
+							</tr>
+							<tr>
+								<td>小米推送（MiPush）</td>
+								<td>小米</td>
+								<td>系统通知（经 china_push 等集成）</td>
+								<td>推送标识（token）等</td>
+								<td><a href="https://dev.mi.com/console/doc/detail?pId=1822" target="_blank" rel="noopener">小米推送隐私政策</a></td>
+							</tr>
+							<tr>
+								<td>荣耀推送</td>
+								<td>荣耀</td>
+								<td>系统通知（经 china_push 等集成）</td>
+								<td>推送标识（token）等</td>
+								<td><a href="https://developer.hihonor.com/cn/kitdoc?category=%E5%9F%BA%E7%A1%80%E6%9C%8D%E5%8A%A1&amp;kitId=11002&amp;navigationId=privacyStatement&amp;docId=privacy-statement.md" target="_blank" rel="noopener">荣耀推送隐私声明</a></td>
+							</tr>
+							<tr>
+								<td>OPPO 推送</td>
+								<td>OPPO</td>
+								<td>系统通知（经 china_push 等集成，按机型通道启用）</td>
+								<td>推送标识（token）等</td>
+								<td><a href="https://open.oppomobile.com/new/developmentDoc/info?id=11227" target="_blank" rel="noopener">OPPO 推送隐私政策</a></td>
+							</tr>
+							<tr>
+								<td>VIVO 推送</td>
+								<td>vivo</td>
+								<td>系统通知（经 china_push 等集成，按机型通道启用）</td>
+								<td>推送标识（token）等</td>
+								<td><a href="https://dev.vivo.com.cn/documentCenter/doc/366" target="_blank" rel="noopener">vivo 推送隐私政策</a></td>
+							</tr>
+							<tr>
+								<td>支付宝 SDK</td>
+								<td>支付宝（蚂蚁集团）</td>
+								<td>Android 端付费开通（主支付方式）</td>
+								<td>订单与支付必要信息（由支付宝按其规则处理）</td>
+								<td><a href="https://opendocs.alipay.com/open/54/01g6qm" target="_blank" rel="noopener">支付宝 App 支付隐私说明</a></td>
+							</tr>
+							<tr>
+								<td>云端语音识别服务</td>
+								<td>具备相应资质的服务提供方</td>
+								<td>将语音转为文本，以支持记事与口语查询</td>
+								<td>语音识别所需的音频或相关数据（我们不持久化保留原始环境音频）</td>
+								<td>以服务提供方公示的个人信息处理规则为准</td>
+							</tr>
+							<tr>
+								<td>sherpa_onnx（本地）</td>
+								<td>开源组件</td>
+								<td>端侧语音唤醒等本地处理</td>
+								<td>麦克风音频在设备本地处理；不因此单独上传原始音频</td>
+								<td>开源组件，无独立云端隐私链</td>
+							</tr>
+							<tr>
+								<td>设备信息组件</td>
+								<td>开源组件（如 device_info_plus）</td>
+								<td>读取设备型号等展示信息，用于崩溃排查与运维统计</td>
+								<td>设备型号等非广告跟踪信息</td>
+								<td>开源组件</td>
+							</tr>
+							<tr>
+								<td>扫码 / 相册 / 录音相关组件</td>
+								<td>开源组件（如 mobile_scanner、image_picker、photo_manager、record 等）</td>
+								<td>扫描宝宝共享码、本机选图/拍照、录音记事</td>
+								<td>触发系统相机/相册/麦克风权限；成长记录配图与宝宝头像仅存本地，不上传至我们的服务器</td>
+								<td>开源组件</td>
+							</tr>
+						</tbody>
+					</table>
+				</div>
+				<p class="sdk-note">说明：我们<strong>不</strong>集成用于广告追踪的第三方分析 SDK；发布版本<strong>不</strong>包含定位 SDK。SDK 版本随客户端发版可能调整，以实际安装包为准。</p>
+			</section>
+
+			<section class="section">
+				<h2>7. 信息安全</h2>
 				<p>我们采用业界通行的加密与访问控制措施，对您的宝宝数据进行传输和存储保护，防止未经授权的访问、公开披露、使用、修改、损坏或丢失。</p>
 			</section>
 
 			<section class="section">
-				<h2>7. 注销与申诉</h2>
+				<h2>8. 注销与申诉</h2>
 				<p>用户可在「设置」中申请注销账号。一旦注销，我们将删除或匿名化处理您的账户相关信息与宝宝记录。若您有疑问，可通过 App 内反馈渠道或客服邮箱 <a href="mailto:pangbao@cuplay.top">pangbao@cuplay.top</a> 联系我们。</p>
 			</section>
 		</main>
