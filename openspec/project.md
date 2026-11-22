@@ -1,150 +1,63 @@
 # 项目上下文
 
+本文件是仓库 **唯一** AI / OpenSpec 项目入口（Cursor 规则与 `openspec/config.yaml` 均指向此处）。**不再维护** 根目录 `AGENTS.md`。行为级 MUST 以 `openspec/specs/<domain>/spec.md` 为准；下文只提供名片、布局与短指针。
+
 ## 项目目标
-本项目用于构建智能语音与设备管理相关能力，并持续从单体架构演进为以 gateway + 领域服务为核心的微服务平台。当前重点是提升代码可读性、运行时一致性与服务边界清晰度。
+
+`go_ai_talk`：智能语音与设备管理后端，以 gateway + 领域服务（voice / device / history / ucg / cash / push / mcpbridge 等）演进微服务平台。客户端联调见兄弟仓 `flutter_ai_talk`。
 
 ## 技术栈
-- Go（Golang）
-- GoFrame（HTTP 服务、路由、中间件、配置）
-- Redis（缓存、幂等等运行时状态）
-- RabbitMQ（跨服务事件消息）
-- Docker / Kustomize（部署与环境编排）
-- OpenSpec（变更提案、设计、任务与规格管理）
 
-## 项目约定
+- Go / GoFrame（HTTP、路由、中间件、配置）
+- Redis（缓存、临时态）、RabbitMQ（跨服务事件）
+- Docker / Compose / GitHub Actions → ACR
+- OpenSpec CLI 2.1.x（`spec-driven`：proposal → specs → design → tasks）
 
-### 文档语言约定（强制）
-- 所有后续由 OpenSpec 生成的文档（包括 proposal、design、specs、tasks）必须使用中文撰写。
-- 面向团队协作的说明、约束、验收标准、任务拆解均使用中文表述。
-- 仅在必须保留英文标识时使用英文（例如环境变量名、接口路径、技术关键字）。
+## OpenSpec 布局
 
-### 代码与架构约定
-- 基础设施能力以单一后端为目标：缓存统一走 Redis，跨服务消息统一走 RabbitMQ。
-- gateway-service 逐步收敛为流量与策略层，不承载领域业务实现。
-- voice、device、history 以领域边界划分服务职责。
-- 业务实现代码统一放置于 `internal/services/**`，禁止新增实现文件回流到 `internal/service`。
-- 配置边界必须与服务边界一致：`voice-service`、`device-service`、`history-service`、`gateway-service`、`gateway-app-server`、`ucg-service` 使用各自默认配置文件（见 `manifest/config/config.*.yaml`）。
-- 主配置 `manifest/config/config.yaml` 仅承载主网关与全局公共项，禁止承载 voice/device/history 领域专属配置，**禁止**出现 `database` 段。
-- 微服务架构遵循“一服务一数据库”原则；各业务服务配置文件仅维护本域库，一般以 `database.default` 为主。**例外**：`gateway-app-server` 仅允许配置 **`database.app`**（`ai_voice_app`，用于版本等只读场景），**不得**用其 `default` 直连他域库。
-- 当服务需要他域数据时，必须通过跨服务 API 获取，禁止跨库直查。
-- 跨服务数据访问必须走服务契约（HTTP/RPC/事件），禁止在服务内直接访问他域 DAO/数据表。
-- **源码包边界（强制）**：`internal/services/{cash,voice,device,history,ucg,gatewayapp,mcpbridge,appstatus}` 禁止互相 import 业务实现；跨域 HTTP 出站 MUST 经 `internal/clients/{被调服务}`；头常量/密钥校验/ParseHeaderWxID/ConstantTimeEqual 等 MUST 经 `internal/platform/httpmeta`（或其它 platform）；允许 `contracts`/`platform`/`clients`。controller 按进程分包于 `internal/controller/{cash,voice,device,history,ucg,gatewayapp,notify}`。**已退役**：`simuser`（sim-user-service）与 `internal/services/aimodel`（选模/闸门），不得再新增。门禁：`hack/check-service-import.sh` / `.ps1`。排除项见 `internal/clients/README.md`。
-- 若迁移期保留 `local|remote|canary` 双路径，必须显式配置 failover 语义并记录命中日志，避免隐式跨库回流。
-- Redis KV 访问 MUST 经 `internal/platform/cachekit` 且 MUST 使用 `cachekit.WithObserver(...)`（或 `cachekit.Default()`）；Redis Pub/Sub MUST 经 `internal/platform/redismsgkit` 且 MUST 使用 `WithObserver` / `DefaultPublisher()`。业务与 controller 层禁止直接 `g.Redis()`。
-- Redis 键/频道 MUST 经 platform builder（`cachekit/keys_*.go`、`redismsgkit/channels.go`）构造，禁止业务层键字面量（策略 A：builder 返回值与线上一致，本变更不重命名键空间）。
+- **真相**：`openspec/specs/<domain>/spec.md`（十七域，见下）。
+- **变更**：`openspec/changes/<change-id>/`；delta 位于 `changes/<id>/specs/<domain>/spec.md`。
+- **归档**：合并 delta 进主规格（若实现阶段已写妥主规格可 `--skip-specs`），然后 **删除**该 change 目录；默认 **不保留** `openspec/changes/archive/`。
+- **制品语言**：简体中文；每条 `### Requirement` 须含英文 **SHALL** 或 **MUST**。
+- **禁止**再使用 `openspec/specs/v*/` 巨石基线或 `hack/*openspec*` 版本合并脚本。
 
-### GoFrame 单行空结果查询约定（强制）
-- **问题**：GoFrame/MySQL 对单结构体 `.Scan(&T)` 在零行匹配时，部分驱动返回 `sql.ErrNoRows`；若业务上「无行」是正常状态，却把该错误当系统失败，会出现 WARN 噪音、误 5xx、审核 MQ 误 requeue。
-- **推荐写法（可能无行）**：`.One()` → 真错误返回 → `IsEmpty()` 表示无行 → 有行再 `Struct`（或字段读取）。参考 `internal/services/device/wx.go`、`internal/services/ucg/force_store.go`。
-- **禁止**：对「空集为正常可能」的单行查询使用 `.Scan(&singleStruct)` 并把任意 `err`（含 `ErrNoRows`）当作系统失败向上抛出或打失败级日志；禁止用 `_ = ...Scan(...)` 吞掉真 DB 错误。
-- **若保留 Scan**：MUST 将 `errors.Is(err, sql.ErrNoRows)`（及驱动等价空结果）视为「无行」，MUST NOT 作为系统失败出站。
-- **排除（允许继续 Scan）**：`.Scan(&[]T)` 列表/分页/批量；同一流程中刚成功插入、或已 `Ensure*Row`/`Count>0` 保证存在后的单行回读。
-- **审核等 MQ**：按 ID 加载实体已不存在时 MUST Ack/跳过，MUST NOT 因空集读失败无限 requeue；业务上必须存在的行缺失 MUST 返回明确业务错误，禁止裸 `ErrNoRows`。
-- **评审检查**：新增/修改单行「可能无行」查询时，是否使用 `One`+`IsEmpty`（或显式处理 `ErrNoRows`）；可 `rg '\.Scan\(&' internal/services --glob '*.go'` 人工复核单结构体路径。
+### 十七域
 
-### 数据库连接与部署实例约定（强制）
-- 任意需求变更若**新增、调整或迁移**某进程对 MySQL 的访问，OpenSpec **proposal / design / tasks** 中必须写清：**进程名**、**库与表域**、GoFrame **配置组**（如 `default`、`app`）、以及推荐覆盖方式（yaml 内 `*.link` 或 **`HISTORY_DB_LINK` / `DEVICE_DB_LINK` / `VOICE_DB_LINK` / `APP_DB_LINK` / `UCG_DB_LINK`** 等与 `cmd/*-service/main.go` 一致的环境变量名）。
-- **`gateway-app-server`** 连 `ai_voice_app` 时**仅**通过 **`APP_DB_LINK`**（写入 `GF_DATABASE_APP_LINK`）或 `config.gateway-app-server.yaml` 的 **`database.app.link`**；不得与主网关 `gateway-service`（无 DB）混淆。
-- **新建或扩容部署实例**（新 Compose 栈、新集群、新环境）时，同一变更必须同步检查并更新 **`manifest/docker/.env.example`**、**`manifest/docker/docker-compose.microservices.yml`**（各服务 `environment` 中的 `${*_DB_LINK:-}` / `${APP_DB_LINK:-}` 等注入是否齐全）与 **`docs/runbooks/release-deploy-and-run.md`**，避免仅改代码或仅改 yaml 占位 DSN，导致实例上**未设置 `*_DB_LINK` / `APP_DB_LINK`** 仍连占位地址或漏配库；K8s 路径须在 overlay 或 Secret 挂载中同等落实。
-- **tasks 验收**：若本变更引入或可影响库连接，须勾选或描述「`.env.example` / runbook / 服务主配置顶部注释是否已反映新连接约定」；归档前评审须核对此项。
+| 域 | 摘要 |
+|---|---|
+| `platform-runtime` | Redis/Rabbit/cachekit、配置边界、包隔离、一服务一库、导入门禁 |
+| `platform-deploy` | Compose/Docker/CI/ACR、双栈环境、资源限制、cutover |
+| `gateway-edge` | gateway-app/service 边缘、CORS/JWT、反代、官网页、usage 统计 |
+| `admin-hub` | Hub/设备运维后台布局与管理 API |
+| `observability` | 日志、背景循环治理、中文文档合规 |
+| `identity-device` | 登录、微信/Apple、设备绑定、邀请、wx 画像 |
+| `voice-chat` | ASR/LLM/TTS、流式对话、理解链路 |
+| `history-feeding` | 喂养历史、事件层级、effective-day |
+| `prediction` | 预测、临近推送、Live Activity、predict-pro |
+| `care-commerce` | 护理留意点、现金 VIP、功能解锁与履约 |
+| `clinic-bridge` | 胖宝诊疗、tip 反馈退役与宿主 |
+| `ucg-social` | UCG 社交、OSS 媒体、审核/Feed |
+| `push-notify` | 推送/APNs/HMS/notify 运行时 |
+| `xiaozhi-mcp` | 小智 MCP 绑定、桥接、试用解锁 |
+| `llm-lanes` | LLM 车道、配额、aimodel 退役 |
+| `legal-site` | 隐私政策、用户协议、公司法律页 |
+| `media-release` | APK/OSS CDN、App 状态横幅 |
 
-### 微服务 CI / ACR 发版约定（强制）
-- 凡变更**新增**独立微服务进程（含 `cmd/*-service` 与对应 `manifest/docker/Dockerfile.*`），实现与评审 MUST 同步更新发版清单，**禁止**仅完成基线 Compose / 本地 Dockerfile 即视为可发布：
-  1. **GitHub Actions**：至少 `.github/workflows/docker-acr.yml`（服务别名、`dockerfile_for`、`ALL_SERVICES`、全量服务数注释与未知别名错误提示）。
-  2. **环境 overlay**：`manifest/docker/docker-compose.microservices.test.yml` 与 `docker-compose.microservices.prod.yml`（`${REGISTRY}/<id>:${IMAGE_TAG}`、ports、networks、`container_name` 若适用）。
-  3. **发布 runbook**：`docs/runbooks/release-deploy-and-run.md` 中全量服务数、构建范围别名表与相关说明。
-  4. **ACR 仓库**：在目标命名空间（如 `pangbao-test` / `pangbao-release`）创建与 matrix `id` 一致的镜像仓库（运维操作；tasks/PR 须记录是否已建仓）。
-- 基线 `docker-compose.microservices.yml`、`.env.example` 与本条约定叠加，不互相替代。
-- **tasks 验收**：新增微服务变更 MUST 含上述 CI/overlay/runbook（及 ACR 建仓提醒）可勾选项；归档前评审须核对此项。
+## 工程约束指针
 
-### 代码注释约定（强制）
-- 后续生成或修改代码时，必须尽可能补充中文注释，重点覆盖：复杂流程、跨服务调用、重试/降级/错误语义、关键配置项。
-- 公共导出函数、结构体与关键字段优先添加中文注释，保证阅读代码时无需反复跳转上下文。
-- 允许保留英文符号名、库 API 与协议字段名，但解释说明必须使用中文。
-- 禁止添加“废话注释”；注释应解释“为什么这样做”与“边界条件”，而非逐行复述代码。
+实现代码前对照对应域规格（勿在本文件重复长文 MUST）：
 
-### 测试文件约定（强制）
-- 在后续代码生成与实现过程中，不允许新建任何测试文件。
-- 禁止创建或新增以下文件类型：`*_test.go`、`*.spec.*`、`*.test.*`。
-- 若历史测试文件存在，按当前变更策略逐步清理，不作为新实现的交付前置条件。
+- 包边界 / 跨库禁止 / cachekit / 单行空结果 → `platform-runtime`
+- CI/ACR / Compose / `*_DB_LINK` 发版清单 → `platform-deploy`
+- gateway-app 反代 / auth exempt / usage 统计 → `gateway-edge`
+- Hub 近全宽与左右分栏 → `admin-hub`
+- 背景循环默认禁止 → `observability`
+- `/opsx:apply` 收尾 MUST 列出需重部署的进程（或显式「不必重部署」）
 
-### OpenSpec 基线参考约定（强制）
-- 后续 AI 发起任何新变更前，必须先读取并对照 **`openspec/specs/v3.2.0/spec.md`**（v3.2.0 合并基线规格），再生成 proposal/design/tasks。
-- 若本次需求涉及已有 capability，必须在 proposal 中明确标注“复用/变更了哪些已有 spec 边界（见 v3.2.0 目录章节）”；禁止脱离历史 spec 直接重写同类能力。
-- AI 在实现阶段（apply）必须以 v3.2.0 基线中的 Requirement/Scenario 作为验收约束，若实现与基线冲突，需先更新变更规格再改代码。
-- AI 在评审或总结阶段必须说明“本次改动对应的 spec 依据”，至少列出相关 capability 名称（v3.2.0 目录中的章节名）。
-- 新版本发版时可运行 `hack/archive-openspec-to-version.py vX.Y.Z`（或等价流程）合并为 `openspec/specs/vX.Y.Z/spec.md`；若行为发生变更而未同步到 specs，不允许归档为完成状态（除非明确记录 `--skip-specs` 原因并经人工确认）。
+## 重要约束（评审检查项）
 
-## 重要约束
-- Redis 与 RabbitMQ 作为关键依赖，允许在运行时采用失败即显式报错策略。
-- 对于依赖不可用场景，优先采用启动期/请求期明确失败，不引入隐式降级分支。
-- 评审检查项必须包含“是否存在跨服务直查数据库”与“契约路径是否完整可观测”两项硬性检查。
-- 评审检查项必须包含“主配置是否回流服务专属字段”与“服务默认配置是否仍指向共享主配置”两项硬性检查。
-- 评审检查项必须包含“是否存在 `hello/internal/service` 旧导入路径”与“`internal/service` 是否新增实现文件”两项硬性检查。
-- 评审检查项必须包含“运行文档是否同步更新”检查：凡涉及运行/发布/DAO 边界变更，必须同时更新 `docs/runbooks/dao-sync-by-domain.md` 与 `docs/runbooks/release-deploy-and-run.md`；若涉及**新进程或新库连接**，还须核对 **`manifest/docker/.env.example`** 与相关 **`manifest/config/config.*.yaml`** 顶部说明是否已包含对应 **`*_DB_LINK` / `APP_DB_LINK`** 约定（见上文「数据库连接与部署实例约定」）。
-- 评审检查项必须包含“**微服务 CI / ACR 发版清单**”检查：凡新增微服务进程，必须同步更新 `.github/workflows/docker-acr.yml`、`docker-compose.microservices.test.yml` / `.prod.yml`、runbook 别名/服务数，并确认 ACR 目标命名空间已建对应仓库（见上文「微服务 CI / ACR 发版约定」）；仅改基线 Compose 视为不完整。
-- 评审检查项必须包含“是否引用并遵循 **`openspec/specs/v3.2.0/spec.md`** 基线”检查：涉及行为变更时必须可追溯到对应 Requirement/Scenario。
-- 评审检查项必须包含“**Redis platform 访问**”检查：业务/controller 是否 bypass `cachekit`/`redismsgkit`（见 `AGENTS.md` 与 `hack/check-redis-bypass.sh`）。
-- 评审检查项必须包含“**Redis 读缓存**”检查：涉及新读路径或 Redis 键变更时，是否已在 proposal/design 完成收益率评估、负责人确认结论，且实现与 design 一致（见「Redis 读缓存约定」）。
-- 评审检查项必须包含“**GoFrame 单行空结果查询**”检查：可能无行的单结构体查询是否使用 `.One()`+`IsEmpty()`（或显式处理 `ErrNoRows`），禁止空集 Scan 当系统失败（见「GoFrame 单行空结果查询约定」）。
-- 在没有特别要求的情况下，不用生成关于当前变更需求的md文件。当有要求生成文档时，文档必须在`docs/`文件夹内生成md文件，不要生成到`docs/runbooks/`
-
-### 变更实施后的重部署说明（强制）
-
-- **适用范围**：每次 OpenSpec 变更完成实现（`/opsx:apply` 收尾、或用户要求「实施完」的等价交付）时的 AI 回复与 PR/发布自检。
-- **MUST 输出重部署清单**：按 **进程** 列出需要重新部署的服务（与 `manifest/docker/docker-compose.microservices.yml` / `cmd/*-service` 对齐，如 `device-service`、`history-service`、`voice-service`、`push-service`、`gateway-app-server` 等）。
-- **判定**：代码/配置进入哪个进程的构建产物；启动期 schema ensure 落在哪个 `main`；`gateway_app_auth_exempt` / `usagestats/maintenance_skip` / 反代绑定变更则 **MUST** 含 `gateway-app-server`；仅改 `openspec/changes/**` 文档则写明无需部署业务进程。
-- **环境变量**：若变更依赖新 env 或 compose 注入，MUST 与清单一并说明（改 `.env` 后哪些服务需重建/重启才能读到）。
-- **负向说明**：对「路径已在 gateway 反代前缀内、本次未改 gateway 代码」的 App 字段扩展，可写 **不必重部署 gateway-app-server**，避免默认全量重启。
-
-### gateway-app 对外 App 接口约定（强制）
-
-- **反代覆盖**：UCG App 流量由 `installUcgProxyMiddleware` 绑定 `/ucg/app/api/*`（fuzzy，**含** `/ucg/app/api/v2/...`）。device/voice/history 等域同理，新增 path **MUST** 落在对应 `install*ProxyMiddleware` 已绑定前缀下；若新增顶层前缀，**MUST** 扩展 proxy 绑定。
-- **Bearer 鉴权白名单**：匿名可访问的读接口（如 UCG 推荐 Feed）在 `gateway_app_auth_exempt.go` 维护。**新增 v2 且与 v1 同语义时，MUST 同步登记 v2 精确 path**，不得假设「v1 已豁免则 v2 自动生效」。
-- **与 usage 统计、apiregistry 的关系**：本节约束「能否经 gateway 到达」；usage 统计见下节；中文 summary 依赖 `api/v*` 的 `g.Meta` 嵌入 `apiregistry`。
-- **proposal / tasks 检查项**：变更新增 App HTTP 路由时，MUST 包含「gateway-app 登记自检」勾选（反代前缀、auth exempt 同步、usage 结论）。
-
-### App API 使用统计约定（强制）
-
-- **适用范围**：经 **gateway-app** 对外暴露、且可能被 App 客户端或运维页调用的 **新增 HTTP 接口**（含 `api/v1` 中 `g.Meta` 路由，以及 `gateway-app-server` 上 `BindHandler` 注册的 App 路径）。**不适用**：`/device/internal/*`、`/device/admin/api/*`、WebSocket 升级、静态资源与 HTML 壳页（已由 `usagestats` 结构性 skip 排除，无需重复询问）。
-- **新增接口时必须询问产品负责人**：该接口 **是否计入 App API 使用统计**（运维页「功能使用统计」）。**AI 在 propose / apply 阶段 MUST 向用户确认**，不得默认假设；用户未明确答复前，不得擅自将新接口加入或移出统计 denylist。
-- **用户确认「统计」**：确保 `api/v1` 已登记 `path`/`method`/`summary`（供 apiregistry 归一化与中文展示）；**不得**写入 `internal/services/gatewayapp/usagestats/maintenance_skip.go`。
-- **用户确认「不统计」**（维护型/探测型/运维型，如 token 刷新、版本探测）：在 **`maintenance_skip.go`** 增加精确 `METHOD + path` 或 path 前缀，并在变更 **proposal/tasks** 中列出排除项。
-- **proposal / tasks 检查项**：若变更新增 App HTTP 路由，MUST 包含一条「已与负责人确认是否计入 usage 统计」及结论（统计 / 不统计 + denylist 变更说明）。
-
-### Hub 运维页布局约定（强制）
-
-- **适用范围**：`resource/public` 下 Hub / 设备管理等**运维静态页**（含使用统计、列表+详情类交互页）的新增与改造。加载 `admin-pages.css` 的页视为 Hub 运维页；**不含**仅用 `pangbao-theme.css` 的协议/官网页。
-- **默认近全宽**：Hub 内容壳 MUST 为近全宽（约 `calc(100% - 32px)`），禁止再以 ~1180 / ~1400 硬封顶浪费两侧空间；由 `admin-pages.css` 覆盖 theme 的 `.page`/`.card`。
-- **优先左右分栏**：存在「主列表 + 详情/侧栏」或「上列表下长表单」时，宽屏 MUST 左右并列（`.hub-md*`）或多卡片两列（`.hub-cards-2col`）；**禁止**默认整页纵向堆叠主从导致长时间下滚。
-- **窄屏回退**：视口较窄时允许上下堆叠（`.hub-md` 约 900px；`.hub-cards-2col` 约 1100px）。
-- **proposal / design 检查项**：后续变更新增或改造 Hub 运维页时，MUST 说明近全宽与左右利用方式；确不适用须书面说明。
-- **评审检查项**：是否仍窄壳、是否宽屏纵向堆叠主从；细则见 `AGENTS.md`「Hub 运维页布局」。
-
-### Redis 读缓存约定（强制）
-
-- **默认立场**：业务数据以 **MySQL 为唯一权威**；Redis 用于读加速、临时态、纯统计或幂等等场景，**不是**新读路径的默认依赖。
-
-### 背景循环任务约定（强制）
-
-- **默认禁止**：在 `internal/services/**` 业务实现中新增循环后台任务，包括 `time.NewTicker` / `time.Tick` 轮询、常驻 goroutine 扫描 MySQL/Redis/outbox 表、定时 reconciler、HTTP Management API Pull 轮询队列等。
-- **新增 MUST 经 OpenSpec 批准**：proposal 与 design 须写明任务名称、宿主进程、周期/触发条件、环境开关、失败语义、关闭方式，以及为何不能在请求内同步完成或使用 AMQP push consumer 替代。
-- **AMQP push consumer 例外**：经 RabbitMQ broker push（`autoAck=false`）的 consumer 不视为 ticker 扫表，但 MUST 在 OpenSpec 变更中声明队列名、routing key 与宿主进程（如 `ucg-service` 审核/推荐 consumer）。
-- **评审检查项**：PR 含 `Start*Reconciler`、ticker 扫表或 Pull 消费且无 OpenSpec 变更引用时 MUST 要求补充已批准变更或删除任务。
-- **新引入 Redis 读缓存时 MUST 经负责人确认**：变更新增或改造读路径，且拟引入**新的** Redis 键空间、缓存粒度或整页/列表 JSON 快照时，**AI 在 propose / apply 阶段 MUST 向产品负责人完成收益率评估并确认**；未获明确答复前 **MUST NOT** 擅自加 Redis 键、TTL 或失效逻辑。
-- **负责人已确认「加 Redis」时 MUST 实现**：proposal/design/tasks 已记录确认结论（含键语义、TTL、失效方式）的，**实现阶段不得**以「默认不用 Redis」为由省略；与 usage 统计约定同理，约束是双向的。
-- **proposal / design 收益率评估（新 Redis 读缓存时）**须简要覆盖：
-  - **读特征**：是否热路径、读多写少程度（可估 QPS / P99）
-  - **共享度**：全站共享 vs 按用户/设备/分页/viewer 个性化
-  - **失效复杂度**：写操作触发点、整表重建 vs 细粒度 patch、跨服务共用键语义是否一致
-  - **替代方案**：索引、批量查询、SQL 优化是否应先做
-  - **建议结论**：加 / 不加 / 延后（及理由）
-- **可沿用既有模式、design 说明即可（免重复询问）**：与现有 **`internal/platform/cachekit`** 读模型（如 event/action options、history list + patch + version）、gateway refresh token、voice session、usage 统计、UCG 聊天 LIST 等**同族**的扩展；访问 MUST 经 `cachekit.WithObserver` / `redismsgkit`，键 MUST 经 platform builder；**但**须在 design 中写明沿用哪一模式，且 **Redis 内持久化格式须与 device/history 约定一致**（如 objectKey vs CDN URL 边界映射，见 event logo 教训）。
-- **倾向不加 Redis（须强理由 + 负责人确认才可加）**：分页列表（page/filter 组合多）、强个性化（如 `likedByMe`、关注 Feed）、写多读变/审核态频繁、整页 PostDTO 级大 JSON 缓存。
-- **倾向可考虑 Redis（仍须负责人确认或 proposal 已写明）**：小体积全站字典、设备维度热读且失效清晰、短 TTL 限流/幂等、会话与 token、纯统计类数据。
-- **proposal / tasks 检查项**：若变更新增或改造读路径且涉及 Redis，MUST 包含「已与负责人确认 Redis 策略」及结论（不加 / 沿用既有模式 / 加哪一层 + TTL + 失效）；若 design 已确认加 Redis，tasks 须含对应实现项且不得遗漏。
-
-## 外部依赖
-- Redis
-- RabbitMQ
-- （按环境）容器编排与网关入口能力
+- 行为变更是否落到某域 `### Requirement` / `#### Scenario`，禁止规格悬空。
+- 是否误用已删除的 `v*.md` 巨石或 `hack/archive-openspec-to-version.py` 等脚本。
+- 归档是否合并（或 skip-specs）并删除 change，而非堆 `changes/archive/`。
+- 跨服务是否走契约（禁止跨库直查）；Redis 是否经 `cachekit`/`redismsgkit`。
+- 新增微服务是否同步 CI/overlay/runbook/ACR；新 App 路由是否完成 gateway 登记与 usage 确认。

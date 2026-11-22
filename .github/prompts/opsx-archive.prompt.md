@@ -1,10 +1,12 @@
 ---
-description: Archive a completed change in the experimental workflow
+description: Archive a completed OpenSpec change (merge into domain specs, delete change; no v* monolith)
 ---
 
 Archive a completed change in the experimental workflow.
 
 **Input**: Optionally specify a change name after `/opsx:archive` (e.g., `/opsx:archive add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
+
+**This repo**: merge delta into `openspec/specs/<domain>/spec.md` (or `--skip-specs` if mains already updated), then **delete** `openspec/changes/<name>/`. Do **not** keep `openspec/changes/archive/`. Do **not** write `openspec/specs/v*/` or run `hack/*openspec*` version-merge scripts.
 
 **Steps**
 
@@ -48,107 +50,30 @@ Archive a completed change in the experimental workflow.
    Check for delta specs at `openspec/changes/<name>/specs/`. If none exist, proceed without sync prompt.
 
    **If delta specs exist:**
-   - Compare each delta spec with its corresponding main spec at `openspec/specs/<capability>/spec.md`
-   - Determine what changes would be applied (adds, modifications, removals, renames)
+   - Compare each delta with `openspec/specs/<domain>/spec.md`
    - Show a combined summary before prompting
 
    **Prompt options:**
-   - If changes needed: "Sync now (recommended)", "Archive without syncing"
-   - If already synced: "Archive now", "Sync anyway", "Cancel"
+   - If changes needed: "Sync now (recommended)", "Skip sync (mains already updated)"
+   - If already synced: "Delete change now", "Sync anyway", "Cancel"
 
-   If user chooses sync, use Task tool (subagent_type: "general-purpose", prompt: "Use Skill tool to invoke openspec-sync-specs for change '<name>'. Delta spec analysis: <include the analyzed delta spec summary>"). Proceed to archive regardless of choice.
+   If user chooses sync, merge deltas into main specs (agent-driven or `openspec archive <name> -y` then remove any archive folder the CLI created). If skip, use `openspec archive <name> -y --skip-specs` only as a merge helper when useful—**either way this repo deletes the change afterward**.
 
-5. **Perform the archive**
+5. **Perform the archive（本仓库：合并后删除，不留 archive 历史）**
 
-   Create the archive directory if it doesn't exist:
-   ```bash
-   mkdir -p openspec/changes/archive
-   ```
-
-   Generate target name using current date: `YYYY-MM-DD-<change-name>`
-
-   **Check if target already exists:**
-   - If yes: Fail with error, suggest renaming existing archive or using different date
-   - If no: Move the change directory to archive
-
-   ```bash
-   mv openspec/changes/<name> openspec/changes/archive/YYYY-MM-DD-<name>
-   ```
+   1. 合并 delta 进主规格，或确认主规格已含变更后选择 skip-specs。
+   2. **删除** `openspec/changes/<name>/`（`Remove-Item -Recurse -Force` / `rm -rf`）。
+   3. 若 CLI 曾写入 `openspec/changes/archive/YYYY-MM-DD-<name>/`，**一并删除**。
+   4. 不要创建或保留 dated archive 作为默认结果。
+   5. 不要写入或恢复 `openspec/specs/v*/`。
 
 6. **Display summary**
 
-   Show archive completion summary including:
-   - Change name
-   - Schema that was used
-   - Archive location
-   - Spec sync status (synced / sync skipped / no delta specs)
-   - Note about any warnings (incomplete artifacts/tasks)
-
-**Output On Success**
-
 ```
 ## Archive Complete
 
 **Change:** <change-name>
 **Schema:** <schema-name>
-**Archived to:** openspec/changes/archive/YYYY-MM-DD-<name>/
-**Specs:** ✓ Synced to main specs
-
-All artifacts complete. All tasks complete.
+**Specs:** merged | skipped
+**Deleted:** openspec/changes/<change-name>/
 ```
-
-**Output On Success (No Delta Specs)**
-
-```
-## Archive Complete
-
-**Change:** <change-name>
-**Schema:** <schema-name>
-**Archived to:** openspec/changes/archive/YYYY-MM-DD-<name>/
-**Specs:** No delta specs
-
-All artifacts complete. All tasks complete.
-```
-
-**Output On Success With Warnings**
-
-```
-## Archive Complete (with warnings)
-
-**Change:** <change-name>
-**Schema:** <schema-name>
-**Archived to:** openspec/changes/archive/YYYY-MM-DD-<name>/
-**Specs:** Sync skipped (user chose to skip)
-
-**Warnings:**
-- Archived with 2 incomplete artifacts
-- Archived with 3 incomplete tasks
-- Delta spec sync was skipped (user chose to skip)
-
-Review the archive if this was not intentional.
-```
-
-**Output On Error (Archive Exists)**
-
-```
-## Archive Failed
-
-**Change:** <change-name>
-**Target:** openspec/changes/archive/YYYY-MM-DD-<name>/
-
-Target archive directory already exists.
-
-**Options:**
-1. Rename the existing archive
-2. Delete the existing archive if it's a duplicate
-3. Wait until a different date to archive
-```
-
-**Guardrails**
-- Always prompt for change selection if not provided
-- Use artifact graph (openspec status --json) for completion checking
-- Don't block archive on warnings - just inform and confirm
-- Preserve .openspec.yaml when moving to archive (it moves with the directory)
-- Show clear summary of what happened
-- If sync is requested, use the Skill tool to invoke `openspec-sync-specs` (agent-driven)
-- If delta specs exist, always run the sync assessment and show the combined summary before prompting

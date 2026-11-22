@@ -1,0 +1,15 @@
+---
+description: 仓库 AI 入口 — 先读 OpenSpec 项目上下文与相关域规格
+alwaysApply: true
+---
+
+# 仓库级 AI 入口
+
+编写或修改代码、OpenSpec 产物前，**必须**阅读：
+
+1. **[openspec/project.md](../../openspec/project.md)** — 唯一项目上下文（目标、技术栈、域表、归档约定、工程指针）。
+2. 相关 **[openspec/specs/\<domain\>/spec.md](../../openspec/specs/)** — 行为真相（`openspec list --specs`）。
+
+本仓库 **不再维护** 根目录 `AGENTS.md`；勿再创建或引用该文件。
+
+长文工程 MUST 以域规格为准；`project.md` 仅作入口与短指针。

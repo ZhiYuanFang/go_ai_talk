@@ -10,69 +10,57 @@ description: >-
 
 ## 权威文档
 
-编写或修改 OpenSpec 产物前，请先阅读：
-
-1. **[openspec/AGENTS.md](../../../openspec/AGENTS.md)** — 完整工作流、CLI、增量格式、常见坑、排错。
-2. **[openspec/project.md](../../../openspec/project.md)** — 本仓库约定。
-
-若工作区规则（`AGENTS.md` 托管块）与本技能不一致，在运行 `openspec update` 后，以 **`openspec/AGENTS.md`** 为准。
+1. **[openspec/project.md](../../openspec/project.md)** — 唯一项目上下文（布局、归档、工程指针）。
+2. **`openspec/specs/<domain>/spec.md`** — 域行为真相（`openspec list --specs`）。
 
 ## 何时走 OpenSpec
 
-**创建变更**（提案 + 增量 + `tasks.md`，并用 `--strict` 校验）适用于：新增能力、破坏性 API/架构/安全模式变更、或改变行为的性能优化。
+**创建变更**适用于：新增能力、破坏性 API/架构/安全模式变更、或改变行为的性能优化。
 
-**可跳过提案**的情况：恢复规格所描述行为的缺陷修复、错别字与排版、非破坏性依赖升级、仅配置调整、或为既有行为补测试——除非需求模糊，走提案更安全。
+**可跳过提案**：恢复规格所描述行为的缺陷修复、错别字、非破坏性依赖升级、仅配置调整——除非需求模糊。
 
-## 助手工作流（精简）
+## 助手工作流
 
 ### 编写或实现之前
 
-- 运行 `openspec list`、`openspec list --specs`（或 `openspec spec list --long`）了解上下文。
-- 阅读相关 `openspec/specs/<capability>/spec.md`；检查 `openspec/changes/` 是否已有重叠变更。
-- 按需使用 `openspec show <spec-id> --type spec` / `openspec show <change-id> --json --deltas-only`。
+- 阅读 `openspec/project.md` 与相关域规格。
+- 运行 `openspec list`、`openspec list --specs`。
+- 检查 `openspec/changes/` 是否已有重叠变更。
 
 ### 创建变更
 
-1. 选取唯一的动词开头 **change-id**（kebab-case：`add-…`、`update-…`、`remove-…`、`refactor-…`）。
-2. 在 `openspec/changes/<change-id>/` 下搭建：`proposal.md`、`tasks.md`、可选 `design.md`（是否撰写见 AGENTS.md 条件），以及 `specs/<capability>/spec.md` 增量。
-3. 增量使用 `## ADDED|MODIFIED|REMOVED|RENAMED Requirements`；每条 Requirement 至少包含一个 `#### Scenario:` 块（标题格式须与 AGENTS.md 一致，四个 `#`）。
-4. 分享前运行 **`openspec validate <change-id> --strict`** 并修复全部问题。
-5. 提案**未经评审通过前不要开始实现**。
+1. 选取唯一的动词开头 **change-id**（kebab-case）。
+2. `openspec new change "<id>"`，按 schema 写 `proposal` → `specs` → `design` → `tasks`。
+3. 每条 Requirement 至少一个 `#### Scenario:`；正文含 **SHALL** 或 **MUST**。
+4. 分享前 `openspec validate <change-id> --strict`。
 
 ### 实现已批准的变更
 
-按顺序阅读 `proposal.md` → `design.md`（若有）→ `tasks.md`；完成任务后，如实勾选 `tasks.md` 中的复选框。
+阅读 `proposal` → `design` → `tasks`；对照相关域规格；完成后勾选 `tasks.md`。
 
-### 收版（/opsx-archive）
+### 归档（本仓库定制）
 
-将活跃 change 收进目标版本基线（如 `v3.0.3`），**不**保留 `openspec/changes/archive/`：
+官方语义：把 delta 合并进 `openspec/specs/<domain>/spec.md`。
 
-```bash
-python hack/archive-openspec-to-version.py v3.0.3
-```
+本仓库（单人 OPC）额外约定：
 
-收版后更新 `openspec/project.md` 基线引用，并跑 `openspec validate --strict`。
-
-**注意**：参数是 **`vX.Y.Z` 版本号**，不是单个 change-id；勿按上游「归档单个 change 到 archive/」流程执行。
+1. 若实现阶段已直接写妥主规格，可用 `openspec archive <id> -y --skip-specs`（或等价跳过合并）。
+2. 否则 `openspec archive <id> -y` 合并 delta。
+3. **删除** `openspec/changes/<id>/`（以及若 CLI 生成了 `changes/archive/YYYY-MM-DD-<id>/`，一并删除）。
+4. **默认不保留** archive 历史目录。
 
 ## CLI 速查
 
 ```bash
-openspec list                  # 进行中的变更
-openspec list --specs          # 规格列表
-openspec spec list --long      # 规格（详细）
-openspec show <item>           # 查看变更或规格
+openspec list
+openspec list --specs
+openspec status --change "<name>" --json
 openspec validate <id> --strict
-openspec archive <change-id> [--skip-specs] [--yes]
-openspec update [path]         # 刷新说明文件
+openspec archive <id> -y
+openspec archive <id> -y --skip-specs
 ```
-
-## 常见坑（细节见 AGENTS.md）
-
-- **MODIFIED 需求**：从 `openspec/specs/...` 粘贴**完整**更新后的需求块；增量若不全，归档时会丢细节。
-- **Scenario**：仅使用 `#### Scenario: 标题` —— 不要用列表项、加粗或 `###` 等变体。
-- **检索**：优先用 `openspec` 子命令，并对 `openspec/specs`、`openspec/changes` 使用 `rg`，少凭感觉猜。
 
 ## 延伸阅读
 
-- 增量示例与多能力布局：**openspec/AGENTS.md** 中「Creating Change Proposals」「Multi-Capability Example」「Troubleshooting」等章节。
+- 命令：`/opsx-propose`、`/opsx-apply`、`/opsx-archive`、`/opsx-explore`
+- 技能：`.cursor/skills/openspec-propose/`、`openspec-apply-change/`、`openspec-archive-change/`

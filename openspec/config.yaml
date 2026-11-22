@@ -1,20 +1,19 @@
 schema: spec-driven
 
-# Project context (optional)
-# This is shown to AI when creating artifacts.
-# Add your tech stack, conventions, style guides, domain knowledge, etc.
-# Example:
-#   context: |
-#     Tech stack: TypeScript, React, Node.js
-#     We use conventional commits
-#     Domain: e-commerce platform
+# OpenSpec CLI 注入：项目上下文见 openspec/project.md；行为约束见各域 specs。Cursor 入口规则指向 project.md（无根 AGENTS.md）。
+context: |
+  工程与 OpenSpec 布局见 openspec/project.md（仓库唯一项目入口）。
+  行为真相：openspec/specs/<domain>/spec.md。
+  OpenSpec 制品须简体中文；每条 ### Requirement 正文须含英文 SHALL 或 MUST。
+  归档：合并 delta（或 skip-specs）后删除 change 目录；默认不保留 changes/archive/。
 
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always include a "Non-goals" section
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
+review:
+  required_checks:
+    - >-
+      行为变更是否对应到某域 ### Requirement 与 #### Scenario；能否引用域名与需求标题。
+    - >-
+      是否未再依赖已删除的 openspec/specs/v*.md 巨石基线。
+
+rules:
+  proposal:
+    - 编写前 MUST 阅读 openspec/project.md，并用 openspec list --specs 对照已有域。
