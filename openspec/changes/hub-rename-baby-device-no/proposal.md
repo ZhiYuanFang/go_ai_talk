@@ -6,7 +6,8 @@
 
 ## What Changes
 
-- Hub 设备管理增加「修改宝宝号 / 改名」入口：输入或生成 `NEW`，二次确认后执行原地改名。
+- Hub 设备管理增加「修改宝宝号 / 改名」入口：列表行改名，以及可自输入 OLD+NEW 的补迁入口；输入或生成 `NEW`，二次确认后执行原地改名。
+- 改名编排在写本域 / 调下游前先探测 history、cash、gateway 可达（dryRun），避免下游不可达时中途半迁。
 - device 域编排跨服务迁移：将各业务库中该宝宝分区键从 `OLD` 替换为 `NEW`（保数据连续）；`OLD` 离开注册表后不可再 `EnsureRegistered` / 登录 / 绑定。
 - 改名成功后吊销该宝宝相关账号的 refresh（并尽快使旧 access 不可用），迫使 Flutter 走现有登录流；登录响应返回新 `deviceNo`，客户端无需改代码即可覆盖本地号。
 - history 写路径对 `deviceNo` 增加「须已注册」校验，避免改名后仍用旧号静默写入空壳分区。
@@ -22,7 +23,7 @@
 ### Modified Capabilities
 
 - `identity-device`：新增 Hub/管理侧宝宝号原地改名编排；改名后旧号对注册校验与绑定/设备登录失效；绑定引用（`wx.device_no` 等）随号迁移。
-- `history-feeding`：history/suggest 分区键随改名迁移；喂养历史写入前 MUST 校验 device 域已注册该 `deviceNo`。
+- `history-feeding`：history 分区键随改名迁移（不跟迁已退役 suggest）；喂养历史写入前 MUST 校验 device 域已注册该 `deviceNo`。
 - `care-commerce`：对机权益与次数等以 `device_no` 为键的行随改名迁移。
 - `xiaozhi-mcp`：喂养落点 `xiaozhi_mcp_binding.device_no` 随改名迁移。
 - `gateway-edge`：支持按宝宝相关会话吊销 refresh（及必要的 access 失效策略），使客户端在不改 Flutter 的前提下重登获取新 `deviceNo`；可选修正 refresh 时对 wx 会话以 device 绑定为权威（避免 refresh 载荷钉死旧号）。

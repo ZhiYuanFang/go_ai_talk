@@ -13,11 +13,13 @@ import (
 	"github.com/gogf/gf/v2/net/ghttp"
 )
 
-// HistoryInternalMigrateDeviceNoReq POST 内部：宝宝号原地改名时迁移 history/suggest 分区键。
+// HistoryInternalMigrateDeviceNoReq POST 内部：宝宝号原地改名时迁移 history 分区键。
 type HistoryInternalMigrateDeviceNoReq struct {
-	g.Meta       `path:"/history/internal/api/device-no/migrate" method:"post" tags:"history-internal" summary:"内部：迁移 history/suggest 的 device_no"`
-	OldDeviceNo  string `json:"oldDeviceNo" v:"required"`
-	NewDeviceNo  string `json:"newDeviceNo" v:"required"`
+	g.Meta      `path:"/history/internal/api/device-no/migrate" method:"post" tags:"history-internal" summary:"内部：迁移 history 的 device_no"`
+	OldDeviceNo string `json:"oldDeviceNo" v:"required"`
+	NewDeviceNo string `json:"newDeviceNo" v:"required"`
+	// DryRun 为 true 时仅探测库表可读，不 UPDATE。
+	DryRun bool `json:"dryRun"`
 }
 
 // HistoryInternalMigrateDeviceNoRes 迁移结果。
@@ -33,6 +35,12 @@ func (c *HistoryInternalCtrl) MigrateDeviceNo(ctx context.Context, req *HistoryI
 	}
 	old := strings.TrimSpace(req.OldDeviceNo)
 	neu := strings.TrimSpace(req.NewDeviceNo)
+	if req.DryRun {
+		if err := history.ProbeMigrateDeviceNo(ctx); err != nil {
+			return nil, gerror.NewCode(gcode.CodeInvalidOperation, err.Error())
+		}
+		return &HistoryInternalMigrateDeviceNoRes{Ok: true}, nil
+	}
 	if err := history.MigrateDeviceNo(ctx, old, neu); err != nil {
 		return nil, gerror.NewCode(gcode.CodeInvalidOperation, err.Error())
 	}

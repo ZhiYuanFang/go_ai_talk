@@ -1,4 +1,4 @@
-# voice-service 仅连接本域库（qa/suggest）；访问 user/event/action 等 MUST 经 HTTP 访问 device-service。
+# voice-service 仅连接本域库（qa；suggest 表已退役）；访问 user/event/action 等 MUST 经 HTTP 访问 device-service。
 # 运行时请设置：DEVICE_SERVICE_URL（默认可回退 http://127.0.0.1:9803）、DEVICE_PROFILE_SERVICE_MODE=remote（推荐）。
 # MySQL：VOICE_DB_LINK + MYSQL_TCP_HOST；Redis：GF_REDIS_DEFAULT_ADDRESS。
 

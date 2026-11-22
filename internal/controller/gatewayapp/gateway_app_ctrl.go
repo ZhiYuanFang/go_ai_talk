@@ -243,6 +243,9 @@ func (c *GatewayAppCtrl) InternalRevokeSessions(ctx context.Context, req *v1.Gat
 	if r == nil || !httpmeta.ValidateInternalSecret(httpmeta.InternalSecretFromRequest(r)) {
 		return nil, gerror.NewCode(gcode.CodeNotAuthorized, "内部接口未授权")
 	}
+	if req.DryRun {
+		return &v1.GatewayAppInternalRevokeSessionsRes{Ok: true}, nil
+	}
 	if err := gatewayapp.BumpSessionEpochForWxIDs(ctx, req.WxIds); err != nil {
 		return nil, err
 	}

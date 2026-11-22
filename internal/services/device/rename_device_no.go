@@ -81,6 +81,12 @@ func RenameDeviceNo(ctx context.Context, oldDeviceNo, newDeviceNo string, genera
 	}
 	out.WxIds = wxIDs
 
+	// 先探再改：下游不可达时不得先改本域（首次路径）。
+	if err := probeRenameDownstream(ctx); err != nil {
+		return out, err
+	}
+	out.Steps = append(out.Steps, "probe_ok")
+
 	if oldExists {
 		if err := renameDeviceNoLocal(ctx, old, neu, wxIDs); err != nil {
 			return out, fmt.Errorf("本域迁移失败: %w", err)
@@ -108,6 +114,20 @@ func RenameDeviceNo(ctx context.Context, oldDeviceNo, newDeviceNo string, genera
 	glog.Infof(ctx, "[device] RenameDeviceNo ok oldLen=%d newLen=%d wxCount=%d steps=%v",
 		len(old), len(neu), len(wxIDs), out.Steps)
 	return out, nil
+}
+
+// probeRenameDownstream 探测 history / cash / gateway 内部契约可达（dryRun，不改写）。
+func probeRenameDownstream(ctx context.Context) error {
+	if err := histclient.RemoteProbeMigrateDeviceNo(ctx); err != nil {
+		return fmt.Errorf("改名预检失败（history）: %w", err)
+	}
+	if err := cashclient.RemoteProbeMigrateDeviceNo(ctx); err != nil {
+		return fmt.Errorf("改名预检失败（cash）: %w", err)
+	}
+	if err := gwclient.ProbeRevokeSessions(ctx); err != nil {
+		return fmt.Errorf("改名预检失败（gateway）: %w", err)
+	}
+	return nil
 }
 
 // renameDeviceNoLocal 更新 device 库内宝宝分区键与绑定，并清理旧 Redis。

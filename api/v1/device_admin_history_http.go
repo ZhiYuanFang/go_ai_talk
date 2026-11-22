@@ -24,17 +24,6 @@ type DeviceAdminHistoryListRes struct {
 	PageSize int              `json:"pageSize"`
 }
 
-// DeviceAdminHistorySuggestReq 运维查询成长建议。
-type DeviceAdminHistorySuggestReq struct {
-	g.Meta   `path:"/device/admin/api/history/suggest" method:"get" tags:"admin" summary:"运维-成长建议列表"`
-	DeviceNo string `json:"deviceNo" p:"deviceNo" dc:"设备号"`
-}
-
-// DeviceAdminHistorySuggestRes 成长建议列表。
-type DeviceAdminHistorySuggestRes struct {
-	List []entity.Suggest `json:"list"`
-}
-
 // DeviceAdminHistoryBirthdayGetReq 运维读取宝宝档案。
 type DeviceAdminHistoryBirthdayGetReq struct {
 	g.Meta   `path:"/device/admin/api/history/birthday" method:"get" tags:"admin" summary:"运维-获取设备生日档案"`

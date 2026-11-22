@@ -50,14 +50,6 @@ func (s *localService) HasOpenHistory(ctx context.Context, deviceNo string, even
 	return HasOpenDeviceHistory(ctx, deviceNo, eventIds)
 }
 
-func (s *localService) ListSuggest(ctx context.Context, deviceNo string) ([]entity.Suggest, error) {
-	return ListDeviceSuggest(ctx, deviceNo)
-}
-
-func (s *localService) DeleteSuggest(ctx context.Context, id int64, deviceNo string) error {
-	return DeleteDeviceSuggest(ctx, id, deviceNo)
-}
-
 func (s *localService) ListEventOptions(ctx context.Context) ([]entity.Event, error) {
 	return ListEventOptions(ctx)
 }
@@ -366,26 +358,6 @@ func guardDuplicateOpenHistoryStart(ctx context.Context, deviceNo string, eventI
 		return fmt.Errorf("%s", errDuplicateOpenHistoryStart)
 	}
 	return nil
-}
-
-func ListDeviceSuggest(ctx context.Context, deviceNo string) ([]entity.Suggest, error) {
-	deviceNo = strings.TrimSpace(deviceNo)
-	if deviceNo == "" {
-		return []entity.Suggest{}, nil
-	}
-	items, err := delegateListSuggest(ctx, deviceNo)
-	logDelegateFailure(ctx, "list_suggest", err)
-	return items, err
-}
-
-func DeleteDeviceSuggest(ctx context.Context, id int64, deviceNo string) error {
-	deviceNo = strings.TrimSpace(deviceNo)
-	if id <= 0 || deviceNo == "" {
-		return fmt.Errorf("参数无效")
-	}
-	err := delegateDeleteSuggest(ctx, id, deviceNo)
-	logDelegateFailure(ctx, "delete_suggest", err)
-	return err
 }
 
 func ListEventOptions(ctx context.Context) ([]entity.Event, error) {

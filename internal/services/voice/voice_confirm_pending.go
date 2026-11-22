@@ -58,7 +58,7 @@ func (s *pendingConfirmStateStruct) clear(deviceNo string) {
 }
 
 // pendingConversationID 读取设备当前有效的澄清 conversation_id；无则返回空串。
-// 仅供统一意图调用路径使用；成长建议/历史问答等独立 AnalyzeIntent MUST NOT 调用本函数。
+// 仅供统一意图调用路径使用；历史问答等独立 AnalyzeIntent MUST NOT 调用本函数。
 func pendingConversationID(deviceNo string) string {
 	if entry := pendingConfirmState.get(deviceNo); entry != nil {
 		return entry.ConversationID

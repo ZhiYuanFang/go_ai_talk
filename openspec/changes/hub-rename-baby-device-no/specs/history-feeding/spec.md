@@ -4,12 +4,12 @@
 
 ### Requirement: history-service SHALL 支持按宝宝号迁移历史分区键
 
-history-service MUST 提供仅内部/管理可信调用方可访问的迁移接口：将 `history` 与 `suggest` 表中 `device_no=oldDeviceNo` 的行更新为 `newDeviceNo`。迁移 MUST NOT 经跨库直查由他域进程执行。
+history-service MUST 提供仅内部/管理可信调用方可访问的迁移接口：将 `history` 表中 `device_no=oldDeviceNo` 的行更新为 `newDeviceNo`。迁移 MUST NOT 触碰 `suggest` 表，MUST NOT 经跨库直查由他域进程执行。
 
 #### Scenario: 迁移成功
 
 - **WHEN** 可信调用方请求将旧宝宝号迁移到新宝宝号
-- **THEN** 该旧号下原有 history 与 suggest 行 MUST 在新号下可查，且旧号下 MUST 不再保留这些业务行
+- **THEN** 该旧号下原有 history 行 MUST 在新号下可查，且旧号下 MUST 不再保留这些业务行
 
 ### Requirement: 喂养历史写入前 MUST 校验宝宝号已注册
 

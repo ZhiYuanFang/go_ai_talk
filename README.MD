@@ -27,11 +27,9 @@
 - 若缺少数量且事件需要数量：会追问，下一轮补录
 - 备注信息写入 `remark`
 
-### 3) 成长建议能力
+### 3) 成长建议能力（已退役）
 
-- 用户询问成长建议时，系统会结合设备历史 + 生日信息生成建议
-- 每设备每天仅生成一次并落库 `suggest`
-- 同一天再次询问直接返回当日已生成建议
+成长建议生成与 `suggest` 读删 API 已下线；遗留表行 MAY 留库，无产品入口。
 
 ### 4) Web 页面与静态入口（汇总）
 
@@ -192,16 +190,6 @@
 示例：
 
 `/device/history/api/list?deviceNo=device-001&page=1&pageSize=20`
-
-#### 3. 获取设备成长建议历史
-
-- **Method**: `GET`
-- **Path**: `/device/history/api/suggest`
-- **Query**: `deviceNo`
-
-示例：
-
-`/device/history/api/suggest?deviceNo=device-001`
 
 ---
 

@@ -192,8 +192,6 @@ type DeviceHistoryContract interface {
 	// HasOpenHistory 判断 deviceNo 下 eventIds 中是否存在任一未闭合（end_time=0）历史行。
 	// 空 deviceNo 或空/无效 eventIds 返回 (false, nil)；用于预测临近推送前的进行中闸（存在性，最少读）。
 	HasOpenHistory(ctx context.Context, deviceNo string, eventIds []int64) (bool, error)
-	ListSuggest(ctx context.Context, deviceNo string) ([]entity.Suggest, error)
-	DeleteSuggest(ctx context.Context, id int64, deviceNo string) error
 	ListEventOptions(ctx context.Context) ([]entity.Event, error)
 	GetBirthday(ctx context.Context, deviceNo string) (babyName string, birthdayUnixSec int64, sex int, err error)
 	SaveBirthday(ctx context.Context, deviceNo string, babyName string, birthdayUnixSec int64, sex int) error

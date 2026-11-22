@@ -60,7 +60,7 @@ type IntentEvent struct {
 // AnalyzeIntentResponse 意图分析响应体
 // 与 Python 服务对齐：信封 + events[]；无顶层 op；顶层 action 仅兼容旧响应（可空）
 type AnalyzeIntentResponse struct {
-	TargetType     string        `json:"target_type"`            // feeding|history|suggest|conversation|exit
+	TargetType     string        `json:"target_type"`            // feeding|history|suggest(遗留)|conversation|exit
 	Action         string        `json:"action,omitempty"`       // 已废弃：兼容旧 JSON，权威在 events[].op
 	EventName      string        `json:"event_name"`             // 展示用首事件名（可选）
 	EventId        string        `json:"event_id"`               // 展示用首事件 id（可选）

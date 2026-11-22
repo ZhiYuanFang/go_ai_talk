@@ -84,6 +84,8 @@ type GatewayAppInternalRevokeSessionsReq struct {
 	g.Meta   `path:"/device/app/api/internal/sessions/revoke" method:"post" tags:"gateway-app" summary:"内部-吊销 App refresh 会话"`
 	WxIds    []int64 `json:"wxIds" dc:"要吊销的 wx 主键列表"`
 	DeviceNo string  `json:"deviceNo" dc:"可选；非空时同时吊销纯设备会话（wxId=0）上该 device_no"`
+	// DryRun 为 true 时仅校验内部密钥并返回成功，不 bump session epoch。
+	DryRun bool `json:"dryRun"`
 }
 
 // GatewayAppInternalRevokeSessionsRes 吊销结果。

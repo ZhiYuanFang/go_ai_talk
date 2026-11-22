@@ -134,34 +134,6 @@ func (c *HistoryCtrl) ListV2(ctx context.Context, req *v2.DeviceHistoryListReq) 
 	return &v2.DeviceHistoryListRes{List: result.List, Total: result.Total, Page: result.Page, PageSize: result.PageSize}, nil
 }
 
-// Suggest 设备建议列表。
-func (c *HistoryCtrl) Suggest(ctx context.Context, req *v1.DeviceHistorySuggestReq) (res *v1.DeviceHistorySuggestRes, err error) {
-	deviceNo := strings.TrimSpace(req.DeviceNo)
-	if deviceNo == "" {
-		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "deviceNo 不能为空")
-	}
-	items, err := c.Svc.ListSuggest(ctx, deviceNo)
-	if err != nil {
-		return nil, err
-	}
-	return &v1.DeviceHistorySuggestRes{List: items}, nil
-}
-
-// SuggestDelete 删除一条成长建议。
-func (c *HistoryCtrl) SuggestDelete(ctx context.Context, req *v1.DeviceHistorySuggestDeleteReq) (res *v1.DeviceHistorySuggestDeleteRes, err error) {
-	deviceNo := strings.TrimSpace(req.DeviceNo)
-	if deviceNo == "" {
-		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "deviceNo 不能为空")
-	}
-	if req.Id <= 0 {
-		return nil, gerror.NewCode(gcode.CodeInvalidParameter, "id 无效")
-	}
-	if err := c.Svc.DeleteSuggest(ctx, req.Id, deviceNo); err != nil {
-		return nil, err
-	}
-	return &v1.DeviceHistorySuggestDeleteRes{}, nil
-}
-
 // EventOptions 历史事件可选项（来自数据库）。
 // Redis 事件选项缓存与 device-service 共用键，logo 可能为 OSS objectKey；对外 HTTP MUST 映射为 CDN 绝对 URL。
 func (c *HistoryCtrl) EventOptions(ctx context.Context, req *v1.DeviceHistoryEventOptionsReq) (res *v1.DeviceHistoryEventOptionsRes, err error) {

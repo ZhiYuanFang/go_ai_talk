@@ -14,10 +14,19 @@ import (
 	"hello/internal/platform/httpmeta"
 )
 
+// ProbeRevokeSessions 改名预检：gateway revoke 内部口可达且鉴权通过（不 bump epoch）。
+func ProbeRevokeSessions(ctx context.Context) error {
+	return revokeSessions(ctx, nil, "", true)
+}
+
 // RevokeSessions 调用网关内部接口 bump session epoch，吊销指定 wx 与/或纯设备 refresh。
 // Args: wxIDs 可为空；deviceNo 非空时吊销 wxId=0 上该号会话。
 // Side Effects: HTTP POST GATEWAY_APP_SERVICE_URL；须配置 DEVICE_GATEWAY_INTERNAL_SECRET。
 func RevokeSessions(ctx context.Context, wxIDs []int64, deviceNo string) error {
+	return revokeSessions(ctx, wxIDs, deviceNo, false)
+}
+
+func revokeSessions(ctx context.Context, wxIDs []int64, deviceNo string, dryRun bool) error {
 	base := strings.TrimRight(strings.TrimSpace(os.Getenv("GATEWAY_APP_SERVICE_URL")), "/")
 	if base == "" {
 		return fmt.Errorf("GATEWAY_APP_SERVICE_URL 未配置")
@@ -29,6 +38,7 @@ func RevokeSessions(ctx context.Context, wxIDs []int64, deviceNo string) error {
 	body, err := json.Marshal(map[string]interface{}{
 		"wxIds":    wxIDs,
 		"deviceNo": strings.TrimSpace(deviceNo),
+		"dryRun":   dryRun,
 	})
 	if err != nil {
 		return err

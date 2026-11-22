@@ -41,27 +41,6 @@ type DeviceHistoryFilterRes struct {
 	List []entity.History `json:"list"`
 }
 
-// DeviceHistorySuggestReq 查询设备建议。
-type DeviceHistorySuggestReq struct {
-	g.Meta   `path:"/device/history/api/suggest" method:"get" tags:"device" summary:"设备建议列表"`
-	DeviceNo string `json:"deviceNo" p:"deviceNo" dc:"设备号"`
-}
-
-// DeviceHistorySuggestRes 设备建议列表响应。
-type DeviceHistorySuggestRes struct {
-	List []entity.Suggest `json:"list"`
-}
-
-// DeviceHistorySuggestDeleteReq 删除一条成长建议记录。
-type DeviceHistorySuggestDeleteReq struct {
-	g.Meta   `path:"/device/history/api/suggest/delete" method:"post" tags:"device" summary:"删除成长建议"`
-	Id       int64  `json:"id" dc:"主键ID"`
-	DeviceNo string `json:"deviceNo" dc:"设备号"`
-}
-
-// DeviceHistorySuggestDeleteRes 删除结果。
-type DeviceHistorySuggestDeleteRes struct{}
-
 // DeviceHistoryEventOptionsReq 查询历史事件可选项。
 type DeviceHistoryEventOptionsReq struct {
 	g.Meta `path:"/device/history/api/event/options" method:"get" tags:"device" summary:"历史事件可选项"`

@@ -10,6 +10,5 @@ type (
 	DeviceAdminItem   = entity.User
 	DeviceEventItem   = entity.Event
 	DeviceHistoryItem = entity.History
-	DeviceSuggestItem = entity.Suggest
 	AdminActionItem   = sharedtypes.AdminActionItem
 )

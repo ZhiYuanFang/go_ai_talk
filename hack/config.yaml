@@ -7,9 +7,9 @@ gfcli:
     - link:     "mysql:root:Fang930927@tcp(120.55.50.105:3306)/ai_voice_device"
       tables:   "user,event,action,wx"
       jsonCase: "CamelLower"
-    # voice 域：qa/suggest
+    # voice 域：qa（suggest 已退役，不再 gen dao）
     - link:     "mysql:root:Fang930927@tcp(120.55.50.105:3306)/ai_voice_voice"
-      tables:   "qa,suggest"
+      tables:   "qa"
       jsonCase: "CamelLower"
     # history 域：history
     - link:     "mysql:root:Fang930927@tcp(120.55.50.105:3306)/ai_voice_history"

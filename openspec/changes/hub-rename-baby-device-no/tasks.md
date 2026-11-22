@@ -8,7 +8,7 @@
 
 ## 2. history / cash 迁移与写前校验
 
-- [x] 2.1 history-service 增加可信 migrate API（`history`+`suggest` OLD→NEW），用样例行验证迁后按新号可查、旧号无残留
+- [x] 2.1 history-service 增加可信 migrate API（`history` OLD→NEW，不迁 suggest），用样例行验证迁后按新号可查、旧号无残留
 - [x] 2.2 history 新增/batch create 写前经 `clients/device` `EnsureRegistered`，未注册号验证拒绝且无插入
 - [x] 2.3 cash-service 增加可信 migrate API（至少 `feature_entitlement`、`feature_allowed_count`），验证迁后新号持有权益、旧号无对机行；冲突时失败可观测
 
@@ -27,6 +27,12 @@
 
 - [x] 5.1 端到端：注册样例宝宝→写入 history/权益→Hub 改名→旧号 device_login/bind/写 history 失败→绑定账号 refresh 失败→重登后登录 JSON 为新号且历史/权益仍在
 - [x] 5.2 对照 design 重部署清单核对改动进程；`openspec validate hub-rename-baby-device-no`（或项目等价校验）通过
+
+## 6. 补迁入口与先探再改
+
+- [x] 6.1 history/cash migrate 与 gateway revoke 支持 `dryRun` 探测（可达+鉴权+表可读，不改写/不 bump）；device `RenameDeviceNo` 在本域写与下游调用前先探测，失败则中止且旧号仍注册时可验证本域未改
+- [x] 6.2 Hub `admin.html` 增加自由填写 OLD+NEW（及可选生成新号）改名入口，二次确认后调同一 rename API；半失败场景可不依赖列表行上的旧号
+- [x] 6.3 `openspec validate hub-rename-baby-device-no` 通过；列出需重部署进程（device / history / cash / gateway-app + Hub 静态）
 
 ## Workflow follow-up
 

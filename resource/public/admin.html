@@ -51,6 +51,12 @@
 			</div>
 		</div>
 		<div id="deviceRecordMsg" class="msg"></div>
+		<div class="row" style="flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 12px;">
+			<span class="muted" style="margin-right:4px;">补迁改名（可手填旧号+新号）</span>
+			<input id="renameOldDeviceNo" type="text" placeholder="旧 device_no" style="max-width:160px;" autocomplete="off" />
+			<input id="renameNewDeviceNo" type="text" placeholder="新 device_no（可空=生成）" style="max-width:180px;" autocomplete="off" />
+			<button id="renameFreeformBtn" class="secondary" type="button">执行改名</button>
+		</div>
 		<div class="table-wrap">
 			<table>
 				<thead>
@@ -573,15 +579,18 @@ function historyPageUrl(deviceNo){
 }
 
 /** 宝宝号原地改名：二次确认后调用 Admin API；成功后刷新列表并提示新号 history 深链。 */
-async function renameBabyDeviceNo(oldDn){
+async function renameBabyDeviceNo(oldDn, preferredNew){
 	const oldDeviceNo = String(oldDn || '').trim();
 	if(!oldDeviceNo){ alert('设备号为空'); return; }
-	const mode = window.prompt(
-		'修改宝宝号「'+ oldDeviceNo +'」\n输入新号，或留空并点确定后用系统生成；取消则中止。\n将迁移历史/权益并令家人重新登录。',
-		''
-	);
-	if(mode === null) return;
-	const newDeviceNo = String(mode || '').trim();
+	let newDeviceNo = preferredNew != null ? String(preferredNew || '').trim() : null;
+	if(newDeviceNo === null){
+		const mode = window.prompt(
+			'修改宝宝号「'+ oldDeviceNo +'」\n输入新号，或留空并点确定后用系统生成；取消则中止。\n将迁移历史/权益并令家人重新登录。',
+			''
+		);
+		if(mode === null) return;
+		newDeviceNo = String(mode || '').trim();
+	}
 	const generateNew = !newDeviceNo;
 	const tip = generateNew
 		? ('确认将「'+ oldDeviceNo +'」改为系统生成的新号？旧号立即失效，绑定账号需重新登录。')
@@ -601,6 +610,19 @@ async function renameBabyDeviceNo(oldDn){
 	}catch(e){
 		setMsg(msgEl, String(e && e.message ? e.message : e));
 	}
+}
+
+/** 自由填写 OLD+NEW（半失败补迁不依赖列表行）。 */
+function renameBabyDeviceNoFreeform(){
+	const oldEl = document.getElementById('renameOldDeviceNo');
+	const newEl = document.getElementById('renameNewDeviceNo');
+	const oldDeviceNo = oldEl ? String(oldEl.value || '').trim() : '';
+	const newDeviceNo = newEl ? String(newEl.value || '').trim() : '';
+	if(!oldDeviceNo){
+		alert('请填写旧 device_no');
+		return;
+	}
+	renameBabyDeviceNo(oldDeviceNo, newDeviceNo);
 }
 
 async function loadDeviceRecordList(page){
@@ -1148,6 +1170,10 @@ document.getElementById('deviceRecordTbody').addEventListener('click', (ev) => {
 	if(!btn) return;
 	ev.preventDefault();
 	renameBabyDeviceNo(btn.getAttribute('data-device-no') || '');
+});
+
+document.getElementById('renameFreeformBtn').addEventListener('click', () => {
+	renameBabyDeviceNoFreeform();
 });
 
 document.getElementById('deviceSearchBtn').addEventListener('click', async () => {

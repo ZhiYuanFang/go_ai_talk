@@ -11,7 +11,7 @@ const (
 	ActionTargetTypeEnd          ActionTargetType = "end"          // 结束记录计时动作
 	ActionTargetTypeOne          ActionTargetType = "one"          // 记录一次性动作
 	ActionTargetTypeExit         ActionTargetType = "exit"         // 退出动作
-	ActionTargetTypeSuggest      ActionTargetType = "suggest"      // 成长建议动作
+	ActionTargetTypeSuggest      ActionTargetType = "suggest"      // 遗留字面兼容（业务已退役，不落库）
 	ActionTargetTypeSearch       ActionTargetType = "search"       // 搜索动作
 	ActionTargetTypeConversation ActionTargetType = "conversation" // 对话动作
 )

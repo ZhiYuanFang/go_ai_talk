@@ -173,14 +173,6 @@
         </div>
     </div>
 
-    <div class="card glass">
-        <div class="section-head">
-            <h3>历史成长建议</h3>
-        </div>
-        <p class="muted" style="margin:0;">成长建议生成与运维入口已退役；历史 suggest 行可仍留库。</p>
-        <div id="suggestWrap" class="scroll-max-20" style="display:none;"></div>
-    </div>
-
     <div class="card glass hub-card-span-2">
         <div class="section-head">
             <h3>AI 调试台</h3>
@@ -290,7 +282,6 @@
         const saveBirthdayBtn = document.getElementById('saveBirthdayBtn');
         const sexInput = document.getElementById('sexInput');
         const historyBody = document.getElementById('historyBody');
-        const suggestWrap = document.getElementById('suggestWrap');
         const addHistoryBtn = document.getElementById('addHistoryBtn');
         const refreshHistoryBtn = document.getElementById('refreshHistoryBtn');
         const historyPaginationStatus = document.getElementById('historyPaginationStatus');
@@ -611,22 +602,6 @@
                         meta.textContent = '删除历史事件失败：' + (e.message || '未知错误');
                     }
                 });
-            });
-        }
-
-        async function loadSuggest(){
-            const rows = asListPayload(await api('/device/admin/api/history/suggest?deviceNo=' + encodeURIComponent(deviceNo)));
-            suggestWrap.innerHTML = '';
-            if(!rows || rows.length === 0){
-                suggestWrap.innerHTML = '<div class="muted">暂无成长建议</div>';
-                return;
-            }
-            rows.forEach(it => {
-                const div = document.createElement('div');
-                div.className = 'suggest-item';
-                const st = (it.time != null && Number(it.time) > 0) ? new Date(Number(it.time) * 1000).toLocaleString() : '';
-                div.innerHTML = '<div class="suggest-time">'+escapeHtml(st)+'</div><div>'+escapeHtml(it.suggest)+'</div>';
-                suggestWrap.appendChild(div);
             });
         }
 
@@ -1000,7 +975,6 @@
                 birthdayInput.disabled = true;
                 saveBirthdayBtn.disabled = true;
                 historyBody.innerHTML = '<tr><td colspan="8">未指定设备号</td></tr>';
-                suggestWrap.innerHTML = '<div class="muted">未指定设备号</div>';
                 renderPredictImminent([]);
                 renderPredictActiveEta([]);
                 document.getElementById('predictReportStatus').textContent = '未指定设备号';
@@ -1010,7 +984,6 @@
                 await loadBirthday();
                 await loadEventOptions();
                 await loadHistory();
-                await loadSuggest();
             } catch (e) {
                 meta.textContent = '生日信息加载失败：' + (e.message || '未知错误');
             }

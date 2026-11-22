@@ -210,8 +210,17 @@ func RemoteClaimFeatureTrial(ctx context.Context, wxID int64, featureID string) 
 	return nil
 }
 
+// RemoteProbeMigrateDeviceNo 宝宝号改名预检：cash 可达且表可读。
+func RemoteProbeMigrateDeviceNo(ctx context.Context) error {
+	return remoteMigrateDeviceNo(ctx, "__probe_old__", "__probe_new__", true)
+}
+
 // RemoteMigrateDeviceNo 宝宝号改名：迁移 cash 对机权益/次数分区键。
 func RemoteMigrateDeviceNo(ctx context.Context, oldDeviceNo, newDeviceNo string) error {
+	return remoteMigrateDeviceNo(ctx, oldDeviceNo, newDeviceNo, false)
+}
+
+func remoteMigrateDeviceNo(ctx context.Context, oldDeviceNo, newDeviceNo string, dryRun bool) error {
 	old := strings.TrimSpace(oldDeviceNo)
 	neu := strings.TrimSpace(newDeviceNo)
 	if old == "" || neu == "" {
@@ -225,7 +234,7 @@ func RemoteMigrateDeviceNo(ctx context.Context, oldDeviceNo, newDeviceNo string)
 		return gerror.NewCode(gcode.CodeInternalError, "DEVICE_GATEWAY_INTERNAL_SECRET 未配置")
 	}
 	body, _ := json.Marshal(map[string]interface{}{
-		"oldDeviceNo": old, "newDeviceNo": neu,
+		"oldDeviceNo": old, "newDeviceNo": neu, "dryRun": dryRun,
 	})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/cash/internal/api/device-no/migrate",
 		strings.NewReader(string(body)))

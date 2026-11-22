@@ -55,18 +55,6 @@ func (c *HistoryAdminCtrl) List(ctx context.Context, req *v1.DeviceAdminHistoryL
 	}, nil
 }
 
-// Suggest GET /device/admin/api/history/suggest
-func (c *HistoryAdminCtrl) Suggest(ctx context.Context, req *v1.DeviceAdminHistorySuggestReq) (res *v1.DeviceAdminHistorySuggestRes, err error) {
-	if err = c.requireAdmin(ctx); err != nil {
-		return nil, err
-	}
-	out, err := c.inner.Suggest(ctx, &v1.DeviceHistorySuggestReq{DeviceNo: req.DeviceNo})
-	if err != nil {
-		return nil, err
-	}
-	return &v1.DeviceAdminHistorySuggestRes{List: out.List}, nil
-}
-
 // Birthday GET /device/admin/api/history/birthday
 func (c *HistoryAdminCtrl) Birthday(ctx context.Context, req *v1.DeviceAdminHistoryBirthdayGetReq) (res *v1.DeviceAdminHistoryBirthdayGetRes, err error) {
 	if err = c.requireAdmin(ctx); err != nil {

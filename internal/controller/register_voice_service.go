@@ -8,14 +8,13 @@ import (
 )
 
 // RegisterVoiceServiceHTTP 注册 voice-service 独立进程所需路由。
-// 业务说明：clinic / care-alert / growth-trajectory / AI 额度 / llm-lanes 已随
-// retire-non-predict-ai-surface 下线；保留聊天 WS、飞轮 Admin、预测与 suggest/qa 内部口。
+// 业务说明：clinic / care-alert / growth-trajectory / AI 额度 / llm-lanes / suggest 已退役；
+// 保留聊天 WS、飞轮 Admin、预测与 qa 内部口。
 func RegisterVoiceServiceHTTP(s *ghttp.Server) {
 	s.Use(ghttp.MiddlewareHandlerResponse)
 	voicectrl.RegisterVoiceChatWS(s)
 	voicectrl.RegisterVoiceAsrWS(s)
 	s.Group("/", func(group *ghttp.RouterGroup) {
-		group.Bind(voicectrl.NewVoiceSuggestInternalCtrl())
 		group.Bind(voicectrl.NewVoiceQaInternalCtrl())
 		group.Bind(voicectrl.NewVoiceAdminIntentVectorsCtrl())
 		group.Bind(voicectrl.NewVoiceAdminTypeVectorsCtrl())

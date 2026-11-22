@@ -10,6 +10,18 @@ import (
 	"github.com/gogf/gf/v2/os/glog"
 )
 
+// ProbeMigrateDeviceNo 改名预检：确认对机权益相关表可读，不改写任何行。
+func ProbeMigrateDeviceNo(ctx context.Context) error {
+	db := g.DB()
+	if _, err := db.Model("feature_entitlement").Ctx(ctx).Limit(1).Count(); err != nil {
+		return fmt.Errorf("cash feature_entitlement 探测失败: %w", err)
+	}
+	if _, err := db.Model("feature_allowed_count").Ctx(ctx).Limit(1).Count(); err != nil {
+		return fmt.Errorf("cash feature_allowed_count 探测失败: %w", err)
+	}
+	return nil
+}
+
 // MigrateDeviceNo 将对机权益与次数从 old device_no 迁到 new（宝宝号改名）。
 // 业务逻辑：若新号上已存在同 feature 权益或 allowed_count 行则失败（避免静默覆盖）；
 // feature_order 等审计快照不跟迁。

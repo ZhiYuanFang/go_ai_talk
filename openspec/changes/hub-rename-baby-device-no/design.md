@@ -2,7 +2,7 @@
 
 ## Context
 
-- 宝宝身份键为 `user.device_no`；业务数据按该字符串分区（history/suggest、cash 对机权益、appointment、MCP 落点等）。见 proposal.md — Why。
+- 宝宝身份键为 `user.device_no`；业务数据按该字符串分区（history、cash 对机权益、appointment、MCP 落点等；suggest 已退役不跟迁）。见 proposal.md — Why。
 - 跨服务禁止直查他域库；改名须由 device 编排 + `clients/{history,cash,...}` 契约迁移。
 - 今日 refresh 键为 `gw:app:rt:{token}`，无按 wxId/deviceNo 反查；`TokenRefresh` 在 refresh 已携带 `wxId:device_no` 时**不会**回源 device（与 gateway-edge「refresh 同步 device_no」意图存在实现缺口）。
 - Flutter 历史写入使用请求体 `deviceNo`（非仅 JWT）；`token/refresh` 响应不含 `deviceNo`；登录响应含 `deviceNo`。不改客户端时须逼重登。
@@ -38,7 +38,7 @@
 | 跟迁 | 不跟迁（默认） |
 |------|----------------|
 | `user.device_no`、`wx.device_no`、`appointment_next`、`xiaozhi_mcp_binding` | `survey_response.device_no`、`predict_pro_idea.device_no` |
-| `history`、`suggest` | `feature_order` 等支付审计（可选后续） |
+| `history`（不跟迁 `suggest`） | `feature_order` 等支付审计（可选后续）；遗留 `suggest` 行 |
 | `feature_entitlement`、`feature_allowed_count`、仍在用的 invite device 维表 | |
 
 - NEW 必须尚未被 `user` 占用；冲突则整单失败。
@@ -65,14 +65,21 @@
 
 ### D6 — Hub UI
 
-- 设备列表行或详情：改名表单、二次确认文案（旧号失效、家人需重新登录、数据跟迁）。
-- 成功后展示 NEW，并提示刷新列表；history 深链改用新号。
+- 设备列表行：改名按钮（OLD 取自当前行，prompt 新号或生成）。
+- **自由填写入口**：运维可手填 `oldDeviceNo` + `newDeviceNo`（不依赖列表当前展示号），用于半失败后列表只剩 NEW 时的补迁重试。
+- 二次确认文案（旧号失效、家人需重新登录、数据跟迁）；成功后展示 NEW / history 深链。
 - 遵循 admin-hub 近全宽/危险操作确认惯例。
 
 ### D7 — 失败与重入
 
 - 跨库无分布式事务：建议顺序 **device 本域先改注册与绑定 → history → cash → 吊销会话**；若后步失败，运维可对同一 OLD/NEW 重试（幂等：以「user 已是 NEW 且 OLD 无注册」为已完成 device 段，继续补迁残留行）。
 - 不做自动回滚到 OLD（避免再次暴露泄露号）。
+
+### D8 — 先探再改
+
+- 在**任何本域写或下游 migrate/revoke 之前**，device 编排 MUST 先探测 history / cash / gateway-app 内部契约可达且本域库表可访问（`dryRun`：鉴权 + 读探测，MUST NOT 改写业务行、MUST NOT bump session epoch）。
+- 探测失败 MUST 中止改名并返回可读错误，MUST NOT 已部分改写本域后再因下游不可达而半迁（首次改名路径）。
+- 探测不替代业务冲突检测；真实 migrate 仍按原语义执行。
 
 ## Risks / Trade-offs
 

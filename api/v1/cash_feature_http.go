@@ -33,6 +33,8 @@ type CashInternalMigrateDeviceNoReq struct {
 	g.Meta      `path:"/cash/internal/api/device-no/migrate" method:"post" tags:"cash" summary:"内部迁移对机权益 device_no"`
 	OldDeviceNo string `json:"oldDeviceNo" v:"required"`
 	NewDeviceNo string `json:"newDeviceNo" v:"required"`
+	// DryRun 为 true 时仅探测库表可读，不 UPDATE。
+	DryRun bool `json:"dryRun"`
 }
 
 // CashInternalMigrateDeviceNoRes 迁移结果。

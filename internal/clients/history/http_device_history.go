@@ -219,26 +219,6 @@ func (r *httpDeviceHistoryClient) HasOpenHistory(ctx context.Context, deviceNo s
 	return resp.Open, err
 }
 
-func (r *httpDeviceHistoryClient) ListSuggest(ctx context.Context, deviceNo string) ([]entity.Suggest, error) {
-	if err := r.notReady(); err != nil {
-		return nil, err
-	}
-	var resp struct {
-		List []entity.Suggest `json:"list"`
-	}
-	t := r.targets
-	err := r.doJSON(ctx, http.MethodGet, t.VoiceBaseURL, t.VoiceSuggestListPath(), map[string]string{"deviceNo": strings.TrimSpace(deviceNo)}, nil, &resp)
-	return resp.List, err
-}
-
-func (r *httpDeviceHistoryClient) DeleteSuggest(ctx context.Context, id int64, deviceNo string) error {
-	if err := r.notReady(); err != nil {
-		return err
-	}
-	t := r.targets
-	return r.doJSON(ctx, http.MethodPost, t.VoiceBaseURL, t.VoiceSuggestDeletePath(), nil, map[string]interface{}{"id": id, "deviceNo": strings.TrimSpace(deviceNo)}, nil)
-}
-
 func (r *httpDeviceHistoryClient) ListEventOptions(ctx context.Context) ([]entity.Event, error) {
 	if err := r.notReady(); err != nil {
 		return nil, err

@@ -106,25 +106,6 @@ func localHTTPDoJSONWithOpts(ctx context.Context, method, baseURL, path string, 
 	return json.Unmarshal(env.Data, out)
 }
 
-func delegateListSuggest(ctx context.Context, deviceNo string) ([]entity.Suggest, error) {
-	t := contracts.ResolveHTTPTargets()
-	var resp struct {
-		List []entity.Suggest `json:"list"`
-	}
-	if err := localHTTPDoJSON(ctx, http.MethodGet, t.VoiceBaseURL, t.VoiceSuggestListPath(), map[string]string{"deviceNo": strings.TrimSpace(deviceNo)}, nil, &resp); err != nil {
-		return nil, err
-	}
-	return resp.List, nil
-}
-
-func delegateDeleteSuggest(ctx context.Context, id int64, deviceNo string) error {
-	t := contracts.ResolveHTTPTargets()
-	return localHTTPDoJSON(ctx, http.MethodPost, t.VoiceBaseURL, t.VoiceSuggestDeletePath(), nil, map[string]interface{}{
-		"id":       id,
-		"deviceNo": strings.TrimSpace(deviceNo),
-	}, nil)
-}
-
 func delegateListEventOptions(ctx context.Context) ([]entity.Event, error) {
 	t := contracts.ResolveHTTPTargets()
 	var resp struct {

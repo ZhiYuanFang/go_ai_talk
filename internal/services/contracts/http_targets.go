@@ -44,14 +44,6 @@ func (t HTTPTargets) HistoryListV2Path() string {
 	return "/device/history/api/v2/list"
 }
 
-func (t HTTPTargets) HistorySuggestPath() string {
-	return "/device/history/api/suggest"
-}
-
-func (t HTTPTargets) HistorySuggestDeletePath() string {
-	return "/device/history/api/suggest/delete"
-}
-
 func (t HTTPTargets) HistoryEventOptionsPath() string {
 	return "/device/history/api/event/options"
 }
@@ -118,16 +110,6 @@ func (t HTTPTargets) DeviceInternalEventOptionsPath() string {
 	return "/device/internal/api/event/options"
 }
 
-// VoiceSuggestListPath 语音域成长建议列表。
-func (t HTTPTargets) VoiceSuggestListPath() string {
-	return "/voice/internal/api/suggest/list"
-}
-
-// VoiceSuggestDeletePath 语音域删除成长建议。
-func (t HTTPTargets) VoiceSuggestDeletePath() string {
-	return "/voice/internal/api/suggest/delete"
-}
-
 // VoiceInternalQaListPath 语音域内部问答库列表（qa 表权威在 voice 库）。
 func (t HTTPTargets) VoiceInternalQaListPath() string {
 	return "/voice/internal/api/qa/list"
@@ -156,14 +138,6 @@ func (t HTTPTargets) DeviceProfileSaveURL() string {
 
 func (t HTTPTargets) DeviceInternalEventOptionsURL() string {
 	return t.DeviceBaseURL + t.DeviceInternalEventOptionsPath()
-}
-
-func (t HTTPTargets) VoiceSuggestListURL() string {
-	return t.VoiceBaseURL + t.VoiceSuggestListPath()
-}
-
-func (t HTTPTargets) VoiceSuggestDeleteURL() string {
-	return t.VoiceBaseURL + t.VoiceSuggestDeletePath()
 }
 
 // VoiceInternalQaListURL 语音域内部问答库列表完整 URL。

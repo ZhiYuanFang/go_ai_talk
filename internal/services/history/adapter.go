@@ -232,26 +232,6 @@ func (r *historyRemoteClient) HasOpenHistory(ctx context.Context, deviceNo strin
 	return resp.Open, err
 }
 
-func (r *historyRemoteClient) ListSuggest(ctx context.Context, deviceNo string) ([]entity.Suggest, error) {
-	if err := r.notReady(); err != nil {
-		return nil, err
-	}
-	var resp struct {
-		List []entity.Suggest `json:"list"`
-	}
-	t := r.targets
-	err := r.doJSON(ctx, http.MethodGet, t.VoiceBaseURL, t.VoiceSuggestListPath(), map[string]string{"deviceNo": strings.TrimSpace(deviceNo)}, nil, &resp)
-	return resp.List, err
-}
-
-func (r *historyRemoteClient) DeleteSuggest(ctx context.Context, id int64, deviceNo string) error {
-	if err := r.notReady(); err != nil {
-		return err
-	}
-	t := r.targets
-	return r.doJSON(ctx, http.MethodPost, t.VoiceBaseURL, t.VoiceSuggestDeletePath(), nil, map[string]interface{}{"id": id, "deviceNo": strings.TrimSpace(deviceNo)}, nil)
-}
-
 func (r *historyRemoteClient) ListEventOptions(ctx context.Context) ([]entity.Event, error) {
 	if err := r.notReady(); err != nil {
 		return nil, err
@@ -647,23 +627,6 @@ func (a *switchAdapter) HasOpenHistory(ctx context.Context, deviceNo string, eve
 		return a.local.HasOpenHistory(ctx, deviceNo, eventIds)
 	}
 	return open, err
-}
-
-func (a *switchAdapter) ListSuggest(ctx context.Context, deviceNo string) ([]entity.Suggest, error) {
-	if !a.shouldUseRemote(deviceNo) {
-		return a.local.ListSuggest(ctx, deviceNo)
-	}
-	items, err := a.remote.ListSuggest(ctx, deviceNo)
-	if err != nil && a.cfg.failoverToLocal {
-		return a.local.ListSuggest(ctx, deviceNo)
-	}
-	return items, err
-}
-
-func (a *switchAdapter) DeleteSuggest(ctx context.Context, id int64, deviceNo string) error {
-	return a.run(a.shouldUseRemote(deviceNo), func() error { return a.remote.DeleteSuggest(ctx, id, deviceNo) }, func() error {
-		return a.local.DeleteSuggest(ctx, id, deviceNo)
-	})
 }
 
 func (a *switchAdapter) ListEventOptions(ctx context.Context) ([]entity.Event, error) {
