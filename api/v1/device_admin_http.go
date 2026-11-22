@@ -20,6 +20,22 @@ type DeviceAdminRegisterRes struct {
 	ActiveTime int64 `json:"activeTime" dc:"激活时间，Unix 秒"`
 }
 
+// DeviceAdminRenameDeviceNoReq 宝宝号原地改名（保数据；吊销会话逼重登）。
+type DeviceAdminRenameDeviceNoReq struct {
+	g.Meta       `path:"/device/admin/api/device/rename" method:"post" tags:"admin" summary:"修改宝宝设备号"`
+	OldDeviceNo  string `json:"oldDeviceNo" v:"required" dc:"当前宝宝号"`
+	NewDeviceNo  string `json:"newDeviceNo" dc:"新宝宝号；与 generateNew 二选一"`
+	GenerateNew  bool   `json:"generateNew" dc:"true 时服务端生成唯一新号"`
+}
+
+// DeviceAdminRenameDeviceNoRes 改名结果。
+type DeviceAdminRenameDeviceNoRes struct {
+	OldDeviceNo string  `json:"oldDeviceNo"`
+	NewDeviceNo string  `json:"newDeviceNo"`
+	WxIds       []int64 `json:"wxIds"`
+	Steps       []string `json:"steps"`
+}
+
 // DeviceAdminListReq 设备列表（仅需 Header 口令）。
 type DeviceAdminListReq struct {
 	g.Meta `path:"/device/admin/api/list" method:"get" tags:"admin" summary:"设备列表"`

@@ -12,6 +12,7 @@ import (
 	"hello/internal/dao"
 	"hello/internal/model/entity"
 	"hello/internal/platform/cachekit"
+	"hello/internal/platform/httpmeta"
 	"hello/internal/services/gatewayapp"
 
 	"github.com/gogf/gf/v2/encoding/gjson"
@@ -19,6 +20,7 @@ import (
 	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/net/gclient"
+	"github.com/gogf/gf/v2/net/ghttp"
 	"github.com/gogf/gf/v2/os/glog"
 )
 
@@ -206,14 +208,20 @@ func (c *GatewayAppCtrl) AppleLogin(ctx context.Context, req *v1.GatewayAppApple
 }
 
 // TokenRefresh POST /device/app/api/token/refresh（单次旋转 refresh）。
+// wxId>0 时 device_no MUST 以 device-service 当前绑定为准，忽略 refresh 载荷内旧号（换绑/宝宝改名）。
 func (c *GatewayAppCtrl) TokenRefresh(ctx context.Context, req *v1.GatewayAppTokenRefreshReq) (res *v1.GatewayAppTokenRefreshRes, err error) {
 	wxID, rtDeviceNo, err := gatewayapp.ConsumeRefreshToken(ctx, req.RefreshToken, true)
 	if err != nil {
 		return nil, gerror.NewCode(gcode.CodeNotAuthorized, err.Error())
 	}
 	deviceNo := strings.TrimSpace(rtDeviceNo)
-	if deviceNo == "" && wxID > 0 {
-		if dn, e2 := gatewayapp.FetchDeviceNoByWxID(ctx, wxID); e2 == nil {
+	if wxID > 0 {
+		// 权威绑定：始终回源；查询失败时不回退到载荷旧号，避免改名后继续签发泄露号。
+		dn, e2 := gatewayapp.FetchDeviceNoByWxID(ctx, wxID)
+		if e2 != nil {
+			g.Log().Warningf(ctx, "[gateway-app] token refresh fetch deviceNo failed wxId=%d err=%v", wxID, e2)
+			deviceNo = ""
+		} else {
 			deviceNo = strings.TrimSpace(dn)
 		}
 	}
@@ -226,6 +234,24 @@ func (c *GatewayAppCtrl) TokenRefresh(ctx context.Context, req *v1.GatewayAppTok
 		return nil, err
 	}
 	return &v1.GatewayAppTokenRefreshRes{AccessToken: access, RefreshToken: refresh}, nil
+}
+
+// InternalRevokeSessions POST /device/app/api/internal/sessions/revoke
+// 业务逻辑：bump wx / 纯设备 session epoch，使旧 refresh 在 Consume 时失败，逼客户端重登拿新 deviceNo。
+func (c *GatewayAppCtrl) InternalRevokeSessions(ctx context.Context, req *v1.GatewayAppInternalRevokeSessionsReq) (res *v1.GatewayAppInternalRevokeSessionsRes, err error) {
+	r := ghttp.RequestFromCtx(ctx)
+	if r == nil || !httpmeta.ValidateInternalSecret(httpmeta.InternalSecretFromRequest(r)) {
+		return nil, gerror.NewCode(gcode.CodeNotAuthorized, "内部接口未授权")
+	}
+	if err := gatewayapp.BumpSessionEpochForWxIDs(ctx, req.WxIds); err != nil {
+		return nil, err
+	}
+	if dn := strings.TrimSpace(req.DeviceNo); dn != "" {
+		if err := gatewayapp.BumpSessionEpochForDeviceNo(ctx, dn); err != nil {
+			return nil, err
+		}
+	}
+	return &v1.GatewayAppInternalRevokeSessionsRes{Ok: true}, nil
 }
 
 // VersionCheck GET /device/app/api/version/check

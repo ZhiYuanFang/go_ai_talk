@@ -2,6 +2,7 @@ package cachekit
 
 import (
 	"fmt"
+	"strings"
 )
 
 const (
@@ -12,6 +13,17 @@ const (
 // GatewayRefreshTokenKey App refresh token；TTL 见 gatewayApp.refreshTtlSeconds。
 func GatewayRefreshTokenKey(token string) string {
 	return gatewayRefreshKeyPrefix + token
+}
+
+// GatewaySessionEpochWxKey 账号会话世代（整数）；吊销时 INCR，refresh 载荷携带的 epoch 须一致。
+// 无 TTL：世代单调递增即可；跨进程与 gateway-app 共享。
+func GatewaySessionEpochWxKey(wxID int64) string {
+	return fmt.Sprintf("gw:app:sess:epoch:w:%d", wxID)
+}
+
+// GatewaySessionEpochDeviceKey 纯设备会话（wxId=0）按 device_no 的会话世代；宝宝改名时对旧号 INCR。
+func GatewaySessionEpochDeviceKey(deviceNo string) string {
+	return "gw:app:sess:epoch:d:" + strings.TrimSpace(deviceNo)
 }
 
 // GatewayAppVersionLatestBaseKey 版本检查缓存基键（无环境后缀）。

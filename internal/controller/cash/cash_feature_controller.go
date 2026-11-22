@@ -101,6 +101,19 @@ func (c *CashFeatureController) InternalFeatureTrialClaim(ctx context.Context, r
 	return &v1.CashInternalFeatureTrialClaimRes{}, nil
 }
 
+// InternalMigrateDeviceNo POST /cash/internal/api/device-no/migrate
+// 宝宝号改名：迁移对机权益与次数；须内部密钥。
+func (c *CashFeatureController) InternalMigrateDeviceNo(ctx context.Context, req *v1.CashInternalMigrateDeviceNoReq) (*v1.CashInternalMigrateDeviceNoRes, error) {
+	r := ghttp.RequestFromCtx(ctx)
+	if !cash.ValidateInternalSecret(cash.InternalSecretFromRequest(r)) {
+		return nil, gerror.NewCode(gcode.CodeNotAuthorized, "内部接口未授权")
+	}
+	if err := cash.MigrateDeviceNo(ctx, req.OldDeviceNo, req.NewDeviceNo); err != nil {
+		return nil, gerror.NewCode(gcode.CodeInvalidOperation, err.Error())
+	}
+	return &v1.CashInternalMigrateDeviceNoRes{Ok: true}, nil
+}
+
 // Catalog GET /cash/app/api/feature/catalog
 func (c *CashFeatureController) Catalog(ctx context.Context, _ *v1.CashFeatureCatalogReq) (*v1.CashFeatureCatalogRes, error) {
 	dn, err := cashDeviceNoFromHeader(ctx)

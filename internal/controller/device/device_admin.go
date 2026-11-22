@@ -58,6 +58,23 @@ func (c *AdminCtrl) Register(ctx context.Context, req *v1.DeviceAdminRegisterReq
 	return &v1.DeviceAdminRegisterRes{DeviceNo: deviceNo, ActiveTime: activeTime}, nil
 }
 
+// RenameDeviceNo 宝宝号原地改名（跨服务编排）。
+func (c *AdminCtrl) RenameDeviceNo(ctx context.Context, req *v1.DeviceAdminRenameDeviceNoReq) (res *v1.DeviceAdminRenameDeviceNoRes, err error) {
+	if err := c.requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	out, err := device.RenameDeviceNo(ctx, req.OldDeviceNo, req.NewDeviceNo, req.GenerateNew)
+	if err != nil {
+		return nil, gerror.NewCode(gcode.CodeInvalidOperation, err.Error())
+	}
+	return &v1.DeviceAdminRenameDeviceNoRes{
+		OldDeviceNo: out.OldDeviceNo,
+		NewDeviceNo: out.NewDeviceNo,
+		WxIds:       out.WxIds,
+		Steps:       out.Steps,
+	}, nil
+}
+
 // UserList 设备记录分页列表。
 func (c *AdminCtrl) UserList(ctx context.Context, req *v1.DeviceAdminUserListReq) (res *v1.DeviceAdminUserListRes, err error) {
 	if err := c.requireAdmin(ctx); err != nil {

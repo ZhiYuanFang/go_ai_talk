@@ -62,6 +62,7 @@
 						<th>last_talk_answer</th>
 						<th>最近接口</th>
 						<th>接口时间</th>
+						<th>操作</th>
 					</tr>
 				</thead>
 				<tbody id="deviceRecordTbody"></tbody>
@@ -571,6 +572,37 @@ function historyPageUrl(deviceNo){
 	return '/device/admin/history/' + encodeURIComponent(dn);
 }
 
+/** 宝宝号原地改名：二次确认后调用 Admin API；成功后刷新列表并提示新号 history 深链。 */
+async function renameBabyDeviceNo(oldDn){
+	const oldDeviceNo = String(oldDn || '').trim();
+	if(!oldDeviceNo){ alert('设备号为空'); return; }
+	const mode = window.prompt(
+		'修改宝宝号「'+ oldDeviceNo +'」\n输入新号，或留空并点确定后用系统生成；取消则中止。\n将迁移历史/权益并令家人重新登录。',
+		''
+	);
+	if(mode === null) return;
+	const newDeviceNo = String(mode || '').trim();
+	const generateNew = !newDeviceNo;
+	const tip = generateNew
+		? ('确认将「'+ oldDeviceNo +'」改为系统生成的新号？旧号立即失效，绑定账号需重新登录。')
+		: ('确认将「'+ oldDeviceNo +'」改为「'+ newDeviceNo +'」？旧号立即失效，绑定账号需重新登录。');
+	if(!window.confirm(tip)) return;
+	const msgEl = document.getElementById('deviceRecordMsg');
+	try{
+		const body = { oldDeviceNo, generateNew };
+		if(!generateNew) body.newDeviceNo = newDeviceNo;
+		const data = await api('/device/admin/api/device/rename', { method:'POST', body: JSON.stringify(body) });
+		const neu = (data && data.newDeviceNo) ? String(data.newDeviceNo) : '';
+		setMsg(msgEl, '改名成功：'+ oldDeviceNo +' → '+ neu +'；请用新号打开历史页', true);
+		await loadDeviceRecordList(deviceRecordPage);
+		if(neu && window.confirm('是否打开新号历史运维页？')){
+			window.location.href = historyPageUrl(neu);
+		}
+	}catch(e){
+		setMsg(msgEl, String(e && e.message ? e.message : e));
+	}
+}
+
 async function loadDeviceRecordList(page){
 	if(page != null && page > 0) deviceRecordPage = page;
 	const q = encodeURIComponent(deviceRecordQuery || '');
@@ -591,7 +623,8 @@ async function loadDeviceRecordList(page){
 			'<td class="wrapcell">'+ escapeHtml(it.lastTalkAsk||'') +'</td>' +
 			'<td class="wrapcell">'+ escapeHtml(it.lastTalkAnswer||'') +'</td>' +
 			'<td class="wrapcell">'+ escapeHtml(it.lastApiPath||'') +'</td>' +
-			'<td>'+ escapeHtml(formatUnixLocal(it.lastApiAt)) +'</td>';
+			'<td>'+ escapeHtml(formatUnixLocal(it.lastApiAt)) +'</td>' +
+			'<td><button type="button" class="secondary rename-device-btn" data-device-no="'+ escapeHtml(dn) +'">改名</button></td>';
 		tbody.appendChild(tr);
 	});
 	const totalPages = paged.total > 0 ? Math.ceil(paged.total / paged.pageSize) : 0;
@@ -1108,6 +1141,13 @@ const deviceRecordMsg = () => document.getElementById('deviceRecordMsg');
 document.getElementById('deviceRefreshBtn').addEventListener('click', async () => {
 	try { await loadDeviceRecordList(); setMsg(deviceRecordMsg(), '已刷新', true); }
 	catch (e) { setMsg(deviceRecordMsg(), e.message || '刷新失败'); }
+});
+
+document.getElementById('deviceRecordTbody').addEventListener('click', (ev) => {
+	const btn = ev.target && ev.target.closest ? ev.target.closest('.rename-device-btn') : null;
+	if(!btn) return;
+	ev.preventDefault();
+	renameBabyDeviceNo(btn.getAttribute('data-device-no') || '');
 });
 
 document.getElementById('deviceSearchBtn').addEventListener('click', async () => {

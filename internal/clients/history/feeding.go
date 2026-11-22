@@ -93,3 +93,52 @@ func FetchFeedingDayStats(ctx context.Context, deviceNo string, days int) (*Feed
 	}
 	return &env.Data, nil
 }
+
+// RemoteMigrateDeviceNo 宝宝号改名：迁移 history/suggest 分区键。
+func RemoteMigrateDeviceNo(ctx context.Context, oldDeviceNo, newDeviceNo string) error {
+	old := strings.TrimSpace(oldDeviceNo)
+	neu := strings.TrimSpace(newDeviceNo)
+	if old == "" || neu == "" {
+		return gerror.NewCode(gcode.CodeInvalidParameter, "deviceNo 不能为空")
+	}
+	base := strings.TrimRight(strings.TrimSpace(os.Getenv("HISTORY_SERVICE_URL")), "/")
+	if base == "" {
+		return gerror.NewCode(gcode.CodeInternalError, "未配置 HISTORY_SERVICE_URL")
+	}
+	secret := strings.TrimSpace(os.Getenv("DEVICE_GATEWAY_INTERNAL_SECRET"))
+	if secret == "" {
+		return gerror.NewCode(gcode.CodeInternalError, "未配置 DEVICE_GATEWAY_INTERNAL_SECRET")
+	}
+	body, _ := json.Marshal(map[string]interface{}{
+		"oldDeviceNo": old, "newDeviceNo": neu,
+	})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/history/internal/api/device-no/migrate",
+		strings.NewReader(string(body)))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(httpmeta.HeaderDeviceGatewayInternalSecret, secret)
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return gerror.WrapCode(gcode.CodeInternalError, err, "history migrate 调用失败")
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+	var env struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	}
+	if len(raw) > 0 {
+		_ = json.Unmarshal(raw, &env)
+	}
+	if resp.StatusCode >= 400 || env.Code != 0 {
+		msg := strings.TrimSpace(env.Message)
+		if msg == "" {
+			msg = fmt.Sprintf("history migrate HTTP %d", resp.StatusCode)
+		}
+		return gerror.NewCode(gcode.CodeOperationFailed, msg)
+	}
+	return nil
+}

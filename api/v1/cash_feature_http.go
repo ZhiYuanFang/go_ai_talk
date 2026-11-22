@@ -28,6 +28,18 @@ type CashInternalFeatureTrialClaimReq struct {
 // CashInternalFeatureTrialClaimRes 空 data 即可。
 type CashInternalFeatureTrialClaimRes struct{}
 
+// CashInternalMigrateDeviceNoReq 内部：宝宝号改名时迁移对机权益/次数分区键。
+type CashInternalMigrateDeviceNoReq struct {
+	g.Meta      `path:"/cash/internal/api/device-no/migrate" method:"post" tags:"cash" summary:"内部迁移对机权益 device_no"`
+	OldDeviceNo string `json:"oldDeviceNo" v:"required"`
+	NewDeviceNo string `json:"newDeviceNo" v:"required"`
+}
+
+// CashInternalMigrateDeviceNoRes 迁移结果。
+type CashInternalMigrateDeviceNoRes struct {
+	Ok bool `json:"ok"`
+}
+
 // CashFeatureCatalogReq GET 合成功能目录。
 type CashFeatureCatalogReq struct {
 	g.Meta `path:"/cash/app/api/feature/catalog" method:"get" tags:"cash" summary:"功能目录（含是否已开通与可售 SKU）"`

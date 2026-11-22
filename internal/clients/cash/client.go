@@ -209,3 +209,52 @@ func RemoteClaimFeatureTrial(ctx context.Context, wxID int64, featureID string) 
 	}
 	return nil
 }
+
+// RemoteMigrateDeviceNo 宝宝号改名：迁移 cash 对机权益/次数分区键。
+func RemoteMigrateDeviceNo(ctx context.Context, oldDeviceNo, newDeviceNo string) error {
+	old := strings.TrimSpace(oldDeviceNo)
+	neu := strings.TrimSpace(newDeviceNo)
+	if old == "" || neu == "" {
+		return gerror.NewCode(gcode.CodeInvalidParameter, "deviceNo 不能为空")
+	}
+	c := remoteHTTP()
+	if c == nil || c.base == "" {
+		return gerror.NewCode(gcode.CodeInternalError, "CASH_SERVICE_URL 未配置")
+	}
+	if strings.TrimSpace(c.secret) == "" {
+		return gerror.NewCode(gcode.CodeInternalError, "DEVICE_GATEWAY_INTERNAL_SECRET 未配置")
+	}
+	body, _ := json.Marshal(map[string]interface{}{
+		"oldDeviceNo": old, "newDeviceNo": neu,
+	})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/cash/internal/api/device-no/migrate",
+		strings.NewReader(string(body)))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(httpmeta.HeaderDeviceGatewayInternalSecret, c.secret)
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return gerror.NewCode(gcode.CodeOperationFailed, fmt.Sprintf("cash-service 不可达: %v", err))
+	}
+	defer resp.Body.Close()
+	rawBody, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+	if err != nil {
+		return err
+	}
+	var env gfEnvelope
+	if len(rawBody) > 0 {
+		if err = json.Unmarshal(rawBody, &env); err != nil {
+			return gerror.NewCode(gcode.CodeInternalError, "cash migrate 响应非 JSON")
+		}
+	}
+	if resp.StatusCode >= 400 || env.Code != 0 {
+		msg := strings.TrimSpace(env.Message)
+		if msg == "" {
+			msg = fmt.Sprintf("cash migrate HTTP %d", resp.StatusCode)
+		}
+		return gerror.NewCode(gcode.CodeOperationFailed, msg)
+	}
+	return nil
+}

@@ -11,6 +11,8 @@ import (
 
 var maintenanceExactAPI = map[string]struct{}{
 	"POST /device/app/api/token/refresh": {},
+	// 内部会话吊销：服务间密钥调用，不计入 App usage（hub-rename-baby-device-no）。
+	"POST /device/app/api/internal/sessions/revoke": {},
 	"GET /device/app/api/version/check":  {},
 	"GET /device/app/api/site/home": {},
 	// 小智引导视频清单：官网匿名只读 + App 同源 list；负责人确认不计入 usage（refresh-pangbao-home-capability-story）。

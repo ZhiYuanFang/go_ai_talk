@@ -78,6 +78,19 @@ type GatewayAppTokenRefreshRes struct {
 	RefreshToken string `json:"refreshToken"`
 }
 
+// GatewayAppInternalRevokeSessionsReq 内部：按 wxId 列表与/或 deviceNo 吊销 App refresh（bump session epoch）。
+// 须携带 X-Device-Gateway-Internal-Secret；供 device 宝宝改名编排调用。
+type GatewayAppInternalRevokeSessionsReq struct {
+	g.Meta   `path:"/device/app/api/internal/sessions/revoke" method:"post" tags:"gateway-app" summary:"内部-吊销 App refresh 会话"`
+	WxIds    []int64 `json:"wxIds" dc:"要吊销的 wx 主键列表"`
+	DeviceNo string  `json:"deviceNo" dc:"可选；非空时同时吊销纯设备会话（wxId=0）上该 device_no"`
+}
+
+// GatewayAppInternalRevokeSessionsRes 吊销结果。
+type GatewayAppInternalRevokeSessionsRes struct {
+	Ok bool `json:"ok"`
+}
+
 // GatewayAppVersionCheckReq 版本检查。
 type GatewayAppVersionCheckReq struct {
 	g.Meta         `path:"/device/app/api/version/check" method:"get" tags:"gateway-app" summary:"App 版本检查"`

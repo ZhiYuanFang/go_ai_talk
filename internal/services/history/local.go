@@ -446,6 +446,10 @@ func AddDeviceHistory(ctx context.Context, item entity.History) (int64, error) {
 	if item.DeviceNo == "" {
 		return 0, fmt.Errorf("deviceNo 不能为空")
 	}
+	// 写前校验宝宝号仍注册：改名后旧号拒绝落库，避免空壳分区分裂。
+	if err := ensureHistoryDeviceRegistered(ctx, item.DeviceNo); err != nil {
+		return 0, err
+	}
 	if err := guardDuplicateOpenHistoryStart(ctx, item.DeviceNo, item.EventId, item.EndTime, 0); err != nil {
 		return 0, err
 	}

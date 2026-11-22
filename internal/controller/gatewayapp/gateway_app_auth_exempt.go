@@ -14,6 +14,7 @@ var (
 	// 任意 HTTP 方法：路径以前缀命中即豁免（内部接口、Swagger 等）。
 	gatewayAppAuthExemptPrefixesAnyMethod = []string{
 		"/device/app/api/user/internal/",
+		"/device/app/api/internal/",
 		"/swagger",
 	}
 
