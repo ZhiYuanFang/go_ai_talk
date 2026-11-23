@@ -25,6 +25,8 @@ var maintenanceExactAPI = map[string]struct{}{
 	// Live Activity clear activity token：负责人确认不计入 usage（live-activity-clear-activity-on-app-open；对标 register）。
 	"POST /app/api/push/live-activity/activity/clear": {},
 	"GET /device/history/api/event/options":           {},
+	// 历史 SSE 长连接：对标 WS Upgrade 排除；不计入短请求 usage（add-history-sse-channel）。
+	"GET /device/app/sse/history": {},
 	// expect-batch：负责人确认不计入 usage（history-expect-batch-patch-go；Flutter 锚点链后台补丁）。
 	"POST /device/history/api/event/expect-batch": {},
 	"GET /ucg/app/api/conversations":        {},

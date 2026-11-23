@@ -5,7 +5,7 @@ import (
 	"github.com/gogf/gf/v2/os/gfile"
 )
 
-// RegisterGatewayAppHTTP 注册 App 专用网关：代理链 + Bearer 注入 + App 自有 API + 历史 WS。
+// RegisterGatewayAppHTTP 注册 App 专用网关：代理链 + Bearer 注入 + App 自有 API + 历史 WS/SSE。
 func RegisterGatewayAppHTTP(s *ghttp.Server) {
 	s.SetFileServerEnabled(true)
 	s.SetIndexFolder(true)
@@ -54,6 +54,7 @@ func RegisterGatewayAppHTTP(s *ghttp.Server) {
 	installUcgWSProxyMiddleware(s)
 
 	s.BindHandler("/device/app/ws/history", gatewayAppHistoryWS)
+	s.BindHandler("GET:/device/app/sse/history", gatewayAppHistorySSE)
 
 	s.Group("/", func(group *ghttp.RouterGroup) {
 		group.Middleware(ghttp.MiddlewareHandlerResponse)

@@ -1403,6 +1403,17 @@ device-service 另需 `XIAOZHI_MCP_SERVICE_URL`（如 `http://xiaozhi-mcp-servic
 
 - 每服务独立库；跨域走 HTTP，禁止跨库直查（见 `AGENTS.md`）。
 - gateway-app：`GATEWAY_APP_PUBLIC_BASE_URL`（APK 下载绝对 URL + CORS 白名单 hostname）、APK 上传需 Nginx `client_max_body_size` ≥ 220MB。
+- **历史 SSE（路径级禁缓冲）**：`GET /device/app/sse/history` 为长连接；Nginx（或等价反代）MUST 仅对该精确路径禁用响应缓冲，例如：
+  ```nginx
+  location = /device/app/sse/history {
+      proxy_buffering off;
+      proxy_cache off;
+      proxy_http_version 1.1;
+      proxy_set_header Connection "";
+      proxy_pass http://127.0.0.1:19702;  # test 宿主机端口；prod 按实际 upstream
+  }
+  ```
+  服务端已回 `X-Accel-Buffering: no`。**MUST NOT** 以全局 `proxy_buffering off` 作为本能力的默认部署方式。`/device/app/ws/history` 保持现网 WebSocket 反代，勿与 SSE location 混用。
 
 ### 环境隔离（MySQL / Redis / JWT）
 

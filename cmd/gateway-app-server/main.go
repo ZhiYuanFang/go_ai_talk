@@ -25,7 +25,7 @@ func main() {
 		glog.Fatalf(ctx, "dependency check failed: %v", err)
 		return
 	}
-	// 启动 Redis 订阅，将 history 变更推送至本进程 WS Hub。
+	// 启动 Redis 订阅，将 history 变更推送至本进程 WS Hub 与 SSE Hub。
 	gatewayapp.StartHistoryNotifySubscriber(context.Background())
 
 	s := g.Server("gateway-app-server")
