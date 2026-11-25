@@ -11,7 +11,7 @@
 
 | 面 | URL |
 |----|-----|
-| 商户 SPA | `/merchant` 或 `/merchant/index.html` |
+| 商户 SPA | `/merchant`、`/merchant/index.html`（勿再单独注册 `/merchant/`，与前者同路由） |
 | 聚合注册/登录 | `POST /device/app/api/merchant_register` · `merchant_login` |
 | Hub 运维 | `/device/admin/cash-merchant-admin.html` |
 | 商户 SSE | `GET /device/merchant/sse/babies`（Bearer 商户 JWT） |
@@ -32,6 +32,17 @@
 6. 商户台 SSE 在 history create 后局部刷新卡片文案  
 7. `subscribe` 建单 →（DEV）`simulate-paid` → entitlement 有效  
 
+自动化（9.2 / 9.3，含 `simulate-paid` 录制夹具）：
+
+```powershell
+pwsh docs/runbooks/merchant-console-e2e.ps1 `
+  -BaseUrl "https://<gateway>" `
+  -AdminUser admin `
+  -AdminPassword "<hub-admin-password>"
+```
+
+前置：本变更已部署到目标网关；`CASH_PAYMENT_DEV_BYPASS=1`（simulate-paid）；Admin 账号可授期。SSE 推送仍建议浏览器打开 `/merchant` 目视一次。
+
 ## Flutter
 
-兄弟仓 `flutter_ai_talk`：多宝宝列表/切焦点/创建虚拟宝宝（与本仓同发）。旧 App 仍「无→一」。
+兄弟仓 `flutter_ai_talk`：多宝宝列表/切焦点/创建虚拟宝宝（与本仓同发）。旧 App 仍「无→一」。兼容说明见兄弟仓 `docs/multi-baby-compat.md`。

@@ -36,12 +36,9 @@ func RegisterGatewayAppHTTP(s *ghttp.Server) {
 
 	RegisterAdminStaticPages(s)
 
-	// 商户 Vue SPA（静态壳匿名；API 仍走商户 JWT）
+	// 商户 Vue SPA（静态壳匿名；API 仍走商户 JWT）。
+	// GoFrame 将 "/merchant" 与 "/merchant/" 视为同一路由，不可重复 Bind。
 	s.BindHandler("/merchant", func(r *ghttp.Request) {
-		r.Response.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
-		r.Response.ServeFile("resource/public/merchant-spa/index.html")
-	})
-	s.BindHandler("/merchant/", func(r *ghttp.Request) {
 		r.Response.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
 		r.Response.ServeFile("resource/public/merchant-spa/index.html")
 	})
