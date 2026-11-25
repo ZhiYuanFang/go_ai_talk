@@ -39,6 +39,7 @@ var adminStaticPages = []adminStaticPage{
 	{path: "/device/admin/rule-gaps-admin.html", file: "resource/public/rule-gaps-admin.html", noCache: true},
 	{path: "/device/admin/miss-inbox-admin.html", file: "resource/public/miss-inbox-admin.html", noCache: true},
 	{path: "/device/admin/cash-feature-admin.html", file: "resource/public/cash-feature-admin.html", noCache: true},
+	{path: "/device/admin/cash-merchant-admin.html", file: "resource/public/cash-merchant-admin.html", noCache: true},
 	{path: "/device/admin/cash-xiaozhi-mcp-admin.html", file: "resource/public/cash-xiaozhi-mcp-admin.html", noCache: true},
 	{path: "/device/admin/cash-feeding-eligibility-admin.html", file: "resource/public/cash-feeding-eligibility-admin.html", noCache: true},
 	{path: "/device/admin/push-device-admin.html", file: "resource/public/push-device-admin.html", noCache: true},

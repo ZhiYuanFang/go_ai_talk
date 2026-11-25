@@ -19,6 +19,7 @@ func StartHistoryNotifySubscriber(ctx context.Context) {
 		}
 		HistoryHub().BroadcastText(ctx, deviceNo, payload)
 		HistorySSE().Broadcast(ctx, deviceNo, payload)
+		MerchantSSE().BroadcastDevice(ctx, deviceNo, payload)
 		return nil
 	})
 }

@@ -3,6 +3,8 @@ package gatewayapp
 import (
 	"strings"
 
+	"hello/internal/platform/httpmeta"
+
 	"github.com/gogf/gf/v2/net/ghttp"
 )
 
@@ -17,6 +19,7 @@ func StripSpoofedGatewayHeaders(r *ghttp.Request) {
 		HeaderInternalClientIP,
 		HeaderInternalWxId,
 		HeaderInternalDeviceNo,
+		httpmeta.HeaderInternalMerchantId,
 		HeaderInternalAdminVerified,
 		headerAdminPassword,
 	} {

@@ -30,6 +30,10 @@ func main() {
 		glog.Fatalf(ctx, "cash schema ensure failed: %v", err)
 		return
 	}
+	if err := cash.EnsureMerchantSchema(ctx); err != nil {
+		glog.Fatalf(ctx, "merchant schema ensure failed: %v", err)
+		return
+	}
 	s := g.Server("cash-service")
 	applyCashServiceAddress(s)
 	controller.RegisterCashServiceHTTP(s)

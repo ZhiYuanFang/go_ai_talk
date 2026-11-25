@@ -161,6 +161,68 @@ func (c *GatewayAppCtrl) UsernameLogin(ctx context.Context, req *v1.GatewayAppUs
 	}, nil
 }
 
+// MerchantRegister POST /device/app/api/merchant_register
+func (c *GatewayAppCtrl) MerchantRegister(ctx context.Context, req *v1.GatewayAppMerchantRegisterReq) (*v1.GatewayAppMerchantRegisterRes, error) {
+	base := deviceServiceBase(ctx)
+	if base == "" {
+		return nil, gerror.NewCode(gcode.CodeInvalidConfiguration, "DEVICE_SERVICE_URL 未配置")
+	}
+	url := strings.TrimRight(base, "/") + "/device/merchant/api/register"
+	resp, err := gclient.New().ContentJson().Post(ctx, url, g.Map{
+		"storeName": strings.TrimSpace(req.StoreName),
+		"password":  strings.TrimSpace(req.Password),
+	})
+	if err != nil {
+		return nil, err
+	}
+	j := gjson.New(resp.ReadAllString())
+	if j.Get("code").Int() != 0 {
+		return nil, gerror.NewCodef(gcode.CodeBusinessValidationFailed, "商户注册失败: %s", j.Get("message").String())
+	}
+	data := j.GetJson("data")
+	mid := data.Get("merchantId").Int64()
+	store := strings.TrimSpace(data.Get("storeName").String())
+	if mid <= 0 {
+		return nil, gerror.NewCode(gcode.CodeInternalError, "device 返回 merchantId 无效")
+	}
+	access, err := gatewayapp.SignMerchantAccess(ctx, mid)
+	if err != nil {
+		return nil, err
+	}
+	return &v1.GatewayAppMerchantRegisterRes{MerchantId: mid, StoreName: store, AccessToken: access}, nil
+}
+
+// MerchantLogin POST /device/app/api/merchant_login
+func (c *GatewayAppCtrl) MerchantLogin(ctx context.Context, req *v1.GatewayAppMerchantLoginReq) (*v1.GatewayAppMerchantLoginRes, error) {
+	base := deviceServiceBase(ctx)
+	if base == "" {
+		return nil, gerror.NewCode(gcode.CodeInvalidConfiguration, "DEVICE_SERVICE_URL 未配置")
+	}
+	url := strings.TrimRight(base, "/") + "/device/merchant/api/login"
+	resp, err := gclient.New().ContentJson().Post(ctx, url, g.Map{
+		"storeName": strings.TrimSpace(req.StoreName),
+		"password":  strings.TrimSpace(req.Password),
+	})
+	if err != nil {
+		return nil, err
+	}
+	j := gjson.New(resp.ReadAllString())
+	if j.Get("code").Int() != 0 {
+		return nil, gerror.NewCodef(gcode.CodeBusinessValidationFailed, "商户登录失败: %s", j.Get("message").String())
+	}
+	data := j.GetJson("data")
+	mid := data.Get("merchantId").Int64()
+	store := strings.TrimSpace(data.Get("storeName").String())
+	if mid <= 0 {
+		return nil, gerror.NewCode(gcode.CodeInternalError, "device 返回 merchantId 无效")
+	}
+	access, err := gatewayapp.SignMerchantAccess(ctx, mid)
+	if err != nil {
+		return nil, err
+	}
+	return &v1.GatewayAppMerchantLoginRes{MerchantId: mid, StoreName: store, AccessToken: access}, nil
+}
+
 // AppleLogin POST /device/app/api/apple_login：Apple 聚合登录，device 完成业务校验后由 gateway 签发 access/refresh。
 func (c *GatewayAppCtrl) AppleLogin(ctx context.Context, req *v1.GatewayAppAppleLoginReq) (res *v1.GatewayAppAppleLoginRes, err error) {
 	base := deviceServiceBase(ctx)

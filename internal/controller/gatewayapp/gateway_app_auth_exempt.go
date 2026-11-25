@@ -31,6 +31,10 @@ var (
 		"/device/app/api/user/username/login",
 		"/device/app/api/user/device_login",
 		"/device/admin/api/login",
+		"/device/merchant/api/register",
+		"/device/merchant/api/login",
+		"/device/app/api/merchant_login",
+		"/device/app/api/merchant_register",
 		// 支付宝异步通知：匿名到达，cash-service 内验签。
 		"/cash/app/api/vip/alipay/notify",
 		// Apple Server Notifications V2：匿名到达，cash-service 内验 signedPayload。
@@ -51,6 +55,9 @@ var (
 	// GET 或 HEAD：路径精确匹配。
 	gatewayAppAuthExemptExactGETHEAD = []string{
 		"/",
+		"/merchant",
+		"/merchant/",
+		"/merchant/index.html",
 		"/apple-app-site-association",
 		"/.well-known/apple-app-site-association",
 		"/api.json",
@@ -84,6 +91,7 @@ var (
 		"/device/admin/rule-gaps-admin.html",
 		"/device/admin/miss-inbox-admin.html",
 		"/device/admin/cash-feature-admin.html",
+		"/device/admin/cash-merchant-admin.html",
 		"/device/admin/cash-xiaozhi-mcp-admin.html",
 		"/device/admin/cash-feeding-eligibility-admin.html",
 		"/device/admin/push-device-admin.html",

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	deviceclient "hello/internal/clients/device"
 	"hello/internal/dao"
 	"hello/internal/model/entity"
 	contracts "hello/internal/services/contracts"
@@ -417,6 +418,12 @@ func AddDeviceHistory(ctx context.Context, item entity.History) (int64, error) {
 	item.Remark = strings.TrimSpace(item.Remark)
 	if item.DeviceNo == "" {
 		return 0, fmt.Errorf("deviceNo 不能为空")
+	}
+	// 商户欠费：禁止新增 history（update/end 不走本函数）。
+	if block, err := deviceclient.RemoteMerchantBlockHistoryCreate(ctx, item.DeviceNo); err != nil {
+		return 0, fmt.Errorf("商户写闸探活失败，暂不可新增记录")
+	} else if block {
+		return 0, fmt.Errorf("商户订阅已过期或欠费，暂不可新增喂养记录")
 	}
 	// 写前校验宝宝号仍注册：改名后旧号拒绝落库，避免空壳分区分裂。
 	if err := ensureHistoryDeviceRegistered(ctx, item.DeviceNo); err != nil {

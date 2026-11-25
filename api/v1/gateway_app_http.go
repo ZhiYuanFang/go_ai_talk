@@ -33,6 +33,32 @@ type GatewayAppDeviceLoginRes struct {
 	RefreshToken string `json:"refreshToken"`
 }
 
+// GatewayAppMerchantRegisterReq 商户注册并签发商户 JWT。
+type GatewayAppMerchantRegisterReq struct {
+	g.Meta    `path:"/device/app/api/merchant_register" method:"post" tags:"gateway-app" summary:"商户聚合注册"`
+	StoreName string `json:"storeName"`
+	Password  string `json:"password"`
+}
+
+type GatewayAppMerchantRegisterRes struct {
+	MerchantId  int64  `json:"merchantId"`
+	StoreName   string `json:"storeName"`
+	AccessToken string `json:"accessToken"`
+}
+
+// GatewayAppMerchantLoginReq 商户登录并签发商户 JWT。
+type GatewayAppMerchantLoginReq struct {
+	g.Meta    `path:"/device/app/api/merchant_login" method:"post" tags:"gateway-app" summary:"商户聚合登录"`
+	StoreName string `json:"storeName"`
+	Password  string `json:"password"`
+}
+
+type GatewayAppMerchantLoginRes struct {
+	MerchantId  int64  `json:"merchantId"`
+	StoreName   string `json:"storeName"`
+	AccessToken string `json:"accessToken"`
+}
+
 // GatewayAppUsernameLoginReq 用户名聚合登录：转发 device 用户名登录后签发 access/refresh。
 type GatewayAppUsernameLoginReq struct {
 	g.Meta   `path:"/device/app/api/username_login" method:"post" tags:"gateway-app" summary:"用户名聚合登录"`

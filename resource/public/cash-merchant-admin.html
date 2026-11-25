@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>商户订阅运维</title>
+  <link rel="stylesheet" href="/device/admin/admin-pages.css" />
+  <script src="/device/admin/admin-common.js"></script>
+</head>
+<body class="admin-page">
+  <header class="admin-header">
+    <h1>商户订阅运维</h1>
+    <p class="muted">列表展示到期/欠费；可对选定商户设置绝对到期日；可改月费（分）。</p>
+  </header>
+  <main class="admin-main">
+    <section class="admin-block">
+      <h2>月费（分）</h2>
+      <div class="row">
+        <input id="priceFen" type="number" min="1" placeholder="默认 100000 = 1000 元" />
+        <button id="btnPrice" type="button">保存月费</button>
+        <button id="btnLoadProduct" type="button">读取当前价</button>
+        <span id="priceHint" class="muted"></span>
+      </div>
+    </section>
+    <section class="admin-block">
+      <h2>绝对授期</h2>
+      <div class="row">
+        <input id="merchantId" type="number" min="1" placeholder="merchantId" />
+        <input id="expireAt" type="datetime-local" />
+        <button id="btnGrant" type="button">授期</button>
+        <span id="grantHint" class="muted"></span>
+      </div>
+    </section>
+    <section class="admin-block">
+      <h2>权益列表</h2>
+      <button id="btnRefresh" type="button">刷新</button>
+      <table class="admin-table">
+        <thead>
+          <tr><th>商户 ID</th><th>expire_at</th><th>来源</th><th>有效</th><th>欠费</th></tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </section>
+  </main>
+  <script>
+    AdminCommon.requireAdmin();
+    function fmtTs(sec) {
+      if (!sec) return '-';
+      const d = new Date(sec * 1000);
+      return isNaN(d.getTime()) ? String(sec) : d.toLocaleString();
+    }
+    async function refreshList() {
+      const res = await AdminCommon.adminFetch('/cash/admin/api/merchant/entitlements');
+      const items = (res && res.items) || [];
+      const tb = document.getElementById('tbody');
+      tb.innerHTML = items.map(it => `<tr>
+        <td>${it.merchantId}</td>
+        <td>${fmtTs(it.expireAt)}</td>
+        <td>${it.source || ''}</td>
+        <td>${it.entitled ? '是' : '否'}</td>
+        <td>${it.arrears ? '是' : '否'}</td>
+      </tr>`).join('') || '<tr><td colspan="5">暂无记录</td></tr>';
+    }
+    document.getElementById('btnRefresh').onclick = () => refreshList().catch(e => alert(e.message || e));
+    document.getElementById('btnGrant').onclick = async () => {
+      const merchantId = Number(document.getElementById('merchantId').value);
+      const local = document.getElementById('expireAt').value;
+      if (!merchantId || !local) { alert('请填写商户与到期时间'); return; }
+      const expireAt = Math.floor(new Date(local).getTime() / 1000);
+      await AdminCommon.adminFetch('/cash/admin/api/merchant/grant', {
+        method: 'POST',
+        body: JSON.stringify({ merchantId, expireAt })
+      });
+      document.getElementById('grantHint').textContent = '已授期';
+      await refreshList();
+    };
+    document.getElementById('btnPrice').onclick = async () => {
+      const priceFen = Number(document.getElementById('priceFen').value);
+      await AdminCommon.adminFetch('/cash/admin/api/merchant/price', {
+        method: 'POST',
+        body: JSON.stringify({ priceFen })
+      });
+      document.getElementById('priceHint').textContent = '已保存 ' + priceFen;
+    };
+    document.getElementById('btnLoadProduct').onclick = async () => {
+      // 商户读价需商户 JWT；运维侧用改价接口回显即可，此处仅提示默认。
+      document.getElementById('priceHint').textContent = '默认种子 100000 分；保存后以库为准';
+    };
+    refreshList().catch(e => console.warn(e));
+  </script>
+</body>
+</html>

@@ -39,9 +39,30 @@ func installGatewayAppBearerMiddleware(s *ghttp.Server) {
 			return
 		}
 
+		if gatewayapp.IsMerchantPath(path) {
+			raw := gatewayapp.BearerTokenFromRequest(r)
+			if raw == "" {
+				WriteAuthJSON(r, 401, "缺少或无效的 Authorization")
+				return
+			}
+			if gatewayapp.IsAdminJWTString(r.Context(), raw) {
+				WriteAuthJSON(r, 403, "admin token 不能访问商户接口")
+				return
+			}
+			if err := gatewayapp.InjectMerchantHeadersFromBearer(r); err != nil {
+				WriteAuthJSON(r, 401, err.Error())
+				return
+			}
+			return
+		}
+
 		raw := gatewayapp.BearerTokenFromRequest(r)
 		if raw != "" && gatewayapp.IsAdminJWTString(r.Context(), raw) {
 			WriteAuthJSON(r, 403, "admin token 不能访问 App 用户接口")
+			return
+		}
+		if raw != "" && gatewayapp.PeekIsMerchantJWT(r.Context(), raw) {
+			WriteAuthJSON(r, 403, "merchant token 不能访问 App 用户接口")
 			return
 		}
 

@@ -238,6 +238,17 @@ func (c *DeviceInternalCtrl) VoiceEventNeedle(ctx context.Context, req *v1.Devic
 	return &v1.DeviceInternalVoiceEventNeedleRes{Item: item}, nil
 }
 
+// MerchantHistoryWriteGate GET /device/internal/api/merchant/history-write-gate
+func (c *DeviceInternalCtrl) MerchantHistoryWriteGate(ctx context.Context, req *v1.DeviceInternalMerchantWriteGateReq) (*v1.DeviceInternalMerchantWriteGateRes, error) {
+	_ = c
+	block, mid, err := device.MerchantBlockHistoryCreate(ctx, req.DeviceNo)
+	if err != nil {
+		// 探活失败：对调用方返回 blockCreate=true（fail-closed）
+		return &v1.DeviceInternalMerchantWriteGateRes{BlockCreate: true, MerchantId: mid}, nil
+	}
+	return &v1.DeviceInternalMerchantWriteGateRes{BlockCreate: block, MerchantId: mid}, nil
+}
+
 // VoiceEventDeepSeek DeepSeek 抽取落库。
 func (c *DeviceInternalCtrl) VoiceEventDeepSeek(ctx context.Context, req *v1.DeviceInternalVoiceEventDeepSeekReq) (res *v1.DeviceInternalVoiceEventDeepSeekRes, err error) {
 	_ = c

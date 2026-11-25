@@ -37,6 +37,7 @@ func installCashProxyMiddleware(s *ghttp.Server) {
 	}
 	s.BindMiddleware("/cash/app/api/*", serve)
 	s.BindMiddleware("/cash/admin/api/*", serve)
+	s.BindMiddleware("/cash/merchant/api/*", serve)
 }
 
 func cashProxyFromEnv() *httputil.ReverseProxy {

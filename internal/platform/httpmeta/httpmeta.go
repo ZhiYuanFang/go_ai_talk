@@ -16,6 +16,8 @@ import (
 const (
 	// HeaderInternalWxId 下游识别 wx 行（主键），由网关注入。
 	HeaderInternalWxId = "X-Internal-Wx-Id"
+	// HeaderInternalMerchantId 下游识别商户主键，由网关按商户 JWT 注入。
+	HeaderInternalMerchantId = "X-Internal-Merchant-Id"
 	// HeaderInternalDeviceNo 下游识别当前会话绑定设备号，由网关注入。
 	HeaderInternalDeviceNo = "X-Internal-Device-No"
 	// HeaderInternalClientIP 网关解析的真实客户端 IP（客户端不可伪造）。

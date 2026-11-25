@@ -103,6 +103,12 @@ window.ADMIN_MODULES = [
 		showInNav: true
 	},
 	{
+		id: 'cash-merchant-admin',
+		title: '商户订阅运维',
+		pagePath: '/device/admin/cash-merchant-admin.html',
+		showInNav: true
+	},
+	{
 		id: 'cash-xiaozhi-mcp-admin',
 		title: '小智 MCP 开通',
 		pagePath: '/device/admin/cash-xiaozhi-mcp-admin.html',

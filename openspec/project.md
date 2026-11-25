@@ -15,13 +15,13 @@
 
 ## OpenSpec 布局
 
-- **真相**：`openspec/specs/<domain>/spec.md`（十七域，见下）。
+- **真相**：`openspec/specs/<domain>/spec.md`（十八域，见下）。
 - **变更**：`openspec/changes/<change-id>/`；delta 位于 `changes/<id>/specs/<domain>/spec.md`。
 - **归档**：合并 delta 进主规格（若实现阶段已写妥主规格可 `--skip-specs`），然后 **删除**该 change 目录；默认 **不保留** `openspec/changes/archive/`。
 - **制品语言**：简体中文；每条 `### Requirement` 须含英文 **SHALL** 或 **MUST**。
 - **禁止**再使用 `openspec/specs/v*/` 巨石基线或 `hack/*openspec*` 版本合并脚本。
 
-### 十七域
+### 十八域
 
 | 域 | 摘要 |
 |---|---|
@@ -42,6 +42,7 @@
 | `llm-lanes` | LLM 车道、配额、aimodel 退役 |
 | `legal-site` | 隐私政策、用户协议、公司法律页 |
 | `media-release` | APK/OSS CDN、App 状态横幅 |
+| `merchant-console` | 商户 B 端台、虚拟宝宝配额/分发、商户 JWT/SSE、Vue 玻璃拟态面板（变更 `merchant-console-multi-baby` 归档后升主规格） |
 
 ## 工程约束指针
 

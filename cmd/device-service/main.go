@@ -68,6 +68,14 @@ func main() {
 		glog.Fatalf(ctx, "xiaozhi_mcp_binding speaker_mac ensure failed: %v", err)
 		return
 	}
+	if err := device.EnsureMerchantConsoleSchema(ctx); err != nil {
+		glog.Fatalf(ctx, "merchant console schema ensure failed: %v", err)
+		return
+	}
+	if err := device.EnsureBackfillWxBabyMembers(ctx); err != nil {
+		glog.Fatalf(ctx, "wx_baby_member backfill failed: %v", err)
+		return
+	}
 	s := g.Server("device-service")
 	applyDeviceServiceAddress(s)
 	controller.RegisterDeviceServiceHTTP(s)

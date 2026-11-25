@@ -353,6 +353,17 @@ func FulfillFeaturePaid(ctx context.Context, orderNo, channel, channelTxnID stri
 // 业务：VIP 履约已下线；order_no 不在 feature_order 时返回 NotFound，不写 vip_*。
 func DispatchFulfillPaid(ctx context.Context, orderNo, channel, channelTxnID string, amountFen int) error {
 	orderNo = strings.TrimSpace(orderNo)
+	// 商户连续订阅单优先（order_no 常以 M 开头，但不依赖前缀）。
+	mOne, err := g.DB().Model("merchant_order").Ctx(ctx).Where("order_no", orderNo).Limit(1).One()
+	if err != nil {
+		return err
+	}
+	if !mOne.IsEmpty() {
+		if amountFen > 0 && mOne["amount_fen"].Int() > 0 && amountFen != mOne["amount_fen"].Int() {
+			return gerror.NewCode(gcode.CodeInvalidParameter, "商户订单金额与通知不一致")
+		}
+		return FulfillMerchantAlipayPaid(ctx, orderNo, channelTxnID)
+	}
 	// 空结果用 .One，避免 Scan 抛 sql.ErrNoRows。
 	one, err := g.DB().Model("feature_order").Ctx(ctx).Where("order_no", orderNo).Limit(1).One()
 	if err != nil {

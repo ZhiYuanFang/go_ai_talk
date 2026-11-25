@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>胖宝商户台</title>
+  <script src="https://unpkg.com/vue@3.5.13/dist/vue.global.prod.js"></script>
+  <style>
+    :root {
+      --bg0: #0b1c2c;
+      --bg1: #16324a;
+      --glass: rgba(255, 255, 255, 0.12);
+      --glass-border: rgba(255, 255, 255, 0.28);
+      --text: #f4f7fb;
+      --muted: rgba(244, 247, 251, 0.72);
+      --accent: #5ec8ff;
+      --danger: #ff7b7b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; color: var(--text);
+      font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: radial-gradient(1200px 600px at 10% -10%, #2a6f97 0%, transparent 55%),
+                  linear-gradient(160deg, var(--bg0), var(--bg1) 55%, #0e2436);
+    }
+    .shell { max-width: 1200px; margin: 0 auto; padding: 28px 20px 48px; }
+    .brand { font-size: 28px; font-weight: 700; letter-spacing: 0.04em; }
+    .glass {
+      background: var(--glass);
+      border: 1px solid var(--glass-border);
+      border-radius: 18px;
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      box-shadow: 0 10px 40px rgba(0,0,0,0.25);
+    }
+    .auth { width: min(420px, 100%); margin: 12vh auto 0; padding: 28px; }
+    .auth h2 { margin: 0 0 8px; }
+    .muted { color: var(--muted); font-size: 14px; }
+    label { display: block; margin: 14px 0 6px; font-size: 13px; }
+    input, button, select {
+      width: 100%; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--glass-border);
+      background: rgba(255,255,255,0.08); color: var(--text); font-size: 15px;
+    }
+    button {
+      margin-top: 16px; cursor: pointer; background: linear-gradient(135deg, #4eb6ef, #2f7fb8);
+      border: none; font-weight: 600;
+    }
+    button.secondary { background: transparent; border: 1px solid var(--glass-border); }
+    .err { color: var(--danger); margin-top: 10px; font-size: 13px; }
+    .topbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 18px; }
+    .layout { display: grid; grid-template-columns: 1.1fr 1fr; gap: 16px; }
+    @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+    .cards { display: grid; gap: 12px; }
+    .card { padding: 16px; cursor: pointer; transition: transform .15s ease, border-color .15s; }
+    .card:hover, .card.active { transform: translateY(-2px); border-color: var(--accent); }
+    .card h3 { margin: 0 0 8px; font-size: 18px; }
+    .detail { padding: 18px; min-height: 360px; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+    .row button { width: auto; margin: 0; padding: 8px 14px; }
+    .event-row { padding: 12px 0; border-top: 1px solid rgba(255,255,255,0.12); }
+    .chart-box {
+      height: 88px; margin-top: 8px; border-radius: 10px;
+      background: linear-gradient(180deg, rgba(94,200,255,0.25), rgba(94,200,255,0.05));
+      display: flex; align-items: flex-end; gap: 4px; padding: 8px;
+    }
+    .bar { flex: 1; background: rgba(255,255,255,0.55); border-radius: 4px 4px 0 0; }
+    .toolbar { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 12px; }
+  </style>
+</head>
+<body>
+<div id="app" class="shell">
+  <div class="brand">胖宝 · 商户台</div>
+
+  <div v-if="!token" class="glass auth">
+    <h2>{{ mode === 'login' ? '商户登录' : '自由注册' }}</h2>
+    <p class="muted">店名 + 密码；商户仅可登录本后台</p>
+    <label>店名</label>
+    <input v-model.trim="storeName" autocomplete="username" />
+    <label>密码</label>
+    <input v-model="password" type="password" autocomplete="current-password" />
+    <button @click="submitAuth">{{ mode === 'login' ? '登录' : '注册并登录' }}</button>
+    <button class="secondary" @click="mode = mode === 'login' ? 'register' : 'login'">
+      {{ mode === 'login' ? '没有账号？注册' : '已有账号？登录' }}
+    </button>
+    <div class="err" v-if="error">{{ error }}</div>
+  </div>
+
+  <template v-else>
+    <div class="topbar">
+      <div>
+        <div>{{ storeName || '商户' }}</div>
+        <div class="muted">SSE {{ sseStatus }} · 权益 {{ entitledText }}</div>
+      </div>
+      <div class="row">
+        <button class="secondary" @click="loadEntitlement">刷新权益</button>
+        <button class="secondary" @click="subscribe">开通订阅</button>
+        <button class="secondary" @click="logout">退出</button>
+      </div>
+    </div>
+
+    <div class="layout">
+      <section>
+        <div class="row" style="margin-bottom:10px">
+          <button @click="createBaby">创建宝宝</button>
+          <button class="secondary" @click="createStaff">创建子账户</button>
+          <button class="secondary" @click="reloadBabies">刷新卡片</button>
+        </div>
+        <div class="cards">
+          <div
+            v-for="b in babies"
+            :key="b.deviceNo"
+            class="glass card"
+            :class="{ active: selected === b.deviceNo }"
+            @click="selectBaby(b.deviceNo)"
+          >
+            <h3>{{ b.babyName || b.deviceNo }}</h3>
+            <div class="muted">最近：{{ b.latest || '暂无记录' }}</div>
+            <div class="muted">下次预计：{{ b.nextPredict || '—' }}</div>
+          </div>
+          <div v-if="!babies.length" class="glass card muted">暂无宝宝，点击「创建宝宝」</div>
+        </div>
+      </section>
+
+      <section class="glass detail" v-if="selected">
+        <h2>{{ selectedMeta.babyName || selected }}</h2>
+        <p class="muted">仿预测页：每行一个事件；可切换准确率 / 趋势</p>
+        <div class="row">
+          <button :class="{ secondary: chartMode !== 'accuracy' }" @click="chartMode='accuracy'">准确率图</button>
+          <button :class="{ secondary: chartMode !== 'trend' }" @click="chartMode='trend'">趋势图</button>
+        </div>
+        <div class="event-row" v-for="ev in demoEvents" :key="ev.id">
+          <strong>{{ ev.name }}</strong>
+          <span class="muted"> · 预测 {{ ev.predict }}</span>
+          <div class="chart-box" v-if="chartMode === 'trend'">
+            <div class="bar" v-for="(h,i) in ev.trend" :key="i" :style="{ height: (20 + h) + '%' }"></div>
+          </div>
+          <div class="chart-box" v-else>
+            <div class="bar" v-for="(h,i) in ev.accuracy" :key="i" :style="{ height: (30 + h) + '%', background: 'rgba(120,255,180,0.7)' }"></div>
+          </div>
+        </div>
+        <div class="toolbar">
+          <input v-model.trim="assignWxId" placeholder="staff wxId" />
+          <button @click="assign">分发给子账户</button>
+          <input v-model.trim="unassignWxId" placeholder="解绑 staff wxId" />
+          <button class="secondary" @click="unassign">解绑</button>
+        </div>
+      </section>
+      <section class="glass detail muted" v-else>点击左侧宝宝卡片查看详情</section>
+    </div>
+  </template>
+</div>
+<script>
+const { createApp, ref, computed, onMounted, watch } = Vue;
+createApp({
+  setup() {
+    const token = ref(localStorage.getItem('merchant_access') || '');
+    const storeName = ref(localStorage.getItem('merchant_store') || '');
+    const password = ref('');
+    const mode = ref('login');
+    const error = ref('');
+    const babies = ref([]);
+    const selected = ref('');
+    const chartMode = ref('trend');
+    const sseStatus = ref('未连接');
+    const entitled = ref(false);
+    const expireAt = ref(0);
+    const assignWxId = ref('');
+    const unassignWxId = ref('');
+    let es = null;
+
+    const entitledText = computed(() => entitled.value
+      ? `有效至 ${expireAt.value ? new Date(expireAt.value * 1000).toLocaleString() : ''}`
+      : '欠费/未开通（默认最多 2 个宝宝）');
+    const selectedMeta = computed(() => babies.value.find(b => b.deviceNo === selected.value) || {});
+    const demoEvents = [
+      { id: 1, name: '奶量', predict: '约 2h 后', trend: [10,40,25,55,35,60,45], accuracy: [50,45,60,55,70,65,72] },
+      { id: 2, name: '睡眠', predict: '约 4h 后', trend: [20,30,50,40,35,55,48], accuracy: [40,50,45,60,58,62,66] },
+      { id: 3, name: '尿布', predict: '约 1.5h 后', trend: [15,25,20,40,30,35,42], accuracy: [55,52,58,60,63,61,68] },
+    ];
+
+    async function api(path, opts = {}) {
+      const headers = Object.assign({ 'Content-Type': 'application/json' }, opts.headers || {});
+      if (token.value) headers.Authorization = 'Bearer ' + token.value;
+      const res = await fetch(path, Object.assign({}, opts, { headers }));
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok || (j.code !== undefined && j.code !== 0)) {
+        throw new Error(j.message || ('HTTP ' + res.status));
+      }
+      return j.data !== undefined ? j.data : j;
+    }
+
+    async function submitAuth() {
+      error.value = '';
+      try {
+        const path = mode.value === 'login'
+          ? '/device/app/api/merchant_login'
+          : '/device/app/api/merchant_register';
+        const data = await api(path, {
+          method: 'POST',
+          body: JSON.stringify({ storeName: storeName.value, password: password.value }),
+        });
+        token.value = data.accessToken;
+        storeName.value = data.storeName || storeName.value;
+        localStorage.setItem('merchant_access', token.value);
+        localStorage.setItem('merchant_store', storeName.value);
+        password.value = '';
+        await afterLogin();
+      } catch (e) {
+        error.value = e.message || String(e);
+      }
+    }
+
+    function logout() {
+      token.value = '';
+      localStorage.removeItem('merchant_access');
+      if (es) { es.close(); es = null; }
+      sseStatus.value = '未连接';
+    }
+
+    async function afterLogin() {
+      await Promise.all([reloadBabies(), loadEntitlement()]);
+      connectSSE();
+    }
+
+    async function reloadBabies() {
+      const data = await api('/device/merchant/api/baby/list');
+      const nos = data.deviceNos || [];
+      babies.value = nos.map(deviceNo => ({
+        deviceNo,
+        babyName: deviceNo,
+        latest: '等待 SSE / 刷新',
+        nextPredict: '—',
+      }));
+    }
+
+    async function loadEntitlement() {
+      try {
+        const data = await api('/cash/merchant/api/entitlement');
+        entitled.value = !!data.entitled;
+        expireAt.value = data.expireAt || 0;
+      } catch (e) {
+        entitled.value = false;
+      }
+    }
+
+    async function createBaby() {
+      const name = prompt('宝宝昵称', '宝宝' + (babies.value.length + 1));
+      if (name == null) return;
+      await api('/device/merchant/api/baby/create', {
+        method: 'POST',
+        body: JSON.stringify({ babyName: name, birthday: 0, sex: 0 }),
+      });
+      await reloadBabies();
+    }
+
+    async function createStaff() {
+      const account = prompt('子账户用户名（a-z0-9_ 4-32）');
+      const pwd = prompt('子账户密码（6-64）');
+      if (!account || !pwd) return;
+      const data = await api('/device/merchant/api/staff/create', {
+        method: 'POST',
+        body: JSON.stringify({ account, password: pwd }),
+      });
+      alert('已创建 staff wxId=' + data.wxId);
+    }
+
+    async function assign() {
+      if (!selected.value || !assignWxId.value) return;
+      await api('/device/merchant/api/baby/assign', {
+        method: 'POST',
+        body: JSON.stringify({ wxId: Number(assignWxId.value), deviceNo: selected.value, setFocus: true }),
+      });
+      alert('已分发');
+    }
+
+    async function unassign() {
+      if (!selected.value || !unassignWxId.value) return;
+      await api('/device/merchant/api/baby/unassign', {
+        method: 'POST',
+        body: JSON.stringify({ wxId: Number(unassignWxId.value), deviceNo: selected.value }),
+      });
+      alert('已解绑');
+    }
+
+    async function subscribe() {
+      const data = await api('/cash/merchant/api/subscribe', { method: 'POST', body: '{}' });
+      alert('已建单 ' + data.orderNo + '\n' + (data.tip || data.payPayload || ''));
+    }
+
+    function selectBaby(dn) { selected.value = dn; }
+
+    function connectSSE() {
+      if (es) es.close();
+      if (!token.value) return;
+      // EventSource 无法自定义 Authorization：用 fetch 流更稳；此处先用 query 不可行。
+      // 改用 fetch + ReadableStream 简易 SSE。
+      sseStatus.value = '连接中';
+      fetch('/device/merchant/sse/babies', {
+        headers: { Authorization: 'Bearer ' + token.value, Accept: 'text/event-stream' },
+      }).then(async (res) => {
+        if (!res.ok || !res.body) {
+          sseStatus.value = '失败 ' + res.status;
+          return;
+        }
+        sseStatus.value = '已连接';
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = '';
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) { sseStatus.value = '断开'; break; }
+          buf += decoder.decode(value, { stream: true });
+          const parts = buf.split('\n\n');
+          buf = parts.pop() || '';
+          for (const block of parts) {
+            const line = block.split('\n').find(l => l.startsWith('data:'));
+            if (!line) continue;
+            try {
+              const payload = JSON.parse(line.slice(5).trim());
+              const dn = payload.device_no || payload.deviceNo;
+              if (!dn) continue;
+              const card = babies.value.find(b => b.deviceNo === dn);
+              if (card) {
+                card.latest = (payload.action || 'update') + ' @ ' + new Date().toLocaleTimeString();
+              }
+            } catch (_) { /* ignore */ }
+          }
+        }
+      }).catch(() => { sseStatus.value = '错误'; });
+    }
+
+    onMounted(() => { if (token.value) afterLogin().catch(e => error.value = e.message); });
+
+    return {
+      token, storeName, password, mode, error, babies, selected, chartMode, sseStatus,
+      entitledText, selectedMeta, demoEvents, assignWxId, unassignWxId,
+      submitAuth, logout, reloadBabies, loadEntitlement, createBaby, createStaff,
+      assign, unassign, subscribe, selectBaby,
+    };
+  },
+}).mount('#app');
+</script>
+</body>
+</html>

@@ -12,6 +12,7 @@ func RegisterCashServiceHTTP(s *ghttp.Server) {
 		group.Middleware(ghttp.MiddlewareHandlerResponse)
 		group.Bind(&cashctrl.CashFeatureController{})
 		group.Bind(&cashctrl.CashXiaozhiMcpController{})
+		group.Bind(&cashctrl.CashMerchantController{})
 	})
 	// 支付宝 / Apple 回调仍挂历史 /cash/app/api/vip/* 路径，供 feature + 小智 MCP 履约。
 	cashctrl.RegisterAlipayNotify(s)

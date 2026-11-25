@@ -210,6 +210,56 @@ func RemoteClaimFeatureTrial(ctx context.Context, wxID int64, featureID string) 
 	return nil
 }
 
+// RemoteIsMerchantEntitled 查询商户权益是否有效（expire_at > now）。
+func RemoteIsMerchantEntitled(ctx context.Context, merchantID int64) (bool, error) {
+	if merchantID <= 0 {
+		return false, nil
+	}
+	c := remoteHTTP()
+	if c == nil || c.base == "" {
+		return false, gerror.NewCode(gcode.CodeInternalError, "CASH_SERVICE_URL 未配置")
+	}
+	if strings.TrimSpace(c.secret) == "" {
+		return false, gerror.NewCode(gcode.CodeInternalError, "DEVICE_GATEWAY_INTERNAL_SECRET 未配置")
+	}
+	u := c.base + "/cash/internal/api/merchant/entitled?merchantId=" + strconv.FormatInt(merchantID, 10)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return false, err
+	}
+	req.Header.Set(httpmeta.HeaderDeviceGatewayInternalSecret, c.secret)
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return false, gerror.NewCode(gcode.CodeOperationFailed, fmt.Sprintf("cash-service 不可达: %v", err))
+	}
+	defer resp.Body.Close()
+	rawBody, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+	if err != nil {
+		return false, err
+	}
+	var env gfEnvelope
+	if len(rawBody) > 0 {
+		if err = json.Unmarshal(rawBody, &env); err != nil {
+			return false, gerror.NewCode(gcode.CodeInternalError, "cash merchant entitled 响应非 JSON")
+		}
+	}
+	if resp.StatusCode >= 400 || env.Code != 0 {
+		msg := strings.TrimSpace(env.Message)
+		if msg == "" {
+			msg = fmt.Sprintf("cash merchant entitled HTTP %d", resp.StatusCode)
+		}
+		return false, gerror.NewCode(gcode.CodeOperationFailed, msg)
+	}
+	var data struct {
+		Entitled bool  `json:"entitled"`
+		ExpireAt int64 `json:"expireAt"`
+	}
+	if len(env.Data) > 0 {
+		_ = json.Unmarshal(env.Data, &data)
+	}
+	return data.Entitled, nil
+}
+
 // RemoteProbeMigrateDeviceNo 宝宝号改名预检：cash 可达且表可读。
 func RemoteProbeMigrateDeviceNo(ctx context.Context) error {
 	return remoteMigrateDeviceNo(ctx, "__probe_old__", "__probe_new__", true)

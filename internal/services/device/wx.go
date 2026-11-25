@@ -154,28 +154,33 @@ func WxBindPreview(ctx context.Context, wxID int64, deviceNo string) (echoDevice
 	return deviceNo, strings.TrimSpace(profile.BabyName), nil
 }
 
-// WxBindDevice 将 deviceNo 绑定到 wx 行（wx 主键由 Header X-Internal-Wx-Id 标识，由 controller 传入 id）。
+// WxBindDevice 将 deviceNo 绑定到 wx（成员表真源 + 焦点镜像）。
+// 旧客户端语义：无成员时可绑第一个；已是成员则切焦点；已有其它成员再绑新号则拒绝（无再绑入口）。
+// 新客户端多宝宝请用 CreateVirtualBabyForParent / AddBabyMember。
 func WxBindDevice(ctx context.Context, wxID int64, deviceNo string) error {
 	deviceNo = strings.TrimSpace(deviceNo)
 	if wxID <= 0 || deviceNo == "" {
 		return errors.New("wxId 或 deviceNo 不能为空")
 	}
 	svc := DeviceAdmin()
-	// 确保设备已注册
 	if err := svc.EnsureRegistered(ctx, deviceNo); err != nil {
 		return err
 	}
-	_, err := dao.Wx.Ctx(ctx).Where(dao.Wx.Columns().Id, wxID).Data(g.Map{
-		dao.Wx.Columns().DeviceNo: deviceNo,
-	}).Update()
+	already, err := hasBabyMember(ctx, wxID, deviceNo)
 	if err != nil {
 		return err
 	}
-	row, _ := wxRowByWxID(ctx, wxID)
-	if row != nil {
-		_ = invalidateWxCaches(ctx, row.Id, strings.TrimSpace(row.Unionid))
+	if already {
+		return SetFocusBaby(ctx, wxID, deviceNo)
 	}
-	return nil
+	n, err := countBabyMembers(ctx, wxID)
+	if err != nil {
+		return err
+	}
+	if n > 0 {
+		return ErrBabyMemberAlreadyBound
+	}
+	return AddBabyMember(ctx, wxID, deviceNo, BabyMemberSourceBind, true)
 }
 
 // WxAutoSaveProfile 未绑定设备时生成 6 位大写随机 device_no 并注册设备，再写画像；已绑定则只更新画像。
@@ -197,6 +202,7 @@ func WxAutoSaveProfile(ctx context.Context, wxID int64, babyName string, birthda
 		if err := svc.SaveUserProfile(ctx, deviceNo, strings.TrimSpace(babyName), birthdayUnixSec, sex); err != nil {
 			return "", err
 		}
+		_ = AddBabyMember(ctx, row.Id, deviceNo, BabyMemberSourceSelf, false)
 		_ = invalidateWxCaches(ctx, row.Id, unionID)
 		return deviceNo, nil
 	}
@@ -207,12 +213,10 @@ func WxAutoSaveProfile(ctx context.Context, wxID int64, babyName string, birthda
 	if _, err := svc.Register(ctx, dn); err != nil {
 		return "", err
 	}
-	if _, err := dao.Wx.Ctx(ctx).Where(dao.Wx.Columns().Id, row.Id).Data(g.Map{
-		dao.Wx.Columns().DeviceNo: dn,
-	}).Update(); err != nil {
+	if err := svc.SaveUserProfile(ctx, dn, strings.TrimSpace(babyName), birthdayUnixSec, sex); err != nil {
 		return "", err
 	}
-	if err := svc.SaveUserProfile(ctx, dn, strings.TrimSpace(babyName), birthdayUnixSec, sex); err != nil {
+	if err := AddBabyMember(ctx, row.Id, dn, BabyMemberSourceSelf, true); err != nil {
 		return "", err
 	}
 	_ = invalidateWxCaches(ctx, row.Id, unionID)

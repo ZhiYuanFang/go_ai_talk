@@ -36,6 +36,20 @@ func RegisterGatewayAppHTTP(s *ghttp.Server) {
 
 	RegisterAdminStaticPages(s)
 
+	// 商户 Vue SPA（静态壳匿名；API 仍走商户 JWT）
+	s.BindHandler("/merchant", func(r *ghttp.Request) {
+		r.Response.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
+		r.Response.ServeFile("resource/public/merchant-spa/index.html")
+	})
+	s.BindHandler("/merchant/", func(r *ghttp.Request) {
+		r.Response.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
+		r.Response.ServeFile("resource/public/merchant-spa/index.html")
+	})
+	s.BindHandler("/merchant/index.html", func(r *ghttp.Request) {
+		r.Response.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
+		r.Response.ServeFile("resource/public/merchant-spa/index.html")
+	})
+
 	s.BindHandler("/device/app/api/version/admin/upload", gatewayAppVersionAdminUpload)
 	s.BindHandler("/device/app/api/version/admin/list", gatewayAppVersionAdminList)
 	s.BindHandler("/device/app/api/version/admin/get", gatewayAppVersionAdminGet)
@@ -55,6 +69,7 @@ func RegisterGatewayAppHTTP(s *ghttp.Server) {
 
 	s.BindHandler("/device/app/ws/history", gatewayAppHistoryWS)
 	s.BindHandler("GET:/device/app/sse/history", gatewayAppHistorySSE)
+	s.BindHandler("GET:/device/merchant/sse/babies", gatewayAppMerchantSSE)
 
 	s.Group("/", func(group *ghttp.RouterGroup) {
 		group.Middleware(ghttp.MiddlewareHandlerResponse)
